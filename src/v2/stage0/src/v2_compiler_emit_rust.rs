@@ -435,7 +435,6 @@ pub fn render_rust_alias_rhs_type(
     module_name: String,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = authored_name_at(source_indices.clone(), n.clone());
@@ -468,7 +467,6 @@ pub fn render_rust_alias_rhs_type(
                         export_sets.clone(),
                         typed_modules.clone(),
                         source_indices.clone(),
-                        module_index.clone(),
                     );
                     let base = if (def_mod.clone().as_str() != local_mod.as_str()) {
                         v2_rt::concat(
@@ -495,7 +493,6 @@ pub fn render_rust_alias_rhs_type(
                                 module_name.clone(),
                                 export_sets.clone(),
                                 typed_modules.clone(),
-                                module_index.clone(),
                             ));
                         }
                         __result
@@ -2292,7 +2289,6 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         );
         let test_projections = extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
-        let module_index = build_module_index(typed.modules.clone());
         let module_files = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
@@ -2305,7 +2301,6 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                     data_items.clone(),
                     export_sets.clone(),
                     typed.modules.clone(),
-                    module_index.clone(),
                 ));
             }
             __result
@@ -2510,7 +2505,6 @@ pub fn emit_module(
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
-        let module_index = build_module_index(Rc::new(vec![typed_module.clone()]));
         emit_module_full(
             typed_module.clone(),
             registry,
@@ -2520,7 +2514,6 @@ pub fn emit_module(
             build_data_item_index(Rc::new(vec![typed_module.clone()])),
             export_sets,
             Rc::new(vec![typed_module.clone()]),
-            module_index,
         )
     }
 }
@@ -2559,7 +2552,6 @@ pub fn emit_module_full(
     data_items: Rc<HashMap<String, Rc<Node>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
@@ -2601,7 +2593,6 @@ pub fn emit_module_full(
             export_sets.clone(),
             typed_modules.clone(),
             scope.type_env.clone().source_indices.clone(),
-            module_index.clone(),
         );
         let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str()) {
             "".to_string()
@@ -2773,7 +2764,6 @@ pub fn emit_module_full(
                     module_import_items.clone(),
                     export_sets.clone(),
                     typed_modules.clone(),
-                    module_index.clone(),
                 ));
             }
             __result
@@ -2825,14 +2815,12 @@ pub fn is_import_graph_type_name(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
     if has_physical_type_def_in_module_filename(
         name.clone(),
         module_to_filename(import_module.clone()),
         typed_modules.clone(),
         source_indices.clone(),
-        module_index.clone(),
     ) {
         true
     } else {
@@ -2842,7 +2830,6 @@ pub fn is_import_graph_type_name(
             typed_modules.clone(),
             export_sets.clone(),
             source_indices.clone(),
-            module_index.clone(),
         ) {
             Some(src) => type_name_is_rust_importable_in_module(
                 name.clone(),
@@ -2851,7 +2838,6 @@ pub fn is_import_graph_type_name(
                 registry.clone(),
                 export_sets.clone(),
                 source_indices.clone(),
-                module_index.clone(),
             ),
             None => false,
         } {
@@ -2873,7 +2859,6 @@ pub fn is_import_graph_type_name(
                                     registry.clone(),
                                     export_sets.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 )
                             } else {
                                 false
@@ -2898,80 +2883,54 @@ pub fn item_defining_module_filename(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ModuleIndex {
-    pub by_name: Rc<HashMap<String, Rc<TypedModule>>>,
-    pub by_filename: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>,
-}
-
-pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> {
-    {
-        let by_name = modules.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: Rc<HashMap<String, Rc<TypedModule>>>, tm: Rc<TypedModule>| {
-                let nm = authored_name_at(
-                    tm.type_env.clone().source_indices.clone(),
-                    tm.module.clone(),
-                );
-                match v2_rt::map_get(&acc, nm.clone()) {
-                    Some(_) => acc.clone(),
-                    None => v2_rt::rc_map_insert(acc.clone(), nm.clone(), tm.clone()),
-                }
-            },
-        );
-        let by_filename = modules.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, Rc<Vec<Rc<TypedModule>>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>, tm: Rc<TypedModule>| {
-                let fname = module_to_filename(authored_name_at(
-                    tm.type_env.clone().source_indices.clone(),
-                    tm.module.clone(),
-                ));
-                match v2_rt::map_get(&acc, fname.clone()) {
-                    Some(lst) => v2_rt::rc_map_insert(
-                        acc.clone(),
-                        fname.clone(),
-                        v2_rt::rc_list_push(lst.clone(), tm.clone()),
-                    ),
-                    None => {
-                        v2_rt::rc_map_insert(acc.clone(), fname.clone(), Rc::new(vec![tm.clone()]))
-                    }
-                }
-            },
-        );
-        Rc::new(ModuleIndex {
-            by_name: by_name,
-            by_filename: by_filename,
-        })
-    }
-}
-
 pub fn typed_module_by_name(
     module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Option<Rc<TypedModule>> {
-    v2_rt::map_get(&module_index.by_name.clone(), module_name)
+    Rc::new({
+        let mut __result = Vec::new();
+        for tm in typed_modules.iter().cloned() {
+            if (authored_name_at(source_indices.clone(), tm.module.clone()).as_str()
+                == module_name.clone().as_str())
+            {
+                __result.push(tm);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
 }
 
 pub fn module_name_from_filename(
     mod_filename: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
-    match v2_rt::map_get(&module_index.by_filename.clone(), mod_filename) {
-        Some(mods) => Rc::new({
+    Rc::new({
+        let mut __result = Vec::new();
+        for tm in Rc::new({
             let mut __result = Vec::new();
-            for tm in mods.clone().iter().cloned() {
-                __result.push(authored_name_at(source_indices.clone(), tm.module.clone()));
+            for tm in typed_modules.iter().cloned() {
+                if (module_to_filename(authored_name_at(source_indices.clone(), tm.module.clone()))
+                    .as_str()
+                    == mod_filename.clone().as_str())
+                {
+                    __result.push(tm);
+                }
             }
             __result
         })
-        .first()
-        .cloned(),
-        None => None,
-    }
+        .iter()
+        .cloned()
+        {
+            __result.push(authored_name_at(source_indices.clone(), tm.module.clone()));
+        }
+        __result
+    })
+    .first()
+    .cloned()
 }
 
 pub fn has_physical_type_def_in_module_filename(
@@ -2979,13 +2938,14 @@ pub fn has_physical_type_def_in_module_filename(
     mod_filename: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
-    match v2_rt::map_get(&module_index.by_filename.clone(), mod_filename) {
-        Some(mods) => {
-            let mut __found = false;
-            for tm in mods.clone().iter().cloned() {
-                if {
+    {
+        let mut __found = false;
+        for tm in typed_modules.iter().cloned() {
+            if ((module_to_filename(authored_name_at(source_indices.clone(), tm.module.clone()))
+                .as_str()
+                == mod_filename.clone().as_str())
+                && {
                     let mut __found = false;
                     for item in tm.items.clone().iter().cloned() {
                         if ((authored_name_at(source_indices.clone(), item.clone()).as_str()
@@ -2997,14 +2957,13 @@ pub fn has_physical_type_def_in_module_filename(
                         }
                     }
                     __found
-                } {
-                    __found = true;
-                    break;
-                }
+                })
+            {
+                __found = true;
+                break;
             }
-            __found
         }
-        None => false,
+        __found
     }
 }
 
@@ -3013,14 +2972,8 @@ pub fn find_variant_parent_in_module(
     module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
-    match typed_module_by_name(
-        module_name,
-        typed_modules,
-        source_indices.clone(),
-        module_index,
-    ) {
+    match typed_module_by_name(module_name, typed_modules, source_indices.clone()) {
         None => None,
         Some(tm) => Rc::new({
             let mut __result = Vec::new();
@@ -3072,14 +3025,8 @@ pub fn type_name_is_export_source_in_module(
     module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
-    match typed_module_by_name(
-        module_name,
-        typed_modules,
-        source_indices.clone(),
-        module_index,
-    ) {
+    match typed_module_by_name(module_name, typed_modules, source_indices.clone()) {
         None => false,
         Some(tm) => {
             let mut __found = false;
@@ -3106,13 +3053,11 @@ pub fn type_name_is_rust_importable_in_module(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
     match typed_module_by_name(
         module_name.clone(),
         typed_modules.clone(),
         source_indices.clone(),
-        module_index.clone(),
     ) {
         None => false,
         Some(tm) => match Rc::new({
@@ -3143,7 +3088,6 @@ pub fn type_name_is_rust_importable_in_module(
                 export_sets,
                 typed_modules.clone(),
                 source_indices.clone(),
-                module_index.clone(),
             ),
         },
     }
@@ -3156,7 +3100,6 @@ pub fn imported_name_is_non_emittable_type(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
     {
         let defining_module = match reexport_source_module_name(
@@ -3165,7 +3108,6 @@ pub fn imported_name_is_non_emittable_type(
             typed_modules.clone(),
             export_sets.clone(),
             source_indices.clone(),
-            module_index.clone(),
         ) {
             Some(src) => src.clone(),
             None => import_module.clone(),
@@ -3175,7 +3117,6 @@ pub fn imported_name_is_non_emittable_type(
             defining_module.clone(),
             typed_modules.clone(),
             source_indices.clone(),
-            module_index.clone(),
         ) && (type_name_is_rust_importable_in_module(
             name.clone(),
             defining_module.clone(),
@@ -3183,7 +3124,6 @@ pub fn imported_name_is_non_emittable_type(
             registry,
             export_sets.clone(),
             source_indices.clone(),
-            module_index.clone(),
         ) == false))
     }
 }
@@ -3195,7 +3135,6 @@ pub fn name_in_transitive_export_surface(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if {
@@ -3222,7 +3161,6 @@ pub fn name_in_transitive_export_surface(
                         module_name.clone(),
                         typed_modules.clone(),
                         source_indices.clone(),
-                        module_index.clone(),
                     ) {
                         None => false,
                         Some(tm) => {
@@ -3249,7 +3187,6 @@ pub fn name_in_transitive_export_surface(
                                     export_sets.clone(),
                                     typed_modules.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 ) {
                                     __found = true;
                                     break;
@@ -3270,7 +3207,6 @@ pub fn reexport_source_module_name(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
     reexport_source_module_name_with_visited(
         name,
@@ -3279,7 +3215,6 @@ pub fn reexport_source_module_name(
         typed_modules,
         export_sets,
         source_indices,
-        module_index,
     )
 }
 
@@ -3290,7 +3225,6 @@ pub fn reexport_source_module_name_with_visited(
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
     mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
     loop {
         if {
@@ -3309,7 +3243,6 @@ pub fn reexport_source_module_name_with_visited(
                 import_module.clone(),
                 typed_modules.clone(),
                 source_indices.clone(),
-                module_index.clone(),
             ) {
                 None => {
                     break None;
@@ -3320,7 +3253,6 @@ pub fn reexport_source_module_name_with_visited(
                         import_module.clone(),
                         typed_modules.clone(),
                         source_indices.clone(),
-                        module_index.clone(),
                     ) {
                         break Some(import_module.clone());
                     } else {
@@ -3329,7 +3261,6 @@ pub fn reexport_source_module_name_with_visited(
                             import_module.clone(),
                             typed_modules.clone(),
                             source_indices.clone(),
-                            module_index.clone(),
                         ) {
                             Some(_parent) => {
                                 break Some(import_module.clone());
@@ -3421,7 +3352,6 @@ pub fn reexport_source_module_name_with_visited(
                                                             export_sets.clone(),
                                                             typed_modules.clone(),
                                                             source_indices.clone(),
-                                                            module_index.clone(),
                                                         )
                                                     } {
                                                         __result.push(imp);
@@ -3474,7 +3404,6 @@ pub fn import_module_enum_scope(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
     {
         let physical = enum_names_in_module(
@@ -3482,7 +3411,6 @@ pub fn import_module_enum_scope(
             typed_modules.clone(),
             source_indices.clone(),
             type_summaries.clone(),
-            module_index.clone(),
         );
         let reexport_parents = match v2_rt::map_get(&export_sets, import_module.clone()) {
             Some(exported) => Rc::new({
@@ -3513,7 +3441,6 @@ pub fn import_module_enum_scope(
                                 typed_modules.clone(),
                                 export_sets.clone(),
                                 source_indices.clone(),
-                                module_index.clone(),
                             ) {
                                 Some(parent) => parent.clone(),
                                 None => "".to_string(),
@@ -3542,14 +3469,8 @@ pub fn enum_names_in_module(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
-    match typed_module_by_name(
-        module_name,
-        typed_modules,
-        source_indices.clone(),
-        module_index,
-    ) {
+    match typed_module_by_name(module_name, typed_modules, source_indices.clone()) {
         None => Rc::new(vec![]),
         Some(tm) => Rc::new({
             let mut __result = Vec::new();
@@ -3588,14 +3509,8 @@ pub fn enum_physically_defined_in_module(
     module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
-    match typed_module_by_name(
-        module_name,
-        typed_modules,
-        source_indices.clone(),
-        module_index,
-    ) {
+    match typed_module_by_name(module_name, typed_modules, source_indices.clone()) {
         None => false,
         Some(tm) => {
             let mut __found = false;
@@ -3620,7 +3535,6 @@ pub fn wildcard_import_pool_surface_names(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if {
@@ -3639,7 +3553,6 @@ pub fn wildcard_import_pool_surface_names(
                 module_name.clone(),
                 typed_modules.clone(),
                 source_indices.clone(),
-                module_index.clone(),
             ) {
                 None => Rc::new(vec![]),
                 Some(tm) => Rc::new({
@@ -3674,7 +3587,6 @@ pub fn wildcard_import_pool_surface_names(
                                         export_sets.clone(),
                                         typed_modules.clone(),
                                         source_indices.clone(),
-                                        module_index.clone(),
                                     ),
                                 )
                             })
@@ -3694,7 +3606,6 @@ pub fn wildcard_reexport_surface_names(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
     {
         let local_candidates = match v2_rt::map_get(&export_sets, import_module.clone()) {
@@ -3707,7 +3618,6 @@ pub fn wildcard_reexport_surface_names(
             export_sets.clone(),
             typed_modules.clone(),
             source_indices.clone(),
-            module_index.clone(),
         );
         unique_strings(Rc::new({
             let mut __result = Vec::new();
@@ -3721,7 +3631,6 @@ pub fn wildcard_reexport_surface_names(
                     typed_modules.clone(),
                     export_sets.clone(),
                     source_indices.clone(),
-                    module_index.clone(),
                 ) {
                     Some(src) => (src.clone().as_str() != import_module.clone().as_str()),
                     None => false,
@@ -3741,14 +3650,12 @@ pub fn graph_type_import_module_filename(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> String {
     if has_physical_type_def_in_module_filename(
         name.clone(),
         mod_name.clone(),
         typed_modules.clone(),
         source_indices.clone(),
-        module_index.clone(),
     ) {
         mod_name.clone()
     } else {
@@ -3758,7 +3665,6 @@ pub fn graph_type_import_module_filename(
             typed_modules.clone(),
             export_sets,
             source_indices.clone(),
-            module_index.clone(),
         ) {
             Some(src) => module_to_filename(src.clone()),
             None => mod_name.clone(),
@@ -3773,7 +3679,6 @@ pub fn variant_defining_module_filename_for_import(
     mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut fallback: String,
-    mut module_index: Rc<ModuleIndex>,
 ) -> String {
     loop {
         match find_variant_parent_in_module(
@@ -3781,7 +3686,6 @@ pub fn variant_defining_module_filename_for_import(
             import_module.clone(),
             typed_modules.clone(),
             source_indices.clone(),
-            module_index.clone(),
         ) {
             Some(_parent) => {
                 break module_to_filename(import_module.clone());
@@ -3793,7 +3697,6 @@ pub fn variant_defining_module_filename_for_import(
                     typed_modules.clone(),
                     export_sets.clone(),
                     source_indices.clone(),
-                    module_index.clone(),
                 ) {
                     Some(hop) => {
                         if (hop.clone().as_str() != import_module.clone().as_str()) {
@@ -3824,14 +3727,12 @@ pub fn variant_parent_defining_module_filename(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     fallback: String,
-    module_index: Rc<ModuleIndex>,
 ) -> String {
     match find_variant_parent_in_module(
         variant_name.clone(),
         import_module.clone(),
         typed_modules.clone(),
         source_indices.clone(),
-        module_index.clone(),
     ) {
         Some(local_parent) => {
             if (local_parent.clone().as_str() == parent_enum.clone().as_str()) {
@@ -3844,7 +3745,6 @@ pub fn variant_parent_defining_module_filename(
                     export_sets,
                     source_indices.clone(),
                     item_defining_module_filename(parent_enum.clone(), registry, fallback),
-                    module_index.clone(),
                 )
             }
         }
@@ -3855,7 +3755,6 @@ pub fn variant_parent_defining_module_filename(
             export_sets,
             source_indices.clone(),
             item_defining_module_filename(parent_enum.clone(), registry, fallback),
-            module_index.clone(),
         ),
     }
 }
@@ -3866,14 +3765,8 @@ pub fn explicit_import_source_module_for_name(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
-    match typed_module_by_name(
-        import_module,
-        typed_modules,
-        source_indices.clone(),
-        module_index,
-    ) {
+    match typed_module_by_name(import_module, typed_modules, source_indices.clone()) {
         None => None,
         Some(tm) => match Rc::new({
             let mut __result = Vec::new();
@@ -3964,7 +3857,6 @@ pub fn reexport_variant_parent_in_import_module(
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
     mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
     loop {
         match reexport_source_module_name(
@@ -3973,7 +3865,6 @@ pub fn reexport_variant_parent_in_import_module(
             typed_modules.clone(),
             export_sets.clone(),
             source_indices.clone(),
-            module_index.clone(),
         ) {
             None => {
                 break None;
@@ -3984,7 +3875,6 @@ pub fn reexport_variant_parent_in_import_module(
                     src_mod.clone(),
                     typed_modules.clone(),
                     source_indices.clone(),
-                    module_index.clone(),
                 ) {
                     Some(parent) => {
                         break Some(parent.clone());
@@ -3996,7 +3886,6 @@ pub fn reexport_variant_parent_in_import_module(
                             typed_modules.clone(),
                             export_sets.clone(),
                             source_indices.clone(),
-                            module_index.clone(),
                         ) {
                             Some(hop) => {
                                 if (hop.clone().as_str() != src_mod.clone().as_str()) {
@@ -4029,7 +3918,6 @@ pub fn alias_rhs_rust_qualify_module_filename(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> String {
     {
         let spell_mod = alias_rhs_base_module_filename(
@@ -4041,14 +3929,12 @@ pub fn alias_rhs_rust_qualify_module_filename(
             registry,
             export_sets.clone(),
             typed_modules.clone(),
-            module_index.clone(),
         );
         if has_physical_type_def_in_module_filename(
             name.clone(),
             spell_mod.clone(),
             typed_modules.clone(),
             source_indices.clone(),
-            module_index.clone(),
         ) {
             spell_mod.clone()
         } else {
@@ -4056,7 +3942,6 @@ pub fn alias_rhs_rust_qualify_module_filename(
                 spell_mod.clone(),
                 typed_modules.clone(),
                 source_indices.clone(),
-                module_index.clone(),
             ) {
                 Some(mod_name) => match reexport_source_module_name(
                     name.clone(),
@@ -4064,7 +3949,6 @@ pub fn alias_rhs_rust_qualify_module_filename(
                     typed_modules.clone(),
                     export_sets.clone(),
                     source_indices.clone(),
-                    module_index.clone(),
                 ) {
                     Some(src) => module_to_filename(src.clone()),
                     None => spell_mod.clone(),
@@ -4084,7 +3968,6 @@ pub fn alias_rhs_base_module_filename(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> String {
     {
         let local_mod = module_to_filename(alias_module.clone());
@@ -4104,7 +3987,6 @@ pub fn alias_rhs_base_module_filename(
                         local_mod,
                         export_sets,
                         typed_modules,
-                        module_index,
                     )
                 }
             }
@@ -4116,7 +3998,6 @@ pub fn alias_rhs_base_module_filename(
                 local_mod,
                 export_sets,
                 typed_modules,
-                module_index,
             ),
         }
     }
@@ -4130,7 +4011,6 @@ pub fn alias_rhs_base_module_from_import_or_registry(
     local_mod: String,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> String {
     match Rc::new({
         let mut __result = Vec::new();
@@ -4191,7 +4071,6 @@ pub fn alias_rhs_base_module_from_import_or_registry(
                             export_sets.clone(),
                             typed_modules.clone(),
                             source_indices.clone(),
-                            module_index.clone(),
                         )
                     } {
                         __result.push(imp);
@@ -4233,19 +4112,12 @@ pub fn type_item_by_name_in_module_filename(
     mod_filename: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> Option<Rc<Node>> {
-    match module_name_from_filename(
-        mod_filename,
-        typed_modules.clone(),
-        source_indices.clone(),
-        module_index.clone(),
-    ) {
+    match module_name_from_filename(mod_filename, typed_modules.clone(), source_indices.clone()) {
         Some(mod_name) => match typed_module_by_name(
             mod_name.clone(),
             typed_modules.clone(),
             source_indices.clone(),
-            module_index.clone(),
         ) {
             Some(tm) => Rc::new({
                 let mut __result = Vec::new();
@@ -4279,7 +4151,6 @@ pub fn type_item_has_rust_nominal_shell_authority(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
     if is_type_def_item(item.clone()) {
         true
@@ -4308,7 +4179,6 @@ pub fn type_item_has_rust_nominal_shell_authority(
                                     export_sets,
                                     typed_modules,
                                     source_indices.clone(),
-                                    module_index,
                                 )
                             } else {
                                 false
@@ -4335,7 +4205,6 @@ pub fn rhs_base_has_rust_type_authority_in_module(
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
     mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut module_index: Rc<ModuleIndex>,
 ) -> bool {
     loop {
         match type_item_by_name_in_module_filename(
@@ -4343,21 +4212,18 @@ pub fn rhs_base_has_rust_type_authority_in_module(
             def_mod_filename.clone(),
             typed_modules.clone(),
             source_indices.clone(),
-            module_index.clone(),
         ) {
             Some(item) => {
                 match module_name_from_filename(
                     def_mod_filename.clone(),
                     typed_modules.clone(),
                     source_indices.clone(),
-                    module_index.clone(),
                 ) {
                     Some(def_module_name) => {
                         match typed_module_by_name(
                             def_module_name.clone(),
                             typed_modules.clone(),
                             source_indices.clone(),
-                            module_index.clone(),
                         ) {
                             Some(tm) => {
                                 break type_item_has_rust_nominal_shell_authority(
@@ -4370,7 +4236,6 @@ pub fn rhs_base_has_rust_type_authority_in_module(
                                     export_sets.clone(),
                                     typed_modules.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 );
                             }
                             None => {
@@ -4388,7 +4253,6 @@ pub fn rhs_base_has_rust_type_authority_in_module(
                     def_mod_filename.clone(),
                     typed_modules.clone(),
                     source_indices.clone(),
-                    module_index.clone(),
                 ) {
                     Some(mod_name) => match v2_rt::map_get(&export_sets, mod_name.clone()) {
                         Some(exported) => {
@@ -4399,7 +4263,6 @@ pub fn rhs_base_has_rust_type_authority_in_module(
                                     typed_modules.clone(),
                                     export_sets.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 ) {
                                     Some(src) => {
                                         let __tco_0 = module_to_filename(src.clone());
@@ -4436,7 +4299,6 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if ((n.connective.clone() == Connective::NoConnective)
@@ -4453,7 +4315,6 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
                     registry.clone(),
                     export_sets.clone(),
                     typed_modules.clone(),
-                    module_index.clone(),
                 );
                 (rhs_base_has_rust_type_authority_in_module(
                     name.clone(),
@@ -4465,7 +4326,6 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
                     typed_modules.clone(),
                     export_sets.clone(),
                     source_indices.clone(),
-                    module_index.clone(),
                 ) && {
                     let mut __all = true;
                     for child in n.children.clone().iter().cloned() {
@@ -4478,7 +4338,6 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
                             export_sets.clone(),
                             typed_modules.clone(),
                             source_indices.clone(),
-                            module_index.clone(),
                         )) {
                             __all = false;
                             break;
@@ -4513,7 +4372,6 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
                                     registry.clone(),
                                     export_sets.clone(),
                                     typed_modules.clone(),
-                                    module_index.clone(),
                                 );
                                 rhs_base_has_rust_type_authority_in_module(
                                     name.clone(),
@@ -4525,7 +4383,6 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
                                     typed_modules.clone(),
                                     export_sets.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 )
                             }
                         }
@@ -4548,7 +4405,6 @@ pub fn is_emittable_parametric_type_alias_item(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> bool {
     if ((item.params.clone().len() as i64) == 0) {
         false
@@ -4576,7 +4432,6 @@ pub fn is_emittable_parametric_type_alias_item(
                                 export_sets,
                                 typed_modules,
                                 source_indices.clone(),
-                                module_index,
                             ))
                     }
                 }
@@ -4595,7 +4450,6 @@ pub fn emit_specific_import_block(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> String {
     {
         let type_summaries = emit_info.type_summaries.clone();
@@ -4632,7 +4486,6 @@ pub fn emit_specific_import_block(
                             export_sets.clone(),
                             type_summaries.clone(),
                             source_indices.clone(),
-                            module_index.clone(),
                         ) {
                             true
                         } else {
@@ -4646,7 +4499,6 @@ pub fn emit_specific_import_block(
                                     registry.clone(),
                                     export_sets.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 ) {
                                     false
                                 } else {
@@ -4670,7 +4522,6 @@ pub fn emit_specific_import_block(
                     export_sets.clone(),
                     typed_modules.clone(),
                     source_indices.clone(),
-                    module_index.clone(),
                 );
                 let imported_enums = Rc::new({
                     let mut __result = Vec::new();
@@ -4695,7 +4546,6 @@ pub fn emit_specific_import_block(
                                     export_sets.clone(),
                                     type_summaries.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 ) {
                                     "".to_string()
                                 } else {
@@ -4707,7 +4557,6 @@ pub fn emit_specific_import_block(
                                             import_module.clone(),
                                             typed_modules.clone(),
                                             source_indices.clone(),
-                                            module_index.clone(),
                                         ) {
                                             Some(parent) => parent.clone(),
                                             None => match reexport_variant_parent_in_import_module(
@@ -4718,7 +4567,6 @@ pub fn emit_specific_import_block(
                                                 typed_modules.clone(),
                                                 export_sets.clone(),
                                                 source_indices.clone(),
-                                                module_index.clone(),
                                             ) {
                                                 Some(parent) => parent.clone(),
                                                 None => match find_variant_parent(
@@ -4779,7 +4627,6 @@ pub fn emit_specific_import_block(
                                     import_module.clone(),
                                     typed_modules.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 ) {
                                     Some(found) => (found.clone().as_str() == p.clone().as_str()),
                                     None => false,
@@ -4806,7 +4653,6 @@ pub fn emit_specific_import_block(
                                     import_module.clone(),
                                     typed_modules.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 ) {
                                     Some(found) => (found.clone().as_str() == p.clone().as_str()),
                                     None => false,
@@ -4836,7 +4682,6 @@ pub fn emit_specific_import_block(
                             export_sets.clone(),
                             type_summaries.clone(),
                             source_indices.clone(),
-                            module_index.clone(),
                         ) {
                             __result.push(n);
                         }
@@ -4854,7 +4699,6 @@ pub fn emit_specific_import_block(
                             export_sets.clone(),
                             type_summaries.clone(),
                             source_indices.clone(),
-                            module_index.clone(),
                         ) == false)
                         {
                             __result.push(n);
@@ -4872,7 +4716,6 @@ pub fn emit_specific_import_block(
                             typed_modules.clone(),
                             export_sets.clone(),
                             source_indices.clone(),
-                            module_index.clone(),
                         ));
                     }
                     __result
@@ -4891,7 +4734,6 @@ pub fn emit_specific_import_block(
                                         typed_modules.clone(),
                                         export_sets.clone(),
                                         source_indices.clone(),
-                                        module_index.clone(),
                                     )
                                     .as_str()
                                         == def_mod.clone().as_str())
@@ -4996,7 +4838,6 @@ pub fn emit_specific_import_block(
                                         import_module.clone(),
                                         typed_modules.clone(),
                                         source_indices.clone(),
-                                        module_index.clone(),
                                     ) {
                                         Some(found) => {
                                             (found.clone().as_str() == p.clone().as_str())
@@ -5009,7 +4850,6 @@ pub fn emit_specific_import_block(
                                             typed_modules.clone(),
                                             export_sets.clone(),
                                             source_indices.clone(),
-                                            module_index.clone(),
                                         ) {
                                             Some(found) => {
                                                 (found.clone().as_str() == p.clone().as_str())
@@ -5034,7 +4874,6 @@ pub fn emit_specific_import_block(
                                     source_indices.clone(),
                                     registry.clone(),
                                     mod_name.clone(),
-                                    module_index.clone(),
                                 ),
                                 None => item_defining_module_filename(
                                     p.clone(),
@@ -5051,15 +4890,15 @@ pub fn emit_specific_import_block(
                     for def_mod in parent_defining_mods.iter().cloned() {
                         __result.push({
                     let group = Rc::new({ let mut __result = Vec::new(); for p in remote_parent_list.clone().iter().cloned() { if {
-                        let rep_variant = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
+                        let rep_variant = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone()) {
     Some(found) => (found.clone().as_str() == p.clone().as_str()),
-    None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
+    None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone()) {
     Some(found) => (found.clone().as_str() == p.clone().as_str()),
     None => false,
 },
 } { __result.push(n); } } __result }).first().cloned();
 match rep_variant.clone() {
-    Some(v) => (variant_parent_defining_module_filename(p.clone(), v.clone(), import_module.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), registry.clone(), mod_name.clone(), module_index.clone()).as_str() == def_mod.clone().as_str()),
+    Some(v) => (variant_parent_defining_module_filename(p.clone(), v.clone(), import_module.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), registry.clone(), mod_name.clone()).as_str() == def_mod.clone().as_str()),
     None => (item_defining_module_filename(p.clone(), registry.clone(), mod_name.clone()).as_str() == def_mod.clone().as_str()),
 }
 } { __result.push(p); } } __result });
@@ -5114,7 +4953,6 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visib
                                         export_sets.clone(),
                                         type_summaries.clone(),
                                         source_indices.clone(),
-                                        module_index.clone(),
                                     ) {
                                         false
                                     } else {
@@ -5126,7 +4964,6 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visib
                                                 import_module.clone(),
                                                 typed_modules.clone(),
                                                 source_indices.clone(),
-                                                module_index.clone(),
                                             ) {
                                                 Some(found) => {
                                                     (found.clone().as_str()
@@ -5141,7 +4978,6 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visib
                                                         typed_modules.clone(),
                                                         export_sets.clone(),
                                                         source_indices.clone(),
-                                                        module_index.clone(),
                                                     ) {
                                                         Some(found) => {
                                                             (found.clone().as_str()
@@ -5175,7 +5011,6 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visib
                                     source_indices.clone(),
                                     registry.clone(),
                                     mod_name.clone(),
-                                    module_index.clone(),
                                 ),
                                 None => item_defining_module_filename(
                                     parent.clone(),
@@ -5290,7 +5125,6 @@ pub fn emit_imports(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
@@ -5339,7 +5173,6 @@ pub fn emit_imports(
                                     export_sets.clone(),
                                     typed_modules.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 );
                                 let merged_specific = unique_strings(v2_rt::concat(
                                     Rc::new({
@@ -5379,7 +5212,6 @@ pub fn emit_imports(
                                     export_sets.clone(),
                                     typed_modules.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 );
                                 if (specific_block.clone().as_str() != "".to_string().as_str()) {
                                     v2_rt::concat(
@@ -5416,7 +5248,6 @@ pub fn emit_imports(
                                     export_sets.clone(),
                                     typed_modules.clone(),
                                     source_indices.clone(),
-                                    module_index.clone(),
                                 )
                             }
                         }
@@ -5476,7 +5307,6 @@ pub fn emit_typed_item(
     imports: Rc<Vec<Rc<Node>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
 ) -> String {
     {
         let env = scope.type_env.clone();
@@ -5545,7 +5375,6 @@ pub fn emit_typed_item(
                             registry.clone(),
                             export_sets.clone(),
                             typed_modules.clone(),
-                            module_index.clone(),
                         ) {
                             {
                                 let type_params = emit_type_params(
@@ -5585,7 +5414,6 @@ pub fn emit_typed_item(
                                             module_name.clone(),
                                             export_sets.clone(),
                                             typed_modules.clone(),
-                                            module_index.clone(),
                                         ),
                                     ),
                                     ";".to_string(),
