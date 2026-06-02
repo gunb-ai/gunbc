@@ -20,7 +20,8 @@ const FAMILY_RECEIPT_DAG: &str =
 const FAMILY_RECEIPT_PATH: &str = "src/v4/test/claim/grounding_typescript/family_receipt.dag";
 
 fn parse_surface(path: &str, source: &str) -> v3_compiler::parse_surface::SurfaceModule {
-    let tokens = tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
+    let tokens =
+        tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
     parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"))
 }
 
