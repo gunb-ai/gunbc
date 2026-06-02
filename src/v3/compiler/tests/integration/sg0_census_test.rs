@@ -948,7 +948,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // compiler-slice claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
-    // `_internal/ROADMAP_OPS.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+    // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:47-51`).
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
