@@ -264,7 +264,9 @@ fn refinement_preservation_receipts_present() {
             && TESTGEN_DAG.contains("refined: Refined<List<Node>>")
             && TESTGEN_DAG.contains("refined_base(r: subject.refined)")
             && TESTGEN_DAG.contains("ManualRefinementNonEmptyListBase")
-            && TESTGEN_DAG.contains("anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase)")
+            && TESTGEN_DAG.contains(
+                "bootstrap_claim_generator_for_manual_anchor(key: ManualRefinementNonEmptyListBase)"
+            )
             && REFINEMENT_GENERATED_DAG
                 .contains("refinement_preservation_subject_nonempty_list_base()")
             && REFINEMENT_GENERATED_DAG
