@@ -3437,6 +3437,58 @@ pub fn enum_physically_defined_in_module(
     }
 }
 
+pub fn wildcard_import_pool_surface_names(
+    module_name: String,
+    visited: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    if visited.iter().any(|v| v.as_str() == module_name.as_str()) {
+        Rc::new(Vec::new())
+    } else {
+        match typed_module_by_name(
+            module_name.clone(),
+            typed_modules.clone(),
+            source_indices.clone(),
+        ) {
+            None => Rc::new(Vec::new()),
+            Some(tm) => Rc::new({
+                let mut __result = Vec::new();
+                for imp in module_imports(tm.module.clone())
+                    .iter()
+                    .cloned()
+                    .filter(|imp| import_is_all(imp.clone()))
+                {
+                    let src_mod = authored_name_at(source_indices.clone(), imp.clone());
+                    if let Some(exported) = v2_rt::map_get(&export_sets, src_mod.clone()) {
+                        for n in v2_rt::map_keys(&exported).iter().cloned() {
+                            __result.push(n);
+                        }
+                    }
+                    for n in wildcard_import_pool_surface_names(
+                        src_mod,
+                        Rc::new({
+                            let mut next = visited.iter().cloned().collect::<Vec<_>>();
+                            next.push(module_name.clone());
+                            next
+                        }),
+                        export_sets.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(n);
+                    }
+                }
+                __result
+            }),
+        }
+    }
+}
+
 pub fn wildcard_reexport_surface_names(
     import_module: String,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
@@ -3447,29 +3499,13 @@ pub fn wildcard_reexport_surface_names(
         None => Rc::new(Vec::new()),
         Some(exported) => Rc::new(v2_rt::map_keys(&exported)),
     };
-    let wildcard_pool_candidates = match typed_module_by_name(
+    let wildcard_pool_candidates = wildcard_import_pool_surface_names(
         import_module.clone(),
+        Rc::new(Vec::new()),
+        export_sets.clone(),
         typed_modules.clone(),
         source_indices.clone(),
-    ) {
-        None => Rc::new(Vec::new()),
-        Some(tm) => Rc::new({
-            let mut __result = Vec::new();
-            for imp in module_imports(tm.module.clone())
-                .iter()
-                .cloned()
-                .filter(|imp| import_is_all(imp.clone()))
-            {
-                let src_mod = authored_name_at(source_indices.clone(), imp.clone());
-                if let Some(exported) = v2_rt::map_get(&export_sets, src_mod) {
-                    for n in v2_rt::map_keys(&exported).iter().cloned() {
-                        __result.push(n);
-                    }
-                }
-            }
-            __result
-        }),
-    };
+    );
     Rc::new({
         let mut __result = Vec::new();
         let mut seen: HashMap<String, bool> = HashMap::new();
@@ -3478,7 +3514,7 @@ pub fn wildcard_reexport_surface_names(
             .chain(wildcard_pool_candidates.iter())
             .cloned()
         {
-            if v2_rt::map_get(&Rc::new(seen.clone()), n.clone()) == Some(true) {
+            if seen.get(&n).copied().unwrap_or(false) {
                 continue;
             }
             seen.insert(n.clone(), true);

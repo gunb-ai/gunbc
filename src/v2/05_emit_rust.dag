@@ -1598,6 +1598,39 @@ fn enum_physically_defined_in_module(enum_name: String, module_name: String, typ
   }
 }
 
+// Recursively collect names reachable through wildcard import pools.
+// export_sets[src] only records specific re-exports; wildcard-pooled names
+// live on deeper modules in the chain (proxy2 -> proxy1 -> def).
+fn wildcard_import_pool_surface_names(module_name: String, visited: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  if visited |> any(v => v == module_name) {
+    []
+  } else {
+    match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices) {
+      None => []
+      Some { value: tm } =>
+        module_imports(n: tm.module)
+          |> filter(imp => import_is_all(n: imp))
+          |> flat_map(imp =>
+            let src_mod = authored_name_at(source_indices: source_indices, node: imp)
+            let direct = match map_get(export_sets, src_mod) {
+              Some { value: exported } => map_keys(exported)
+              None => []
+            }
+            concat(
+              direct,
+              wildcard_import_pool_surface_names(
+                module_name: src_mod,
+                visited: concat(visited, [module_name]),
+                export_sets: export_sets,
+                typed_modules: typed_modules,
+                source_indices: source_indices
+              )
+            )
+          )
+    }
+  }
+}
+
 // Wildcard import of a proxy module must still emit defining-module lines for
 // re-exported names (variants/types) that `use proxy::*` cannot surface in Rust.
 // export_sets[import_module] omits wildcard-pooled names (get_exported_names
@@ -1607,18 +1640,13 @@ fn wildcard_reexport_surface_names(import_module: String, export_sets: Map<Strin
     Some { value: exported } => map_keys(exported)
     None => []
   }
-  let wildcard_pool_candidates = match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices) {
-    None => []
-    Some { value: tm } =>
-      module_imports(n: tm.module)
-        |> filter(imp => import_is_all(n: imp))
-        |> flat_map(imp =>
-          match map_get(export_sets, authored_name_at(source_indices: source_indices, node: imp)) {
-            Some { value: exported } => map_keys(exported)
-            None => []
-          }
-        )
-  }
+  let wildcard_pool_candidates = wildcard_import_pool_surface_names(
+    module_name: import_module,
+    visited: [],
+    export_sets: export_sets,
+    typed_modules: typed_modules,
+    source_indices: source_indices
+  )
   unique_strings(items: concat(local_candidates, wildcard_pool_candidates) |> filter(n =>
     match reexport_source_module_name(name: n, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
       Some { value: src } => src != import_module

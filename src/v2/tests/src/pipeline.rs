@@ -1533,6 +1533,32 @@ fn sg8_kernel_type_import_does_not_emit_rust_use_line() {
 }
 
 #[test]
+fn sg8_wildcard_import_multi_hop_proxy_chain_reaches_defining_module_variant() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        ("proxy1.dag", "module sg8_proxy1\nimport sg8_def\n"),
+        ("proxy2.dag", "module sg8_proxy2\nimport sg8_proxy1\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy2\nfn f() -> E { B }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::E::{B}") || content.contains("sg8_def::E::B"),
+        "multi-hop wildcard proxy chain must emit defining-module variant line; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_proxy1::E")
+            && !content.contains("sg8_proxy2::E")
+            && !content.contains("crate::sg8_proxy2::E"),
+        "must not stop at intermediate wildcard proxy; got:\n{content}"
+    );
+}
+
+#[test]
 fn sg8_reexported_variant_specific_import_chain_reaches_defining_module() {
     let files = &[
         ("def.dag", "module sg8_def\ntype E = A | B\n"),
