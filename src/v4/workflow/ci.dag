@@ -4154,8 +4154,17 @@ fn ci_step_selection_digest(row: CiStepSelection) -> Hash {
   combine_hash(
     a: content_hash(n: ci_step_id_projection_node(step_id: row.step_id)),
     b: combine_hash(
-      a: row.cache_digest,
-      b: ci_selection_decision_digest(decision: row.decision)
+      a: content_hash(n: ci_upsert_input_ref_list_projection_node(refs: row.inputs_consulted)),
+      b: combine_hash(
+        a: ci_affected_dependency_list_digest(xs: row.affected_intersection),
+        b: combine_hash(
+          a: ci_selection_decision_digest(decision: row.decision),
+          b: combine_hash(
+            a: row.cache_digest,
+            b: ci_symbol_digest(sym: row.reason)
+          )
+        )
+      )
     )
   )
 }
@@ -4174,8 +4183,20 @@ fn ci_step_selection_list_digest(rows: List<CiStepSelection>) -> Hash {
 
 fn ci_testclaim_selection_digest(row: CiTestClaimSelection) -> Hash {
   combine_hash(
-    a: row.claim_projection_hash,
-    b: ci_claim_selection_reason_digest(reason: row.reason)
+    a: ci_claim_anchor_digest(anchor: row.anchor),
+    b: combine_hash(
+      a: ci_string_digest(value: row.label),
+      b: combine_hash(
+        a: ci_testclaim_variant_digest(variant: row.coproduct_variant),
+        b: combine_hash(
+          a: row.claim_projection_hash,
+          b: combine_hash(
+            a: ci_bool_digest(value: row.selected),
+            b: ci_claim_selection_reason_digest(reason: row.reason)
+          )
+        )
+      )
+    )
   )
 }
 
@@ -4193,8 +4214,26 @@ fn ci_testclaim_selection_list_digest(rows: List<CiTestClaimSelection>) -> Hash 
 
 fn ci_testgen_slot_selection_digest(row: TestgenSlotSelection) -> Hash {
   combine_hash(
-    a: ci_symbol_digest(sym: ci_selection_testgen_slot_tag),
-    b: ci_claim_selection_reason_digest(reason: row.reason)
+    a: ci_testclaim_variant_digest(variant: row.generator.kind),
+    b: combine_hash(
+      a: ci_test_classification_digest(classification: row.generator.classification),
+      b: combine_hash(
+        a: ci_claim_anchor_digest(anchor: row.generator.anchor),
+        b: combine_hash(
+          a: ci_symbol_digest(sym: row.generator.provenance.generator_id),
+          b: combine_hash(
+            a: ci_symbol_digest(sym: row.generator.profile_metadata.profile_ref),
+            b: combine_hash(
+              a: ci_claim_anchor_digest(anchor: row.emits_claim_anchor),
+              b: combine_hash(
+                a: ci_bool_digest(value: row.selected),
+                b: ci_claim_selection_reason_digest(reason: row.reason)
+              )
+            )
+          )
+        )
+      )
+    )
   )
 }
 
@@ -4214,14 +4253,23 @@ fn ci_selection_receipt_storage_key(receipt: CiSelectionReceipt) -> Hash {
   combine_hash(
     a: ci_symbol_digest(sym: ci_selection_receipt_persistence_key_tag),
     b: combine_hash(
-      a: ci_selection_mode_digest(mode: receipt.mode),
+      a: ci_change_set_digest(changes: receipt.pr),
       b: combine_hash(
-        a: ci_selection_provenance_digest(provenance: receipt.provenance),
+        a: ci_affected_set_digest(affected: receipt.affected),
         b: combine_hash(
-          a: ci_step_selection_list_digest(rows: receipt.decisions),
+          a: ci_selection_mode_digest(mode: receipt.mode),
           b: combine_hash(
-            a: ci_testclaim_selection_list_digest(rows: receipt.testclaim_decisions),
-            b: ci_testgen_slot_selection_list_digest(rows: receipt.testgen_slots)
+            a: ci_selection_provenance_digest(provenance: receipt.provenance),
+            b: combine_hash(
+              a: ci_step_selection_list_digest(rows: receipt.decisions),
+              b: combine_hash(
+                a: ci_testclaim_selection_list_digest(rows: receipt.testclaim_decisions),
+                b: combine_hash(
+                  a: ci_testgen_slot_selection_list_digest(rows: receipt.testgen_slots),
+                  b: ci_component_affected_digest(component: receipt.component_affected_comparison)
+                )
+              )
+            )
           )
         )
       )
