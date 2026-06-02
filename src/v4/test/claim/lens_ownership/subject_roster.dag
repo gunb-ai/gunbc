@@ -1,0 +1,72 @@
+// src/v4/test/claim/lens_ownership/subject_roster.dag
+// Scope: T-38B lens_ownership family roster — names the ownership subject family and wires a TestClaimEvalSubject row for corpus execution.
+// Status: family receipt — one resource-dependency subject, routed through run_test_claim by workflow/lens_ownership_family_eval.dag.
+
+module v4.test.claim.lens_ownership.subject_roster
+
+
+import v4.compiler.eval {
+  TestClaimEvalSubject,
+  eval_context_v4_evaluator_wave1,
+  eval_test_claim_subject
+}
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.node { Node, Symbol }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit
+}
+import v4.test.claim.manual.manual_anchor_manifest {
+  ManualAnchorAbsent,
+  manual_claim_anchor
+}
+import v4.test.claim.lens_ownership.resource_dependency {
+  ownership_claim_tree,
+  ownership_resource_dependency_claim_passes,
+  ownership_root
+}
+
+
+data lens_ownership_resource_dependency_pin: Symbol = lens_ownership_resource_dependency_pin
+
+
+type LensOwnershipSubject {
+  claim: TestClaim
+  structural_witness: Bool
+  eval_subject: TestClaimEvalSubject<Node>
+}
+
+
+data claim_lens_ownership_resource_dependency: TestClaim = EqualsClaim {
+  label: "lens_ownership resource dependency witness is rostered",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ownership_root,
+  rhs: ownership_root,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_lens_ownership_resource_dependency,
+  context: eval_context_v4_evaluator_wave1(),
+  tree: ownership_claim_tree(),
+  evaluator_pin: lens_ownership_resource_dependency_pin
+)
+
+
+data lens_ownership_subject_roster: List<LensOwnershipSubject> = [
+  LensOwnershipSubject {
+    claim: claim_lens_ownership_resource_dependency,
+    structural_witness: ownership_resource_dependency_claim_passes,
+    eval_subject: subject_lens_ownership_resource_dependency
+  }
+]
+
+
+data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>> = [
+  subject_lens_ownership_resource_dependency
+]
