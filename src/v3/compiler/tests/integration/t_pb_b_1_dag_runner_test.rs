@@ -333,6 +333,38 @@ fn r1c_e_emit_gates_omni_suite_passes() {
     );
 }
 
+const BOUNDARY_EMIT_GATES_TEMPLATE: &str = include_str!("../dag/boundary_emit_gates.template.dag");
+const BOUNDARY_EMIT_GATES_TEMPLATE_PATH: &str =
+    "src/v3/compiler/tests/dag/boundary_emit_gates.template.dag";
+const BOUNDARY_EMIT_GATES_BIN_PATH: &str = env!("CARGO_BIN_EXE_boundary_emit_gates");
+const BOUNDARY_EMIT_BIN_PLACEHOLDER: &str = "__BOUNDARY_EMIT_BIN__";
+
+fn substituted_boundary_emit_gates_source() -> String {
+    assert!(
+        BOUNDARY_EMIT_GATES_TEMPLATE.contains(BOUNDARY_EMIT_BIN_PLACEHOLDER),
+        "template must contain `{BOUNDARY_EMIT_BIN_PLACEHOLDER}`: {BOUNDARY_EMIT_GATES_TEMPLATE_PATH}"
+    );
+    BOUNDARY_EMIT_GATES_TEMPLATE
+        .replace(BOUNDARY_EMIT_BIN_PLACEHOLDER, BOUNDARY_EMIT_GATES_BIN_PATH)
+}
+
+/// F.14 / T-PB-B: class-5 boundary emit gates as `.dag` `TestClaim` data (m2 + python division).
+#[test]
+fn boundary_emit_gates_suite_passes_through_runner() {
+    let source = substituted_boundary_emit_gates_source();
+    let dag = lower(&source, BOUNDARY_EMIT_GATES_TEMPLATE_PATH);
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "boundary_emit_gates_suite",
+        &[
+            "multi_field_struct_variant_match_emits_aliased_field_destructure",
+            "multi_field_struct_variant_arm_body_uses_aliased_reference",
+            "multi_field_struct_variant_emitted_rust_is_valid_syntax",
+            "emit_python_checked_division_roundtrips_ok_and_errors",
+        ],
+    );
+}
+
 /// R3 gate #65 — a Tier3 mirror-consumer `.dag` program executes through
 /// `TestRunner` using std termination authority instead of the hand-Rust mirror
 /// bench path.
