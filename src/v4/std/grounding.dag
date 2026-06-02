@@ -8,7 +8,7 @@
 module v4.std.grounding
 
 
-import v4.std.collection { Map, empty_map, map_insert, map_key_absent }
+import v4.std.collection { Map }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -18,7 +18,6 @@ import v4.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   WholeFile,
-  diagnostics_singleton,
   outcome_accepted,
   outcome_rejected
 }
@@ -52,13 +51,22 @@ type PerLanguageFactBundleEntry {
 
 
 // P2: keyed registry — duplicate PerLanguageFactBundleKey rows are unrepresentable (fail-closed insert).
+type PerLanguageFactBundleLookup
+  = PerLanguageFactBundleMissing
+  | PerLanguageFactBundleFound { value: Node }
+
+
 type PerLanguageFactBundleRegistry {
-  by_key: Map<PerLanguageFactBundleKey, Node>
+  lookup: fn(PerLanguageFactBundleKey) -> Outcome<PerLanguageFactBundleLookup>
 }
 
 
 fn empty_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
-  PerLanguageFactBundleRegistry { by_key: empty_map() }
+  PerLanguageFactBundleRegistry {
+    lookup: fn(_) {
+      outcome_accepted(value: PerLanguageFactBundleMissing)
+    }
+  }
 }
 
 
@@ -94,7 +102,13 @@ fn per_language_fact_bundle_lookup(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey
 ) -> Witness<Node> {
-  registry.by_key.lookup(key)
+  match registry.lookup(key) {
+    Accepted { value: PerLanguageFactBundleFound { value: value }, diagnostics: _ } =>
+      Holds { value: value }
+    Accepted { value: PerLanguageFactBundleMissing, diagnostics: _ } =>
+      Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
+    Rejected { diagnostics: d } => Violates { diagnostic: d.head }
+  }
 }
 
 
@@ -103,19 +117,22 @@ fn insert_per_language_fact_bundle_entry(
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match registry.by_key.lookup(key) {
-    Holds { value: _ } =>
+  match registry.lookup(key) {
+    Accepted { value: PerLanguageFactBundleFound { value: _ }, diagnostics: _ } =>
       outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    Violates { diagnostic: d } =>
-      if d.reason == map_key_absent {
-        outcome_accepted(
-          value: PerLanguageFactBundleRegistry {
-            by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
+    Accepted { value: PerLanguageFactBundleMissing, diagnostics: _ } =>
+      outcome_accepted(
+        value: PerLanguageFactBundleRegistry {
+          lookup: fn(candidate) {
+            if candidate == key {
+              outcome_accepted(value: PerLanguageFactBundleFound { value: fact_value })
+            } else {
+              registry.lookup(candidate)
+            }
           }
-        )
-      } else {
-        Rejected { diagnostics: diagnostics_singleton(d: d) }
-      }
+        }
+      )
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 

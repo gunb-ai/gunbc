@@ -192,8 +192,14 @@ fn v4_std_grounding_registry_keyed_map_authority() {
     ));
     assert_eq!(
         type_record_field_names(&module, "PerLanguageFactBundleRegistry"),
-        vec!["by_key"],
-        "registry must be Map<PerLanguageFactBundleKey, Node> — not List (duplicate keys unrepresentable)"
+        vec!["lookup"],
+        "registry must expose a keyed PerLanguageFactBundleKey lookup, not List rows that can duplicate"
+    );
+    assert!(
+        GROUNDING_DAG.contains("type PerLanguageFactBundleLookup")
+            && GROUNDING_DAG.contains("PerLanguageFactBundleMissing")
+            && GROUNDING_DAG.contains("PerLanguageFactBundleFound { value: Node }"),
+        "registry lookup result must be a declared carrier, not bootstrap Optional/Map projection"
     );
     assert!(
         GROUNDING_DAG.contains("fn insert_per_language_fact_bundle_entry("),
@@ -215,14 +221,14 @@ fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
     assert!(
         !GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup_optional(")
             && !GROUNDING_DAG.contains("map_get(registry.by_key, key)")
+            && !GROUNDING_DAG.contains("registry.by_key.lookup(key)")
             && GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup(")
             && GROUNDING_DAG.contains("-> Witness<Node>")
-            && GROUNDING_DAG.contains("registry.by_key.lookup(key)")
-            && GROUNDING_DAG.contains("Holds { value: _ }")
-            && GROUNDING_DAG.contains("Violates { diagnostic: d }")
-            && GROUNDING_DAG.contains("if d.reason == map_key_absent")
-            && GROUNDING_DAG.contains("Rejected { diagnostics: diagnostics_singleton(d: d) }"),
-        "registry insert must treat only canonical map absence as insert permission; other lookup violations reject"
+            && GROUNDING_DAG.contains("match registry.lookup(key)")
+            && GROUNDING_DAG.contains("PerLanguageFactBundleFound { value: value }")
+            && GROUNDING_DAG.contains("PerLanguageFactBundleMissing")
+            && GROUNDING_DAG.contains("Rejected { diagnostics: d } => Rejected { diagnostics: d }"),
+        "registry insert must consume declared lookup results and propagate rejected lookup state"
     );
     assert!(
         GROUNDING_DAG.contains("fn primitive_fact_bundle_for_registry_subject(")
