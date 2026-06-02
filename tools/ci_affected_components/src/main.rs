@@ -5,9 +5,12 @@
 #![allow(clippy::disallowed_macros)]
 
 use std::io::Write;
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 use std::{env, fs, io};
 
+use ci_affected_components::git_diff_transport::{
+    git_read_changed_paths_for_event, GitChangedPathsRead,
+};
 use ci_affected_components::{
     ci_component_affected_fail_closed, ci_component_affected_from_changed_paths,
     CiComponentAffected,
@@ -20,45 +23,6 @@ fn usage() -> ! {
          output_file: GitHub Actions GITHUB_OUTPUT path"
     );
     std::process::exit(2);
-}
-
-fn diff_range(event_name: &str) -> &'static str {
-    if event_name == "pull_request" {
-        "origin/main...HEAD"
-    } else {
-        "HEAD~1..HEAD"
-    }
-}
-
-enum GitDiffRead {
-    Ok(Vec<String>),
-    FailClosed,
-}
-
-fn git_read_changed_paths(range: &str) -> GitDiffRead {
-    let output = Command::new("git")
-        .args(["diff", "--name-only", range])
-        .output();
-    match output {
-        Ok(out) if out.status.success() => GitDiffRead::Ok(
-            String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .filter(|line| !line.is_empty())
-                .map(str::to_string)
-                .collect(),
-        ),
-        Ok(out) => {
-            eprintln!(
-                "error: git diff --name-only {range} exited {}; fail-closed (all components affected)",
-                out.status
-            );
-            GitDiffRead::FailClosed
-        }
-        Err(e) => {
-            eprintln!("error: git diff failed ({e}); fail-closed (all components affected)");
-            GitDiffRead::FailClosed
-        }
-    }
 }
 
 fn write_github_output(path: &str, flags: CiComponentAffected) -> io::Result<()> {
@@ -85,22 +49,24 @@ fn main() -> ExitCode {
         usage();
     }
 
-    let range = diff_range(event_name.as_str());
-    let flags = match git_read_changed_paths(range) {
-        GitDiffRead::Ok(changed) => {
+    // Single git-diff transport authority shared with the Wave 3 shadow receipt emitter
+    // (`git_diff_transport`) so the gate output and the receipt it shadows cannot drift.
+    let flags = match git_read_changed_paths_for_event(event_name.as_str()) {
+        GitChangedPathsRead::Ok { range, paths } => {
             eprintln!("Changed files in {range}:");
-            if changed.is_empty() {
+            if paths.is_empty() {
                 eprintln!("  (none detected)");
             } else {
-                for path in &changed {
+                for path in &paths {
                     eprintln!("  {path}");
                 }
             }
             eprintln!();
-            ci_component_affected_from_changed_paths(changed.iter().map(String::as_str))
+            ci_component_affected_from_changed_paths(paths.iter().map(String::as_str))
         }
-        GitDiffRead::FailClosed => {
+        GitChangedPathsRead::FailClosed { range, detail } => {
             eprintln!("Changed files in {range}: (read failed — fail-closed superset)");
+            eprintln!("  {detail}");
             eprintln!();
             ci_component_affected_fail_closed()
         }

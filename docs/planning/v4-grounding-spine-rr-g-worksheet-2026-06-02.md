@@ -34,7 +34,9 @@ Deepest unsound boundary:
   Declaring `type LangFoo = Bar` without a PerLanguageFactBundleEntry trace — hollow alias
   passes shape checks until T-30 fires at compile time.
 Systemic fix:
-  G.0 registry keys (subject_carrier × target × fact_axis; per-key fact_value only) + SG evidence schema variants
+  G.0 registry keys (subject_carrier × target × fact_axis; per-key fact_value only), with
+  `by_key: Map<PerLanguageFactBundleKey, Node>` as the single keyed fact authority for subject×target aggregation,
+  plus SG evidence schema variants
   (SG-1 / SG-1b / SG-2 / SG-5) keyed to target_model bundle edges; G.3 CompilesClaim/EqualsClaim rows per spine stage.
 Non-goals:
   - Populating full G.1 Rust/Python/Go/TS fact bundles (RCA mgr charters).
@@ -51,7 +53,7 @@ Metric allowed only as secondary:
 
 | Row | Deliverable | Authority |
 |-----|-------------|-----------|
-| G0.1 | `PerLanguageFactBundleKey` (`subject_carrier` + `target` + `ModelCorePrimitiveFactAxis`) + entry `fact_value`; registry `by_key: Map<…, Node>` via fail-closed `insert_per_language_fact_bundle_entry` | `v4.std.grounding` registry entries stay distinct until a subject×target aggregation builder forms complete `model_core` bundles |
+| G0.1 | `PerLanguageFactBundleKey` (`subject_carrier` + `target` + `ModelCorePrimitiveFactAxis`) + entry `fact_value`; registry `by_key: Map<PerLanguageFactBundleKey, Node>` is the single keyed fact authority and rejects duplicate axis rows before insertion | `v4.std.grounding` → `primitive_fact_bundle_for_subject` → `model_core` |
 | G0.2 | `HollowAliasGovernanceBar` (governance; T-30 enforces) | `v4.std.grounding` → `v4.lens.fact_density` |
 | G0.3 | `GroundingEvidenceSchema` (Sg1/Sg1b/Sg2/Sg5 variants carry `source_carrier`) | `v4.std.grounding` → `v4.std.target_model` |
 | G0.4 | `PerTargetGroundingReceipt` (`EmitHostRunReceipt`; target via `host_run.target`) | `v4.std.grounding` → `v4.std.host_run` |
@@ -71,7 +73,7 @@ Metric allowed only as secondary:
 ## §3 Cross-branch consumers
 
 - **Branch C:** `PerTargetGroundingReceipt` for per-target host verification receipts.
-- **Branch G.1:** populate `PerLanguageFactBundleRegistry.by_key` via `insert_per_language_fact_bundle_entry` per RCA manager (one `fact_value` per keyed `fact_axis`).
+- **Branch G.1:** populate `PerLanguageFactBundleRegistry` via `insert_per_language_fact_bundle_entry` per RCA manager (one `fact_value` per keyed `fact_axis`; `by_key` is the keyed fact authority and feeds `primitive_fact_bundle_for_subject` aggregation).
 - **Branch G.2:** SG-1/2/5 executable claims use `GroundingEvidenceSchema`.
 - **Branch A.2:** corpus folders `claim_pipeline_*` activate under T-38B when runner rows land.
 
@@ -80,3 +82,23 @@ Metric allowed only as secondary:
 - `cargo test -p v3-compiler v4_std_grounding_dag_smoke` — parse surface for `grounding.dag`
 - M1 v4 emit (CI) — full `src/v4` compile including new std + claim modules
 - T-38 manual corpus — spine claims compile; execution deferred until family activation
+
+## §5 P5 hand-Rust receipt
+
+- **Changed hand-Rust surfaces:**
+  - `src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs`
+    expands its existing SG-0 row with `v4_python_language_model_declares_g1_2_fact_bundle_registry`.
+  - `src/v3/compiler/tests/integration/v4_std_grounding_dag_smoke_test.rs`
+    expands its existing SG-0 row with the G.0 key-only duplicate index and subject aggregation ratchets.
+  - `src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs`
+    expands its existing SG-0 row with the typed `ModelCorePrimitiveFactAxis` ratchet.
+- **SG-0 census delta:** +0 paths. The path already appears in
+  `src/v3/compiler/tests/integration/sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST`
+  for each changed hand-Rust test surface.
+- **Deleted scaffold path:** none in this PR; this is a same-file assertion expansion over existing
+  parse-surface smoke infrastructure.
+- **Explicit deferral:** ROADMAP.md `T-PB-B` / `pb_rust_tests_outside_residual_zero` (same row named
+  by the SG-0 census comments for these hand-Rust test paths).
+- **Dissolution trigger:** delete this host-side assertion when a `.dag` `TestClaim` or generated
+  harness directly checks the Python G.1.2 `PerLanguageFactBundleRegistry`, G.0 registry aggregation,
+  and typed model-core fact-axis surfaces without Rust parse-surface traversal.
