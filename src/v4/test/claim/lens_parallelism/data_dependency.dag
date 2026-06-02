@@ -96,7 +96,6 @@ type LensParallelismClaim {
 }
 
 type LensParallelismSubjectRosterContract {
-  subject: TestClaimEvalSubject<Node>
   run: TestClaimRun<Node, RuntimeValue>
   unsupported_rows: List<Symbol>
 }
@@ -193,7 +192,6 @@ data run_parallelism_data_dependency_receipt: TestClaimRun<Node, RuntimeValue> =
 data lens_parallelism_unsupported_subject_rows: List<Symbol> = []
 
 data lens_parallelism_data_dependency_subject_roster_contract: LensParallelismSubjectRosterContract = LensParallelismSubjectRosterContract {
-  subject: subject_parallelism_data_dependency_receipt,
   run: run_parallelism_data_dependency_receipt,
   unsupported_rows: lens_parallelism_unsupported_subject_rows
 }
