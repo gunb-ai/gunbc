@@ -1120,6 +1120,99 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
     );
 }
 
+/// Wave 2 — §11.7.5 temporary shell exception table (first executable slice). Authority: #4137
+/// §11.7.5. Models the Class-A shell-owned floor steps allowed to stay REQUIRED pending their
+/// `CiUpsertStep` runtime-authority migration (bootstrap viability + M1 rust emit), and the
+/// no-new-shell ratchet (§11.7.1 #5): every REQUIRED ci-floor shell invocation in ci.yml must
+/// carry a row here. Dissolve-on: ci.yml emits these steps FROM their `CiUpsertStep` (T-24),
+/// at which point the rows delete and this slice retires.
+#[test]
+fn v4_workflow_ci_class_a_shell_exception_table_first_slice() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+
+    // Type substrate: the exception-row record + the §11.7.1 safety-floor enum it cites.
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::TypeRecord { name, .. } if name == "CiShellExceptionRow"
+        )),
+        "{CI_DAG_PATH}: §11.7.5 must model CiShellExceptionRow"
+    );
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::TypeSum { name, .. } if name == "CiSafetyFloorItem"
+        )),
+        "{CI_DAG_PATH}: §11.7.5 must model the §11.7.1 safety-floor item enum"
+    );
+
+    // Isolate the table body so per-row assertions can't accidentally match elsewhere.
+    let table = CI_DAG
+        .split("data ci_class_a_shell_exceptions:")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{CI_DAG_PATH}: missing data ci_class_a_shell_exceptions"))
+        .split("\n]")
+        .next()
+        .expect("ci_class_a_shell_exceptions table must terminate with `]`");
+
+    // Exactly the two Class-A shell-owned floor steps carry an exception: bootstrap + M1.
+    assert_eq!(
+        table.matches("CiShellExceptionRow {").count(),
+        2,
+        "{CI_DAG_PATH}: §11.7.5 carries exactly two Class-A shell exceptions (bootstrap + M1)"
+    );
+    for needle in [
+        "job: v2_bootstrap_smoke_execution",
+        ".github/ci-floor/v4-bootstrap-viability.sh",
+        "protects_floor: BootstrapMinimalViability",
+        "job: m1_rust_emit_probe_execution",
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh",
+        "protects_floor: OneRustEmitProbe",
+    ] {
+        assert!(
+            table.contains(needle),
+            "{CI_DAG_PATH}: shell exception table must carry `{needle}`"
+        );
+    }
+
+    // §11.7.5 cond 4 — every row names a structural dissolution path (no calendar/owner carrier).
+    assert_eq!(
+        table
+            .matches("dissolution_target: ModelMissingSubstrate")
+            .count(),
+        2,
+        "{CI_DAG_PATH}: each shell exception must name a structural dissolution_target"
+    );
+
+    // §11.7.5 cond 1 — each row's shell_owner is a live REQUIRED ci.yml floor invocation
+    // (no phantom exception for a script that does not actually run on PRs).
+    for script in [
+        ".github/ci-floor/v4-bootstrap-viability.sh",
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh",
+    ] {
+        assert!(
+            CI_YML.contains(&format!("bash {script}")),
+            "{CI_YML_PATH}: shell exception owner `{script}` must be a live floor invocation"
+        );
+    }
+
+    // no-new-shell ratchet (§11.7.1 #5): the converse direction — every REQUIRED `ci-floor/*.sh`
+    // invocation in ci.yml must be listed in the table. A new required shell with no exception
+    // row is a ratchet regression caught here.
+    for line in CI_YML.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("run: bash .github/ci-floor/") {
+            let leaf = rest.split_whitespace().next().unwrap_or("");
+            let script = format!(".github/ci-floor/{leaf}");
+            assert!(
+                table.contains(&script),
+                "{CI_YML_PATH}: required ci-floor shell `{script}` has no §11.7.5 \
+                 exception row (no-new-shell ratchet — add a CiShellExceptionRow or model it)"
+            );
+        }
+    }
+}
+
 #[test]
 fn v4_workflow_affected_set_ci_runner_claim_dag_tokenizes_and_parses() {
     let _module = parse_module(CLAIM_DAG, CLAIM_PATH);
