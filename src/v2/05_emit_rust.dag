@@ -176,7 +176,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
           emit_rust_compile_error_expr(message: "Set element type unresolved")
         } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
           let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-          emit_rust_compile_error_expr(message: concat("Set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
+          emit_rust_compile_error_expr(message: concat("Set element type ", elem_name, " is not Ord-eligible for OrdSet"))
         } else {
           render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
         }
@@ -3995,7 +3995,7 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
-// BTreeSet requires T: Ord. Whitelist kernel types with known Ord Rust carriers
+// OrdSet requires T: Ord. Whitelist kernel types with known Ord Rust carriers
 // plus nominal carriers whose emitted Rust shape can derive Ord.
 // Float (no total Ord), Json (serde_json::Value), and keyed maps fail-closed.
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -4028,7 +4028,7 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
         "v2_rt::rc_empty_set::<_>()"
       } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
         let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-        emit_rust_compile_error_expr(message: concat("empty_set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
+        emit_rust_compile_error_expr(message: concat("empty_set element type ", elem_name, " is not Ord-eligible for OrdSet"))
       } else {
         let elem_str = rust_empty_set_element_type_str(set_type: set_type, shared_types: shared_types, source_indices: source_indices)
         if elem_str != "" {
@@ -4318,7 +4318,7 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   // Rc decisions. Map values are already Rc-wrapped if they're non-Copy
   // types, so lookup/map_get return the correct type directly.
   // Runtime functions that return bare collections (map_keys, map_values)
-  // need Rc wrapping so their result is Rc<Vec<_>>, matching List<T>.
+  // need Rc wrapping so their result is Rc<Vector<_>>, matching List<T>.
   if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
       concat("Rc::new(", call_str, ")")
   } else { call_str }
@@ -4503,9 +4503,9 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
   let ind0 = make_indent(level: depth)
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: coll_str)
   concat("{\n",
-    ind1, "let mut __collect = Vec::new();\n",
+    ind1, "let mut __collect = Vector::new();\n",
     ind1, "for ", emit_ident(name: variable, target: Rust), " in ", iter_str, " {\n",
-    ind2, "__collect.push(", body_str, ");\n",
+    ind2, "__collect.push_back(", body_str, ");\n",
     ind1, "}\n",
     ind1, "Rc::new(__collect)\n",
     ind0, "}")

@@ -55,41 +55,41 @@ data rust_type_checkpoints: List<TypeCheckpoint> = [
 // type's algebra and applies the matching InhabitantDecl template.
 //
 // CROSS-LANGUAGE COMPARISON:
-//   FreeMonoid     → Vec<T> (Rust) vs list[T] (Python) vs []T (Go)
-//   BooleanAlgebra → BTreeSet<A> (Rust) vs set[A] (Python) vs map[A]struct{} (Go)
-//   PartialFunction→ HashMap<K,V> (Rust) vs dict[K,V] (Python) vs map[K]V (Go)
+//   FreeMonoid     → Vector<T> (Rust) vs list[T] (Python) vs []T (Go)
+//   BooleanAlgebra → OrdSet<A> (Rust) vs set[A] (Python) vs map[A]struct{} (Go)
+//   PartialFunction→ OrdMap<K,V> (Rust) vs dict[K,V] (Python) vs map[K]V (Go)
 // =========================================================================
 
 data rust_algebra_inhabitants: List<InhabitantDecl> = [
-  // FreeMonoid<T> → Vec<T>
+  // FreeMonoid<T> → Vector<T>
   // Ordered sequences: concat + empty + positional access.
-  // BTreeSet chosen over HashSet: Ord is derivable for all .dag types;
-  // Hash is not derivable for types containing f64.
   { algebra: "FreeMonoid",
-    template: "Vec<\{0\}>",
+    template: "Vector<\{0\}>",
     arity: 1,
-    identity_expr: "Vec::new()",
+    identity_expr: "Vector::new()",
     import_path: none,
     is_copy: false },
 
-  // BooleanAlgebra<A> → BTreeSet<A>
+  // BooleanAlgebra<A> → OrdSet<A>
   // Sets: union (join) + intersect (meet) + complement.
   // HISTORICAL BUG: Set<A> was mapped to FreeMonoidCollectionProfile,
   // giving sets list operations instead of set operations.
+  // OrdSet chosen over HashSet: Ord is derivable for all .dag types;
+  // Hash is not derivable for types containing f64.
   { algebra: "BooleanAlgebra",
-    template: "std::collections::BTreeSet<\{0\}>",
+    template: "OrdSet<\{0\}>",
     arity: 1,
-    identity_expr: "BTreeSet::new()",
-    import_path: "use std::collections::BTreeSet;",
+    identity_expr: "OrdSet::new()",
+    import_path: "use im::OrdSet;",
     is_copy: false },
 
-  // PartialFunction<K,V> → HashMap<K,V>
+  // PartialFunction<K,V> → OrdMap<K,V>
   // Keyed partial functions: lookup + insert + merge.
   { algebra: "PartialFunction",
-    template: "HashMap<\{0\}, \{1\}>",
+    template: "OrdMap<\{0\}, \{1\}>",
     arity: 2,
-    identity_expr: "HashMap::new()",
-    import_path: "use std::collections::HashMap;",
+    identity_expr: "OrdMap::new()",
+    import_path: "use im::OrdMap;",
     is_copy: false },
 
   // OrderedRing → i64
