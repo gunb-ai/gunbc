@@ -21,6 +21,23 @@ import v4.lens.registry {
   lens_registry_ids_resolve
 }
 import v4.lens.testgen {
+  AlgebraLaw,
+  AlgebraLawSubject,
+  BehaviorValueSubject,
+  BidirectionalRoundtrip,
+  BidirectionalRoundtripSubject,
+  ConnectiveKernel,
+  DiagnosticExhaustiveness,
+  FrozenLanguageBehaviorSnapshot,
+  LanguageBehaviorEquivalence,
+  LanguageBehaviorEquivalenceSubject,
+  LanguageBehaviorIoMock,
+  LensApplicability,
+  LensApplicabilitySubject,
+  RefinementPreservation,
+  RefinementPreservationSubject,
+  TypeConstruction,
+  TypeConstructionSubject,
   Generator,
   TestgenConcept,
   TestgenRunReceipt,
@@ -57,6 +74,18 @@ import v4.std.change {
   ChangeSet,
   DependencyEndpoint
 }
+import v4.std.artifact {
+  Artifact,
+  ArtifactKind,
+  CorePackage,
+  GeneratedArtifact,
+  GeneratedSource,
+  ProjectionArtifact,
+  SourceFile,
+  Stage0Candidate,
+  TestClaimArtifact,
+  WitnessBundle
+}
 import v4.std.dependency { DependencyKind, DependencyView }
 // Phase 1.4 canonical authority: `dsl/std/patterns.dag` (#3981). v4 compile uses `v4.std.patterns` /
 // `v4.std.types` mirrors (shapes aligned; see module headers) until compile roots include dsl/std.
@@ -91,6 +120,12 @@ import v4.std.node {
   Symbol,
   TypeNode,
   Arrow,
+  Behavior,
+  Value,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
   combine_hash,
   content_hash,
   ByteOffsetCacheEligible,
@@ -3696,6 +3731,8 @@ data ci_affected_set_diagnostics_tag: Symbol = ci_affected_set_diagnostics_tag
 data ci_no_correction_user_input_boundary_tag: Symbol = ci_no_correction_user_input_boundary_tag
 data ci_no_correction_ambiguous_intent_tag: Symbol = ci_no_correction_ambiguous_intent_tag
 data ci_no_correction_external_contract_unknown_tag: Symbol = ci_no_correction_external_contract_unknown_tag
+data ci_extent_whole_file_tag: Symbol = ci_extent_whole_file_tag
+data ci_extent_byte_range_tag: Symbol = ci_extent_byte_range_tag
 data ci_dependency_kind_contains_tag: Symbol = ci_dependency_kind_contains_tag
 data ci_dependency_kind_binds_to_tag: Symbol = ci_dependency_kind_binds_to_tag
 data ci_dependency_kind_type_depends_on_tag: Symbol = ci_dependency_kind_type_depends_on_tag
@@ -3746,6 +3783,30 @@ data ci_testgen_tier3_tag: Symbol = ci_testgen_tier3_tag
 data ci_testgen_layer_unit_tag: Symbol = ci_testgen_layer_unit_tag
 data ci_testgen_layer_integration_tag: Symbol = ci_testgen_layer_integration_tag
 data ci_testgen_layer_boundary_tag: Symbol = ci_testgen_layer_boundary_tag
+data ci_artifact_kind_source_file_tag: Symbol = ci_artifact_kind_source_file_tag
+data ci_artifact_kind_generated_source_tag: Symbol = ci_artifact_kind_generated_source_tag
+data ci_artifact_kind_test_claim_artifact_tag: Symbol = ci_artifact_kind_test_claim_artifact_tag
+data ci_artifact_kind_projection_artifact_tag: Symbol = ci_artifact_kind_projection_artifact_tag
+data ci_artifact_kind_stage0_candidate_tag: Symbol = ci_artifact_kind_stage0_candidate_tag
+data ci_artifact_kind_core_package_tag: Symbol = ci_artifact_kind_core_package_tag
+data ci_artifact_kind_witness_bundle_tag: Symbol = ci_artifact_kind_witness_bundle_tag
+data ci_connective_conj_tag: Symbol = ci_connective_conj_tag
+data ci_connective_disj_tag: Symbol = ci_connective_disj_tag
+data ci_connective_arrow_tag: Symbol = ci_connective_arrow_tag
+data ci_connective_cardinality_tag: Symbol = ci_connective_cardinality_tag
+data ci_connective_instantiation_tag: Symbol = ci_connective_instantiation_tag
+data ci_behavior_value_tag: Symbol = ci_behavior_value_tag
+data ci_behavior_transform_tag: Symbol = ci_behavior_transform_tag
+data ci_behavior_branch_tag: Symbol = ci_behavior_branch_tag
+data ci_behavior_loop_tag: Symbol = ci_behavior_loop_tag
+data ci_behavior_bind_tag: Symbol = ci_behavior_bind_tag
+data ci_testgen_concept_type_construction_tag: Symbol = ci_testgen_concept_type_construction_tag
+data ci_testgen_concept_algebra_law_tag: Symbol = ci_testgen_concept_algebra_law_tag
+data ci_testgen_concept_diagnostic_exhaustiveness_tag: Symbol = ci_testgen_concept_diagnostic_exhaustiveness_tag
+data ci_testgen_concept_lens_applicability_tag: Symbol = ci_testgen_concept_lens_applicability_tag
+data ci_testgen_concept_bidirectional_roundtrip_tag: Symbol = ci_testgen_concept_bidirectional_roundtrip_tag
+data ci_testgen_concept_language_behavior_equivalence_tag: Symbol = ci_testgen_concept_language_behavior_equivalence_tag
+data ci_testgen_concept_refinement_preservation_tag: Symbol = ci_testgen_concept_refinement_preservation_tag
 
 fn ci_bool_digest(value: Bool) -> Hash {
   match value {
@@ -3773,6 +3834,57 @@ fn ci_string_digest(s: String) -> Hash {
 
 fn ci_path_digest(path: Path) -> Hash {
   content_hash(n: ci_symbol_list_projection_node(xs: path.steps))
+}
+
+
+fn ci_artifact_kind_digest(kind: ArtifactKind) -> Hash {
+  match kind {
+    SourceFile => ci_symbol_digest(sym: ci_artifact_kind_source_file_tag)
+    GeneratedSource => ci_symbol_digest(sym: ci_artifact_kind_generated_source_tag)
+    TestClaimArtifact => ci_symbol_digest(sym: ci_artifact_kind_test_claim_artifact_tag)
+    ProjectionArtifact => ci_symbol_digest(sym: ci_artifact_kind_projection_artifact_tag)
+    Stage0Candidate => ci_symbol_digest(sym: ci_artifact_kind_stage0_candidate_tag)
+    CorePackage => ci_symbol_digest(sym: ci_artifact_kind_core_package_tag)
+    WitnessBundle => ci_symbol_digest(sym: ci_artifact_kind_witness_bundle_tag)
+  }
+}
+
+
+fn ci_artifact_digest(artifact: Artifact) -> Hash {
+  ci_hash_list_digest(xs: [
+    ci_artifact_kind_digest(kind: artifact.kind),
+    ci_symbol_digest(sym: artifact.id),
+    ci_string_digest(s: artifact.file_path)
+  ])
+}
+
+
+fn ci_generated_artifact_digest(artifact: GeneratedArtifact) -> Hash {
+  ci_artifact_digest(artifact: artifact.refined.base)
+}
+
+
+fn ci_connective_digest(connective: Connective) -> Hash {
+  match connective {
+    Atom { identity } =>
+      combine_hash(a: ci_symbol_digest(sym: ci_projection_atom_authority_edge), b: ci_symbol_digest(sym: identity))
+    Conj => ci_symbol_digest(sym: ci_connective_conj_tag)
+    Disj => ci_symbol_digest(sym: ci_connective_disj_tag)
+    Arrow => ci_symbol_digest(sym: ci_connective_arrow_tag)
+    Cardinality => ci_symbol_digest(sym: ci_connective_cardinality_tag)
+    Instantiation => ci_symbol_digest(sym: ci_connective_instantiation_tag)
+  }
+}
+
+
+fn ci_behavior_digest(behavior: Behavior) -> Hash {
+  match behavior {
+    Value => ci_symbol_digest(sym: ci_behavior_value_tag)
+    Transform => ci_symbol_digest(sym: ci_behavior_transform_tag)
+    Branch => ci_symbol_digest(sym: ci_behavior_branch_tag)
+    Loop => ci_symbol_digest(sym: ci_behavior_loop_tag)
+    Bind => ci_symbol_digest(sym: ci_behavior_bind_tag)
+  }
 }
 
 fn ci_change_kind_digest(kind: ChangeKind) -> Hash {
@@ -3875,12 +3987,13 @@ fn ci_affected_dependency_list_digest(xs: List<AffectedDependency>) -> Hash {
 
 fn ci_extent_digest(extent: Extent) -> Hash {
   match extent {
-    WholeFile => ci_symbol_digest(sym: ci_projection_char_offset_authority_edge)
+    WholeFile => ci_symbol_digest(sym: ci_extent_whole_file_tag)
     ByteRange { start, end } =>
-      combine_hash(
-        a: content_hash(n: ci_char_projection_node(c: start)),
-        b: content_hash(n: ci_char_projection_node(c: end))
-      )
+      ci_hash_list_digest(xs: [
+        ci_symbol_digest(sym: ci_extent_byte_range_tag),
+        content_hash(n: byte_offset_cache_key_projection_node(i: start)),
+        content_hash(n: byte_offset_cache_key_projection_node(i: end))
+      ])
   }
 }
 
