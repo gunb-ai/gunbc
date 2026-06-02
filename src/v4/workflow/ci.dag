@@ -383,6 +383,86 @@ data ci_always_run_carveouts: List<CiCarveout> = [
   }
 ]
 
+// ── Wave 2 — §11.7.5 temporary shell exception table (Class A safety floor) ──────────────────
+// Authority: #4137 §11.7.5 "The temporary CI cut rule (codified)". A shell-owned check may remain
+// REQUIRED on every PR only if it (1) protects a named §11.7.1 safety-floor item, (2) has no
+// runtime-authoritative `CiUpsertStep` replacement yet, (3) is listed in THIS table, (4) names a
+// structural dissolution path. Conditions (2)+(3) are definitional: a row exists here iff the step
+// is still shell-owned and not yet emitted FROM its `CiUpsertStep` as ci.yml runtime authority.
+// This is the first executable slice of Wave 2 (shell→`CiUpsertStep` migration, §11.7.7 lane 6):
+// it models the exception registry the no-new-shell ratchet (§11.7.1 #5) consumes. INTENDED
+// contract: the set of REQUIRED shell-owned ci-floor steps equals these rows' `step_id`s.
+// ENFORCED today (`v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice`): a bijection
+// between the required `.github/ci-floor/*.sh` invocations in ci.yml and these rows, matched at the
+// `shell_owner` FIELD (not bare path containment, which a row comment could satisfy fail-open),
+// reading ci.yml invocations from a comment-safe, block-form-safe, count-exact live set (a
+// commented-out `# bash …` is not counted; keyed on the ci-floor PATH not a `bash ` prefix, so
+// `sh`/`./`/`source` spellings are caught too; quoted/punctuated paths are canonicalized and an
+// unrecognizable ci-floor spelling trips the gate) — a new unlisted required shell fails CLOSED. RESIDUAL (tracked,
+// openai-pro #4284): the gate keys on script path, not the modeled `(job, step)` `CiStepId`, since
+// ci.yml's step→`CiStepId` mapping is not yet string-checkable; a *second* step reusing a listed
+// script is not yet distinguished by `step_id`. Dissolves when the generated `.dag` CI step model
+// lets the ratchet compare live `(job, step, script)` against `step_id + shell_owner` directly.
+// Reuses `CiStepId` + `DissolutionTarget` (no parallel exception genus); sibling to
+// `ci_always_run_carveouts` (run-policy carveout) — distinct concept (shell retirement vs
+// always-run), shared leaf substrate.
+
+// 🟡 coproduct dissolution — feature:wave2-class-a-shell-exception-table — bind #4137 §11.7.1 — dissolve-on-arrival: this closed enumeration mirrors the §11.7.1 bare-minimum floor; it is DELETED when the dynamic affected-set + testgen safety net (§11.7.7 end state) replaces the static floor list and `protects_floor` no longer needs a fixed-arm carrier; forbidden: an open `Symbol`/`String` floor key, or an arm with no §11.7.1 row.
+type CiSafetyFloorItem
+  = FmtCheck
+  | BootstrapMinimalViability
+  | OneRustEmitProbe
+  | CiDagStructuralReceipt
+  | NoNewShellRatchet
+
+// 🟡 coproduct dissolution — feature:wave2-class-a-shell-exception-table — bind #4137 §11.7.5 — dissolve-on-arrival: a row is DELETED when ci.yml emits its `step_id` FROM `replacement_upsert` as runtime authority (T-24), not when the shadow `CiUpsertStep` row merely exists; forbidden: a row without a named `dissolution_target`, or a Class-B/C/D (non-floor) step carried as a shell exception.
+type CiShellExceptionRow {
+  step_id: CiStepId
+  // Repo-relative path of the `.github/ci-floor/*.sh` script owning this Class-A floor step.
+  // Canonical `RepoPath` carrier (v4.lens.edit_locus) — NOT a parallel path-as-String authority.
+  shell_owner: RepoPath
+  protects_floor: CiSafetyFloorItem
+  // The existing shadow `CiUpsertStep` AUTHORITY that retires this row once it becomes ci.yml
+  // runtime authority. Binds to the canonical `CiUpsertStepSymbol` data (single-authority, P2) —
+  // NOT a parallel `Symbol` alias that could drift or name a non-existent upsert.
+  replacement_upsert: CiUpsertStepSymbol
+  dissolution_target: DissolutionTarget
+}
+
+// Dissolution `what` atoms — the runtime-authority emission substrate whose arrival deletes the
+// row (does NOT yet exist; standard `ModelMissingSubstrate` naming, like `ci_gate_run_policy_*`).
+data ci_bootstrap_step_emitted_from_upsert_runtime_authority: Symbol = ci_bootstrap_step_emitted_from_upsert_runtime_authority
+data ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority: Symbol = ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority
+
+data ci_class_a_shell_exceptions: List<CiShellExceptionRow> = [
+  CiShellExceptionRow {
+    // `.github/ci-floor/v4-bootstrap-viability.sh` is the v2→v4 FULL COMPILE over src/v4 (script
+    // header: "v2-compiler full compile over src/v4"; ci.yml step "v2 -> v4 bootstrap compile"),
+    // so the live step + its retiring authority are `v2_compile_src_v4` / `ci_upsert_v2_compile_src_v4`
+    // (verify `BootstrapStageCompile { produces: v4_stage0_binary }`) — NOT the lighter
+    // `v2_bootstrap_smoke_execution`. Bound by what the script DOES, not by name resemblance (P1/P2).
+    step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
+    shell_owner: ".github/ci-floor/v4-bootstrap-viability.sh",
+    protects_floor: BootstrapMinimalViability,
+    replacement_upsert: ci_upsert_v2_compile_src_v4,
+    dissolution_target: ModelMissingSubstrate {
+      what: ci_bootstrap_step_emitted_from_upsert_runtime_authority
+    }
+  },
+  CiShellExceptionRow {
+    step_id: JobStep {
+      job: m1_rust_emit_probe_execution,
+      step: m1_rust_emit_probe_execution
+    },
+    shell_owner: ".github/ci-floor/v4-m1-rust-emit-probe.sh",
+    protects_floor: OneRustEmitProbe,
+    replacement_upsert: ci_upsert_m1_rust_emit_probe_execution,
+    dissolution_target: ModelMissingSubstrate {
+      what: ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority
+    }
+  }
+]
+
 // Wave 3 §11.7.4 — extend existing receipt (arbiter §8 2026-06-01); no parallel shadow receipt type.
 // 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind Wave 4 active-skip — dissolve-on-arrival: `CiActiveFloorSkipEvidence` is populated from cached TestClaimRun verdict partition; forbidden: bare `Active` tag without skip evidence (illegal floor-skip state).
 type CiActiveFloorSkipEvidence {
