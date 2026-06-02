@@ -4,7 +4,8 @@
 //   (docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md Worksheet A).
 // Authority: Modeling DFS Arbiter ruling proud-fox-405 (msg_41813c03).
 // Fixtures: src/v4/lens/leaf_model_verification.dag (python_l1_static_*).
-// Host runner: scripts/v4-leaf-model-python-l1-static-verify.sh exercises pyright.
+// Receipt authority: these modeled TestClaims. (A shell host-runner formerly exercised
+// pyright over the roster; scripts/ runners were retired repo-wide per operator directive #4252.)
 
 module v4.test.claim.language_model.python_l1_static
 

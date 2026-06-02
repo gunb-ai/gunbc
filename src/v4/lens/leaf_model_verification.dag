@@ -765,8 +765,10 @@ fn python_l1_static_fixture() -> LeafModelPythonStaticFixturePair {
 // runs it with exit 0 (the defect sits in a function that is never called), so neither the
 // compile nor the runtime authority catches it — only pyright does, under the modeled
 // diagnostic rule. Each pair anchors `surface_spelling_fact: python_surface_spelling_int`
-// (every fixture annotates `-> int`). Roster membership is the single authority consumed by
-// scripts/v4-leaf-model-python-l1-static-verify.sh — the runner iterates this list.
+// (every fixture annotates `-> int`). Roster membership is the single modeled authority for
+// the PY-L1 static receipt. (A shell host-runner formerly iterated this list; the
+// scripts/ runners were retired repo-wide per operator directive #4252, leaving the modeled
+// .dag claims as the receipt authority.)
 
 // reportUndefinedVariable: the dead function references a name that is never bound. pyright
 // flags it statically; py_compile accepts (names resolve at runtime) and the module runs
