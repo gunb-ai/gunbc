@@ -489,7 +489,10 @@ type RunnerPoolResilienceStep {
 }
 
 type RunnerPoolResiliencePlaybook {
-  steps: List<RunnerPoolResilienceStep>
+  detection: RunnerPoolResilienceStep
+  fallback: RunnerPoolResilienceStep
+  comms: RunnerPoolResilienceStep
+  recovery: RunnerPoolResilienceStep
 }
 
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
@@ -586,36 +589,34 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
 ]
 
 data ci_runner_pool_resilience_playbook: RunnerPoolResiliencePlaybook = {
-  steps: [
-    RunnerPoolResilienceStep {
-      phase: RunnerPoolDetect
-      trigger: runner_pool_jobserver_coupling_lost
-      action: runner_pool_fail_required_path
-      owner: ci_manager_owner
-      fail_closed: true
-    },
-    RunnerPoolResilienceStep {
-      phase: RunnerPoolFallback
-      trigger: runner_pool_ci_required_path_at_risk
-      action: runner_pool_route_to_github_hosted_floor
-      owner: ci_manager_owner
-      fail_closed: true
-    },
-    RunnerPoolResilienceStep {
-      phase: RunnerPoolComms
-      trigger: runner_pool_operator_status_change_required
-      action: runner_pool_notify_parent_dashboard
-      owner: ci_manager_owner
-      fail_closed: true
-    },
-    RunnerPoolResilienceStep {
-      phase: RunnerPoolRecovery
-      trigger: runner_pool_capacity_restored
-      action: runner_pool_reenable_self_hosted_capacity
-      owner: ci_operator_owner
-      fail_closed: true
-    }
-  ]
+  detection: RunnerPoolResilienceStep {
+    phase: RunnerPoolDetect
+    trigger: runner_pool_jobserver_coupling_lost
+    action: runner_pool_fail_required_path
+    owner: ci_manager_owner
+    fail_closed: true
+  }
+  fallback: RunnerPoolResilienceStep {
+    phase: RunnerPoolFallback
+    trigger: runner_pool_ci_required_path_at_risk
+    action: runner_pool_route_to_github_hosted_floor
+    owner: ci_manager_owner
+    fail_closed: true
+  }
+  comms: RunnerPoolResilienceStep {
+    phase: RunnerPoolComms
+    trigger: runner_pool_operator_status_change_required
+    action: runner_pool_notify_parent_dashboard
+    owner: ci_manager_owner
+    fail_closed: true
+  }
+  recovery: RunnerPoolResilienceStep {
+    phase: RunnerPoolRecovery
+    trigger: runner_pool_capacity_restored
+    action: runner_pool_reenable_self_hosted_capacity
+    owner: ci_operator_owner
+    fail_closed: true
+  }
 }
 
 
@@ -4381,35 +4382,22 @@ fn ci_runner_pool_resilience_step_fail_closed(step: RunnerPoolResilienceStep) ->
 }
 
 fn ci_runner_pool_resilience_playbook_fail_closed(p: RunnerPoolResiliencePlaybook) -> Bool {
-  for_all(xs: p.steps, predicate: ci_runner_pool_resilience_step_fail_closed)
+  ci_runner_pool_resilience_step_fail_closed(step: p.detection)
+    && ci_runner_pool_resilience_step_fail_closed(step: p.fallback)
+    && ci_runner_pool_resilience_step_fail_closed(step: p.comms)
+    && ci_runner_pool_resilience_step_fail_closed(step: p.recovery)
 }
 
-fn ci_runner_pool_resilience_step_phase_eq(
-  step: RunnerPoolResilienceStep,
-  phase: RunnerPoolResiliencePhase
-) -> Bool {
-  step.phase == phase
-}
-
-fn ci_runner_pool_resilience_playbook_has_phase(
-  p: RunnerPoolResiliencePlaybook,
-  phase: RunnerPoolResiliencePhase
-) -> Bool {
-  fold_list(
-    xs: p.steps,
-    empty: false,
-    cons: fn(acc, step) {
-      acc || ci_runner_pool_resilience_step_phase_eq(step: step, phase: phase)
-    }
-  )
+fn ci_runner_pool_resilience_playbook_phases_valid(p: RunnerPoolResiliencePlaybook) -> Bool {
+  p.detection.phase == RunnerPoolDetect
+    && p.fallback.phase == RunnerPoolFallback
+    && p.comms.phase == RunnerPoolComms
+    && p.recovery.phase == RunnerPoolRecovery
 }
 
 fn ci_runner_pool_resilience_playbook_complete(p: RunnerPoolResiliencePlaybook) -> Bool {
   ci_runner_pool_resilience_playbook_fail_closed(p: p)
-    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: RunnerPoolDetect)
-    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: RunnerPoolFallback)
-    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: RunnerPoolComms)
-    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: RunnerPoolRecovery)
+    && ci_runner_pool_resilience_playbook_phases_valid(p: p)
 }
 
 data ci_runner_pool_resilience_playbook_ok: Bool = ci_runner_pool_resilience_playbook_complete(p: ci_runner_pool_resilience_playbook)
