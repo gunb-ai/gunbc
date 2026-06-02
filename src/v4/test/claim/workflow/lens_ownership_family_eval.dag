@@ -5,12 +5,7 @@
 module v4.test.claim.workflow.lens_ownership_family_eval
 
 
-import v4.compiler.eval {
-  TestClaimEvalSubject,
-  TestClaimRun,
-  run_test_claim,
-  test_claim_run_verdict
-}
+import v4.compiler.eval { TestClaimRun, run_test_claim, test_claim_run_verdict }
 import v4.std.algebra { fold_list, is_empty }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
@@ -24,7 +19,7 @@ import v4.std.verdict {
   verdict_tally_total
 }
 import v4.test.claim.lens_ownership.subject_roster {
-  lens_ownership_node_subject_rows,
+  LensOwnershipSubject,
   lens_ownership_subject_roster
 }
 
@@ -35,15 +30,15 @@ type LensOwnershipFamilyEvalReport {
 
 
 fn run_lens_ownership_subjects(
-  subjects: List<TestClaimEvalSubject<Node>>
+  subjects: List<LensOwnershipSubject>
 ) -> List<TestClaimRun<Node, RuntimeValue>> {
-  map(subjects, fn(subject) { run_test_claim(subject: subject) })
+  map(subjects, fn(subject) { run_test_claim(subject: subject.eval_subject) })
 }
 
 
 fn run_lens_ownership_family_eval() -> LensOwnershipFamilyEvalReport {
   LensOwnershipFamilyEvalReport {
-    runs: run_lens_ownership_subjects(subjects: lens_ownership_node_subject_rows)
+    runs: run_lens_ownership_subjects(subjects: lens_ownership_subject_roster)
   }
 }
 

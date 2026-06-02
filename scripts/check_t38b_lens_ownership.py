@@ -53,13 +53,14 @@ def main() -> None:
             "eval_test_claim_subject(",
             "data lens_ownership_subject_roster: List<LensOwnershipSubject>",
             "data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>>",
-            "subject_lens_ownership_resource_dependency",
+            "lens_ownership_subject_roster",
+            "subject.eval_subject",
         ),
     )
 
-    roster_body = subject_roster.split("data lens_ownership_node_subject_rows:")[1].split("]")[0]
-    if roster_body.count("subject_lens_ownership_resource_dependency") != 1:
-        raise SystemExit("lens_ownership_node_subject_rows must roster exactly the resource-dependency subject")
+    roster_body = subject_roster.split("data lens_ownership_node_subject_rows:")[1].split("\n\n", 1)[0]
+    if "lens_ownership_subject_roster" not in roster_body or "subject.eval_subject" not in roster_body:
+        raise SystemExit("lens_ownership_node_subject_rows must project from LensOwnershipSubject rows")
 
     _require_substrings(
         "lens_ownership_family_eval.dag",
@@ -67,10 +68,10 @@ def main() -> None:
         (
             "import v4.compiler.eval",
             "run_test_claim",
-            "lens_ownership_node_subject_rows",
+            "LensOwnershipSubject",
             "fn run_lens_ownership_subjects",
-            "map(subjects, fn(subject) { run_test_claim(subject: subject) })",
-            "runs: run_lens_ownership_subjects(subjects: lens_ownership_node_subject_rows)",
+            "map(subjects, fn(subject) { run_test_claim(subject: subject.eval_subject) })",
+            "runs: run_lens_ownership_subjects(subjects: lens_ownership_subject_roster)",
             "fn lens_ownership_family_report_tally",
             "fn lens_ownership_structural_witnesses_hold",
             "acc && subject.structural_witness",
@@ -85,6 +86,11 @@ def main() -> None:
         (
             "lens_ownership_family_eval_execution",
             "LensOwnershipFamilyEvalCommand",
+            "LensOwnershipFamilyVerdictSurfaceAuthority",
+            "ci_lens_ownership_family_verdict_surface_authority",
+            "surface == ci_lens_ownership_family_verdict_surface_authority()",
+            "ci_lens_ownership_family_verdict_surface_projection_node",
+            "lens_ownership_structural_witnesses_hold",
             "ci_lens_ownership_family_eval_command",
             "ci_upsert_lens_ownership_family_eval_execution_mk",
             "ci_upsert_lens_ownership_family_eval_signal_mk",

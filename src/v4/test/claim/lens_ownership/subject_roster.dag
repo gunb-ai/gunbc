@@ -65,6 +65,7 @@ data lens_ownership_subject_roster: List<LensOwnershipSubject> = [
 ]
 
 
-data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>> = [
-  subject_lens_ownership_resource_dependency
-]
+data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>> = map(
+  lens_ownership_subject_roster,
+  fn(subject) { subject.eval_subject }
+)
