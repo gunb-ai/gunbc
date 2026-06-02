@@ -2047,8 +2047,7 @@ fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt
   bind_outcome(
     o: testgen_scheduled_generators_outcome(),
     f: fn(gens) {
-      let matched =
-        testgen_scheduled_generators_matching_profile(gens: gens, profile_ref: profile_ref)
+      let matched = testgen_scheduled_generators_matching_profile(gens: gens, profile_ref: profile_ref)
       if length(xs: matched) == 0 && length(xs: gens) > 0 {
         outcome_rejected(d: testgen_profile_roster_mismatch_diagnostic())
       } else {
