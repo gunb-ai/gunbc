@@ -432,10 +432,15 @@ data ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority: Symbol = ci_m1_
 
 data ci_class_a_shell_exceptions: List<CiShellExceptionRow> = [
   CiShellExceptionRow {
-    step_id: JobStep { job: v2_bootstrap_smoke_execution, step: v2_bootstrap_smoke_execution },
+    // `.github/ci-floor/v4-bootstrap-viability.sh` is the v2→v4 FULL COMPILE over src/v4 (script
+    // header: "v2-compiler full compile over src/v4"; ci.yml step "v2 -> v4 bootstrap compile"),
+    // so the live step + its retiring authority are `v2_compile_src_v4` / `ci_upsert_v2_compile_src_v4`
+    // (verify `BootstrapStageCompile { produces: v4_stage0_binary }`) — NOT the lighter
+    // `v2_bootstrap_smoke_execution`. Bound by what the script DOES, not by name resemblance (P1/P2).
+    step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
     shell_owner: ".github/ci-floor/v4-bootstrap-viability.sh",
     protects_floor: BootstrapMinimalViability,
-    replacement_upsert: ci_upsert_v2_bootstrap_smoke_execution,
+    replacement_upsert: ci_upsert_v2_compile_src_v4,
     dissolution_target: ModelMissingSubstrate {
       what: ci_bootstrap_step_emitted_from_upsert_runtime_authority
     }
