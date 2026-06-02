@@ -393,6 +393,30 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
             == Some("Outcome<ModelCore>"),
         "{RUST_LANGUAGE_PATH}: Rust ModelCore construction must preserve registry rejection as Outcome<ModelCore>"
     );
+    assert_eq!(
+        type_record_field_type(&module, "RustLanguageModel", "core"),
+        Some("ModelCore".to_string()),
+        "{RUST_LANGUAGE_PATH}: RustLanguageModel.core must be plain ModelCore; registry failure rejects the whole model"
+    );
+    assert!(
+        surface_fn_return_type(&module, "rust_language_model_wave1").as_deref()
+            == Some("Outcome<RustLanguageModel>"),
+        "{RUST_LANGUAGE_PATH}: Rust language model construction must fail closed as Outcome<RustLanguageModel>"
+    );
+    assert!(
+        fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_language_model_wave1",
+            "Rejected { diagnostics: d } => Rejected { diagnostics: d }"
+        ) && fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_language_model_wave1",
+            "core: core"
+        ),
+        "{RUST_LANGUAGE_PATH}: RustLanguageModel must be constructed only after accepted ModelCore"
+    );
     assert!(
         fn_external_body_contains(
             &module,

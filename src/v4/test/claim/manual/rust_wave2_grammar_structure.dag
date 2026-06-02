@@ -26,6 +26,7 @@ import v4.extdeps.languages.rust {
 import v4.std.grammar { grammar_carries_symbol }
 import v4.std.lexing { lex_rule_set_token_class_member }
 import v4.std.logic { Bool }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
 
 fn rust_wave2_grammar_structure_satisfied(lm: RustLanguageModel) -> Bool {
   lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: rust_token_kw_let) &&
@@ -57,4 +58,13 @@ fn rust_wave2_grammar_structure_satisfied(lm: RustLanguageModel) -> Bool {
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_return_expr)
 }
 
-data rust_wave2_grammar_structure_ready: Bool = rust_wave2_grammar_structure_satisfied(lm: rust_language_model_wave2())
+fn rust_wave2_grammar_structure_outcome_satisfied(lm: Outcome<RustLanguageModel>) -> Bool {
+  match lm {
+    Accepted { value: model, diagnostics: _ } =>
+      rust_wave2_grammar_structure_satisfied(lm: model)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data rust_wave2_grammar_structure_ready: Bool =
+  rust_wave2_grammar_structure_outcome_satisfied(lm: rust_language_model_wave2())

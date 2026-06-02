@@ -374,7 +374,7 @@ type RustLanguageModel {
   grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
-  core: Outcome<ModelCore>
+  core: ModelCore
 }
 
 // T-11 rust-first grammar relation row: fixed terminals and bound terminals share
@@ -2772,13 +2772,20 @@ fn rust_model_core_wave1() -> Outcome<ModelCore> {
   }
 }
 
-fn rust_language_model_wave1() -> RustLanguageModel {
-  RustLanguageModel {
-    lex: rust_wave1_lex(),
-    grammar: rust_wave1_grammar(),
-    language_identity: rust_language_model_surface_id,
-    canonical_symbols: rust_language_model_canonical_symbols(),
-    core: rust_model_core_wave1()
+fn rust_language_model_wave1() -> Outcome<RustLanguageModel> {
+  match rust_model_core_wave1() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: core, diagnostics: diagnostics } =>
+      Accepted {
+        value: RustLanguageModel {
+          lex: rust_wave1_lex(),
+          grammar: rust_wave1_grammar(),
+          language_identity: rust_language_model_surface_id,
+          canonical_symbols: rust_language_model_canonical_symbols(),
+          core: core
+        },
+        diagnostics: diagnostics
+      }
   }
 }
 
@@ -3421,13 +3428,20 @@ fn rust_language_model_wave2_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_language_model_wave2() -> RustLanguageModel {
-  RustLanguageModel {
-    lex: rust_wave2_lex(),
-    grammar: rust_wave2_grammar(),
-    language_identity: rust_language_model_surface_id,
-    canonical_symbols: rust_language_model_wave2_canonical_symbols(),
-    core: rust_model_core_wave1()
+fn rust_language_model_wave2() -> Outcome<RustLanguageModel> {
+  match rust_model_core_wave1() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: core, diagnostics: diagnostics } =>
+      Accepted {
+        value: RustLanguageModel {
+          lex: rust_wave2_lex(),
+          grammar: rust_wave2_grammar(),
+          language_identity: rust_language_model_surface_id,
+          canonical_symbols: rust_language_model_wave2_canonical_symbols(),
+          core: core
+        },
+        diagnostics: diagnostics
+      }
   }
 }
 
