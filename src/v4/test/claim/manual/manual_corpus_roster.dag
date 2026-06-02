@@ -9,6 +9,9 @@ module v4.test.claim.manual.manual_corpus_roster
 import v4.compiler.eval { TestClaimEvalSubject }
 import v4.std.collection { List }
 import v4.std.node { Node }
+import v4.test.claim.lens_parallelism.data_dependency {
+  subject_parallelism_data_dependency_receipt
+}
 import v4.test.claim.manual.dissolution_subsumption_reverification {
   subject_rust_language_model_emit_mechanical_reverification_claim,
   subject_rust_language_model_emit_subsumption_reverifies
@@ -18,6 +21,7 @@ import v4.test.claim.manual.eval_runtime_mvp { subject_eval_mvp2_test_claim_rout
 
 data manual_corpus_node_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_eval_mvp2_test_claim_route,
+  subject_parallelism_data_dependency_receipt,
   subject_rust_language_model_emit_mechanical_reverification_claim,
   subject_rust_language_model_emit_subsumption_reverifies
 ]

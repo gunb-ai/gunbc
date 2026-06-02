@@ -6,19 +6,64 @@
 module v4.test.claim.lens_parallelism.data_dependency
 
 import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_test_claim_subject,
+  eval_context_with_semantics,
+  run_test_claim
+}
 import v4.lens.parallelism {
   DataDependent,
   ParallelismFact,
   parallelism_fact_eq,
   parallelism_witness
 }
+import v4.std.diagnostic { Accepted, None, Outcome }
 import v4.std.dependency {
   ClassifiedDependencyView,
   DataDependsOn,
   DependencyView
 }
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.runtime {
+  AllocationSemantics,
+  BindInterpreter,
+  BranchInterpreter,
+  CallSemantics,
+  Continue,
+  ControlSemantics,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationCall,
+  EvaluationEnvironment,
+  EvaluationFrame,
+  ExecutionSemantics,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  Raise,
+  Return,
+  RuntimeValue,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  Suspend,
+  TransformInterpreter,
+  ValueInterpreter,
+  ValueRepresentationModel
+}
+import v4.std.verification {
+  ManualAnchorAbsent,
+  TestClassification,
+  TestClaim,
+  Tier1,
+  Integration,
+  EqualsClaim,
+  manual_claim_anchor
+}
 import v4.std.witness { Holds, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
@@ -32,6 +77,14 @@ data parallelism_edge_symbol: Symbol = parallelism_edge_symbol
 data parallelism_type_symbol: Symbol = parallelism_type_symbol
 data parallelism_algebra_symbol: Symbol = parallelism_algebra_symbol
 data parallelism_descent_symbol: Symbol = parallelism_descent_symbol
+data parallelism_claim_pass_symbol: Symbol = parallelism_claim_pass_symbol
+data parallelism_claim_fail_symbol: Symbol = parallelism_claim_fail_symbol
+data parallelism_eval_runtime_pin: Symbol = parallelism_eval_runtime_pin
+data parallelism_allocate_literal_sym: Symbol = parallelism_allocate_literal_sym
+data parallelism_call_primitive_sym: Symbol = parallelism_call_primitive_sym
+data parallelism_choose_branch_sym: Symbol = parallelism_choose_branch_sym
+data parallelism_step_loop_sym: Symbol = parallelism_step_loop_sym
+data parallelism_bind_value_sym: Symbol = parallelism_bind_value_sym
 data parallelism_child: Node = claim_atom_node(s: parallelism_child_symbol)
 
 data parallelism_root: Node = Node {
@@ -88,3 +141,104 @@ fn parallelism_data_dependency_claim_holds() -> Bool {
 }
 
 data parallelism_data_dependency_claim_passes: Bool = parallelism_data_dependency_claim_holds()
+
+fn parallelism_claim_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: parallelism_claim_pass_symbol } },
+    children: []
+  }
+}
+
+fn parallelism_claim_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: parallelism_claim_fail_symbol } },
+    children: []
+  }
+}
+
+fn parallelism_claim_input(ok: Bool) -> Node {
+  if ok {
+    parallelism_claim_pass_node()
+  } else {
+    parallelism_claim_fail_node()
+  }
+}
+
+fn parallelism_runtime_value(node: Node) -> RuntimeValue {
+  RuntimeUnit { value: RuntimeUnitValue { unit_type: node } }
+}
+
+fn parallelism_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Accepted { value: parallelism_runtime_value(node: node), diagnostics: None }
+}
+
+fn parallelism_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  parallelism_allocate_literal(node: node, env: env)
+}
+
+fn parallelism_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  Accepted { value: node, diagnostics: None }
+}
+
+fn parallelism_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Accepted { value: Continue { value: parallelism_runtime_value(node: node) }, diagnostics: None }
+}
+
+fn parallelism_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn parallelism_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: parallelism_allocate_literal },
+    transform: TransformInterpreter { call_primitive: parallelism_call_primitive },
+    branch: BranchInterpreter { choose_branch: parallelism_choose_branch },
+    loop: LoopInterpreter { step_loop: parallelism_step_loop },
+    bind: BindInterpreter { bind_value: parallelism_bind_value }
+  }
+}
+
+fn parallelism_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: parallelism_allocate_literal_sym,
+    call_primitive: parallelism_call_primitive_sym,
+    choose_branch: parallelism_choose_branch_sym,
+    step_loop: parallelism_step_loop_sym,
+    bind_value: parallelism_bind_value_sym
+  }
+}
+
+fn parallelism_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: parallelism_eval_runtime_pin,
+    interpretation: parallelism_interpretation(),
+    structure_witness: parallelism_interpretation_structure_witness()
+  )
+}
+
+data claim_parallelism_data_dependency_receipt: TestClaim = EqualsClaim {
+  label: "lens_parallelism data dependency witness classifies DataDependsOn as DataDependent",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: parallelism_claim_input(ok: parallelism_data_dependency_claim_passes),
+  rhs: parallelism_claim_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data subject_parallelism_data_dependency_receipt: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_parallelism_data_dependency_receipt,
+  context: parallelism_context(),
+  tree: parallelism_claim_tree(),
+  evaluator_pin: parallelism_eval_runtime_pin
+)
+
+data run_parallelism_data_dependency_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_parallelism_data_dependency_receipt
+)
