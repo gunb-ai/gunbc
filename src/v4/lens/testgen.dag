@@ -170,6 +170,7 @@ import v4.std.effects {
 // testgen-local concept (GeneratorProfile below) and must not leak into artifact.dag.
 import v4.std.artifact {
   Artifact,
+  ArtifactKind,
   GeneratorId,
   GeneratorProvenance,
   TestClaimArtifact
@@ -1846,6 +1847,41 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
       profile_metadata: default_generator_profile(),
     },
   ]
+}
+
+
+// F.2-P1: provenance carries TestClaimArtifact identity.
+fn artifact_kind_is_test_claim(k: ArtifactKind) -> Bool {
+  match k {
+    TestClaimArtifact => true
+    _ => false
+  }
+}
+
+
+// F.2-P1 provenance integrity: a generator's identity must key its emitted artifact
+// (generator_id == artifact.id, artifact is a TestClaimArtifact), and it must carry
+// profile metadata. This is the structural property the close-criterion witness folds.
+fn generator_carries_provenance<C>(g: Generator<C>) -> Bool {
+  g.provenance.generator_id == g.provenance.artifact.id
+    && artifact_kind_is_test_claim(k: g.provenance.artifact.kind)
+    && g.profile_metadata.profile_ref == testgen_default_profile_ref
+}
+
+
+// F.2-P1 close criterion: every directly-scheduled generator carries consistent
+// provenance + profile metadata. Folds the two non-Outcome scheduled generator lists
+// (LBE + coproduct-exhaustiveness); Outcome-returning schedulers fail closed upstream.
+fn scheduled_generators_carry_provenance() -> Bool {
+  fold_list(
+    xs: testgen_scheduled_language_behavior_generators(),
+    empty: fold_list(
+      xs: testgen_scheduled_coproduct_exhaustiveness_generators(),
+      empty: true,
+      cons: fn(acc, g) { acc && generator_carries_provenance(g: g) },
+    ),
+    cons: fn(acc, g) { acc && generator_carries_provenance(g: g) },
+  )
 }
 
 
