@@ -22,6 +22,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.host_run { EmitHostRunReceipt }
+import v4.std.logic { Bool }
 import v4.std.model_core {
   ModelCorePrimitiveFactAxis,
   PrimitiveFactBundle,
@@ -29,6 +30,7 @@ import v4.std.model_core {
 }
 import v4.std.node { Node, Symbol }
 import v4.std.target_model { FunctionBoundarySite, TargetModel }
+import v4.std.verdict { VerdictTally }
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -227,4 +229,54 @@ type PerTargetGroundingReceipt {
 
 fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> TargetModel {
   receipt.host_run.target
+}
+
+
+// --- A.3b.3: per-target TestClaim host receipt schema (RR-A #4296 §3/§4; parallels G0.4 above) ---
+
+// 🟢 coproduct dissolution — terminal A.3b execution-provenance tag: one arm for each closed
+// provenance of a corpus verdict surface. RuntimeVerdicts = produced by the RR-A §5.2
+// bootstrap-evaluator harness running `run_test_claim` at execution time; AuthoringTimeVerdictSurface
+// = projected from authoring-time const folds (the pre-harness host transport posture). RR-A §6
+// forbids AuthoringTimeVerdictSurface as a terminal CI pass; `host_verdict_surface_runtime_authoritative`
+// is the gate. The variant tag IS the authority — no parallel Symbol/Bool provenance flag.
+//
+// DISSOLUTION (RR-A §5 lane split): R1–R3 (the CI receipt actually carrying RuntimeVerdicts) stay
+// OPEN until the Compiler Spine step-2 harness lands and the Runtime/TestClaim step-3 surface binds
+// this discriminator into `TestClaimCorpusEvalCommand` / `ci_upsert_testclaim_corpus_eval_*`
+// (src/v4/workflow/ci.dag). This schema is the authority both consume; it does NOT itself run
+// `run_test_claim` (no authoring-time co-authority `data run_*: TestClaimRun` row, no grep witness).
+type HostVerdictSurfaceExecutionStatus
+  = RuntimeVerdicts
+  | AuthoringTimeVerdictSurface
+
+
+// Host-boundary per-target TestClaim receipt — parallels PerTargetGroundingReceipt (G0.4):
+// TargetModel authority lives on EmitHostRunReceipt.target only (P2; no second target field that
+// could disagree). Carries the modeled corpus verdict surface as a VerdictTally (the per-row
+// `TestClaimRun` verdicts folded by `corpus_report_tally`) plus the execution-provenance
+// discriminator. The concrete `CorpusEvalReport` binding lives in the v4.test.claim.workflow layer
+// so std/ stays free of v4.compiler / v4.test.claim imports (same layering rule as
+// test_claim_falsification.dag's Subj carrier).
+type PerTargetTestClaimReceipt {
+  host_run: EmitHostRunReceipt
+  execution_status: HostVerdictSurfaceExecutionStatus
+  verdict_tally: VerdictTally
+}
+
+
+fn per_target_testclaim_receipt_target(receipt: PerTargetTestClaimReceipt) -> TargetModel {
+  receipt.host_run.target
+}
+
+
+// RR-A §4 R1/R6 terminal-pass gate: a corpus verdict surface is authoritative for a terminal CI
+// pass ONLY when it carries RuntimeVerdicts. AuthoringTimeVerdictSurface fails closed — it must not
+// satisfy the terminal gate until the step-2 harness produces runtime verdicts.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: a3b-host-verdict-surface-runtime-authority — consumer: v4.workflow.ci TestClaimCorpusEvalCommand / ci_upsert_testclaim_corpus_eval_* terminal gate — bind RR-A #4296 §4 R1/R6 + node://adhoc-ee4060fb-bba — dissolve-on-arrival: delete when the Compiler Spine step-2 bootstrap-evaluator harness lands and the Runtime/TestClaim step-3 surface consumes HostVerdictSurfaceExecutionStatus directly at the ci.dag terminal gate (variant match moves to the consumer); forbidden: permanent untagged Bool coproduct-arm CI policy in std/grounding.
+fn host_verdict_surface_runtime_authoritative(receipt: PerTargetTestClaimReceipt) -> Bool {
+  match receipt.execution_status {
+    RuntimeVerdicts => true
+    AuthoringTimeVerdictSurface => false
+  }
 }
