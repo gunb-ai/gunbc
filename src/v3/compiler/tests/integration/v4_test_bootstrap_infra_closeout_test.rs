@@ -257,10 +257,12 @@ fn refinement_preservation_receipts_present() {
     assert!(
         TESTGEN_DAG.contains("RefinementPreservation { subject: RefinementPreservationSubject }")
             && TESTGEN_DAG.contains("fn testgen_emit_refinement_preservation_claim")
+            && TESTGEN_DAG.contains("fn testgen_scheduled_refinement_preservation_generators")
             && TESTGEN_DAG.contains("-> Outcome<RefinementPreservationSubject>")
             && TESTGEN_DAG.contains("refined: Refined<List<Node>>")
             && TESTGEN_DAG.contains("refined_base(r: subject.refined)")
             && TESTGEN_DAG.contains("ManualRefinementNonEmptyListBase")
+            && TESTGEN_DAG.contains("anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase)")
             && REFINEMENT_GENERATED_DAG
                 .contains("refinement_preservation_subject_nonempty_list_base()")
             && REFINEMENT_GENERATED_DAG

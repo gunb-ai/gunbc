@@ -27,6 +27,7 @@ import v4.lens.testgen {
   testgen_concept_for_manual_claim,
   testgen_scheduled_coproduct_exhaustiveness_generators,
   testgen_scheduled_language_behavior_generators,
+  testgen_scheduled_refinement_preservation_generators,
   Generator
 }
 import v4.std.refinement { refined_base }
@@ -751,9 +752,15 @@ fn expected_coproduct_exhaustiveness_testgen_keys() -> List<TestgenCoverageKey> 
 }
 
 
+fn expected_refinement_preservation_testgen_keys() -> List<TestgenCoverageKey> {
+  testgen_coverage_keys_from_scheduled_generators(
+    generators: testgen_scheduled_refinement_preservation_generators()
+  )
+}
+
+
 // 🟡 gated — feature:testgen-lens-applicability-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: LensApplicability enters expected_testgen_coverage_keys via scheduled-generator projection.
 // 🟡 gated — feature:testgen-bidirectional-roundtrip-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: BidirectionalRoundtrip enters expected_testgen_coverage_keys via scheduled-generator projection.
-// 🟡 gated — feature:testgen-refinement-preservation-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: RefinementPreservation enters expected_testgen_coverage_keys via scheduled-generator projection.
 // 🟡 gated — feature:testgen-concept-reflection — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: replace hand-assembled expected slices with full manifest projection.
 fn expected_testgen_coverage_keys() -> List<TestgenCoverageKey> {
   fold_list_right(
@@ -762,7 +769,13 @@ fn expected_testgen_coverage_keys() -> List<TestgenCoverageKey> {
       xs: expected_algebra_law_testgen_keys(),
       empty: fold_list_right(
         xs: expected_language_behavior_equivalence_testgen_keys(),
-        empty: expected_coproduct_exhaustiveness_testgen_keys(),
+        empty: fold_list_right(
+          xs: expected_coproduct_exhaustiveness_testgen_keys(),
+          empty: expected_refinement_preservation_testgen_keys(),
+          snoc: fn(acc, item) {
+            dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
+          }
+        ),
         snoc: fn(acc, item) {
           dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
         }

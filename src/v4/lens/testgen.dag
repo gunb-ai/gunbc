@@ -552,6 +552,22 @@ fn testgen_emit_refinement_preservation_claim(
 }
 
 
+fn testgen_scheduled_refinement_preservation_generators() -> List<Generator<TestgenConcept>> {
+  match refinement_preservation_subject_nonempty_list_base() {
+    Accepted { value: subject, diagnostics: None } =>
+      [
+        Generator {
+          kind: TestClaimEqualsClaimVariant,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+          anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
+          slot: RefinementPreservation { subject: subject },
+        },
+      ]
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+
 fn testgen_emit_idempotent_operation_equals_claim(
   label: String,
   subject: ComposableIdempotentOperationSubject,
