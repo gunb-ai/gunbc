@@ -1899,9 +1899,15 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
         "{CI_DAG_PATH}: Wave 3 fixture receipt must not use LivePrGitDiff"
     );
     assert!(
-        fixture_binding.contains("ci_wave3_shadow_testgen_slots_fixture(")
+        fixture_binding.contains("ci_wave3_shadow_testgen_selection_rows_outcome(")
+            && fixture_binding.contains("Outcome<CiSelectionReceipt>")
             && !fixture_binding.contains("testgen_slots: Empty"),
-        "{CI_DAG_PATH}: F.2-P2 fixture must populate testgen_slots via Outcome authority (not Empty)"
+        "{CI_DAG_PATH}: F.2-P2 fixture must bind testgen_slots via selection_rows Outcome (not Empty truncation)"
+    );
+    assert!(
+        CI_DAG.contains("data ci_wave3_shadow_testgen_run_receipt: Outcome<TestgenRunReceipt>")
+            && CI_DAG.contains("data ci_wave3_shadow_selected_testgen_receipt: Outcome<SelectedTestgenReceipt>"),
+        "{CI_DAG_PATH}: shadow testgen receipt data must stay Outcome-typed (no Rejected→Empty fixture collapse)"
     );
     let testgen_reason_body = extract_fn_body(CI_DAG, "ci_wave3_shadow_testgen_selection_reason");
     assert!(
