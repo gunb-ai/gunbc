@@ -34,7 +34,7 @@ import v2.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
   is_recursive_type, lookup_type, lookup_type_for,
   find_child_in_env, has_child_in_env,
-  node_identity_key,
+  node_identity_key, scrutinee_cache_key,
   lookup_cache_get_scrutinee, lookup_cache_put_scrutinee,
   lookup_cache_get_enriched_kernel, lookup_cache_put_enriched_kernel
 }
@@ -151,31 +151,44 @@ type ScrutineeResolveResult {
   env: TypeEnv
 }
 
+fn apply_scrutinee_cardinality(normed: Node, resolved: Node) -> Node {
+  if normed.return_cardinality == CardOptional {
+    with_optional_cardinality(n: resolved)
+  } else {
+    resolved
+  }
+}
+
 fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> ScrutineeResolveResult {
   let normed = normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count == 0 {
-    match node_identity_key(node: normed) {
+    match scrutinee_cache_key(node: normed) {
       None =>
+        let core = resolve_scrutinee_type_node_seen(env: env, n: normed, seen: empty_map())
         ScrutineeResolveResult {
-          node: resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map()),
+          node: apply_scrutinee_cardinality(normed: normed, resolved: core),
           env: env
         }
       Some { value: key } =>
         match lookup_cache_get_scrutinee(env: env, key: key) {
           Some { value: cached } =>
-            let node = if normed.return_cardinality == CardOptional {
-              with_optional_cardinality(n: cached)
-            } else { cached }
-            ScrutineeResolveResult { node: node, env: env }
+            ScrutineeResolveResult {
+              node: apply_scrutinee_cardinality(normed: normed, resolved: cached),
+              env: env
+            }
           None =>
-            let resolved = resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
-            let env = lookup_cache_put_scrutinee(env: env, key: key, resolved: resolved)
-            ScrutineeResolveResult { node: resolved, env: env }
+            let core = resolve_scrutinee_type_node_seen(env: env, n: normed, seen: empty_map())
+            let stored = with_required_cardinality(n: core)
+            let env = lookup_cache_put_scrutinee(env: env, key: key, resolved: stored)
+            ScrutineeResolveResult {
+              node: apply_scrutinee_cardinality(normed: normed, resolved: stored),
+              env: env
+            }
         }
     }
   } else {
     ScrutineeResolveResult {
-      node: resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map()),
+      node: resolve_scrutinee_type_node_seen(env: env, n: normed, seen: empty_map()),
       env: env
     }
   }

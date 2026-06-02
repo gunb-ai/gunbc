@@ -54,6 +54,15 @@ fn node_identity_key(node: Node) -> String? {
   }
 }
 
+// Scrutinee memo: span-only keys — intern id can be rebound across TypeEnv updates (#4282).
+fn scrutinee_cache_key(node: Node) -> String? {
+  if is_synthetic_node(node: node) {
+    none
+  } else {
+    Some { value: span_cache_key(span: node.span) }
+  }
+}
+
 fn merge_lookup_caches(left: LookupCache, right: LookupCache) -> LookupCache {
   LookupCache {
     authored_names: map_merge(left.authored_names, right.authored_names),
