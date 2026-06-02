@@ -198,7 +198,8 @@ fn v4_std_grounding_registry_keyed_map_authority() {
     assert!(
         GROUNDING_DAG.contains("type PerLanguageFactBundleLookup")
             && GROUNDING_DAG.contains("PerLanguageFactBundleMissing")
-            && GROUNDING_DAG.contains("PerLanguageFactBundleFound { value: Node }"),
+            && GROUNDING_DAG.contains("PerLanguageFactBundleFound { value: Node }")
+            && GROUNDING_DAG.contains("🟢 coproduct dissolution — G0.1 registry lookup result"),
         "registry lookup result must be a declared carrier, not bootstrap Optional/Map projection"
     );
     assert!(
@@ -227,8 +228,8 @@ fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
             && GROUNDING_DAG.contains("match registry.lookup(key)")
             && GROUNDING_DAG.contains("PerLanguageFactBundleFound { value: value }")
             && GROUNDING_DAG.contains("PerLanguageFactBundleMissing")
-            && GROUNDING_DAG.contains("Rejected { diagnostics: d } => Rejected { diagnostics: d }"),
-        "registry insert must consume declared lookup results and propagate rejected lookup state"
+            && GROUNDING_DAG.contains("lookup: fn(PerLanguageFactBundleKey) -> PerLanguageFactBundleLookup"),
+        "registry insert must consume declared lookup results without bootstrap Optional/Map projection"
     );
     assert!(
         GROUNDING_DAG.contains("fn primitive_fact_bundle_for_registry_subject(")

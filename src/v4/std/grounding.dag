@@ -51,20 +51,23 @@ type PerLanguageFactBundleEntry {
 
 
 // P2: keyed registry — duplicate PerLanguageFactBundleKey rows are unrepresentable (fail-closed insert).
+// 🟢 coproduct dissolution — G0.1 registry lookup result.
+// Missing and found are the only legal lookup states for the registry's closed, total lookup
+// function; duplicate insertion remains fail-closed at insert_per_language_fact_bundle_entry.
 type PerLanguageFactBundleLookup
   = PerLanguageFactBundleMissing
   | PerLanguageFactBundleFound { value: Node }
 
 
 type PerLanguageFactBundleRegistry {
-  lookup: fn(PerLanguageFactBundleKey) -> Outcome<PerLanguageFactBundleLookup>
+  lookup: fn(PerLanguageFactBundleKey) -> PerLanguageFactBundleLookup
 }
 
 
 fn empty_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
   PerLanguageFactBundleRegistry {
     lookup: fn(_) {
-      outcome_accepted(value: PerLanguageFactBundleMissing)
+      PerLanguageFactBundleMissing
     }
   }
 }
@@ -103,11 +106,8 @@ fn per_language_fact_bundle_lookup(
   key: PerLanguageFactBundleKey
 ) -> Witness<Node> {
   match registry.lookup(key) {
-    Accepted { value: PerLanguageFactBundleFound { value: value }, diagnostics: _ } =>
-      Holds { value: value }
-    Accepted { value: PerLanguageFactBundleMissing, diagnostics: _ } =>
-      Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
-    Rejected { diagnostics: d } => Violates { diagnostic: d.head }
+    PerLanguageFactBundleFound { value: value } => Holds { value: value }
+    PerLanguageFactBundleMissing => Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
   }
 }
 
@@ -118,21 +118,20 @@ fn insert_per_language_fact_bundle_entry(
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
   match registry.lookup(key) {
-    Accepted { value: PerLanguageFactBundleFound { value: _ }, diagnostics: _ } =>
+    PerLanguageFactBundleFound { value: _ } =>
       outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    Accepted { value: PerLanguageFactBundleMissing, diagnostics: _ } =>
+    PerLanguageFactBundleMissing =>
       outcome_accepted(
         value: PerLanguageFactBundleRegistry {
           lookup: fn(candidate) {
             if candidate == key {
-              outcome_accepted(value: PerLanguageFactBundleFound { value: fact_value })
+              PerLanguageFactBundleFound { value: fact_value }
             } else {
               registry.lookup(candidate)
             }
           }
         }
       )
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
