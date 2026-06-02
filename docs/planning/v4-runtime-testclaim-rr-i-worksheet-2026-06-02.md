@@ -48,13 +48,13 @@ Deepest unsound boundary:
   evaluator, NOT another roster row.
 Systemic fix:
   I.1: ratify single-authority closure for the four families; collapse honest-but-wide
-       UnknownCoupling default into a typed unresolved coproduct (I.1.1 lane) — design only.
+       UnknownCoupling default into a typed unresolved coproduct (I.1.1 lane).
   I.3: state the projection contract that would promote each unsupported family, OR the
        dissolution trigger that keeps it explicitly unsupported. Gate any eval_parallel
        runtime behind the §5.0.2 CI-needs predicate.
 Non-goals:
   - Registry migration of Complexity / Cost / TableDecisionTree (ctrl#1425 §2.5.2 defer)
-  - Scaffold (`T-13-*-unresolved`) dissolution of ANY family — tracked per §2 per-family trigger table, not this PR (only effect / ownership-access cross-ref #3468)
+  - Scaffold (`T-13-*-unresolved`) dissolution of non-parallelism families — tracked per §2 per-family trigger table, not this PR (only effect / ownership-access cross-ref #3468)
   - eval_parallel runtime (R5 / RR-A §6 "I.3 eval_parallel runtime — design only")
   - Forking run_test_claim per subject family
 Falsification probe:
@@ -71,7 +71,7 @@ Metric allowed only as secondary:
 | Row | Deliverable | Readiness | Owner lane |
 | --- | ----------- | --------- | ---------- |
 | **I.1** | Dependency-lens closure posture — single `ClassifiedDependencyView<C>` authority for parallelism/effect/ownership/idempotency; honest classifier tables; no parallel roster fields | **GREEN (design ratified)** — four families on main post-#4264/#4292 | This worksheet |
-| **I.1.1** | UnknownCoupling (and peers) ratification/collapse into a typed unresolved coproduct | **NOT STARTED** — execute if pulled forward | Class 2 child `adhoc-8b1709c7-7c0` |
+| **I.1.1** | UnknownCoupling (and peers) ratification/collapse into a typed unresolved coproduct | **PARTIAL (parallelism landed)** — `UnknownCoupling` → `UnresolvedCoupling { diagnostic }`; `ReadsParallelismFacts` classifies via `tree.facts.lookup(dependency.source)` and projects from the returned `Witness<InferredFacts>` (lookup `Violates` or admitted-facts descent). `feature:T-13-parallelism-relation-unresolved` remains open until substrate carries a decodable parallelism coupling fact | Class 2 child `adhoc-8b1709c7-7c0` |
 | **I.3** | Corpus-runner contract for the two unsupported subject families (promote-vs-keep-unsupported) + §5.0.2 CI-needs predicate | **GREEN (design-only)** — types/authority doc; no runtime | This worksheet |
 
 ### 1.1 Layering vs adjacent worksheets
@@ -80,7 +80,7 @@ Metric allowed only as secondary:
 | ----------- | ----- | ------------ |
 | RR-A (Branch A runtime engine) | Ratified #4296 | **Consume** A.2 survey + manual 5-row wedge; do not re-litigate `run_test_claim` ownership |
 | T-13 family ratchet (#4264, #4292) | MERGED | Prerequisite — the four families are the closure subject, not re-authored here |
-| #3468 signature-derived effect-kind set | Open (BLOCKING follow-up) | Dissolves **only** the `effect` kind-set and `ownership` access-carrier scaffolds; the `parallelism` / `idempotency` / `ownership-mode` `*-unresolved` predicates dissolve on their own per-coproduct triggers (§2 table). This PR documents, does not dissolve |
+| #3468 signature-derived effect-kind set | Open (BLOCKING follow-up) | Dissolves **only** the `effect` kind-set and `ownership` access-carrier scaffolds; `parallelism` typed-unresolved collapse landed in I.1.1 but the per-coproduct `feature:T-13-parallelism-relation-unresolved` trigger is **not** closed until a substrate coupling carrier on `InferredFacts` exists (§2 table). `idempotency` / `ownership-mode` dissolve on their own triggers. |
 | I.1.1 collapse lane | Class 2 child | RR-I states the contract; collapse PR cites §4 R1–R4 |
 
 ---
@@ -100,7 +100,7 @@ grep -n 'type DependencyKindClassifier\|type ClassifiedDependencyView' src/v4/st
 
 | Lens | Classification coproduct | Classifier honesty | Single-authority evidence |
 | ---- | ------------------------ | ------------------ | ------------------------- |
-| `parallelism` | `ParallelismRelation = DataDependent \| EffectCoupled \| BarrierCoupled \| UnknownCoupling` | 9 of 15 `DependencyKind`s map to `UnknownCoupling` — **honest** (does not fabricate coupling it cannot derive) | `ParallelismFact.dependencies: List<ClassifiedDependencyView<ParallelismRelation>>` — no copied endpoints |
+| `parallelism` | `ParallelismRelation = DataDependent \| EffectCoupled \| BarrierCoupled \| UnresolvedCoupling { diagnostic }` | 9 of 15 `DependencyKind`s map to `ReadsParallelismFacts`; lookup `Violates` carries the witness diagnostic; lookup `Holds` projects from admitted `InferredFacts` (descent witness, else coupling-carrier-absent at `facts.grounding.node`) — **honest** (no `DependencyKind` heuristic promotion) | `ParallelismFact.dependencies: List<ClassifiedDependencyView<ParallelismRelation>>` — no copied endpoints |
 | `effect` | `EffectClassification {}` — single signature-deferred slot | Effect kind routed via `tree.facts.lookup(dependency.source)`; `DependencyKind` is NOT the effect authority (B3 / P2 / Practice 5) | Parametric `ClassifiedDependencyView<EffectClassification>`; closing the kind set is #3468 |
 | `ownership` | `OwnershipMode = OwnedContainment \| SharedRead \| RequiresAccessWitness \| BorrowedDependency \| UnknownOwnership` | Access/alias-mode evidence routed via `RequiresAccessWitness`; closed access carrier is a #3468 follow-up | `ClassifiedDependencyView<OwnershipMode>` — no parallel substrate |
 | `idempotency` | `IdempotencyVerdict = AlgebraicIdempotenceProven { law: Witness<InferredFacts> } \| RequiresAlgebraWitness` (the law `Witness` itself carries `Holds`/`Violates { diagnostic }`) | Algebra-law witness IS the verdict payload; edge identity authority is `ClassifiedDependencyView.dependency` | No nested per-row `EffectDependencyFact` |
@@ -112,7 +112,7 @@ grep -n 'type DependencyKindClassifier\|type ClassifiedDependencyView' src/v4/st
 
    | Lens | Gate mark (live) | Concrete dissolution trigger | #3468? |
    | ---- | ---------------- | ---------------------------- | ------ |
-   | `parallelism` | `feature:T-13-parallelism-relation-unresolved` | substrate projects `ParallelismRelation` resolved/unresolved from coproduct (`parallelism.dag:75`) | No |
+   | `parallelism` | `feature:T-13-parallelism-relation-unresolved` | substrate projects `ParallelismRelation` resolved/unresolved directly from a parallelism coupling carrier on `InferredFacts` (I.1.1 landed typed unresolved + lookup/admitted-facts routing only) | No |
    | `idempotency` | `feature:T-13-idempotency-verdict-unresolved` | substrate projects `IdempotencyVerdict` resolved/unresolved from coproduct (`idempotency.dag:82`) | No |
    | `ownership` (mode) | `feature:T-13-ownership-mode-unresolved` | substrate projects `OwnershipMode` resolved/unresolved from coproduct (`ownership.dag:77`) | No |
    | `ownership` (access carrier) | (status note `ownership.dag:3`) | deriving the closed access carrier behind `RequiresAccessWitness` | Yes (#3468 follow-up) |
@@ -180,7 +180,7 @@ Default deliverable is this types/authority doc, NOT an `eval_parallel` runtime 
 
 ```text
 1. RR-I merged (this doc) — manager may pull I.1.1 forward.
-2. I.1.1 (if dispatched): collapse UnknownCoupling/peers into typed unresolved coproduct
+2. I.1.1 (parallelism partial): collapse UnknownCoupling into typed unresolved coproduct + lookup/admitted-facts routing
    sourced from a derived fact — cites §4 R1–R4. Design contract is §2 here.
 3. I.3 promotion (only when trigger T or T' fires): land the projection OR escalate the
    parametric-evaluator substrate PR; move the row out of unsupported_rows (§4 R6/R7).
@@ -207,7 +207,7 @@ Default deliverable is this types/authority doc, NOT an `eval_parallel` runtime 
 
 ## §7 Downstream handoffs (§6.7)
 
-- **I.1.1 child (`adhoc-8b1709c7-7c0`)**: consume §2 closure contract + §4 R1–R4 before any UnknownCoupling collapse.
+- **I.1.1 child (`adhoc-8b1709c7-7c0`)**: parallelism typed-unresolved collapse landed; per-coproduct dissolution trigger remains until substrate coupling carrier exists.
 - **Runtime/TestClaim Mgr**: corpus promotion (§3 trigger T/T') is an implementation lane; the parametric-evaluator path (T') requires an L2.5 substrate model PR — escalate, do not improvise (`run_test_claim` is load-bearing per SELF_HOSTING).
 - **#3468 lane**: closes the `effect` signature-derived kind set and the `ownership` access carrier only; the `parallelism` / `idempotency` / `ownership-mode` `*-unresolved` predicates dissolve on their own per-coproduct triggers (§2 table), independent of #3468.
 
@@ -218,7 +218,7 @@ Default deliverable is this types/authority doc, NOT an `eval_parallel` runtime 
 - [x] Single-authority: one `ClassifiedDependencyView<C>` per family; one `run_test_claim` interpreter
 - [x] Distinct from RR-A (runtime engine) and #3468 (kind-set closure) — no shared fork
 - [x] Spot-fix forbidden: copy-a-fifth-family, per-family runner fork, heuristic UnknownCoupling promotion, silent unsupported-row drop
-- [x] Non-goals accepted: Complexity/Cost/TableDecisionTree registry migration; `T-13-*-unresolved` scaffold dissolution of any family (per-family triggers in §2, not all #3468); eval_parallel runtime
+- [x] Non-goals accepted: Complexity/Cost/TableDecisionTree registry migration; `T-13-*-unresolved` scaffold dissolution of non-parallelism families (per-family triggers in §2, not all #3468); eval_parallel runtime
 - [x] Corpus contract: promote-via-projection-or-escalated-parametric, else keep explicitly unsupported with typed trigger
 - [x] §5.0.2 CI-needs predicate accepted (eval_parallel gated p95>15m OR shadow>5m OR queue>3d)
 - [x] Falsification R1–R7 accepted
