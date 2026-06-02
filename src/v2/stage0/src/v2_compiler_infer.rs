@@ -35,9 +35,10 @@ pub use crate::v2_compiler_infer_emit_info::{
     EmitInfoBuildState, TypeRepr, TypeSummary,
 };
 pub use crate::v2_compiler_infer_env::{
-    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
+    empty_lookup_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
     is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
-    merge_inductive_fields, put_inductive_field, put_inductive_field_cross, TypeBinding, TypeEnv,
+    merge_inductive_fields, merge_lookup_caches, put_inductive_field, put_inductive_field_cross,
+    warm_lookup_cache, TypeBinding, TypeEnv,
 };
 use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
@@ -316,6 +317,19 @@ pub struct InferScopeComponents {
     pub func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
     pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     pub svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+}
+
+pub fn scope_with_type_env(scope: Rc<InferScope>, env: Rc<TypeEnv>) -> Rc<InferScope> {
+    Rc::new(InferScope {
+        type_env: env,
+        func_env: scope.func_env.clone(),
+        locals: scope.locals.clone(),
+        match_bound_names: scope.match_bound_names.clone(),
+        module_name: scope.module_name.clone(),
+        service_registry: scope.service_registry.clone(),
+        item_registry: scope.item_registry.clone(),
+        lambda_param_provenance: scope.lambda_param_provenance.clone(),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1538,7 +1552,7 @@ pub fn annotate_pattern_parent_enums(
                     resolved_scrut.clone(),
                     variant_name.clone(),
                     scope.module_name.clone(),
-                    scope.type_env.clone().source_indices.clone(),
+                    scope.type_env.clone(),
                     (bindings.clone().len() as i64),
                 );
                 let variant_subject = lookup_result_subject(variant_lookup);
@@ -1553,7 +1567,7 @@ pub fn annotate_pattern_parent_enums(
                                     scope.type_env.clone().source_indices.clone(),
                                 ),
                                 scope.module_name.clone(),
-                                scope.type_env.clone().source_indices.clone(),
+                                scope.type_env.clone(),
                             );
                             let field_subject = lookup_result_subject(field_lookup.clone());
                             make_field_binding_node(
@@ -1821,7 +1835,7 @@ pub fn extend_scope_with_pattern_node(
                 resolved_scrut,
                 vname.clone(),
                 scope.module_name.clone(),
-                scope.type_env.clone().source_indices.clone(),
+                scope.type_env.clone(),
                 (bindings.clone().len() as i64),
             );
             let variant_subject = lookup_result_subject(variant_lookup.clone());
@@ -1840,7 +1854,7 @@ pub fn extend_scope_with_pattern_node(
                         variant_subject.clone(),
                         field_name.clone(),
                         scope.module_name.clone(),
-                        scope.type_env.clone().source_indices.clone(),
+                        scope.type_env.clone(),
                     );
                     let field_subject = lookup_result_subject(field_lookup.clone());
                     let field_type = pattern_binding_type(field_subject.clone());
@@ -2372,7 +2386,7 @@ pub fn infer_expr(
                     match lookup_field_type_node(
                         resolved_base.clone(),
                         field_name.clone(),
-                        scope.type_env.clone().source_indices.clone(),
+                        scope.type_env.clone(),
                     ) {
                         Some(field_type) => {
                             let field_summary = field_summary_for_type(
@@ -2713,8 +2727,9 @@ pub fn infer_expr(
                         } else {
                             call_fold_acc_type.clone()
                         };
-                        let method_resolution = resolve_known_method_node(
+                        let method_result = resolve_known_method_node(
                             method_receiver.clone(),
+                            scope.type_env.clone(),
                             first_arg_type.clone(),
                             func_name.clone(),
                             if (call_fold_info.clone() != None) {
@@ -2723,8 +2738,9 @@ pub fn infer_expr(
                                 None
                             },
                             scope.service_registry.clone(),
-                            scope.type_env.clone().source_indices.clone(),
                         );
+                        let method_resolution = method_result.resolution.clone();
+                        let scope = scope_with_type_env(scope.clone(), method_result.env.clone());
                         let is_known_method = (method_resolution.result_type.clone() != None);
                         if (is_known_method && ((typed_args.clone().len() as i64) > 0)) {
                             {
@@ -3258,8 +3274,9 @@ match bare_s {
                     } else {
                         fold_acc_type.clone()
                     };
-                let method_resolution = resolve_known_method_node(
+                let method_result = resolve_known_method_node(
                     recv_typed.clone(),
+                    scope.type_env.clone(),
                     recv_rt.clone(),
                     method_name.clone(),
                     if (fold_info.clone() != None) {
@@ -3268,8 +3285,9 @@ match bare_s {
                         None
                     },
                     scope.service_registry.clone(),
-                    scope.type_env.clone().source_indices.clone(),
                 );
+                let method_resolution = method_result.resolution.clone();
+                let scope = scope_with_type_env(scope.clone(), method_result.env.clone());
                 let pipe_fb = match method_resolution.result_type.clone() {
                     Some(rt) => Rc::new(MethodPipeFallback {
                         result_ty: rt.clone(),
@@ -10434,6 +10452,7 @@ pub fn build_type_env(
             inductive_fields: node_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            lookup_cache: empty_lookup_cache(),
         });
         let imports_std_types = {
             let mut __found = false;
@@ -10539,6 +10558,12 @@ pub fn build_type_env(
                 merge_inductive_fields(acc, env.inductive_fields.clone())
             },
         );
+        let import_lookup_cache = parent_envs.clone().iter().cloned().fold(
+            empty_lookup_cache(),
+            |acc: Rc<LookupCache>, env: Rc<TypeEnv>| {
+                merge_lookup_caches(acc, env.lookup_cache.clone())
+            },
+        );
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
             recursive_types: import_recursive,
@@ -10546,6 +10571,7 @@ pub fn build_type_env(
             inductive_fields: import_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            lookup_cache: import_lookup_cache.clone(),
         });
         let import_diags = Rc::new({
             let mut __result = Vec::new();
@@ -10804,6 +10830,7 @@ pub fn build_type_env(
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            lookup_cache: empty_lookup_cache(),
         });
         let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
         let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone()))
@@ -10871,6 +10898,7 @@ pub fn build_type_env(
             inductive_fields: merged_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            lookup_cache: empty_lookup_cache(),
         });
         let resolved = resolve_env_bindings(
             unresolved_env,
@@ -10880,14 +10908,28 @@ pub fn build_type_env(
         );
         let resolved_env_out = resolved.env.clone();
         let resolved_diags = resolved.diagnostics.clone();
-        let final_env = Rc::new(TypeEnv {
+        let final_env_base = Rc::new(TypeEnv {
             bindings: resolved_env_out.bindings.clone(),
             recursive_types: resolved_env_out.recursive_types.clone(),
             recursive_type_set: resolved_env_out.recursive_type_set.clone(),
             inductive_fields: resolved_env_out.inductive_fields.clone(),
             source_indices: resolved_env_out.source_indices.clone(),
             intern_table: intern_table.clone(),
+            lookup_cache: import_lookup_cache.clone(),
         });
+        let binding_nodes = Rc::new(v2_rt::map_keys(&resolved_env_out.bindings.clone()))
+            .iter()
+            .cloned()
+            .fold(Rc::new(vec![]), |acc: _, ident: i64| {
+                match v2_rt::map_get(&resolved_env_out.bindings.clone(), ident.clone()) {
+                    Some(b) => v2_rt::concat(acc.clone(), Rc::new(vec![b.resolved.clone()])),
+                    None => acc.clone(),
+                }
+            });
+        let final_env = warm_lookup_cache(
+            final_env_base,
+            v2_rt::concat(module_items(module.module.clone()), binding_nodes),
+        );
         Rc::new(BuildTypeEnvResult {
             env: final_env,
             diagnostics: v2_rt::concat(import_diags, resolved_diags),
@@ -11031,6 +11073,7 @@ pub fn build_type_env_unresolved(
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            lookup_cache: empty_lookup_cache(),
         });
         let imports_std_types = {
             let mut __found = false;
@@ -11136,6 +11179,12 @@ pub fn build_type_env_unresolved(
                 merge_inductive_fields(acc, env.inductive_fields.clone())
             },
         );
+        let import_lookup_cache = parent_envs.clone().iter().cloned().fold(
+            empty_lookup_cache(),
+            |acc: Rc<LookupCache>, env: Rc<TypeEnv>| {
+                merge_lookup_caches(acc, env.lookup_cache.clone())
+            },
+        );
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
             recursive_types: import_recursive,
@@ -11143,6 +11192,7 @@ pub fn build_type_env_unresolved(
             inductive_fields: import_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            lookup_cache: import_lookup_cache,
         });
         let local_bindings = module_items(module.module.clone()).iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
@@ -11275,6 +11325,7 @@ pub fn build_type_env_unresolved(
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            lookup_cache: empty_lookup_cache(),
         });
         let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
         let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone()))
@@ -11342,6 +11393,7 @@ pub fn build_type_env_unresolved(
             inductive_fields: merged_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            lookup_cache: empty_lookup_cache(),
         });
         Rc::new(BuildTypeEnvResult {
             env: unresolved_env,
@@ -12053,6 +12105,7 @@ pub fn topo_resolve_types(
                         inductive_fields: env.inductive_fields.clone(),
                         source_indices: env.source_indices.clone(),
                         intern_table: env.intern_table.clone(),
+                        lookup_cache: env.lookup_cache.clone(),
                     }),
                     diagnostics: v2_rt::concat(
                         diagnostics.clone(),
@@ -12119,6 +12172,7 @@ pub fn topo_resolve_types(
                 inductive_fields: env.inductive_fields.clone(),
                 source_indices: env.source_indices.clone(),
                 intern_table: env.intern_table.clone(),
+                lookup_cache: env.lookup_cache.clone(),
             });
             let __tco_2 = v2_rt::concat(diagnostics, ready_accum.diagnostics.clone());
             let __tco_3 = (fuel - 1);
