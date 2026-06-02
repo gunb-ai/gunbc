@@ -1,7 +1,7 @@
 // src/v4/workflow/ci.dag
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; Wave-0 TestClaim roster selection.
 // Wave-0 partial close (this PR): T-21/T-24 affected-set authority, detect-affected-components.sh dissolution, runner-pool/M1 facts modeled.
-// T-24 CI/YAML authority bridge (emitter wired, hand-authored ci.yml deleted) remains open per src/v4/TASKS.md §T-24 — interim hand ci.yml edits are transport wiring only, not YAML-authority dissolution.
+// CI/YAML authority bridge remains open under ROADMAP.md T-PB-B / `pb_rust_tests_outside_residual_zero` plus workflow TestClaim receipts — interim hand ci.yml edits are transport wiring only, not YAML-authority dissolution.
 // Status: filled — declarative core + eager well-formedness + T-21/T-24 component affected-set + T-24 bankruptcy Tier-0: `ci_select_ci_jobs_from_affected_set`; I2–I4 v2/v3 commands; I7 `V4T15SelfHostFixedPointCommand`; I5/I6/I8 via existing bootstrap/M1/corpus jobs; TestClaim roster selection + P5 Layer 2 structural bridge (positive-Y `ci_upsert_testclaim_corpus_eval_*`; T-38-PR2 runtime verdict CI remains open).
 
 module v4.workflow.ci
@@ -481,7 +481,7 @@ type LensCiLiveWorkflowSignal {
   semantic_target: String
 }
 
-// 🟡 gated — live-workflow projection interim (docs/modeling-discipline.md Practice 2/10) — feature:project-github-actions-landed — consumer:CiLiveWorkflowStepSignal strict env projection — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads typed step env from `ci_pipeline`/command policy rows and this bridge carrier is deleted; forbidden: encoding absent env bindings as empty strings.
+// 🟡 gated — live-workflow projection interim (docs/modeling-discipline.md Practice 2/10) — feature:project-github-actions-landed — consumer:CiLiveWorkflowStepSignal strict env projection — bind ROADMAP.md T-PB-B + src/v4/test/claim/workflow/ci_component_affected.dag — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads typed step env from `ci_pipeline`/command policy rows and this bridge carrier is deleted; forbidden: encoding absent env bindings as empty strings.
 type StrictEnvBinding
   = NoStrictEnvBinding
   | StrictEnvBinding { var: String, value: String }
@@ -492,7 +492,7 @@ type CiWorkflowHostScript
   = ShellScript { path: String }
   | NoShellScript
 
-// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind ROADMAP.md T-PB-B + src/v4/test/claim/workflow/runner_pool_m1_probe.dag — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
 type CiLiveWorkflowStepSignal {
   binding_smoke_step_name: String
   step_name: String
