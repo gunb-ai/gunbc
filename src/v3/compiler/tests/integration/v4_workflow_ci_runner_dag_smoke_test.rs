@@ -23,6 +23,14 @@
 //! Dissolve-on: A15 Shape-B/T-24 emitted `ci.yml` plus `.dag` TestClaim execution covers the
 //! live component receipt and Wave 3 deferral without this hand-Rust parse harness.
 //!
+//! **INVARIANTS P5 — checkable receipt for PR #4251 (`infra_isolation` required-path):** feature
+//! `infra-isolation-required-gate`; consumers `v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path`,
+//! `v4_workflow_ci_wave1_*`, `v4_workflow_ci_wave3_node_selection_still_shadow_*`. SAME-PATH edit:
+//! updates the existing `ci`-aggregator-needs assertions to the `[affected, ci_floor, infra_isolation]`
+//! triple — no new test fn or authority surface (the modeled de-priv guard's coverage is the
+//! byte-for-byte carrier structural-match, not a hand-Rust binding test; ROADMAP row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero`). Dissolve-on: same A15 Shape-B/T-24 lane as above.
+//!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
@@ -1171,9 +1179,8 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor]")
-            || CI_YML.contains("needs: [affected, ci_floor]\n"),
-        "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt plus `ci_floor`"
+        CI_YML.contains("needs: [affected, ci_floor, infra_isolation]"),
+        "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
     );
     assert!(
         CI_YML.contains("needs.affected.result"),
@@ -1417,8 +1424,8 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         "{CI_YML_PATH}: legacy parallel lanes dissolved"
     );
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor]"),
-        "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt plus `ci_floor`"
+        CI_YML.contains("needs: [affected, ci_floor, infra_isolation]"),
+        "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
     );
     assert!(
         CI_YML.contains("  affected:") && !CI_YML.contains("  affected:\n    if: github.event.pull_request.draft != true\n    continue-on-error: true"),
@@ -1447,8 +1454,8 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     );
     assert!(
         CI_WORKFLOW_DAG.contains("id: \"ci\"")
-            && CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_floor\"]"),
-        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt plus `ci_floor`"
+            && CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_floor\", \"infra_isolation\"]"),
+        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
     );
     let affected_job = workflow_dag_job_block(CI_WORKFLOW_DAG, "affected");
     assert!(
@@ -1639,7 +1646,8 @@ fn v4_workflow_ci_wave3_live_emit_deferred_in_ci_yml() {
 #[test]
 fn v4_workflow_ci_wave3_node_selection_still_shadow_while_component_receipt_live() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor]") && CI_YML.contains("needs.affected.result"),
+        CI_YML.contains("needs: [affected, ci_floor, infra_isolation]")
+            && CI_YML.contains("needs.affected.result"),
         "{CI_YML_PATH}: component affected-set receipt must be live"
     );
     let ci_floor_block = CI_YML
