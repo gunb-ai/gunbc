@@ -3,10 +3,12 @@
 //! Authority: `src/v4/lens/leaf_model_verification.dag`,
 //! `src/v4/extdeps/typecheckers/{pyright,mypy}.dag`, and
 //! `src/v4/test/claim/language_model/python_l1_static.dag`.
-//! Host runners: `scripts/v4-leaf-model-python-l1-{static,mypy-static}-verify.sh`.
+//! Host runner (Worksheet B, in-tree): `scripts/v4-leaf-model-python-l1-mypy-static-verify.sh`.
+//! Pyright Worksheet A `.dag` authorities are on-tree; the pyright host runner path is not
+//! (deleted `scripts/v4-leaf-model-python-l1-static-verify.sh` in #4252 script hygiene).
 //!
 //! **P5 receipt (`.github/PULL_REQUEST_TEMPLATE.md` Per-PR gate, disposition (2)):** same-PR
-//! `EXPECTED_HAND_AUTHORED_TEST` census delta **168 → 169** paths (literal in
+//! `EXPECTED_HAND_AUTHORED_TEST` census delta **171 → 172** paths (literal in
 //! `sg0_census_test.rs`; T-PB-B partition: module doc lines 9–10 +
 //! `tests/boundary/README.md`). Workstream/lane (in-tree):
 //! `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet B (#4137 §11.8).

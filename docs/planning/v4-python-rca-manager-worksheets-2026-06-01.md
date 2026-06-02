@@ -8,7 +8,7 @@ Authority rows:
 - Profile: `src/v4/extdeps/typecheckers/pyright.dag` (`pyright_profile_l1`).
 - Fixture: `src/v4/lens/leaf_model_verification.dag` (`python_l1_static_fixture`).
 - Claim wiring: `src/v4/test/claim/language_model/python_l1_static.dag`.
-- Runner: `scripts/v4-leaf-model-python-l1-static-verify.sh`.
+- Runner: `scripts/v4-leaf-model-python-l1-static-verify.sh` (removed from tree in #4252 script hygiene; pyright `.dag` rows remain authoritative until the host runner is restored).
 
 Fixture: a function annotated `-> int` returns `str`. CPython compile and runtime both miss this when the return value is not consumed. pyright must reject it with `reportReturnType` under the modeled profile. This proves a third static authority; it is not CPython compile/runtime and not L2 behavioral parity.
 
