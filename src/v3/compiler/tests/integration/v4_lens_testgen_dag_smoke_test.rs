@@ -190,12 +190,17 @@ fn v4_lens_testgen_wave0_nat_symbol_import_authority() {
         "nat-law AlgebraLawSubject algebra/inhabitant must project from `v4.std.nat` substrate Symbol bundle (no shared bootstrap placeholders)"
     );
     let names = import_names_for_path(&testgen, &["v4", "std", "nat"]).expect(
-        "testgen must import `v4.std.nat` for AlgebraLawSubject Symbol carriers (parsed `Import`)",
+        "testgen must import `v4.std.nat` for AlgebraLawSubject obligation carriers (parsed `Import`)",
     );
     for sym in [
-        "nat_algebra_law_subject_symbol_additive_monoid",
-        "nat_algebra_law_subject_symbol_commutative_semiring",
-        "nat_algebra_law_subject_symbol_inhabitant_nat",
+        "NatAlgebraLawObligation",
+        "nat_declared_algebra_law_obligations",
+        "law_nat_add_associativity",
+        "law_nat_add_left_identity",
+        "law_nat_add_right_identity",
+        "law_nat_mul_annihilator",
+        "law_nat_mul_associativity",
+        "law_nat_mul_left_identity",
     ] {
         assert!(
             names.iter().any(|n| n == sym),
@@ -363,7 +368,8 @@ fn assert_nat_algebra_law_subject_symbols_in_substrate(nat_src: &str) {
     }
 }
 
-/// Pin the six Nat algebra-law anchors while allowing a single helper-owned AlgebraLaw constructor.
+/// Pin the six Nat algebra-law anchors while allowing only the scheduled row and helper-owned
+/// AlgebraLaw constructors.
 fn assert_six_algebra_law_subject_paths_in_testgen(testgen_src: &str) {
     assert!(
         testgen_src.contains("fn testgen_concept_for_manual_claim"),
@@ -381,8 +387,8 @@ fn assert_six_algebra_law_subject_paths_in_testgen(testgen_src: &str) {
     );
     assert_eq!(
         testgen_src.matches("value: AlgebraLaw {").count(),
-        1,
-        "AlgebraLaw construction should be centralized after helper projection"
+        2,
+        "AlgebraLaw construction should stay limited to scheduled dispatch plus helper projection"
     );
     let helper = between(
         testgen_src,
