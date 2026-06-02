@@ -15,9 +15,12 @@ use std::path::Path;
 use crate::dag::{ArrowBody, AtomPayload, Dag, DeclarationId, LiteralBits, TypeConnective};
 use crate::evaluator::{EvalError, EvalStateStack, EvalStrategy, NamedField, Value};
 use emit_host_runner::{
-    EmitHostFixtureInputs, EmitHostRunReceipt, EmitHostTransportInputs, ExitWitness, HostExit,
+    EmitHostRunReceipt, EmitHostTransportInputs, ExitWitness, HostExit,
     HostExitOutcome, HostLogicalFailure, HostSetupFailure,
 };
+
+#[cfg(test)]
+use emit_host_runner::EmitHostFixtureInputs;
 
 type HostTransportRun =
     fn(&str, &EmitHostTransportInputs, &Path) -> Result<EmitHostRunReceipt, HostSetupFailure>;
@@ -1061,7 +1064,7 @@ fn emit_host_receipt_value(
 mod tests {
     use super::*;
     use crate::compile_to_dag_modules_in_order;
-    use crate::dag::{AtomPayload, Dag, Declaration, TypeConnective};
+    use crate::dag::{ArrowBody, AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, TypeConnective};
     use crate::diagnostics::SourceSpan;
     use crate::evaluator::{EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder};
     use crate::CompileError;
@@ -1089,6 +1092,65 @@ mod tests {
 
     fn optional_present_value(dag: &Dag, value: Value) -> Value {
         optional_variant(dag, "Some", value)
+    }
+
+    fn span(file: &str) -> SourceSpan {
+        SourceSpan::new(file, 0, 1)
+    }
+
+    fn atom_decl(dag: &mut Dag, name: &str, file: &str) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective: TypeConnective::Atom(AtomPayload::TypeParam(name.to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn run_emit_host_decl(dag: &mut Dag, name: &str, file: &str) -> DeclarationId {
+        let target = atom_decl(dag, "TargetModel", file);
+        let source = atom_decl(dag, "TargetSource", file);
+        let inputs = atom_decl(dag, "Inputs", file);
+        let output = atom_decl(dag, "OutcomeEmitHostRunReceipt", file);
+        let body_value = dag.push_value(LiteralBits::Bool(false), span(file));
+        let bind = dag.push_bind(
+            "transport_not_wired_body",
+            body_value,
+            Vec::new(),
+            span(file),
+        );
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective: TypeConnective::Arrow {
+                inputs: vec![target, source, inputs],
+                output,
+                body: ArrowBody::UserDefined(
+                    BindNodeId::from_bind_node(dag, bind).expect("bind body"),
+                ),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
     }
 
     fn empty_eval_state() -> EvalStateStack<Value> {
@@ -1403,6 +1465,84 @@ mod tests {
                 EVAL_DISPATCH_PYTHON_FIXTURE.to_string()
             )),
             "eval dispatch must invoke emit_host_runner with the source operand"
+        );
+    }
+
+    #[test]
+    fn emit_host_fixture_inputs_rejects_malformed_host_claim_pin() {
+        let dag = Dag::new();
+        let inputs = Value::RecordValue(vec![
+            NamedField {
+                label: "root".to_string(),
+                value: Value::LiteralValue(LiteralBits::String("eval_root_pin".to_string())),
+            },
+            NamedField {
+                label: "expected_eval_root".to_string(),
+                value: optional_present_value(
+                    &dag,
+                    Value::LiteralValue(LiteralBits::String("expected_eval_pin".to_string())),
+                ),
+            },
+            NamedField {
+                label: "host_claim_pin".to_string(),
+                value: Value::LiteralValue(LiteralBits::String("not_optional".to_string())),
+            },
+        ]);
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+        let err = emit_host_fixture_inputs(&dag, &inputs, &mut state, &strategy)
+            .expect_err("malformed host_claim_pin must fail closed");
+        assert_eq!(
+            err,
+            EvalError::BadTransformOperands {
+                reason: "expected Inputs optional field to be Optional variant"
+            }
+        );
+    }
+
+    #[test]
+    fn host_setup_failure_reason_maps_variant() {
+        assert_eq!(
+            host_setup_failure_reason(&HostSetupFailure::EmptyClaimInputRoot),
+            "emit_host_setup_empty_claim_input_root"
+        );
+    }
+
+    #[test]
+    fn go_eval_dispatch_claims_only_emit_host_authority_decl() {
+        let mut dag = Dag::new();
+        let go_decl = run_emit_host_decl(
+            &mut dag,
+            "run_emit_host_go",
+            "src/v4/compiler/emit_host.dag",
+        );
+        let lookalike_decl =
+            run_emit_host_decl(&mut dag, "run_emit_host_go", "src/v4/compiler/other.dag");
+        let rust_decl = run_emit_host_decl(
+            &mut dag,
+            "run_emit_host_rust",
+            "src/v4/compiler/emit_host.dag",
+        );
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+
+        let claimed =
+            try_dispatch_emit_host_go(&dag, go_decl, &[], &mut state, &strategy).expect("claimed");
+        assert_eq!(
+            claimed,
+            Err(EvalError::TransformArityMismatch {
+                expected: 3,
+                got: 0
+            }),
+            "the Go hook must claim the substrate run_emit_host_go declaration before user-body eval"
+        );
+        assert!(
+            try_dispatch_emit_host_go(&dag, lookalike_decl, &[], &mut state, &strategy).is_none(),
+            "same-name declarations outside emit_host.dag must not be intercepted"
+        );
+        assert!(
+            try_dispatch_emit_host_go(&dag, rust_decl, &[], &mut state, &strategy).is_none(),
+            "run_emit_host_rust must stay on the Rust dispatch hook"
         );
     }
 }
