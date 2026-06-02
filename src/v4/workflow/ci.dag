@@ -464,7 +464,7 @@ type CiComponentAffected {
 // `Rejected` selects the superset `ci_component_affected_fail_closed` (all flags true).
 // Uses canonical `Outcome<GitDiffNameOnly>` from std.diagnostic (Practice 10 — no parallel read carrier).
 // RULING-1: 🟢 pretty-much-done — self-hosted fleet substrate (operator 2026-05-28: srv1/srv2 Ampere Altra / Arm64).
-// Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
+// Consumed by YamlStatic workflow projection.
 // Fleet arch is a closed operator fact as `arch: Symbol` (not a sum type — avoids Lens-CI coproduct resolution).
 // 🟡 gated — feature:formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 type SelfHostedRunnerPool {
@@ -622,7 +622,7 @@ data ci_runner_isolation_policy: RunnerIsolationPolicy = {
 //   INTERIM (operator 2026-06-01, "stop the bleeding"): the ci.yml `Cache Cargo` key was
 //   de-churned (Cargo.lock+toolchain only) so restores actually hit and stop evicting the warm
 //   v2 `gunbc-bin` cache. This is transport repair of an existing block, not new design surface,
-//   and does NOT touch the two dominant ci_floor steps (M1 emit-probe cargo-check ~13m, v2→v4
+//   and does NOT touch the two dominant ci_floor steps (M1 emit-probe v2 compile, v2→v4
 //   bootstrap ~9m) — those compile freshly-emitted trees in $RUNNER_TEMP whose target/ is
 //   discarded each run, so only content-addressed sccache (the modeled projection) can warm them.
 
@@ -644,11 +644,11 @@ data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
 data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   step: CiLiveWorkflowStepSignal {
     binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
-    step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
+    step_name: "M1 v4 full-tree rust emit probe (v2 emit)"
     host_script: ShellScript { path: ".github/ci-floor/v4-m1-rust-emit-probe.sh" }
     non_blocking: false
     timeout_minutes: 20
-    strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" }
+    strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" } // reserved; gate is emit receipt only
   }
   rust_emit_probe_policy: M1RustEmitProbePolicy {
     emit_preconditions_block_required_path: true
@@ -4338,32 +4338,6 @@ fn ci_runner_isolation_policy_valid(p: RunnerIsolationPolicy) -> Bool {
 
 // Receipt: the runner de-priv regression guard is modeled as a fail-closed, required-path floor.
 data ci_runner_isolation_policy_ok: Bool = ci_runner_isolation_policy_valid(p: ci_runner_isolation_policy)
-
-
-// RULING-1: 🟢 operator fact — M1 rust-emit probe parallelism. The emitted-tree `cargo check` runs
-// JOBSERVER-COUPLED: the host token pool bounds rustc processes across all runners, so the check
-// fills the machine when idle and pares down under load — NOT a fixed projection. Two coupling
-// sources: (1) on GHA, the actions-runner@.service systemd unit exports MAKEFLAGS=--jobserver-auth,
-// so raw cargo joins the pool directly (ctrl-build is NOT installed on GHA runners); (2) in session
-// containers, ctrl-build sets MAKEFLAGS from CTRL_JOBSERVER_FIFO and adds the MemAvailable picker +
-// sccache. NO FALLBACK: the inherited MAKEFLAGS path is taken only when the jobserver source is
-// VALIDATED usable (live FIFO/fds, not a substring match); if NEITHER coupling is usable the probe
-// fails closed (operator policy: a missing/stale jobserver coupling must surface immediately, never
-// a silent uncoupled run).
-//   `m1_probe_cargo_check_jobs_ceiling` — per-invocation `--jobs` ceiling on the raw/GHA path; the
-//     jobserver pares actual concurrency below it. (On the ctrl-build path the MemAvailable picker
-//     governs instead.)
-// ci_srv1_pool/ci_srv2_pool retain host capacity facts for YamlStatic projection follow-on (T-24/#98).
-// 🟡 gated — feature:elastic-compute-fabric — the "jobserver÷runner allocation rule" (the old
-//   Wave-0 TODO) is realized at runtime by the host jobserver (runner-unit MAKEFLAGS on GHA,
-//   ctrl-build in session containers); its first-authority model is
-//   dsl/std/compute_fabric.dag (Worksheet A, landed PR #4095). dissolve-on-arrival: when
-//   compute_fabric's `satisfies` lease predicate lands (cases 7–8, currently a P-CF-WITNESS stub),
-//   this ceiling scalar is replaced by a projected ComputeLease/WorkDemand over the
-//   SelfHostedRunnerPool supply rows. forbidden until then: fabricating a lease projection on the
-//   unfinished predicate, or re-pinning a single fixed `cargo check --jobs` operating point
-//   (parallelism is memory-governed, not a fixed number).
-data m1_probe_cargo_check_jobs_ceiling: Int = 64
 
 
 fn ci_char_projection_out_of_range_injective_witness() -> Bool {
