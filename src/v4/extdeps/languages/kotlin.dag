@@ -262,10 +262,27 @@ data kotlin_tag_scalar_char: Symbol = kotlin_tag_scalar_char
 data kotlin_tag_scalar_string: Symbol = kotlin_tag_scalar_string
 data kotlin_tag_scalar_unit: Symbol = kotlin_tag_scalar_unit
 data kotlin_tag_scalar_nothing: Symbol = kotlin_tag_scalar_nothing
-data kotlin_integer_overflow_unspecified: KotlinIntegerOverflowUnspecified = KotlinIntegerOverflowUnspecified
-data kotlin_platform_specific_runtime_representation: KotlinRuntimeRepresentation = KotlinRuntimeRepresentation
-data kotlin_singleton_object: KotlinSingletonInhabitance = KotlinSingletonInhabitance
-data kotlin_uninhabited_control_flow: KotlinControlFlowInhabitance = KotlinControlFlowInhabitance
+
+fn kotlin_integer_overflow_unspecified_marker() -> KotlinIntegerOverflowUnspecified {
+  KotlinIntegerOverflowUnspecified {}
+}
+
+fn kotlin_platform_specific_runtime_representation_marker() -> KotlinRuntimeRepresentation {
+  KotlinRuntimeRepresentation {}
+}
+
+fn kotlin_singleton_object_marker() -> KotlinSingletonInhabitance {
+  KotlinSingletonInhabitance {}
+}
+
+fn kotlin_uninhabited_control_flow_marker() -> KotlinControlFlowInhabitance {
+  KotlinControlFlowInhabitance {}
+}
+
+data kotlin_integer_overflow_unspecified: KotlinIntegerOverflowUnspecified = kotlin_integer_overflow_unspecified_marker()
+data kotlin_platform_specific_runtime_representation: KotlinRuntimeRepresentation = kotlin_platform_specific_runtime_representation_marker()
+data kotlin_singleton_object: KotlinSingletonInhabitance = kotlin_singleton_object_marker()
+data kotlin_uninhabited_control_flow: KotlinControlFlowInhabitance = kotlin_uninhabited_control_flow_marker()
 
 data kotlin_witness_integer_ordered_ring: Symbol = kotlin_witness_integer_ordered_ring
 data kotlin_witness_float_approximate_field: Symbol = kotlin_witness_float_approximate_field

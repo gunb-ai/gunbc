@@ -947,6 +947,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **TS next-wave 3 (+0 paths):** extends G3+ grammar-inverse (`mvp1_typescript_pr3_typed_fn_translate.dag`)
     // and SG-2 projection beyond L0 row-2 (`sg2_typescript_type_expression_projection.dag` +
     // `v4_typescript_language_model_declares_type_expression_projection_row`).
+    // **PR #4341 (+0 paths):** `data_body_source` body_span for call/scalar data RHS; pairs with
+    // kotlin.dag fn-wrapper empty-type markers (keen-ant W2.5). P5 Mechanism (b) disposition (3):
+    // ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:43-51`).
     // Explicit P5 deferral: ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero` plus
     // TASKS.md T-22; dissolves when these anchors are asserted by `.dag` TestClaim execution or
     // generated harness coverage instead of host parse-surface traversal.
