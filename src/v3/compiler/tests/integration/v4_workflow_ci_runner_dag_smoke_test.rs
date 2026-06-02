@@ -15,6 +15,8 @@
 //! node-frontier TestClaim selection remains shadow until the whole-program Dag CI input lands.
 //! Wave 3 §11.7.2 shadow receipt Phase 1: same doc (`v4_workflow_ci_wave3_*`; P5(b) receipt table).
 //! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174 / #4214).
+//! T-38 PR2 same-path assertion expansion: explicit P5 deferral to T-PB-B test sub-ratchet;
+//! ROADMAP.md § "Milestone shape" row 4 ("Self-host fixed point") tracks hand-maintained file count -> 0.
 //!
 //! **INVARIANTS P5 — checkable receipt for this PR:** feature `affected-component-live-receipt`;
 //! consumers `v4_workflow_ci_wave1_*` and `v4_workflow_ci_wave3_node_selection_still_shadow_*`.
@@ -1662,9 +1664,54 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
          as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
     );
     assert!(
+        CI_DAG.contains("manual_corpus_node_runtime_value_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed"),
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind the per-row TestClaimRun verdict surface"
+    );
+    assert!(
         CI_DAG.contains("fn_name == ci_testclaim_corpus_selection_fn"),
         "{CI_DAG_PATH}: ci_command_authority_ok must enforce selection_fn == ci_testclaim_corpus_selection_fn (not unconditional true)"
     );
+    for needle in [
+        "type TestClaimCorpusDeclarationAuthority",
+        "type TestClaimCorpusVerdictSurfaceAuthority",
+        "module_path: ci_testclaim_corpus_module_manual_roster_path",
+        "module_path: ci_testclaim_corpus_module_runner_path",
+        "module_path: ci_testclaim_corpus_module_eval_path",
+        "ci_testclaim_corpus_module_manual_roster_path: Symbol = v4_test_claim_manual_manual_corpus_roster",
+        "ci_testclaim_corpus_module_runner_path: Symbol = v4_test_claim_workflow_testclaim_corpus_runner",
+        "ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval",
+        "declaration_name: ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows_name",
+        "declaration_name: ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name",
+        "declaration_name: ci_testclaim_corpus_decl_corpus_report_tally_name",
+        "declaration_name: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name",
+        "ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows_name: Symbol = manual_corpus_node_runtime_value_rows",
+        "ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: Symbol = run_manual_testclaim_corpus_eval",
+        "ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally",
+        "ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: Symbol = witness_manual_corpus_gate_closed",
+        "fn ci_testclaim_corpus_eval_command() -> CiCommand",
+        "verdict_surface: ci_testclaim_corpus_verdict_surface_authority()",
+        "surface == ci_testclaim_corpus_verdict_surface_authority()",
+        "ci_projection_command_verdict_surface_edge",
+        "ci_projection_corpus_surface_run_roster_edge",
+        "ci_projection_corpus_surface_eval_report_edge",
+        "ci_projection_corpus_surface_verdict_tally_edge",
+        "ci_projection_corpus_surface_gate_witness_edge",
+        "ci_projection_declaration_module_edge",
+        "ci_projection_declaration_name_edge",
+        "ci_declaration_authority_projection_node",
+        "ci_atom(sym: a.module_path)",
+        "ci_atom(sym: a.declaration_name)",
+        "feature:t38-testclaim-corpus-roster-claim-ref-frontier",
+        "generated roster/item-registry reflection derives these TestClaimRef inputs directly from",
+        "Forbidden: adding/removing manual corpus rows without the matching claim id here.",
+        "ci_upsert_file_set_input(segment: \"src/v4/test/claim/workflow/manual_corpus_eval.dag\")",
+        "segment == \"src/v4/test/claim/workflow/manual_corpus_eval.dag\"",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: TestClaimCorpusEvalCommand must carry modeled corpus verdict authority `{needle}`"
+        );
+    }
     assert!(
         CI_DAG.contains("data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set"),
         "{CI_DAG_PATH}: ci_testclaim_corpus_selection_fn must be declared as ci_select_from_affected_set (IRT-1 P2 single authority)"
@@ -1678,14 +1725,12 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "{CI_DAG_PATH}: ci_pipeline must include testclaim_corpus_eval_signal gate"
     );
     assert!(
-        CI_DAG.contains("command: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }"),
-        "{CI_DAG_PATH}: testclaim_corpus_eval_execution job must bind selection_fn to the canonical authority"
+        CI_DAG.contains("command: ci_testclaim_corpus_eval_command()"),
+        "{CI_DAG_PATH}: testclaim_corpus_eval_execution job must bind the canonical corpus-eval command"
     );
     assert!(
         CI_DAG.contains("payload_type: ci_command_projection_node(")
-            && CI_DAG.contains(
-                "c: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }"
-            ),
+            && CI_DAG.contains("c: ci_testclaim_corpus_eval_command()"),
         "{CI_DAG_PATH}: testclaim corpus CiUpsertStep payload_type must use command projection (content_hash authority, not static tag)"
     );
     assert!(
