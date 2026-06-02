@@ -97,7 +97,7 @@ data p0_repeat_string_correct_gate: TestSuite = {
 }
 
 // R1C-B / T-P0 — `p0_no_fabrication_sentinel` + `p0_rest_ops_aligned` (Worker B): DB-15
-// `ExecuteCommand` host receipts; scripts under `scripts/` mirror v2 integration authority.
+// `ExecuteCommand` host receipts; paths under `tests/fixtures/host/` mirror v2 integration authority.
 // **Constraint:** paths use `git rev-parse --show-toplevel` — requires a **git** checkout (CI OK);
 // bare tarballs / non-git trees cannot resolve script paths (known; document-only).
 
@@ -105,7 +105,7 @@ data p0_no_fabrication_sentinel: TestClaim = {
   name: "p0_no_fabrication_sentinel",
   source: "module p0_no_fabrication_sentinel_host\n",
   file_name: "p0_no_fabrication_sentinel.v3",
-  predicate: ExecuteCommand("bash", ["-c", "exec bash \"$(git rev-parse --show-toplevel)/scripts/r1_p0_no_fabrication_sentinel.sh\""], 0),
+  predicate: ExecuteCommand("bash", ["-c", "exec bash \"$(git rev-parse --show-toplevel)/src/v3/compiler/tests/fixtures/host/r1_p0_no_fabrication_sentinel.sh\""], 0),
   requires: []
 }
 
@@ -113,7 +113,7 @@ data p0_rest_ops_aligned: TestClaim = {
   name: "p0_rest_ops_aligned",
   source: "module p0_rest_ops_aligned_host\n",
   file_name: "p0_rest_ops_aligned.v3",
-  predicate: ExecuteCommand("bash", ["-c", "exec python3 \"$(git rev-parse --show-toplevel)/scripts/r1_p0_rest_ops_aligned.py\""], 0),
+  predicate: ExecuteCommand("bash", ["-c", "exec python3 \"$(git rev-parse --show-toplevel)/src/v3/compiler/tests/fixtures/host/r1_p0_rest_ops_aligned.py\""], 0),
   requires: []
 }
 

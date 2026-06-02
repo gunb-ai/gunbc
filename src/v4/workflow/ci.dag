@@ -486,11 +486,17 @@ type StrictEnvBinding
   = NoStrictEnvBinding
   | StrictEnvBinding { var: String, value: String }
 
+// Host shell transport for live-workflow bridge carriers. Demoted gates use `NoShellScript`
+// (not a fabricated path string) when the step is modeled in ci.dag but absent from ci.yml.
+type CiWorkflowHostScript
+  = ShellScript { path: String }
+  | NoShellScript
+
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
 type CiLiveWorkflowStepSignal {
   binding_smoke_step_name: String
   step_name: String
-  script_path: String
+  host_script: CiWorkflowHostScript
   // GitHub Actions step transport policy. `false` means the script step itself
   // must execute successfully; it does not imply rustc residuals fail the gate.
   non_blocking: Bool
@@ -638,7 +644,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   step: CiLiveWorkflowStepSignal {
     binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
     step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
-    script_path: "scripts/v4-m1-rust-emit-probe.sh"
+    host_script: ShellScript { path: ".github/ci-floor/v4-m1-rust-emit-probe.sh" }
     non_blocking: false
     timeout_minutes: 20
     strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" }
@@ -732,27 +738,10 @@ fn ci_job_leaf_model_go_verify_execution_mk() -> CiJob {
 }
 
 data ci_job_leaf_model_go_verify_execution_row: CiJob = ci_job_leaf_model_go_verify_execution_mk()
-// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding.
-// 🟡 gated — feature:phase1-nat-semiring-rust-rung-interim-nonblocking — bind #3955 §6 (rust rung emit not rustc-clean on main) — dissolve-on-arrival: flip non_blocking to false when rung1 rust_typecheck passes under V4_PHASE1_NAT_SEMIRING_STRICT=1; until then non_blocking: true (continue-on-error at workflow) while STRICT=1 still logs fail-closed rung receipts; forbidden: silent YAML-only continue-on-error without modeled parity.
-// 🟡 tracked-bridge — feature:phase1-nat-semiring-rung-gate-binding-smoke — owner:keen-crab-361 (Ladder/Fixture Manager) — bind node://adhoc-2b191c1e-6b3 ("phase1/nat_semiring rung gate binding-smoke test (mirror M1's v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml)") — consumer:src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs new test function asserting ci.dag step_name/script_path/non_blocking/timeout_minutes parity with .github/workflows/ci.yml step block — dissolve-on-arrival: binding_smoke_step_name carries the new test's step name (e.g. "phase1/nat_semiring rung gate model/YAML binding smoke") AND ci.yml runs the new test as a cargo-test step paired with the gate; forbidden: re-emptying binding_smoke_step_name after the test lands. Until the bound work item closes, ci.dag↔ci.yml single-authority for THIS signal is enforced by the four-field parity (step_name / script_path / non_blocking / timeout_minutes) under review checkpoint at PR-time — not by a CI binding test.
-data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
-  binding_smoke_step_name: ""
-  step_name: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)"
-  script_path: "scripts/v4-phase1-nat-semiring-rung-gate.sh"
-  non_blocking: true
-  timeout_minutes: 20
-  strict_env_binding: StrictEnvBinding { var: "V4_PHASE1_NAT_SEMIRING_STRICT", value: "1" }
-}
-
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — consumer:v4.workflow.ci testclaim_corpus_eval_ci_live_workflow_signal — structural-slice CLOSED: shell bridge deleted + positive-Y CiUpsertStep sole structural authority; forward: T-38-PR2 amends when runtime per-row TestClaimRun verdict CI lands — dissolve-on-arrival: emitted/projected GitHub Actions reads `ci_pipeline`/`TestClaimCorpusEvalCommand` directly and this carrier is deleted; forbidden: adding corpus eval step facts outside `ci_pipeline` + this binding.
-data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
-  binding_smoke_step_name: ""
-  step_name: "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)"
-  script_path: "scripts/v4-testclaim-corpus-eval.sh"
-  non_blocking: false
-  timeout_minutes: 15
-  strict_env_binding: NoStrictEnvBinding
-}
+// Demoted Class-C gates (phase1 nat-semiring rung shell, T-22 corpus eval shell) no longer
+// carry CiLiveWorkflowStepSignal ledger rows — structural authority is ci_pipeline jobs +
+// CiUpsertStep only. Historical P5 marks: feature:phase1-nat-semiring-rung-gate-binding-smoke,
+// feature:t38-testclaim-corpus-eval (dissolve-on-arrival when emitted workflow reads commands).
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
   jobs: [
@@ -950,7 +939,7 @@ data ci_upsert_v2_compile_src_v4: CiUpsertStepSymbol = ci_upsert_v2_compile_src_
 // for affected-set invalidation (mirrors v4_t15 / testclaim_corpus_eval upstream pattern).
 data ci_upsert_m1_rust_emit_probe_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/**"),
-  ci_upsert_file_set_input(segment: "scripts/v4-m1*"),
+  ci_upsert_file_set_input(segment: ".github/ci-floor/v4-m1*"),
   ci_upsert_file_set_input(segment: "Cargo.toml"),
   ci_upsert_file_set_input(segment: "Cargo.lock"),
   ci_upsert_upstream_job_input(job: v2_compile_src_v4)
@@ -980,7 +969,6 @@ data ci_upsert_leaf_model_go_verify_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/std/leaf_model_verification.dag"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/language_model/go_*.dag"),
   ci_upsert_file_set_input(segment: "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"),
-  ci_upsert_file_set_input(segment: "scripts/v4-leaf-model-go-*-verify.sh")
 ]
 
 fn ci_upsert_leaf_model_go_verify_execution_mk() -> CiUpsertStepSymbol {
@@ -999,7 +987,6 @@ data ci_upsert_leaf_model_go_verify_execution: CiUpsertStepSymbol = ci_upsert_le
 // via UpstreamUpsert and re-emits its own rung targets, rather than re-running the front-end
 // over the 332-source src/v4 closure. `src/v4/**` stays for affected-set invalidation.
 data ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs: List<UpsertInputRef> = [
-  ci_upsert_file_set_input(segment: "scripts/v4-phase1-nat-semiring*"),
   ci_upsert_file_set_input(segment: "src/v4/**"),
   ci_upsert_upstream_job_input(job: v2_compile_src_v4)
 ]
@@ -1086,8 +1073,7 @@ fn ci_testclaim_corpus_eval_command() -> CiCommand {
 data ci_upsert_testclaim_corpus_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/manual/**"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"),
-  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval.dag"),
-  ci_upsert_file_set_input(segment: "scripts/v4-testclaim-corpus-eval.sh")
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval.dag")
 ]
 
 // #4091 §1.2 — M1 rust emit is upstream compile authority (forbidden: host-owned `gunbc compile --target rust` in corpus eval transport).
@@ -2799,18 +2785,14 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     ci_repo_path_has_prefix(path: path, prefix: "dsl/")
   } else if segment == "src/v4/**" {
     ci_changed_path_affects_v4(changed: path)
-  } else if segment == "scripts/**" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/")
+  } else if segment == ".github/ci-floor/**" {
+    ci_repo_path_has_prefix(path: path, prefix: ".github/ci-floor/")
   } else if segment == "Cargo.toml" {
     path == "Cargo.toml"
   } else if segment == "Cargo.lock" {
     path == "Cargo.lock"
-  } else if segment == "scripts/v4-m1*" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-m1")
-  } else if segment == "scripts/v4-leaf-model-go-*-verify.sh" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-leaf-model-go-")
-  } else if segment == "scripts/v4-phase1-nat-semiring*" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-phase1-nat-semiring")
+  } else if segment == ".github/ci-floor/v4-m1*" {
+    ci_repo_path_has_prefix(path: path, prefix: ".github/ci-floor/v4-m1")
   } else if segment == "src/v4/extdeps/languages/go.dag" {
     path == "src/v4/extdeps/languages/go.dag"
   } else if segment == "src/v4/lens/leaf_model_verification.dag" {
@@ -2827,8 +2809,6 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     path == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
   } else if segment == "src/v4/test/claim/workflow/manual_corpus_eval.dag" {
     path == "src/v4/test/claim/workflow/manual_corpus_eval.dag"
-  } else if segment == "scripts/v4-testclaim-*" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-testclaim-")
   } else {
     false
   }
@@ -2880,10 +2860,6 @@ fn ci_upsert_input_ref_touches_git_diff(
         segment: "src/v4/test/claim/manual/**",
         paths: git_diff.changed_paths
       )
-        || ci_glob_segment_matches_any_changed_path(
-          segment: "scripts/v4-testclaim-*",
-          paths: git_diff.changed_paths
-        )
     LensOutputRef { lens: _, ports: _ } =>
       ci_glob_segment_matches_any_changed_path(segment: "src/v4/**", paths: git_diff.changed_paths)
         || ci_glob_segment_matches_any_changed_path(segment: "dsl/std/**", paths: git_diff.changed_paths)
@@ -3894,12 +3870,8 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/v2_run_preflight/")
     || changed == "src/v4/test/coercion_fold_int_rust_fixture.dag"
     || ci_repo_path_has_prefix(path: changed, prefix: "fixtures/v4-mvp1/")
-    || changed == "scripts/v4-mvp1-e2e-gate.sh"
-    || changed == "scripts/v4-m1-rust-emit-probe.sh"
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-mvp1")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-m1")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-phase1-nat-semiring")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-testclaim-")
+    || changed == ".github/ci-floor/v4-m1-rust-emit-probe.sh"
+    || ci_repo_path_has_prefix(path: changed, prefix: ".github/ci-floor/")
     || ci_repo_path_has_prefix(path: changed, prefix: "dsl/std/")
     || changed == "Cargo.toml"
     || changed == "Cargo.lock"
@@ -3916,8 +3888,7 @@ fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
     || changed == "src/v4/workflow/ci.dag"
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/workflow/ci/")
     || ci_repo_path_has_prefix(path: changed, prefix: "tools/ci_affected_components")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/check-workflow-path-regex-inventory")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/workflow-path-regex-forbidden-substrings")
+    || ci_repo_path_has_prefix(path: changed, prefix: ".github/ci-floor/")
 }
 
 // RELEASE_TODO §5 Phase 1a–1b — release workflow + hand-synced install scripts.
@@ -3925,7 +3896,7 @@ fn ci_changed_path_affects_release_distribution(changed: RepoPath) -> Bool {
   changed == "src/v4/workflow/release.dag"
     || changed == ".github/workflows/release.yml"
     || changed == "install.sh"
-    || changed == "scripts/release-target-triples.sh"
+    || changed == "install/release-target-triples.sh"
     || changed == "src/v4/install/install.dag"
 }
 

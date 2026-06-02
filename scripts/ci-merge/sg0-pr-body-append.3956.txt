@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1 on EXPECTED_HAND_AUTHORED_TEST only (NON_TEST net 0 — `emit_host_bridge.rs` receipt restored after accidental rebase drop).
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_std_target_realization_dag_smoke_test.rs` (INVARIANTS §P5(b) tokenize/parse receipt for `src/v4/std/target_model.dag` — SG-1 `TargetAtomRealization` carrier per design-target-realization-canonical-home.md Option A + Rust Symbol/Bool/Char rows + translate consumer). Follow-up dispatch to retire host smoke when `.dag` `TestClaim` / generated harness / M2 multi-module lowering covers the same facts per ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero`; tracked gunbc#3956 (this PR).

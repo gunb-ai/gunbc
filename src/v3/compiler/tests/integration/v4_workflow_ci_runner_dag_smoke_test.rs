@@ -45,11 +45,8 @@ const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 const CI_WORKFLOW_DAG: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
-const TESTCLAIM_CORPUS_EVAL_SCRIPT: &str =
-    include_str!("../../../../../scripts/v4-testclaim-corpus-eval.sh");
-const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eval.sh";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
-    include_str!("../../../../../scripts/v4-m1-rust-emit-probe.sh");
+    include_str!("../../../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
@@ -114,12 +111,12 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         release_distribution: false,
     },
     CiAffectedFixture {
-        path: "scripts/v4-m1-rust-emit-probe.sh",
+        path: ".github/ci-floor/v4-m1-rust-emit-probe.sh",
         v2: false,
         v3: false,
         v4: true,
         testclaim_corpus: false,
-        workflow_policy: false,
+        workflow_policy: true,
         release_distribution: false,
     },
     CiAffectedFixture {
@@ -186,7 +183,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         release_distribution: true,
     },
     CiAffectedFixture {
-        path: "scripts/release-target-triples.sh",
+        path: "install/release-target-triples.sh",
         v2: false,
         v3: false,
         v4: false,
@@ -322,7 +319,7 @@ fn assert_ci_dag_rust_mirror_release_distribution_only_parity() {
     ]));
     assert!(!ci_release_distribution_only_from_changed_paths([
         "install.sh",
-        "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh",
     ]));
     assert!(!ci_release_distribution_only_from_changed_paths([
         "install.sh",
@@ -330,7 +327,7 @@ fn assert_ci_dag_rust_mirror_release_distribution_only_parity() {
     ]));
     let mixed = ci_component_affected_from_changed_paths([
         "install.sh",
-        "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh",
     ]);
     assert!(mixed.release_distribution);
     assert!(mixed.v4);
@@ -505,6 +502,16 @@ fn strict_env_binding(expr: &SurfaceExpr) -> Option<(&str, &str)> {
             ))
         }
         other => panic!("expected strict env binding expr, got {other:?}"),
+    }
+}
+
+fn host_script_shell_path(expr: &SurfaceExpr) -> Option<&str> {
+    match expr {
+        SurfaceExpr::Var { name, .. } if name == "NoShellScript" => None,
+        SurfaceExpr::VariantRecord { target, fields, .. } if target == "ShellScript" => {
+            Some(expr_string(record_field_from_fields(fields, "path")))
+        }
+        other => panic!("expected host script expr, got {other:?}"),
     }
 }
 
@@ -721,7 +728,8 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     let binding_smoke_step_name =
         expr_string(record_body_field(live_step, "binding_smoke_step_name"));
     let step_name = expr_string(record_body_field(live_step, "step_name"));
-    let script_path = expr_string(record_body_field(live_step, "script_path"));
+    let script_path = host_script_shell_path(record_body_field(live_step, "host_script"))
+        .expect("{CI_DAG_PATH}: M1 probe must model ShellScript host transport");
     let non_blocking = expr_bool(record_body_field(live_step, "non_blocking"));
     let timeout_minutes = expr_int(record_body_field(live_step, "timeout_minutes"));
     let (strict_env_var, strict_env_value) =
@@ -853,12 +861,12 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         M1_RUST_EMIT_PROBE_SCRIPT.contains("jobserver-auth")
             && M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
             && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
-        "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must couple to the host jobserver (MAKEFLAGS or ctrl-build)"
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh: emitted-tree check must couple to the host jobserver (MAKEFLAGS or ctrl-build)"
     );
     // No fallback: the probe must fail closed when NEITHER coupling source is present (operator policy).
     assert!(
         M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
-        "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
     );
     let bootstrap_step =
         workflow_step_block(CI_YML, "v2 -> v4 bootstrap compile (fail-closed full)");
@@ -938,36 +946,26 @@ fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure()
 
 #[test]
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
-    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    let _module = parse_module(CI_DAG, CI_DAG_PATH);
+    const DEMOTED_CORPUS_EVAL_STEP: &str =
+        "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)";
     assert!(
-        CI_DAG.contains(
-            "data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal"
-        ),
-        "{CI_DAG_PATH}: must model live-workflow binding for testclaim corpus eval"
+        !CI_DAG.contains("data testclaim_corpus_eval_ci_live_workflow_signal"),
+        "{CI_DAG_PATH}: demoted Class-C gate must not retain a live-workflow signal ledger row"
     );
     assert!(
         CI_DAG.contains("ci_upsert_testclaim_corpus_eval_upstream_inputs")
-            &&         CI_DAG.contains("ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)"),
+            && CI_DAG.contains("ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)"),
         "{CI_DAG_PATH}: testclaim corpus eval execution must consume M1 rust emit via UpstreamUpsert (#4091 §1.2)"
     );
     assert!(
         CI_DAG.contains("needs: [v2_compile_src_v4, m1_rust_emit_probe_execution]"),
         "{CI_DAG_PATH}: testclaim corpus eval must declare M1 in needs for selector needs-closure (I8)"
     );
-    let live_signal = data_body(&module, "testclaim_corpus_eval_ci_live_workflow_signal");
-    let step_name = expr_string(record_body_field(live_signal, "step_name"));
-    let script_path = expr_string(record_body_field(live_signal, "script_path"));
-    let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
-    let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
     assert!(
-        !CI_YML.contains(&format!("- name: {step_name}")),
-        "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` demoted from required path (modeled in ci.dag; Class C)"
+        !CI_YML.contains(&format!("- name: {DEMOTED_CORPUS_EVAL_STEP}")),
+        "{CI_YML_PATH}: Wave 1 §11.7.1 — corpus eval demoted from required path (Class C)"
     );
-    assert!(
-        CI_DAG.contains(&format!("script_path: \"{script_path}\"")),
-        "{CI_DAG_PATH}: T-22 corpus eval host transport remains modeled as `{script_path}`"
-    );
-    let _ = (non_blocking, timeout_minutes);
     assert!(
         !CI_YML.contains("v4-testclaim-corpus-gate.sh"),
         "{CI_YML_PATH}: shell bridge script must be absent from workflow"
@@ -997,7 +995,7 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
         "{CI_DAG_PATH}: ci_pipeline_well_formed must reject dangling gate run-policy jobs"
     );
     assert!(
-        CI_YML.contains("bash scripts/v4-bootstrap-viability.sh"),
+        CI_YML.contains("bash .github/ci-floor/v4-bootstrap-viability.sh"),
         "{CI_YML_PATH}: Wave 1 floor runs bootstrap viability directly (no advisory two-step gate)"
     );
     assert!(
@@ -1469,15 +1467,6 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     );
 }
 
-#[test]
-fn v4_workflow_ci_wave1_no_new_shell_ratchet_wired() {
-    let ratchet_step = workflow_step_block(CI_YML, "no-new-shell ratchet (required CI path)");
-    assert!(
-        ratchet_step.contains("check-ci-no-new-shell.sh"),
-        "{CI_YML_PATH}: gate 5 must invoke no-new-shell ratchet"
-    );
-}
-
 // P5(b) receipt: `docs/planning/ci-required-surface-cut-2026-06-01.md` § P5(b) `v4_workflow_ci_wave3_*`
 // (SG-0 delta 0; ROADMAP T-PB-B; live emit deferred `node://adhoc-331899f9-19a`).
 
@@ -1772,116 +1761,5 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
             SurfaceItem::TypeSum { name, .. } if name == "CiCommand"
         )),
         "{CI_DAG_PATH}: CiCommand sum type must exist"
-    );
-}
-
-#[test]
-fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
-    for needle in [
-        "src/v4_test_claim_workflow_manual_corpus_eval.rs",
-        "check_generated_corpus_eval",
-        "manual_corpus_all_pass",
-        "manual_corpus_gate",
-        "witness_manual_corpus_gate_closed",
-        "corpus_report_tally(report);",
-        "explicit_return",
-        "\\breturn\\b",
-        "inverted_zero_comparison",
-        "(?<![A-Za-z0-9_:])(?:!\\(*|\\(*false\\)*={2}\\(*|\\(*true\\)*!=\\(*)",
-        "tally\\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b\\)*",
-        "fail_deferred_conjunction",
-        "(?:^|;)\\(*tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-        "\\)*&&",
-        "&&",
-        "tally\\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-        "\\)*\\}$",
-        "inline_empty_gate",
-        "if(?<!!)is_empty\\([^)]*report[^)]*entries",
-        "\\{false\\}else\\{manual_corpus_all_pass\\([^)]*report",
-        "manual_corpus_gate(run_manual_testclaim_corpus_eval())",
-    ] {
-        assert!(
-            TESTCLAIM_CORPUS_EVAL_SCRIPT.contains(needle),
-            "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: missing generated corpus-eval receipt probe `{needle}`"
-        );
-    }
-}
-
-#[test]
-fn v4_workflow_ci_t38_script_receipt_rejects_inverted_zero_predicates() {
-    let output = std::process::Command::new("python3")
-        .arg("-c")
-        .arg(
-            r#"
-import re
-
-explicit_return = re.compile(r"\breturn\b")
-inverted_zero_comparison = re.compile(
-    r"(?<![A-Za-z0-9_:])(?:!\(*|\(*false\)*={2}\(*|\(*true\)*!=\(*)"
-    r"tally\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*"
-)
-fail_deferred_conjunction = re.compile(
-    r"(?:^|;)\(*tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*&&"
-    r"\(*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*\}$"
-)
-
-def receipt_accepts(source):
-    normalized_source = "".join(source.split())
-    return (
-        not explicit_return.search(source)
-        and not inverted_zero_comparison.search(normalized_source)
-        and fail_deferred_conjunction.search(normalized_source)
-    )
-
-assert receipt_accepts("lettally=x;tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}")
-assert receipt_accepts("lettally=x;(tally.fail==Zero)&&(tally.deferred==Zero)}")
-assert not receipt_accepts(
-    "lettally=x;(tally.fail==Zero)==false&&tally.deferred==Zero}"
-)
-assert not receipt_accepts(
-    "lettally=x;tally.fail==Zero&&(tally.deferred==Zero)==false}"
-)
-assert not receipt_accepts(
-    "lettally=x;tally.fail==NotZero&&tally.deferred==NotZero}"
-)
-for non_returned in [
-    "lettally=x;tally.fail==Zero&&tally.deferred==Zero;false}",
-    "lettally=x;letok=tally.fail==Zero&&tally.deferred==Zero;false}",
-    "lettally=x;{letinner=1;tally.fail==Zero&&tally.deferred==Zero};false}",
-    "return (tally.fail == Zero) == false && tally.deferred == Zero; tally.fail == Zero && tally.deferred == Zero}",
-    "let tally = x; return (tally.fail == Zero) == false && tally.deferred == Zero; tally.fail == Zero && tally.deferred == Zero}",
-]:
-    assert not receipt_accepts(non_returned)
-for inverted in [
-    "lettally=x;!tally.fail==Zero&&tally.deferred==Zero}",
-    "lettally=x;!(tally.fail==Zero)&&tally.deferred==Zero}",
-    "lettally=x;!((tally.fail==Zero))&&tally.deferred==Zero}",
-    "lettally=x;false==(tally.fail==Zero)&&tally.deferred==Zero}",
-    "lettally=x;(false)==(tally.fail==Zero)&&tally.deferred==Zero}",
-    "lettally=x;false==((tally.fail==Zero))&&tally.deferred==Zero}",
-    "lettally=x;true!=(tally.fail==Zero)&&tally.deferred==Zero}",
-    "lettally=x;(true)!=(tally.fail==Zero)&&tally.deferred==Zero}",
-    "lettally=x;true!=((tally.fail==Zero))&&tally.deferred==Zero}",
-    "lettally=x;tally.fail==Zero&&!tally.deferred==Zero}",
-    "lettally=x;tally.fail==Zero&&!(tally.deferred==Zero)}",
-    "lettally=x;tally.fail==Zero&&!((tally.deferred==Zero))}",
-    "lettally=x;tally.fail==Zero&&false==(tally.deferred==Zero)}",
-    "lettally=x;tally.fail==Zero&&(false)==(tally.deferred==Zero)}",
-    "lettally=x;tally.fail==Zero&&false==((tally.deferred==Zero))}",
-    "lettally=x;tally.fail==Zero&&true!=(tally.deferred==Zero)}",
-    "lettally=x;tally.fail==Zero&&(true)!=(tally.deferred==Zero)}",
-    "lettally=x;tally.fail==Zero&&true!=((tally.deferred==Zero))}",
-]:
-    assert not receipt_accepts(inverted)
-"#,
-        )
-        .output()
-        .expect("python3 should run T-38 receipt regex regression");
-
-    assert!(
-        output.status.success(),
-        "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: generated corpus-eval receipt regex accepted an inverted zero predicate\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
     );
 }

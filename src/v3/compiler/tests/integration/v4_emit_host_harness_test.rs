@@ -807,8 +807,8 @@ fn v4_nat_semiring_go_l1_rung2_receipt_anchor_tokenizes_and_parses() {
     }
     assert!(
         NAT_SEMIRING_RUNG_0_TO_2_DAG
-            .contains("scripts/v4-phase1-nat-semiring-rung-gate.sh::go_l1_compile_receipt_v1"),
-        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 receipt schema must match host transport"
+            .contains("v4.test.claim.nat_semiring.go_l1_compile_receipt_v1"),
+        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 receipt schema must use stable logical receipt id (host shell deleted)"
     );
     assert!(
         NAT_SEMIRING_RUNG_0_TO_2_DAG.contains(

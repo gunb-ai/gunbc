@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/v4-m1-rust-emit-probe.sh
+# .github/ci-floor/v4-m1-rust-emit-probe.sh
 #
 # M1 informational probe: v2-compiler --target rust over full src/v4, then
 # cargo check on emitted output. Missing compiler, v2 emit failure, and skipped
@@ -7,7 +7,7 @@
 # whether rustc residuals from an attempted cargo check also fail the step.
 #
 # Authority: src/v4/workflow/ci.dag (T-24) + src/v4/TASKS.md T-24; r3 gates #98/#100 interim bridge.
-# Pattern: scripts/v4-bootstrap-viability.sh (compile + log receipt parsing).
+# Pattern: .github/ci-floor/v4-bootstrap-viability.sh (compile + log receipt parsing).
 #
 # Env:
 #   V2_COMPILER              — v2-compiler binary (default: target/release/gunbc)

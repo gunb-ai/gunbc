@@ -2,7 +2,7 @@
 # Install gunbc from GitHub Releases (Linux musl + macOS binaries).
 #
 # Semantic authority: src/v4/install/install.dag (GitHubReleaseTarball channel).
-# Target detection: scripts/release-target-triples.sh (platform_detection.dag projection).
+# Target detection: install/release-target-triples.sh (platform_detection.dag projection).
 # Binary names: src/v4/workflow/release.dag `release_published_artifact_names`.
 #
 # Usage:
@@ -15,7 +15,7 @@
 #   GUNBC_VERSION        tag (e.g. v0.1.0) or empty for latest release
 #   GUNBC_RELEASE_TARGETS_URL  override URL for release-target-triples.sh (default: same GH
 #                              Release tag/latest channel as the gunbc-{triple} binary)
-#   GUNBC_INSTALL_USE_LOCAL_TARGETS  if 1, allow ./scripts/ cwd fallback when piped via sh
+#   GUNBC_INSTALL_USE_LOCAL_TARGETS  if 1, allow ./install/ cwd fallback when piped via sh
 #                              (dev-only; default off so curl | sh uses release assets only)
 
 set -eu
@@ -40,20 +40,20 @@ load_release_target_authority() {
     return 0
   fi
   if gunbc_install_is_piped; then
-    # `curl … | sh` (any POSIX shell): do not source cwd-local ./scripts — keeps target
+    # `curl … | sh` (any POSIX shell): do not source cwd-local ./install — keeps target
     # authority on the same GH Release channel as the binary (INVARIANTS P2/P3).
     if [ "${GUNBC_INSTALL_USE_LOCAL_TARGETS:-}" = "1" ] \
-      && [ -f "./scripts/release-target-triples.sh" ]; then
-      # shellcheck source=scripts/release-target-triples.sh
-      . "./scripts/release-target-triples.sh"
+      && [ -f "./install/release-target-triples.sh" ]; then
+      # shellcheck source=install/release-target-triples.sh
+      . "./install/release-target-triples.sh"
       GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
       return 0
     fi
   else
     _install_dir=$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd || true)
-    if [ -n "$_install_dir" ] && [ -f "$_install_dir/scripts/release-target-triples.sh" ]; then
-      # shellcheck source=scripts/release-target-triples.sh
-      . "$_install_dir/scripts/release-target-triples.sh"
+    if [ -n "$_install_dir" ] && [ -f "$_install_dir/install/release-target-triples.sh" ]; then
+      # shellcheck source=install/release-target-triples.sh
+      . "$_install_dir/install/release-target-triples.sh"
       GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
       return 0
     fi
@@ -63,9 +63,9 @@ load_release_target_authority() {
       GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
       return 0
     fi
-    if [ -f "./scripts/release-target-triples.sh" ]; then
-      # shellcheck source=scripts/release-target-triples.sh
-      . "./scripts/release-target-triples.sh"
+    if [ -f "./install/release-target-triples.sh" ]; then
+      # shellcheck source=install/release-target-triples.sh
+      . "./install/release-target-triples.sh"
       GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
       return 0
     fi

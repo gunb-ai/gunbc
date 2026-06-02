@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_bin_main_dag_smoke_test.rs` (INVARIANTS §P5(b) tokenize/parse receipt for `src/v4/bin/main.dag`). Follow-up dispatch for a hermetic `compile_to_dag` link of `import v4.std.node` (or `.dag` `TestClaim` coverage) remains tracked in `docs/briefs/r4-program-dispatch-plan.md` (T-15 spine) + the smoke-test dissolution row in `INVARIANTS.md`.

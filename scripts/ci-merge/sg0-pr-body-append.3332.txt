@@ -1,2 +1,0 @@
-SG-0 hand-path delta: +1
-SG-0 pairing: (c) dispatch for P5(b) net +1 on `EXPECTED_HAND_AUTHORED_TEST` (`v4_lens_testgen_dag_smoke_test.rs`); primary checkable lane cite is **ROADMAP.md** **Nine lanes** row **T-PB-B** / **`pb_rust_tests_outside_residual_zero`** with same-PR **INVARIANTS.md** § SG-0 hand-authored integration test receipts table row for that path. Follow-up program context (Lane B — `lens/testgen` READY row): docs/briefs/r4-program-dispatch-plan.md

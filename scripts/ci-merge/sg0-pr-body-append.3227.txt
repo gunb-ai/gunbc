@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +2
-
-SG-0 pairing: (c) Net add is two SG-0 census literals (`EXPECTED_HAND_AUTHORED_NON_TEST` → `src/v3/compiler/src/v4_hollow_alias_gate.rs`; `EXPECTED_HAND_AUTHORED_TEST` → `src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs`) plus matching INVARIANTS §P5(b) rows for T-30 / Practice 8 bootstrap mirror and `compile_to_dag` smoke. Dispatch: land generated `.dag` / `TestClaim` gate and retire the mirror per INVARIANTS dissolution text; track in gunbc#3227 (this PR).

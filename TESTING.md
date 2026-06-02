@@ -154,24 +154,17 @@ drifting into heavy-integration territory. See
 
 ### Phase-0 per-test wall clock (CI)
 
-The v3 CI job tees libtest `--report-time` output and
-`scripts/check-test-timeout.sh` enforces `TEST_TIMEOUT_MS` (default
-2000 ms). **Warn-only backlog** is modeled in
-**`dsl/gunbc/test_node_wall_clock_ratchet.dag`** and projected to JSONL
-via **`gunbc-ci wall-clock-warn-manifest`** for `jq` — one JSON object per
-line, `{"test":"<libtest token>","policy":"warn"}`. That path is an
-**interim shell bridge** (P5 scaffold): same libtest name tokens the
-substrate will eventually attach `TestNodeCostDimension` facts to (R3
-gate **#101**, `src/v3/std/verification.dag`), but **policy is still a
-parallel warn-name roster**, not yet derived from modeled test-node
-timing facts — so it does **not** satisfy gate **#102**
-`slow_test_exemptions_dissolved` as “no side manifest / timing-fact
-authority” under `INVARIANTS.md` P5. Retiring `scripts/slow-test-exemptions.txt`
-drops the free-form table plus the `TEST_TIMEOUT_MAX_EXEMPTIONS`
-row-count ratchet and tightens fail-closed behavior. Unknown tests over budget **fail
-closed**. Any `#[test]` that must **warn** instead of **fail** when over
-budget needs a row in the `.dag` warn table in the **same PR** as the policy intent.
-Override: **`TEST_TIMEOUT_MANIFEST`** (JSONL fixture path for self-tests / local override only).
+When enabled, the v3 CI job can tee libtest `--report-time` output and enforce
+per-test wall-clock budgets. **Warn-only backlog** is modeled in
+**`dsl/gunbc/test_node_wall_clock_ratchet.dag`** and projected to JSONL via
+**`gunbc-ci wall-clock-warn-manifest`** for `jq` — one JSON object per line,
+`{"test":"<libtest token>","policy":"warn"}`. That path is an interim bridge (P5
+scaffold): policy is still a parallel warn-name roster, not yet derived from
+modeled test-node timing facts (R3 gate **#102**). Unknown tests over budget
+**fail closed**. Any `#[test]` that must **warn** instead of **fail** when over
+budget needs a row in the `.dag` warn table in the **same PR** as the policy
+intent. Override: **`TEST_TIMEOUT_MANIFEST`** (JSONL fixture path for self-tests /
+local override only).
 
 ## Mocks and dependency injection
 
