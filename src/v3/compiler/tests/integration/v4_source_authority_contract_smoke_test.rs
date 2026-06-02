@@ -9,7 +9,7 @@
 //!
 //! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
 //! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
-//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:62); dissolves when a `.dag`
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:63); dissolves when a `.dag`
 //! TestClaim or generated harness executes the Branch H.7.2 source-authority receipt directly.
 
 use v3_compiler::parse_for_test;
