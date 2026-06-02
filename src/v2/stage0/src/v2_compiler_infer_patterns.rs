@@ -4,7 +4,9 @@
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
 pub use crate::std_types::SourceSpan;
-pub use crate::v2_compiler_infer_env::{lookup_type, lookup_type_by_name, TypeEnv};
+pub use crate::v2_compiler_infer_env::{
+    authored_name, find_child_in_env, lookup_type, lookup_type_by_name, TypeEnv,
+};
 pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
 };
@@ -202,7 +204,7 @@ pub fn lookup_variant_in_type(
     scrut: Rc<PatternSubject>,
     variant_name: String,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
     field_binding_count: i64,
 ) -> Rc<NodeLookupResult> {
     match (*scrut).clone() {
@@ -228,14 +230,11 @@ pub fn lookup_variant_in_type(
                 node_lookup_failed(Rc::new(vec![]))
             } else {
                 {
-                    let direct_match = find_child_named(
-                        scrut_node.clone(),
-                        variant_name.clone(),
-                        source_indices.clone(),
-                    );
+                    let direct_match =
+                        find_child_in_env(env.clone(), scrut_node.clone(), variant_name.clone());
                     let record_destructure = (((field_binding_count > 0)
                         && (scrut_node.connective.clone() == Connective::Conj))
-                        && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
+                        && (authored_name(env.clone(), scrut_node.clone()).as_str()
                             == variant_name.clone().as_str()));
                     let fallback = if (scrut_opt.clone()
                         && (variant_name.clone().as_str() == "Some".to_string().as_str()))
@@ -254,7 +253,7 @@ pub fn lookup_variant_in_type(
                                     scrut_node.clone(),
                                     variant_name.clone(),
                                     module_name,
-                                    source_indices.clone(),
+                                    env.source_indices.clone(),
                                 )
                             }
                         }
@@ -273,7 +272,7 @@ pub fn lookup_field_in_variant(
     variant: Rc<PatternSubject>,
     field_name: String,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> Rc<NodeLookupResult> {
     match (*variant).clone() {
         PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
@@ -289,11 +288,7 @@ pub fn lookup_field_in_variant(
         )])),
         PatternSubject::PatternResolved {
             node: variant_node, ..
-        } => match find_child_named(
-            variant_node.clone(),
-            field_name.clone(),
-            source_indices.clone(),
-        ) {
+        } => match find_child_in_env(env.clone(), variant_node.clone(), field_name.clone()) {
             Some(field_child) => {
                 let resolved = child_type_node(field_child.clone());
                 node_lookup_resolved(resolved)
@@ -301,7 +296,7 @@ pub fn lookup_field_in_variant(
             None => node_lookup_failed(Rc::new(vec![make_error_node(
                 Rc::new(CompilerDiagnostic::FieldNotFound {
                     field: field_name.clone(),
-                    type_name: authored_name_at(source_indices.clone(), variant_node.clone()),
+                    type_name: authored_name(env.clone(), variant_node.clone()),
                     span: variant_node.span.clone(),
                 }),
                 module_name,
@@ -326,7 +321,7 @@ pub fn check_match_exhaustiveness(
         } else {
             match lookup_type_by_name(
                 env.clone(),
-                authored_name_at(env.source_indices.clone(), scrutinee_type.clone()),
+                authored_name(env.clone(), scrutinee_type.clone()),
             ) {
                 Some(def) => def.clone(),
                 None => scrutinee_type.clone(),
@@ -348,7 +343,7 @@ pub fn check_match_exhaustiveness(
                     Rc::new({
                         let mut __result = Vec::new();
                         for c in resolved.children.clone().iter().cloned() {
-                            __result.push(authored_name_at(env.source_indices.clone(), c.clone()));
+                            __result.push(authored_name(env.clone(), c.clone()));
                         }
                         __result
                     })

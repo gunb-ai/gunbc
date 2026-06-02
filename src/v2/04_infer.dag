@@ -79,10 +79,10 @@ import v2.compiler.infer_method {
 }
 import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
-  TypeEnv, TypeBinding,
+  TypeEnv, TypeBinding, LookupCache,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
-  inductive_fields_list_to_map
+  inductive_fields_list_to_map, empty_lookup_cache, warm_lookup_cache, merge_lookup_caches
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
@@ -284,6 +284,19 @@ type InferScopeComponents {
   func_sigs: Map<String, DeclaredFuncSig>
   svc_registry: Map<String, List<OpEntry>>
   svc_locals: Map<String, TypeBinding>
+}
+
+fn scope_with_type_env(scope: InferScope, env: TypeEnv) -> InferScope {
+  InferScope {
+    type_env: env,
+    func_env: scope.func_env,
+    locals: scope.locals,
+    match_bound_names: scope.match_bound_names,
+    module_name: scope.module_name,
+    service_registry: scope.service_registry,
+    item_registry: scope.item_registry,
+    lambda_param_provenance: scope.lambda_param_provenance
+  }
 }
 
 type LocalContributionState {
@@ -861,10 +874,10 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
         PatternDynamic { span: _ } => none
         PatternLookupBlocked => none
       }
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, source_indices: scope.type_env.source_indices, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>
-        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), module_name: scope.module_name, source_indices: scope.type_env.source_indices)
+        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), module_name: scope.module_name, env: scope.type_env)
         let field_subject = lookup_result_subject(result: field_lookup)
         make_field_binding_node(field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, scope: scope), span: binding.span, name_span: node_name_span(n: binding))
       )
@@ -987,12 +1000,12 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, source_indices: scope.type_env.source_indices, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
         let field_name = field_binding_name_at(n: fb, source_indices: scope.type_env.source_indices)
-        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_name, module_name: scope.module_name, source_indices: scope.type_env.source_indices)
+        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_name, module_name: scope.module_name, env: scope.type_env)
         let field_subject = lookup_result_subject(result: field_lookup)
         let field_type = pattern_binding_type(subject: field_subject)
         let field_provenance = derive_field_provenance(scope: scope, scrutinee_provenance: scrutinee_provenance, scrutinee_subject: scrutinee_subject, variant_name: vname, field_name: field_name)
@@ -1237,7 +1250,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           diagnostics: base_diags
         }
       } else {
-      match lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices) {
+      match lookup_field_type_node(n: resolved_base, field_name: field_name, env: scope.type_env) {
         Some { value: field_type } =>
           let field_summary = field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name)
           let fa_texpr = make_named_expr_node(
@@ -1380,14 +1393,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             None => call_fold_acc_type
           }
         } else { call_fold_acc_type }
-        let method_resolution = resolve_known_method_node(
+        let method_result = resolve_known_method_node(
           receiver: method_receiver,
+          env: scope.type_env,
           receiver_type: first_arg_type,
           method_name: func_name,
           fold_accumulator_type: if call_fold_info != none { Some { value: refined_call_fold_acc_type } } else { none },
-          service_registry: scope.service_registry,
-          source_indices: scope.type_env.source_indices
+          service_registry: scope.service_registry
         )
+        let method_resolution = method_result.resolution
+        let scope = scope_with_type_env(scope: scope, env: method_result.env)
         let is_known_method = method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
           let receiver = method_receiver
@@ -1687,14 +1702,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => fold_acc_type
         }
       } else { fold_acc_type }
-      let method_resolution = resolve_known_method_node(
+      let method_result = resolve_known_method_node(
         receiver: recv_typed,
+        env: scope.type_env,
         receiver_type: recv_rt,
         method_name: method_name,
         fold_accumulator_type: if fold_info != none { Some { value: refined_fold_acc_type } } else { none },
-        service_registry: scope.service_registry,
-        source_indices: scope.type_env.source_indices
+        service_registry: scope.service_registry
       )
+      let method_resolution = method_result.resolution
+      let scope = scope_with_type_env(scope: scope, env: method_result.env)
       let pipe_fb = match method_resolution.result_type {
         Some { value: rt } => MethodPipeFallback { result_ty: rt, kernel_diags: [] }
         None =>
@@ -4900,7 +4917,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table }
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, lookup_cache: empty_lookup_cache() }
 
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
   // Bootstrap bridge: seed std.types into modules that did not import it
@@ -4940,7 +4957,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_inductive_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
-  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_indices: source_indices, intern_table: intern_table }
+  let import_lookup_cache = fold(parent_envs, init: empty_lookup_cache(), f: (acc, env) => merge_lookup_caches(left: acc, right: env.lookup_cache))
+  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_indices: source_indices, intern_table: intern_table, lookup_cache: import_lookup_cache }
   let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module_name_str, "'"), span: imp.target_module.value.span }, module_name: module_name_str)] })
 
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
@@ -5003,7 +5021,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
   let local_name_set = fold(local_bindings |> map_keys, init: empty_map(), f: (acc, ident) => map_insert(acc, ident, true))
   let all_local_bindings = map_merge(local_bindings, param_bindings)
-  let pre_local_env = TypeEnv { bindings: all_local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }
+  let pre_local_env = TypeEnv { bindings: all_local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, lookup_cache: empty_lookup_cache() }
 
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
   let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
@@ -5021,18 +5039,26 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let cross_type_set = fold(cross_type_all_names, init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set_str, source_indices: source_indices)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
-  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, lookup_cache: empty_lookup_cache() }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
-  let final_env = TypeEnv {
+  let final_env_base = TypeEnv {
     bindings: resolved_env_out.bindings,
     recursive_types: resolved_env_out.recursive_types,
     recursive_type_set: resolved_env_out.recursive_type_set,
     inductive_fields: resolved_env_out.inductive_fields,
     source_indices: resolved_env_out.source_indices,
     intern_table: intern_table,
+    lookup_cache: import_lookup_cache
   }
+  let binding_nodes = fold(map_keys(resolved_env_out.bindings), init: [], f: (acc, ident) =>
+    match map_get(resolved_env_out.bindings, ident) {
+      Some { value: b } => concat(acc, [b.resolved])
+      None => acc
+    }
+  )
+  let final_env = warm_lookup_cache(env: final_env_base, roots: concat(module_items(n: module.module), binding_nodes))
   BuildTypeEnvResult {
     env: final_env,
     diagnostics: concat(import_diags, resolved_diags)
@@ -5052,7 +5078,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let some_variant = Node { name: "Some", span: kernel_span(name: "Some"), ident_span: Some { value: kernel_span(name: "Some") }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Some { value: kernel_span(name: "Optional") }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, lookup_cache: empty_lookup_cache() }
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
   // Mirror the same bootstrap bridge in the unresolved path.
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
@@ -5088,7 +5114,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_inductive_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
-  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_indices: source_indices, intern_table: intern_table }
+  let import_lookup_cache = fold(parent_envs, init: empty_lookup_cache(), f: (acc, env) => merge_lookup_caches(left: acc, right: env.lookup_cache))
+  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_indices: source_indices, intern_table: intern_table, lookup_cache: import_lookup_cache }
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
@@ -5107,7 +5134,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       acc
     }
   )
-  let pre_local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }
+  let pre_local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, lookup_cache: empty_lookup_cache() }
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
   let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, node_type_deps(n: b.resolved, source_indices: source_indices))
@@ -5123,7 +5150,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let cross_type_set = fold(cross_type_all_names, init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set_str, source_indices: source_indices)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
-  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, lookup_cache: empty_lookup_cache() }
   BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }
 }
 
@@ -5501,7 +5528,7 @@ fn topo_resolve_types(
       }
     )
     return EnvResolveResult {
-      env: TypeEnv { bindings: stuck_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table },
+      env: TypeEnv { bindings: stuck_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, lookup_cache: env.lookup_cache },
       diagnostics: concat(diagnostics, stuck_accum.diagnostics)
     }
   }
@@ -5524,7 +5551,7 @@ fn topo_resolve_types(
 
   topo_resolve_types(
     remaining: next_remaining,
-    env: TypeEnv { bindings: ready_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table },
+    env: TypeEnv { bindings: ready_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, lookup_cache: env.lookup_cache },
     module_name: module_name,
     diagnostics: concat(diagnostics, ready_accum.diagnostics),
     local_names: local_names,

@@ -19,7 +19,7 @@ pub use crate::v2_compiler_coercion::{
 };
 pub use crate::v2_compiler_infer::{build_params_scope, extend_scope, InferScope};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
-pub use crate::v2_compiler_infer_env::{authored_name, TypeBinding, TypeEnv};
+pub use crate::v2_compiler_infer_env::{authored_name, empty_lookup_cache, TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver, OpEntry, UniqueAccum,
@@ -667,6 +667,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             intern_table: empty_intern_table(),
+            lookup_cache: empty_lookup_cache(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
             signatures: v2_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),

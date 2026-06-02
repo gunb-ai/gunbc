@@ -2723,6 +2723,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                     inductive_fields: e.inductive_fields.clone(),
                     source_indices: e.source_indices.clone(),
                     intern_table: e.intern_table.clone(),
+                    lookup_cache: e.lookup_cache.clone(),
                 })
             },
         );

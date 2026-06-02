@@ -878,7 +878,8 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       recursive_type_set: e.recursive_type_set,
       inductive_fields: e.inductive_fields,
       source_indices: e.source_indices,
-      intern_table: e.intern_table
+      intern_table: e.intern_table,
+      lookup_cache: e.lookup_cache
     }
   )
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
