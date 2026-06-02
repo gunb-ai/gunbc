@@ -77,6 +77,33 @@ fn missing_export_points_at_name() {
 }
 
 #[test]
+fn variant_not_reexported_through_type_only_import() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        ("proxy.dag", "module sg8_proxy\nimport sg8_def { E }\n"),
+        ("use_mod.dag", "module sg8_use\nimport sg8_proxy { B }\n"),
+    ];
+    let result = compile_multi(files);
+
+    assert_eq!(result.diagnostics.len(), 1);
+    let d = &result.diagnostics[0];
+    assert!(
+        matches!(&*d.diagnostic, CompilerDiagnostic::MissingExport { .. }),
+        "expected MissingExport for variant not in proxy export surface, got: {:?}",
+        d.diagnostic
+    );
+    let msg = diagnostic_to_message(d.diagnostic.clone());
+    assert!(
+        msg.contains("B"),
+        "message should name the missing variant export: {msg}"
+    );
+    assert!(
+        msg.contains("sg8_proxy"),
+        "message should name the proxy module: {msg}"
+    );
+}
+
+#[test]
 fn multiple_missing_exports_each_have_own_span() {
     let source = "module provider\ntype User { name: String }\n";
     let bad = "module consumer\nimport provider { Foo, Bar }\n";

@@ -159,6 +159,7 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
         # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.
@@ -228,7 +229,7 @@ jobs:
           gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
-      run: cargo build -p v2-compiler --release
+      run: RUSTC_WRAPPER= cargo build -p v2-compiler --release
     - name: M1 v4 full-tree rust emit probe (v2 emit)
       timeout-minutes: 20
       env:

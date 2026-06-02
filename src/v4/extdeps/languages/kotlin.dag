@@ -67,13 +67,9 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -206,18 +202,13 @@ type KotlinLanguageModel {
 }
 
 // T-11 kotlin grammar relation row: fixed terminals and bound terminals share
-// the Kotlin grammar production instead of an operator string template.
-// 🟡 gated — feature:T-11-typed-concrete-syntax-token-variants — bind TASKS.md T-11 —
-// dissolve-on: v4.std.target_model declares shared ConcreteSyntaxToken (FixedToken |
-// BoundToken); this per-target coproduct dissolves when that std carrier lands.
-type KotlinConcreteSyntaxToken
-  = KotlinFixedToken { token_class: Symbol }
-  | KotlinBoundToken { token_class: Symbol, binding: Symbol }
+// the Kotlin grammar production instead of an operator string template. Tokens are the
+// shared v4.std.target_model ConcreteSyntaxToken carrier (per-target coproduct dissolved).
 
 // 🟢 grounded — head is mandatory; tail may be Empty. Production/emitted derive at use sites.
 type KotlinGrammarRelationRow {
-  head: KotlinConcreteSyntaxToken
-  tail: List<KotlinConcreteSyntaxToken>
+  head: ConcreteSyntaxToken
+  tail: List<ConcreteSyntaxToken>
 }
 
 data kotlin_language_model_surface_id: Symbol = kotlin_language_model_surface_id
@@ -491,32 +482,32 @@ data kotlin_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data kotlin_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
 // Non-empty by construction: head is mandatory; tail may be Empty without fabricating syntax.
-data kotlin_mvp1_concrete_token_head: KotlinConcreteSyntaxToken = KotlinFixedToken { token_class: kotlin_token_kw_fun }
+data kotlin_mvp1_concrete_token_head: ConcreteSyntaxToken = FixedToken { token_class: kotlin_token_kw_fun }
 
-fn kotlin_mvp1_concrete_token_tail() -> List<KotlinConcreteSyntaxToken> {
+fn kotlin_mvp1_concrete_token_tail() -> List<ConcreteSyntaxToken> {
   [
-    KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_fn_add },
-    KotlinFixedToken { token_class: kotlin_token_lparen },
-    KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_x },
-    KotlinFixedToken { token_class: kotlin_token_colon },
-    KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_type_int },
-    KotlinFixedToken { token_class: kotlin_token_comma },
-    KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_y },
-    KotlinFixedToken { token_class: kotlin_token_colon },
-    KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_type_int },
-    KotlinFixedToken { token_class: kotlin_token_rparen },
-    KotlinFixedToken { token_class: kotlin_token_colon },
-    KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_type_int },
-    KotlinFixedToken { token_class: kotlin_token_lbrace },
-    KotlinFixedToken { token_class: kotlin_token_kw_return },
-    KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_x },
-    KotlinFixedToken { token_class: kotlin_token_plus },
-    KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_y },
-    KotlinFixedToken { token_class: kotlin_token_rbrace }
+    BoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_fn_add },
+    FixedToken { token_class: kotlin_token_lparen },
+    BoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_x },
+    FixedToken { token_class: kotlin_token_colon },
+    BoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_type_int },
+    FixedToken { token_class: kotlin_token_comma },
+    BoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_y },
+    FixedToken { token_class: kotlin_token_colon },
+    BoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_type_int },
+    FixedToken { token_class: kotlin_token_rparen },
+    FixedToken { token_class: kotlin_token_colon },
+    BoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_type_int },
+    FixedToken { token_class: kotlin_token_lbrace },
+    FixedToken { token_class: kotlin_token_kw_return },
+    BoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_x },
+    FixedToken { token_class: kotlin_token_plus },
+    BoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_y },
+    FixedToken { token_class: kotlin_token_rbrace }
   ]
 }
 
-fn kotlin_mvp1_concrete_tokens() -> List<KotlinConcreteSyntaxToken> {
+fn kotlin_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   Cons {
     head: kotlin_mvp1_concrete_token_head,
     tail: kotlin_mvp1_concrete_token_tail()
@@ -1242,51 +1233,19 @@ fn kotlin_mvp1_source_text_authority() -> String {
   kotlin_mvp1_source_text
 }
 
-fn kotlin_concrete_token_class(token: KotlinConcreteSyntaxToken) -> Symbol {
+fn kotlin_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    KotlinFixedToken { token_class: c } => c
-    KotlinBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn kotlin_concrete_token_node(token: KotlinConcreteSyntaxToken) -> Node {
-  match token {
-    KotlinFixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          kotlin_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: kotlin_atom(id: concrete_syntax_token_kind_fixed)
-          ),
-          kotlin_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: kotlin_atom(id: c)
-          )
-        ]
-      }
-    KotlinBoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          kotlin_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: kotlin_atom(id: concrete_syntax_token_kind_bound)
-          ),
-          kotlin_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: kotlin_atom(id: c)
-          ),
-          kotlin_named_edge(
-            name: concrete_syntax_token_field_binding,
-            target: kotlin_atom(id: b)
-          )
-        ]
-      }
-  }
+fn kotlin_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn kotlin_mvp1_positional_token_edge(token: KotlinConcreteSyntaxToken) -> Edge {
+fn kotlin_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge {
     label: Positional,
     target: kotlin_concrete_token_node(token: token)
@@ -1342,16 +1301,16 @@ fn kotlin_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 fn kotlin_concrete_tokens_list(
-  head: KotlinConcreteSyntaxToken,
-  tail: List<KotlinConcreteSyntaxToken>
-) -> List<KotlinConcreteSyntaxToken> {
+  head: ConcreteSyntaxToken,
+  tail: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
   Cons { head: head, tail: tail }
 }
 
 // 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold with a std list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
 fn kotlin_grammar_sequence_from_nonempty(
-  head: KotlinConcreteSyntaxToken,
-  tail: List<KotlinConcreteSyntaxToken>
+  head: ConcreteSyntaxToken,
+  tail: List<ConcreteSyntaxToken>
 ) -> GrammarExpr {
   fold_list(
     xs: tail,
@@ -1366,8 +1325,8 @@ fn kotlin_grammar_sequence_from_nonempty(
 }
 
 fn kotlin_grammar_production_from_nonempty(
-  head: KotlinConcreteSyntaxToken,
-  tail: List<KotlinConcreteSyntaxToken>
+  head: ConcreteSyntaxToken,
+  tail: List<ConcreteSyntaxToken>
 ) -> GrammarProduction {
   GrammarProduction {
     name: kotlin_production_mvp1_fn_add,
@@ -1534,7 +1493,7 @@ fn kotlin_mvp1_grammar_relation_row() -> KotlinGrammarRelationRow {
   }
 }
 
-fn kotlin_relation_token_edges(tokens: List<KotlinConcreteSyntaxToken>) -> List<Edge> {
+fn kotlin_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1879,7 +1838,7 @@ fn kotlin_wave1_lex() -> LexRules {
 
 
 
-fn kotlin_formal_rhs_from_tokens(tokens: List<KotlinConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn kotlin_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,

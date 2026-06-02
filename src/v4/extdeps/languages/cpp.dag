@@ -28,6 +28,7 @@ import v4.std.lexing {
   ModeledLexRules,
   TokenRule
 }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
@@ -62,11 +63,6 @@ import v4.std.model_core {
 import v4.std.witness { Holds, Violates }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -196,15 +192,13 @@ type CppLanguageModel {
   core: ModelCore
 }
 
-// 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
-type CppConcreteSyntaxToken
-  = CppFixedToken { token_class: Symbol }
-  | CppBoundToken { token_class: Symbol, binding: Symbol }
+// Tokens are the shared v4.std.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
+// per-target C++ coproduct dissolved into that std authority.
 
 type CppGrammarRelationRow {
   production: GrammarProduction
   emitted: Node
-  tokens: List<CppConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
 
 data cpp_language_model_surface_id: Symbol = cpp_language_model_surface_id
@@ -276,24 +270,24 @@ data cpp_witness_bool_boolean_algebra: Symbol = cpp_witness_bool_boolean_algebra
 data cpp_precondition_signed_integer_result_representable: Symbol = cpp_precondition_signed_integer_result_representable
 data cpp_partial_signed_integer_result_not_representable: Symbol = cpp_partial_signed_integer_result_not_representable
 
-fn cpp_mvp1_concrete_tokens() -> List<CppConcreteSyntaxToken> {
+fn cpp_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    CppFixedToken { token_class: cpp_token_ty_int },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_fn_add },
-    CppFixedToken { token_class: cpp_token_lparen },
-    CppFixedToken { token_class: cpp_token_ty_int },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
-    CppFixedToken { token_class: cpp_token_comma },
-    CppFixedToken { token_class: cpp_token_ty_int },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
-    CppFixedToken { token_class: cpp_token_rparen },
-    CppFixedToken { token_class: cpp_token_lbrace },
-    CppFixedToken { token_class: cpp_token_kw_return },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
-    CppFixedToken { token_class: cpp_token_plus },
-    CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
-    CppFixedToken { token_class: cpp_token_semicolon },
-    CppFixedToken { token_class: cpp_token_rbrace }
+    FixedToken { token_class: cpp_token_ty_int },
+    BoundToken { token_class: cpp_token_ident, binding: cpp_binding_fn_add },
+    FixedToken { token_class: cpp_token_lparen },
+    FixedToken { token_class: cpp_token_ty_int },
+    BoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
+    FixedToken { token_class: cpp_token_comma },
+    FixedToken { token_class: cpp_token_ty_int },
+    BoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
+    FixedToken { token_class: cpp_token_rparen },
+    FixedToken { token_class: cpp_token_lbrace },
+    FixedToken { token_class: cpp_token_kw_return },
+    BoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
+    FixedToken { token_class: cpp_token_plus },
+    BoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
+    FixedToken { token_class: cpp_token_semicolon },
+    FixedToken { token_class: cpp_token_rbrace }
   ]
 }
 
@@ -1074,36 +1068,19 @@ fn cpp_mvp1_emitted_add_fn_node(target_profile: Node) -> Node {
   }
 }
 
-fn cpp_concrete_token_class(token: CppConcreteSyntaxToken) -> Symbol {
+fn cpp_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    CppFixedToken { token_class: c } => c
-    CppBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn cpp_concrete_token_node(token: CppConcreteSyntaxToken) -> Node {
-  match token {
-    CppFixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: concrete_syntax_token_kind_fixed)),
-          cpp_named_edge(name: concrete_syntax_token_field_class, target: cpp_atom(id: c))
-        ]
-      }
-    CppBoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: concrete_syntax_token_kind_bound)),
-          cpp_named_edge(name: concrete_syntax_token_field_class, target: cpp_atom(id: c)),
-          cpp_named_edge(name: concrete_syntax_token_field_binding, target: cpp_atom(id: b))
-        ]
-      }
-  }
+fn cpp_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn cpp_positional_token_edge(token: CppConcreteSyntaxToken) -> Edge {
+fn cpp_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge { label: Positional, target: cpp_concrete_token_node(token: token) }
 }
 
@@ -1132,7 +1109,7 @@ fn cpp_mvp1_serialize_source_node() -> Node {
 }
 
 
-fn cpp_formal_rhs_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn cpp_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1206,7 +1183,7 @@ fn cpp_mvp1_grammar_relation_row(target_profile: Node) -> CppGrammarRelationRow 
   }
 }
 
-fn cpp_relation_token_edges(tokens: List<CppConcreteSyntaxToken>) -> List<Edge> {
+fn cpp_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,

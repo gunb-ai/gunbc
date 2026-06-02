@@ -552,6 +552,18 @@ fn testgen_emit_refinement_preservation_claim(
 }
 
 
+fn testgen_scheduled_refinement_preservation_generators() -> Outcome<List<Generator<TestgenConcept>>> {
+  match bootstrap_claim_generator_for_manual_anchor(key: ManualRefinementNonEmptyListBase) {
+    Accepted { value: generator, diagnostics: d } =>
+      Accepted {
+        value: [generator],
+        diagnostics: d,
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+
 fn testgen_emit_idempotent_operation_equals_claim(
   label: String,
   subject: ComposableIdempotentOperationSubject,
