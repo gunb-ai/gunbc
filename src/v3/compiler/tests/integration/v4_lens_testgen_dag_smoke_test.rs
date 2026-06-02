@@ -16,11 +16,14 @@
 //! construction until M2 can compile this module end-to-end (codex **#14839** — bounded parse
 //! ratchet, not a permanent substitute for `.dag` `TestClaim` coverage).
 //!
-//! **PR #4265 P5 receipt (+0 SG-0 paths):** same-path expansion for the T-38B
-//! `lens_effect/effect_depends_on` TestClaimRun roster receipt. This uses the existing
-//! `EXPECTED_HAND_AUTHORED_TEST` census entry for this file; dissolves under ROADMAP.md
-//! **T-PB-B / `pb_rust_tests_outside_residual_zero`** when generated or `.dag` TestClaim
-//! coverage owns the lens_effect roster/claim-id receipt without this Rust string ratchet.
+//! **INVARIANTS §P5 checkable receipt (mechanism (b), SG-0 delta 0):** this file's row in
+//! `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` is unchanged — no new hand-Rust path;
+//! `sg0_v3_test_hand_authored_subratchet` enforces disk-vs-list parity on that invariant.
+//! F.2-P1/F.2-P2 same-path tests expand inside this harness only. Explicit deferral:
+//! **ROADMAP.md** `### Nine lanes` **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+//! (`ROADMAP.md:43`, `ROADMAP.md:63`); dissolve when T-22 runs
+//! `lens_testgen/generator_provenance.dag` + `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim`
+//! end-to-end. PR #4265 added T-38B `lens_effect/effect_depends_on` pins the same way.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
@@ -148,16 +151,7 @@ fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
     );
 }
 
-// F.2-P1 / F.2-P2 hand-Rust receipt (INVARIANTS.md §P5 Dispatch-Discipline mechanism (b),
-// same-path expansion): the three tests below (`generator_carries_provenance…`,
-// `generator_provenance_claim…`, `shadow_ci_receipt_claim…`) reuse this file's existing
-// EXPECTED_HAND_AUTHORED_TEST census entry (+0 SG-0 paths) — same pattern PR #4265
-// used for the lens_effect roster and the witness_validity corpus already in this file.
-// These are bounded parse/structural ratchets, NOT permanent host-Rust. Dissolution
-// trigger: they retire when M2 cross-module name resolution / the T-22 runner evaluates
-// `lens_testgen/generator_provenance.dag` and `lens_testgen/shadow_ci_receipt.dag`
-// `EqualsClaim` witnesses end-to-end (real .dag TestClaim coverage), at which point
-// the string/field pins here are redundant and removed.
+// F.2-P1 / F.2-P2 — three same-path `#[test]` slices below; census row unchanged (see module doc).
 #[test]
 fn v4_lens_testgen_generator_carries_provenance_and_profile_fields() {
     // F.2-P1: Generator<C> gains a provenance bundle (GeneratorProvenance, authored in

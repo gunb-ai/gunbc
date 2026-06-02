@@ -1027,6 +1027,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `bootstrap_claim_generator_for_manual_anchor` + `testgen_concept_for_manual_claim` +
     // `manual_test_claim_for_manual_anchor` in `src/v4/lens/testgen.dag`; `src/v4/std/verification.dag`
     // for closed `TestClaim` schema only (no std present-key helper).
+    //
+    // **P5 receipt (INVARIANTS.md §P5 mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // checkable same-path expansion — this row is unchanged (SG-0 delta 0); F.2-P1/F.2-P2 tests
+    // added inside the existing harness only. Explicit deferral: **ROADMAP.md** `### Nine lanes`
+    // row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:43`, `ROADMAP.md:63`);
+    // dissolves when T-22 evaluates `lens_testgen/generator_provenance.dag` and
+    // `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses without this Rust string ratchet.
     "src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs",
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
