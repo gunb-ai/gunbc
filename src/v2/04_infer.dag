@@ -5062,6 +5062,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     }
   )
   let final_env = warm_lookup_cache(env: final_env_base, roots: concat(module_items(n: module.module), binding_nodes))
+  let final_env = warm_scrutinee_cache_for_bindings(env: final_env)
   BuildTypeEnvResult {
     env: final_env,
     diagnostics: concat(import_diags, resolved_diags)

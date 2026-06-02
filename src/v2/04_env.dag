@@ -35,13 +35,13 @@ fn empty_lookup_cache() -> LookupCache {
 }
 
 fn span_cache_key(span: SourceSpan) -> String {
-  concat(span.file, "\x1e", to_string(span.start), "\x1e", to_string(span.end))
+  concat(span.file, "|", to_string(value: span.start), "|", to_string(value: span.end))
 }
 
 fn node_cache_key(node: Node) -> String {
   match node.ident_span {
     Some { value: span } => span_cache_key(span: span)
-    None => concat("__node__:", node.name)
+    None => concat("__node__|", node.name)
   }
 }
 
@@ -225,7 +225,7 @@ fn lookup_cache_get_enriched_kernel(env: TypeEnv, key: String) -> Node? {
 }
 
 fn enriched_kernel_cache_key(name: String, base: Node) -> String {
-  concat(name, "\x1f", to_string(base.children |> count))
+  concat(name, "#", to_string(value: base.children |> count))
 }
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
