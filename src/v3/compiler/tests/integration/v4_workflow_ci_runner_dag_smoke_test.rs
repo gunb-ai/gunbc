@@ -17,6 +17,12 @@
 //! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174 / #4214).
 //! T-38 PR2 same-path assertion expansion: explicit P5 deferral to T-PB-B test sub-ratchet;
 //! ROADMAP.md § "Milestone shape" row 4 ("Self-host fixed point") tracks hand-maintained file count -> 0.
+//! T-38B same-path assertion expansion: explicit P5 deferral to ROADMAP.md § "Nine lanes"
+//! row **T-PB-B** / `pb_rust_tests_outside_residual_zero`; this adds no new hand-Rust
+//! test path and stays within the existing SG-0 census entry for this v4 CI smoke harness.
+//! Dissolve-on: generated `.dag` TestClaim execution covers
+//! `manual_testclaim_subject_roster_family_receipt` and the CI verdict-surface projection
+//! without this hand-Rust parse/string ratchet.
 //!
 //! **INVARIANTS P5 — checkable receipt for this PR:** feature `affected-component-live-receipt`;
 //! consumers `v4_workflow_ci_wave1_*` and `v4_workflow_ci_wave3_node_selection_still_shadow_*`.
@@ -64,6 +70,12 @@ const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
 const WAVE3_ROSTER_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/wave3_shadow_roster.dag");
 const WAVE3_ROSTER_PATH: &str = "src/v4/test/claim/workflow/wave3_shadow_roster.dag";
+const TESTCLAIM_CORPUS_RUNNER_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/testclaim_corpus_runner.dag");
+const TESTCLAIM_CORPUS_RUNNER_PATH: &str = "src/v4/test/claim/workflow/testclaim_corpus_runner.dag";
+const MANUAL_CORPUS_ROSTER_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/manual_corpus_roster.dag");
+const MANUAL_CORPUS_ROSTER_PATH: &str = "src/v4/test/claim/manual/manual_corpus_roster.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
 
@@ -1772,6 +1784,32 @@ fn v4_workflow_ci_wave3_fixture_receipt_documents_live_ci_deferral() {
 #[test]
 fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
+    let corpus_runner_module =
+        parse_module(TESTCLAIM_CORPUS_RUNNER_DAG, TESTCLAIM_CORPUS_RUNNER_PATH);
+    let manual_roster_module = parse_module(MANUAL_CORPUS_ROSTER_DAG, MANUAL_CORPUS_ROSTER_PATH);
+    assert!(
+        import_includes_name(
+            &corpus_runner_module,
+            &["v4", "test", "claim", "manual", "manual_corpus_roster"],
+            "manual_corpus_node_subject_rows"
+        ),
+        "{TESTCLAIM_CORPUS_RUNNER_PATH}: runner must import the manual subject-roster authority"
+    );
+    assert!(
+        surface_declares_fn(&corpus_runner_module, "run_node_runtime_value_subjects")
+            && surface_declares_fn(
+                &corpus_runner_module,
+                "manual_testclaim_subject_roster_family_receipt"
+            ),
+        "{TESTCLAIM_CORPUS_RUNNER_PATH}: runner must declare the subject-to-run helper and family receipt"
+    );
+    assert!(
+        matches!(
+            data_body(&manual_roster_module, "manual_corpus_node_subject_rows"),
+            SurfaceExpr::List { .. }
+        ),
+        "{MANUAL_CORPUS_ROSTER_PATH}: manual_corpus_node_subject_rows must remain a concrete subject roster"
+    );
     assert!(
         CI_DAG.contains("| TestClaimCorpusEvalCommand"),
         "{CI_DAG_PATH}: T-38 dissolution step must declare TestClaimCorpusEvalCommand arm in CiCommand"
@@ -1786,8 +1824,9 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
          as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
     );
     assert!(
-        CI_DAG.contains("manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed"),
-        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind the per-row TestClaimRun verdict surface"
+        CI_DAG.contains("manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed")
+            && CI_DAG.contains("manual_testclaim_subject_roster_family_receipt"),
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind the per-row TestClaimRun verdict surface and family receipt"
     );
     assert!(
         CI_DAG.contains("fn_name == ci_testclaim_corpus_selection_fn"),
@@ -1810,6 +1849,7 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: Symbol = run_manual_testclaim_corpus_eval",
         "ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally",
         "ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: Symbol = witness_manual_corpus_gate_closed",
+        "ci_testclaim_corpus_decl_manual_testclaim_subject_roster_family_receipt_name: Symbol = manual_testclaim_subject_roster_family_receipt",
         "fn ci_testclaim_corpus_eval_command() -> CiCommand",
         "verdict_surface: ci_testclaim_corpus_verdict_surface_authority()",
         "surface == ci_testclaim_corpus_verdict_surface_authority()",
@@ -1818,6 +1858,7 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "ci_projection_corpus_surface_eval_report_edge",
         "ci_projection_corpus_surface_verdict_tally_edge",
         "ci_projection_corpus_surface_gate_witness_edge",
+        "ci_projection_corpus_surface_family_receipt_edge",
         "ci_projection_declaration_module_edge",
         "ci_projection_declaration_name_edge",
         "ci_declaration_authority_projection_node",
@@ -1833,6 +1874,30 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         assert!(
             CI_DAG.contains(needle),
             "{CI_DAG_PATH}: TestClaimCorpusEvalCommand must carry modeled corpus verdict authority `{needle}`"
+        );
+    }
+    for needle in [
+        "type TestClaimSubjectRosterUnsupportedRow",
+        "type TestClaimSubjectRosterFamilyReceipt",
+        "subjects: List<TestClaimEvalSubject<Node>>",
+        "runs: List<TestClaimRun<Node, RuntimeValue>>",
+        "unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow>",
+        "data testclaim_subject_roster_unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow>",
+        "testclaim_subject_roster_family_ci_pipeline",
+        "testclaim_subject_roster_family_non_runtime_value",
+        "testclaim_subject_roster_unsupported_until_runner_projection_lands",
+        "fn run_node_runtime_value_subjects(",
+        "map(subjects, fn(subject) { run_test_claim(subject: subject) })",
+        "fn manual_testclaim_subject_roster_family_receipt() -> TestClaimSubjectRosterFamilyReceipt",
+        "subject_family: testclaim_subject_roster_family_node_runtime_value",
+        "run_family: testclaim_subject_roster_run_test_claim",
+        "subjects: manual_corpus_node_subject_rows",
+        "report: CorpusEvalReport",
+        "data witness_manual_testclaim_subject_roster_family_receipt: Bool",
+    ] {
+        assert!(
+            TESTCLAIM_CORPUS_RUNNER_DAG.contains(needle),
+            "{TESTCLAIM_CORPUS_RUNNER_PATH}: T-38B subject-roster family contract must carry `{needle}`"
         );
     }
     assert!(
