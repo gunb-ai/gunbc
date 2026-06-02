@@ -180,7 +180,7 @@ Default deliverable is this types/authority doc, NOT an `eval_parallel` runtime 
 
 ```text
 1. RR-I merged (this doc) — manager may pull I.1.1 forward.
-2. I.1.1 (dispatched): collapse UnknownCoupling/peers into typed unresolved coproduct
+2. I.1.1 (parallelism partial): collapse UnknownCoupling into typed unresolved coproduct + lookup/admitted-facts routing
    sourced from a derived fact — cites §4 R1–R4. Design contract is §2 here.
 3. I.3 promotion (only when trigger T or T' fires): land the projection OR escalate the
    parametric-evaluator substrate PR; move the row out of unsupported_rows (§4 R6/R7).
@@ -207,7 +207,7 @@ Default deliverable is this types/authority doc, NOT an `eval_parallel` runtime 
 
 ## §7 Downstream handoffs (§6.7)
 
-- **I.1.1 child (`adhoc-8b1709c7-7c0`)**: consumed §2 closure contract + §4 R1–R4 for the UnknownCoupling collapse.
+- **I.1.1 child (`adhoc-8b1709c7-7c0`)**: parallelism typed-unresolved collapse landed; per-coproduct dissolution trigger remains until substrate coupling carrier exists.
 - **Runtime/TestClaim Mgr**: corpus promotion (§3 trigger T/T') is an implementation lane; the parametric-evaluator path (T') requires an L2.5 substrate model PR — escalate, do not improvise (`run_test_claim` is load-bearing per SELF_HOSTING).
 - **#3468 lane**: closes the `effect` signature-derived kind set and the `ownership` access carrier only; the `parallelism` / `idempotency` / `ownership-mode` `*-unresolved` predicates dissolve on their own per-coproduct triggers (§2 table), independent of #3468.
 
