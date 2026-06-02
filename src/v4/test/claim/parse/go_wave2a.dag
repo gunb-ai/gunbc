@@ -5,9 +5,10 @@
 module v4.test.claim.parse.go_wave2a
 
 import v4.compiler.tokenize { tokenize }
-import v4.compiler.parse { ParseTree, parse }
+import v4.compiler.parse { parse }
 import v4.extdeps.languages.go { go_mvp1_source_text, go_wave1_lex, go_wave1_grammar }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.grammar { ParseTree }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.logic { Bool }
 import v4.std.verification {
