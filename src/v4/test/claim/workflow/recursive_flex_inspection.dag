@@ -1,0 +1,71 @@
+// src/v4/test/claim/workflow/recursive_flex_inspection.dag
+// Scope: F.12a recursive-flex THIN — a T-38 *inspection receipt* over the two v4
+//   workflow authorities (`v4.workflow.ci` + `v4.workflow.bootstrap`), scoped to
+//   the A.1.5a in-process equivalence claim (#4313) ONLY.
+//
+// "Recursive-flex": the compiler's own CI pipeline (`ci.dag`) and self-host
+//   bootstrap plan (`bootstrap.dag`) are inspected *together* with the A.1.5a
+//   runtime-equivalence law, in a single compile-time receipt. It flexes the
+//   recursion — a TestClaim about the runtime, checked against the workflow that
+//   would schedule it and the bootstrap that would build it — without running the
+//   loop. This is the THIN slice; the FULL self-host loop (harness execution +
+//   runtime verdict feedback into the bootstrap) is F.12b, deliberately NOT here.
+//
+// The receipt conjoins three structural facts that ALL already live on main:
+//   (1) `inprocess_equivalence_holds()` — A.1.5a: on the fixed eval_mvp2 slice the
+//       harness path and the direct `run_test_claim` path agree (#4313).
+//   (2) `recursive_flex_slice_in_ci_frontier` — the A.1.5a slice's claim id
+//       (`claim_eval_mvp2_test_claim_route`) is present in ci.dag's live corpus
+//       claim-id frontier `ci_testclaim_corpus_eval_claim_ids` (so the subject the
+//       equivalence law fixes is one CI actually rosters).
+//   (3) `bootstrap_plan_accepted_hash_pins_projectable_witness` — bootstrap.dag's
+//       structural fixed-point hash-pin projection holds (the self-host plan the
+//       claim would build under is well-formed).
+//
+// DEFERRAL (RR-A §6 / §5 landing order): this file is an INSPECTION receipt, not a
+//   harness-executed gate. It declares NO `data run_*: TestClaimRun = run_test_claim(...)`
+//   authoring-time co-authority row (forbidden, RR-A §6) and does NOT mutate
+//   `ci.dag`/`bootstrap.dag` — it imports and inspects them only. The runtime
+//   verdict + roster execution remain the A.1 harness lane (F.12b / Compiler Spine).
+//   Dissolve-on: F.12b wires the runtime loop and re-asserts this receipt over the
+//   live `TestClaimRun` report instead of the compile-time conjunction below.
+
+module v4.test.claim.workflow.recursive_flex_inspection
+
+
+import v4.std.logic { Bool }
+import v4.std.node { Symbol }
+import v4.std.algebra { contains }
+import v4.test.claim.workflow.inprocess_equivalence { inprocess_equivalence_holds }
+import v4.workflow.ci { ci_testclaim_corpus_eval_claim_ids }
+import v4.workflow.bootstrap { bootstrap_plan_accepted_hash_pins_projectable_witness }
+
+
+// The A.1.5a fixed-slice subject is built around this claim id; it is the first
+// entry of ci.dag's `ci_testclaim_corpus_eval_claim_ids` corpus frontier. As a
+// `Symbol` atom (the `data X: Symbol = X` idiom), this is the same atom that
+// frontier lists — equality is by atom identity.
+data recursive_flex_slice_claim_id: Symbol = claim_eval_mvp2_test_claim_route
+
+
+// Inspection over ci.dag: the slice the equivalence law fixes is one the live CI
+// corpus frontier actually rosters. Symbol membership via atom equality.
+fn recursive_flex_slice_in_ci_frontier() -> Bool {
+  contains(
+    xs: ci_testclaim_corpus_eval_claim_ids,
+    item: recursive_flex_slice_claim_id,
+    eq: fn(a: Symbol, b: Symbol) -> Bool { a == b }
+  )
+}
+
+
+// The recursive-flex receipt: the runtime-equivalence law holds for a subject CI
+// rosters, under a self-host bootstrap plan whose hash-pin projection is well-formed.
+fn recursive_flex_inspection_holds() -> Bool {
+  inprocess_equivalence_holds()
+    && recursive_flex_slice_in_ci_frontier()
+    && bootstrap_plan_accepted_hash_pins_projectable_witness
+}
+
+
+data witness_recursive_flex_inspection: Bool = recursive_flex_inspection_holds()

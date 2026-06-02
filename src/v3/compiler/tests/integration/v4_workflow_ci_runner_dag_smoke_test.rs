@@ -93,6 +93,17 @@ const MANUAL_CORPUS_ROSTER_PATH: &str = "src/v4/test/claim/manual/manual_corpus_
 const INPROCESS_EQUIVALENCE_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/inprocess_equivalence.dag");
 const INPROCESS_EQUIVALENCE_PATH: &str = "src/v4/test/claim/workflow/inprocess_equivalence.dag";
+// F.12a recursive-flex THIN: a T-38 inspection receipt over `v4.workflow.ci` +
+// `v4.workflow.bootstrap`, scoped to the A.1.5a slice (#4313) ONLY — it imports/
+// inspects both workflow authorities (no edits) and conjoins (1) inprocess
+// equivalence holds, (2) the A.1.5a slice claim id is on the live ci.dag corpus
+// frontier, (3) the bootstrap fixed-point hash-pin projection holds. NOT the full
+// self-host loop (F.12b). SG-0 delta 0 — same-path expansion in this v4 CI smoke
+// harness; `pb_rust_tests_outside_residual_zero`.
+const RECURSIVE_FLEX_INSPECTION_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/recursive_flex_inspection.dag");
+const RECURSIVE_FLEX_INSPECTION_PATH: &str =
+    "src/v4/test/claim/workflow/recursive_flex_inspection.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
 
