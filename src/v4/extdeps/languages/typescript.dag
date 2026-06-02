@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric+string primitive fact-bundles, ModelCore wave-1 (primitives+inhabitance), wave-2b (laws+effects+partiality+string).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
-// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; G.1.4: wave-2b `PerLanguageFactBundleRegistry` via `insert_per_language_fact_bundle_entry`; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW, SL-T4-WAVE2B-TS-LAW-KEY.
 // 🟡
@@ -93,9 +93,16 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  Outcome,
   Rejected,
   Unavailable,
   node_locus
+}
+import v4.std.grounding {
+  PerLanguageFactBundleKey,
+  PerLanguageFactBundleRegistry,
+  empty_per_language_fact_bundle_registry,
+  insert_per_language_fact_bundle_entry
 }
 import v4.std.node_query { find_named_child }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
@@ -3160,6 +3167,137 @@ fn ts_wave2b_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     right: [ts_primitive_bundle_from_string_facts(facts: ts_facts_string)]
   )
 }
+
+
+// --- G.1.4: per-language fact bundle registry (wave-2b primitives × canonical fact axes) ---
+
+fn ts_g14_grounding_target_model() -> TargetModel {
+  ts_sg2_type_expr_target_model()
+}
+
+fn ts_insert_per_language_primitive_axis(
+  registry: PerLanguageFactBundleRegistry,
+  subject: Node,
+  target: TargetModel,
+  axis: Symbol,
+  value: Node
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  insert_per_language_fact_bundle_entry(
+    registry: registry,
+    key: PerLanguageFactBundleKey {
+      subject_carrier: subject,
+      target: target,
+      fact_axis: axis
+    },
+    fact_value: value
+  )
+}
+
+fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  let target = ts_g14_grounding_target_model()
+  let number_subject = ts_number_facts_node(facts: ts_facts_number)
+  let bigint_subject = ts_bigint_facts_node(facts: ts_facts_bigint)
+  let bool_subject = ts_bool_facts_node(facts: ts_facts_boolean)
+  let string_subject = ts_string_facts_node(facts: ts_facts_string)
+  match ts_insert_per_language_primitive_axis(
+    registry: empty_per_language_fact_bundle_registry(),
+    subject: number_subject,
+    target: target,
+    axis: primitive_fact_axis_surface_spelling,
+    value: ts_inhabitant_atom(id: ts_facts_number.surface_spelling)
+  ) {
+    Accepted { value: r0, diagnostics: _ } =>
+      match ts_insert_per_language_primitive_axis(
+        registry: r0,
+        subject: number_subject,
+        target: target,
+        axis: primitive_fact_axis_width,
+        value: ts_inhabitant_atom(id: ts_tag_bits64)
+      ) {
+        Accepted { value: r1, diagnostics: _ } =>
+          match ts_insert_per_language_primitive_axis(
+            registry: r1,
+            subject: number_subject,
+            target: target,
+            axis: primitive_fact_axis_encoding,
+            value: ts_inhabitant_atom(id: ts_facts_number.ieee754_binary)
+          ) {
+            Accepted { value: r2, diagnostics: _ } =>
+              match ts_insert_per_language_primitive_axis(
+                registry: r2,
+                subject: bigint_subject,
+                target: target,
+                axis: primitive_fact_axis_surface_spelling,
+                value: ts_inhabitant_atom(id: ts_facts_bigint.surface_spelling)
+              ) {
+                Accepted { value: r3, diagnostics: _ } =>
+                  match ts_insert_per_language_primitive_axis(
+                    registry: r3,
+                    subject: bigint_subject,
+                    target: target,
+                    axis: primitive_fact_axis_encoding,
+                    value: ts_inhabitant_atom(id: ts_facts_bigint.encoding)
+                  ) {
+                    Accepted { value: r4, diagnostics: _ } =>
+                      match ts_insert_per_language_primitive_axis(
+                        registry: r4,
+                        subject: bool_subject,
+                        target: target,
+                        axis: primitive_fact_axis_surface_spelling,
+                        value: ts_inhabitant_atom(id: ts_facts_boolean.surface_spelling)
+                      ) {
+                        Accepted { value: r5, diagnostics: _ } =>
+                          match ts_insert_per_language_primitive_axis(
+                            registry: r5,
+                            subject: bool_subject,
+                            target: target,
+                            axis: primitive_fact_axis_encoding,
+                            value: ts_inhabitant_atom(id: ts_facts_boolean.encoding)
+                          ) {
+                            Accepted { value: r6, diagnostics: _ } =>
+                              match ts_insert_per_language_primitive_axis(
+                                registry: r6,
+                                subject: string_subject,
+                                target: target,
+                                axis: primitive_fact_axis_surface_spelling,
+                                value: ts_inhabitant_atom(id: ts_facts_string.surface_spelling)
+                              ) {
+                                Accepted { value: r7, diagnostics: _ } =>
+                                  ts_insert_per_language_primitive_axis(
+                                    registry: r7,
+                                    subject: string_subject,
+                                    target: target,
+                                    axis: primitive_fact_axis_encoding,
+                                    value: ts_inhabitant_atom(id: ts_facts_string.encoding)
+                                  )
+                                Rejected { diagnostics: d } =>
+                                  Rejected { diagnostics: d }
+                              }
+                            Rejected { diagnostics: d } =>
+                              Rejected { diagnostics: d }
+                          }
+                        Rejected { diagnostics: d } =>
+                          Rejected { diagnostics: d }
+                      }
+                    Rejected { diagnostics: d } =>
+                      Rejected { diagnostics: d }
+                  }
+                Rejected { diagnostics: d } =>
+                  Rejected { diagnostics: d }
+              }
+            Rejected { diagnostics: d } =>
+              Rejected { diagnostics: d }
+          }
+        Rejected { diagnostics: d } =>
+          Rejected { diagnostics: d }
+      }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+data ts_per_language_fact_bundle_registry_outcome: Outcome<PerLanguageFactBundleRegistry> =
+  ts_build_per_language_fact_bundle_registry()
 
 
 // 🟡 coproduct dissolution — SL-T4-WAVE2B-TS-LAW-KEY — feature:model-core-law-expression-carrier — scaffold:T-4-wave-2b · law-kind coproduct for ts_model_core_law_node kind edge — owner:T-4 typescript language model lane — dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
