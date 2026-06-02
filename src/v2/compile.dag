@@ -19,7 +19,7 @@ import v2.std.core {
   LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
   NewlineIndex, build_newline_index,
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at,
-  InternTable, InternResult, empty_intern_table, intern
+  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_with_table, ParseResult }
@@ -70,6 +70,11 @@ type FrontendAccum {
   parse_results: List<ParseResult>
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
+}
+
+type FrontendPrepared {
+  tokens: List<Token>
+  newline_index: NewlineIndex
 }
 
 // =========================================================================
@@ -1094,20 +1099,16 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
 }
 
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
-  let acc = sources |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: empty_intern_table() }, f: (acc, s) =>
+  let prepared = sources |> map(s =>
     let tokens = tokenize(source: s.content, file: s.path)
     let si = build_newline_index(file: s.path, source: s.content)
-    let parsed = parse_with_table(tokens: tokens, source_indices: map_insert(empty_map(), si.file, si), intern_table: acc.intern_table)
-    let pr = parsed.result
-    FrontendAccum {
-      parse_results: list_push(acc.parse_results, pr),
-      newline_indices: list_push(acc.newline_indices, si),
-      intern_table: parsed.intern_table
-    }
+    FrontendPrepared { tokens: tokens, newline_index: si }
   )
-  let parse_results = acc.parse_results
-  let newline_indices = acc.newline_indices
-  let intern_table = acc.intern_table
+  let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
+  let parse_results = prepared |> map(p =>
+    parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: intern_table).result
+  )
+  let newline_indices = prepared |> map(p => p.newline_index)
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let has_parse_errors = parse_results |> any(p => p.error != None)
   if has_parse_errors {

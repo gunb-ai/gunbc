@@ -60,19 +60,22 @@ pub use crate::v2_std_core::{
     field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
     field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at, intern,
-    is_error_diagnostic, lambda_param_names_at, make_error_node, module_imports, module_items,
-    no_span, param_node_default_value, param_node_name_at, param_node_span, param_node_type_expr,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, BinOp, CallSemantics,
-    Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
-    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternResult, InternTable,
-    LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
-    TextFile, Token, UnaryOpKind, VarBindingKind,
+    is_error_diagnostic, is_internable_token, lambda_param_names_at, make_error_node,
+    module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
+    param_node_span, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, BinOp, CallSemantics, Cardinality, CompileResult, CompilerDiagnostic,
+    Connective, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary,
+    FieldValueShape, InferredNode, InternResult, InternTable, LiteralValue, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, Token, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
+use std::collections::VecDeque;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceFile {
@@ -103,6 +106,45 @@ pub struct FrontendAccum {
     pub parse_results: Rc<Vec<Rc<ParseResult>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontendPrepared {
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub newline_index: Rc<NewlineIndex>,
+}
+
+#[derive(Clone)]
+struct FrontendSourceInput {
+    index: usize,
+    path: String,
+    content: String,
+}
+
+#[derive(Clone)]
+struct FrontendInternPlan {
+    index: usize,
+    path: String,
+    content: String,
+    intern_strings: Vec<String>,
+}
+
+struct ParsedFrontendSource {
+    index: usize,
+    parse_result: ThreadOwnedRc<Rc<ParseResult>>,
+}
+
+struct ThreadOwnedRc<T>(T);
+
+// Stage0 parse trees are Rc graphs, but each worker constructs a whole graph
+// from owned strings and gives it back only after the worker has stopped using
+// it. The wrapper marks that ownership transfer boundary explicitly.
+unsafe impl<T> Send for ThreadOwnedRc<T> {}
+
+impl<T> ThreadOwnedRc<T> {
+    fn into_inner(self) -> T {
+        self.0
+    }
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
