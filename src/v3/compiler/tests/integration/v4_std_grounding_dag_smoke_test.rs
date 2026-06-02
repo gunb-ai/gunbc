@@ -202,14 +202,14 @@ fn v4_std_grounding_registry_keyed_map_authority() {
 }
 
 #[test]
-fn v4_std_grounding_primitive_fact_bundle_fail_closed_axis() {
+fn v4_std_grounding_registry_entries_do_not_project_incomplete_primitive_bundles() {
     assert!(
-        GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry(")
-            && GROUNDING_DAG.contains("-> Outcome<PrimitiveFactBundle>"),
-        "primitive_fact_bundle_for_entry must fail-closed on non-canonical fact_axis Symbols"
+        !GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry(")
+            && !GROUNDING_DAG.contains("-> Outcome<PrimitiveFactBundle>"),
+        "single fact-axis registry entries must not project directly to complete PrimitiveFactBundle carriers"
     );
     assert!(
         GROUNDING_DAG.contains("fn witness_canonical_primitive_fact_axis("),
-        "canonical fact_axis witness before spec_facts projection"
+        "canonical fact_axis witness remains available for a future subject×target aggregation builder"
     );
 }

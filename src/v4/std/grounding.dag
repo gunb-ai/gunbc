@@ -23,7 +23,6 @@ import v4.std.diagnostic {
 }
 import v4.std.host_run { EmitHostRunReceipt }
 import v4.std.model_core {
-  PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_range,
@@ -122,27 +121,6 @@ fn witness_canonical_primitive_fact_axis(axis: Symbol) -> Witness<Symbol> {
       Violates {
         diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
       }
-  }
-}
-
-
-// G.1 / model_core boundary: project registry row to PrimitiveFactBundle (substrate_carrier from key).
-// Fail-closed on non-canonical fact_axis Symbols (model_core primitive_fact_axis_*; target_model
-// catalog edges extend in G.1).
-fn primitive_fact_bundle_for_entry(entry: PerLanguageFactBundleEntry) -> Outcome<PrimitiveFactBundle> {
-  match witness_canonical_primitive_fact_axis(axis: entry.key.fact_axis) {
-    Holds { value: _ } =>
-      outcome_accepted(
-        value: PrimitiveFactBundle {
-          substrate_carrier: entry.key.subject_carrier,
-          spec_facts: map_insert(
-            m: empty_map(),
-            key: entry.key.fact_axis,
-            value: entry.fact_value
-          )
-        }
-      )
-    Violates { diagnostic: d } => outcome_rejected(d: d)
   }
 }
 
