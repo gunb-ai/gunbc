@@ -137,6 +137,10 @@ import v4.test.claim.workflow.wave3_shadow_roster {
   ci_wave3_shadow_generated_claim_roster,
   ci_wave3_shadow_manual_claim_roster
 }
+import v4.test.claim.round_trip.source_authority_contract {
+  claim_bmin_canonical_dag_source_parse_print_law,
+  claim_source_authority_contract_compiles
+}
 
 
 // RULING-1: 🟢 pretty-much-done — Tier-0 CI build profile (bankruptcy I2–I4; docs/design-ci-bankruptcy-rebuild.md §2).
@@ -162,6 +166,10 @@ type CiCommand
   | TestClaimCorpusEvalCommand { selection_fn: Symbol, verdict_surface: TestClaimCorpusVerdictSurfaceAuthority }
   // T-38B family receipt — lens_ownership subjects are rostered in `src/v4/test/claim/lens_ownership/subject_roster.dag` and evaluated by `workflow/lens_ownership_family_eval.dag` through run_test_claim.
   | LensOwnershipFamilyEvalCommand { verdict_surface: LensOwnershipFamilyVerdictSurfaceAuthority }
+  // F.11b/H.7.2 source-authority receipt consumption — CI consumes the Branch H.7.2 TestClaim
+  // declarations directly. Forbidden: JSON IR / `--target dag` evidence or CI-local placeholder
+  // claim symbols in place of `v4.test.claim.round_trip.source_authority_contract`.
+  | SourceAuthorityReceiptEvalCommand { claims: List<Symbol> }
   // 🟡 gated — feature:phase1-nat-semiring-rung-gate — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: delete scripts/v4-phase1-nat-semiring-rung-gate.sh and the paired CI step when TestClaimRun verdicts evaluate phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets) and emit PROVEN rung0/rung1/rung2 receipts; until then the host transport carries the §2.4 verdict matrix. Authority: Ladder/Fixture Manager (PR #3938 §11.1 lane 2). Forbidden: repurposing M1RustEmitProbeCommand for fixture-scoped gates (corpus-wide diagnostic, not fixture×rung) or repurposing TestClaimCorpusEvalCommand (full-corpus T-38, narrows by affected-set not by fixture roster).
   | Phase1NatSemiringRungGateCommand
 
@@ -639,6 +647,7 @@ data leaf_model_go_verify_execution: Symbol = leaf_model_go_verify_execution
 data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set
 data testclaim_corpus_eval_execution: Symbol = testclaim_corpus_eval_execution
 data lens_ownership_family_eval_execution: Symbol = lens_ownership_family_eval_execution
+data source_authority_receipt_eval_execution: Symbol = source_authority_receipt_eval_execution
 data phase1_nat_semiring_rung_gate_execution: Symbol = phase1_nat_semiring_rung_gate_execution
 data structural_v2_compile: Symbol = structural_v2_compile
 data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
@@ -646,6 +655,7 @@ data m1_rust_emit_probe_signal: Symbol = m1_rust_emit_probe_signal
 data leaf_model_go_verify_signal: Symbol = leaf_model_go_verify_signal
 data testclaim_corpus_eval_signal: Symbol = testclaim_corpus_eval_signal
 data lens_ownership_family_eval_signal: Symbol = lens_ownership_family_eval_signal
+data source_authority_receipt_eval_signal: Symbol = source_authority_receipt_eval_signal
 data phase1_nat_semiring_rung_gate_signal: Symbol = phase1_nat_semiring_rung_gate_signal
 data ci_srv1_host: Symbol = ci_srv1_host
 data ci_srv2_host: Symbol = ci_srv2_host
@@ -855,6 +865,25 @@ fn ci_job_lens_ownership_family_eval_execution_mk() -> CiJob {
 
 data ci_job_lens_ownership_family_eval_execution_row: CiJob = ci_job_lens_ownership_family_eval_execution_mk()
 
+data ci_source_authority_receipt_claim_ids: List<Symbol> = [
+  claim_source_authority_contract_compiles,
+  claim_bmin_canonical_dag_source_parse_print_law
+]
+
+fn ci_source_authority_receipt_eval_command() -> CiCommand {
+  SourceAuthorityReceiptEvalCommand { claims: ci_source_authority_receipt_claim_ids }
+}
+
+fn ci_job_source_authority_receipt_eval_execution_mk() -> CiJob {
+  CiJob {
+    id: source_authority_receipt_eval_execution,
+    command: ci_source_authority_receipt_eval_command(),
+    needs: [v2_compile_src_v4]
+  }
+}
+
+data ci_job_source_authority_receipt_eval_execution_row: CiJob = ci_job_source_authority_receipt_eval_execution_mk()
+
 fn ci_job_v2_bootstrap_smoke_execution_mk() -> CiJob {
   CiJob {
     id: v2_bootstrap_smoke_execution,
@@ -936,6 +965,7 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     ci_job_leaf_model_go_verify_execution_row,
     ci_job_testclaim_corpus_eval_execution_row,
     ci_job_lens_ownership_family_eval_execution_row,
+    ci_job_source_authority_receipt_eval_execution_row,
     CiJob {
       id: phase1_nat_semiring_rung_gate_execution,
       command: Phase1NatSemiringRungGateCommand,
@@ -972,6 +1002,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
       id: lens_ownership_family_eval_signal,
       job: lens_ownership_family_eval_execution,
       run_policy: RequiresJobAttempt { job: testclaim_corpus_eval_execution }
+    },
+    CiGate {
+      id: source_authority_receipt_eval_signal,
+      job: source_authority_receipt_eval_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
     },
     CiGate {
       id: phase1_nat_semiring_rung_gate_signal,
@@ -1199,6 +1234,35 @@ data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
 
 data ci_lens_ownership_family_eval_claim_ids: List<Symbol> = lens_ownership_family_claim_ids
 
+fn ci_upsert_source_authority_receipt_eval_claim_ref_inputs() -> List<UpsertInputRef> {
+  fold(ci_source_authority_receipt_claim_ids, init: ci_empty_upsert_input_refs(), f: fn(acc, claim_id) {
+    list_snoc_item(xs: acc, item: ci_upsert_test_claim_ref_input(claim_id: claim_id))
+  })
+}
+
+data ci_upsert_source_authority_receipt_eval_file_set_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "src/v4/compiler/source_authority.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/round_trip/source_authority_contract.dag")
+]
+
+data ci_upsert_source_authority_receipt_eval_upstream_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: v2_compile_src_v4)
+]
+
+fn ci_upsert_source_authority_receipt_eval_file_and_claim_inputs_mk() -> List<UpsertInputRef> {
+  fold(ci_upsert_source_authority_receipt_eval_claim_ref_inputs(), init: ci_upsert_source_authority_receipt_eval_file_set_inputs, f: fn(acc, item) {
+    list_snoc_item(xs: acc, item: item)
+  })
+}
+
+fn ci_upsert_source_authority_receipt_eval_inputs_mk() -> List<UpsertInputRef> {
+  fold(ci_upsert_source_authority_receipt_eval_file_and_claim_inputs_mk(), init: ci_upsert_source_authority_receipt_eval_upstream_inputs, f: fn(acc, item) {
+    list_snoc_item(xs: acc, item: item)
+  })
+}
+
+data ci_upsert_source_authority_receipt_eval_inputs: List<UpsertInputRef> = ci_upsert_source_authority_receipt_eval_inputs_mk()
+
 data ci_upsert_lens_ownership_family_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/lens_ownership/resource_dependency.dag"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/lens_ownership/subject_roster.dag"),
@@ -1371,6 +1435,22 @@ fn ci_upsert_lens_ownership_family_eval_execution_mk() -> CiUpsertStepSymbol {
 }
 
 data ci_upsert_lens_ownership_family_eval_execution: CiUpsertStepSymbol = ci_upsert_lens_ownership_family_eval_execution_mk()
+
+fn ci_upsert_source_authority_receipt_eval_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_source_authority_receipt_eval_inputs
+  verify: ci_command_projection_node(
+    c: ci_source_authority_receipt_eval_command()
+  )
+  create: ci_job_projection_node(j: ci_job_source_authority_receipt_eval_execution_row)
+  resolve: ci_atom(sym: source_authority_receipt_eval_execution)
+  payload_type: ci_command_projection_node(
+    c: ci_source_authority_receipt_eval_command()
+  )
+  }
+}
+
+data ci_upsert_source_authority_receipt_eval_execution: CiUpsertStepSymbol = ci_upsert_source_authority_receipt_eval_execution_mk()
 
 // #4091 §1.2 four-compile collapse — lens-CI semantic v4 compile consumes v2_compile_src_v4's
 // resolved closure via UpstreamUpsert (appended to the per-lens output refs) and re-emits its
@@ -1596,6 +1676,34 @@ fn ci_upsert_phase1_nat_semiring_rung_gate_signal_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_phase1_nat_semiring_rung_gate_signal: CiUpsertStepSymbol = ci_upsert_phase1_nat_semiring_rung_gate_signal_mk()
 
+data ci_upsert_source_authority_receipt_eval_signal_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: source_authority_receipt_eval_execution)
+]
+
+fn ci_upsert_source_authority_receipt_eval_signal_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_source_authority_receipt_eval_signal_inputs
+  verify: ci_gate_projection_node(
+    g: CiGate {
+      id: source_authority_receipt_eval_signal,
+      job: source_authority_receipt_eval_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  create: ci_gate_projection_node(
+    g: CiGate {
+      id: source_authority_receipt_eval_signal,
+      job: source_authority_receipt_eval_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  resolve: ci_atom(sym: source_authority_receipt_eval_signal)
+  payload_type: ci_atom(sym: ci_cache_gate_policy_requires_job_tag)
+  }
+}
+
+data ci_upsert_source_authority_receipt_eval_signal: CiUpsertStepSymbol = ci_upsert_source_authority_receipt_eval_signal_mk()
+
 data ci_upsert_steps: List<CiUpsertStepRow> = [
   CiUpsertStepRow {
     step_id: JobStep {
@@ -1669,6 +1777,14 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
     inputs: ci_upsert_lens_ownership_family_eval_inputs
   },
   CiUpsertStepRow {
+    step_id: JobStep {
+      job: source_authority_receipt_eval_execution,
+      step: source_authority_receipt_eval_execution
+    },
+    step: ci_upsert_source_authority_receipt_eval_execution,
+    inputs: ci_upsert_source_authority_receipt_eval_inputs
+  },
+  CiUpsertStepRow {
     step_id: JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution },
     step: ci_upsert_lens_ci_registry_execution,
     inputs: ci_upsert_lens_ci_registry_execution_inputs
@@ -1711,6 +1827,14 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
     },
     step: ci_upsert_lens_ownership_family_eval_signal,
     inputs: ci_upsert_lens_ownership_family_eval_signal_inputs
+  },
+  CiUpsertStepRow {
+    step_id: GateStep {
+      job: source_authority_receipt_eval_execution,
+      gate: source_authority_receipt_eval_signal
+    },
+    step: ci_upsert_source_authority_receipt_eval_signal,
+    inputs: ci_upsert_source_authority_receipt_eval_signal_inputs
   },
   CiUpsertStepRow {
     step_id: GateStep {
