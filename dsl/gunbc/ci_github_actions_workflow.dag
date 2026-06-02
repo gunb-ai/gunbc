@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): c1006189aec0f7cdc61560033e7c63e01ba6825195f7a8547e2dd41037af83f1
+// Source-SHA256(.github/workflows/ci.yml): 71dad637664e11a38d51cbff14b181abdef5857684a044c39c4224d25a466874
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -36,7 +36,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Assert runner is de-privileged (adversarial)" },
           id: none,
-          run: "fail(){ echo \"::error::INFRA ISOLATION REGRESSION: $1\"; exit 1; }\n[ \"$(id -u)\" -ne 0 ] || fail \"running as root\"\nfor g in docker sudo lxd wheel root; do id -nG | tr ' ' '\\n' | grep -qx \"$g\" && fail \"in privileged group $g\"; done\ncat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail \"can read the App private key\"\nsudo -n true 2>/dev/null && fail \"has passwordless sudo\"\ntest -r /var/run/docker.sock && fail \"can access docker.sock\"\necho \"OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, no docker.sock\"\n",
+          run: "fail(){ echo \"::error::INFRA ISOLATION REGRESSION: $1\"; exit 1; }\n[ \"$(id -u)\" -ne 0 ] || fail \"running as root\"\nfor g in docker sudo lxd wheel root; do id -nG | tr ' ' '\\n' | grep -qx \"$g\" && fail \"in privileged group $g\"; done\ncat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail \"can read the App private key\"\nsudo -n true 2>/dev/null && fail \"has passwordless sudo\"\n{ test -r /var/run/docker.sock || test -w /var/run/docker.sock; } && fail \"can read or write docker.sock\"\necho \"OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, docker.sock inaccessible\"\n",
           shell: Bash,
           env: none,
           working_directory: none,

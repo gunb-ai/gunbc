@@ -48,8 +48,8 @@ jobs:
         for g in docker sudo lxd wheel root; do id -nG | tr ' ' '\n' | grep -qx "$g" && fail "in privileged group $g"; done
         cat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail "can read the App private key"
         sudo -n true 2>/dev/null && fail "has passwordless sudo"
-        test -r /var/run/docker.sock && fail "can access docker.sock"
-        echo "OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, no docker.sock"
+        { test -r /var/run/docker.sock || test -w /var/run/docker.sock; } && fail "can read or write docker.sock"
+        echo "OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, docker.sock inaccessible"
   fmt:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]

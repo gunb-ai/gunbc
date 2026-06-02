@@ -558,7 +558,7 @@ type RunnerIsolationPolicy {
   guard_step_name: String // the assertion step name (ci.dag↔ci.yml binding anchor)
   privileged_groups: List<String> // membership in ANY is a de-priv regression — fail closed
   app_private_key_path: String // the GitHub App key; readable by the runner = regression
-  docker_socket_path: String // root-equivalent escape primitive; readable = regression
+  docker_socket_path: String // root-equivalent escape primitive; readable OR writable (socket connect) = regression
   forbid_root_uid: Bool // a job running as uid 0 is a de-priv regression — fail closed
   forbid_passwordless_sudo: Bool // `sudo -n` succeeding is root-equivalent — fail closed
   timeout_minutes: Int // 🟡 gated: formatter-int-refinement — must be ≥1
