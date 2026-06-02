@@ -6,10 +6,11 @@ module v4.test.claim.lens_testgen.shadow_ci_receipt
 
 import v4.lens.testgen {
   testgen_default_profile_ref,
-  testgen_run_receipt,
-  testgen_scheduled_generators
+  testgen_run_receipt_outcome,
+  testgen_scheduled_generators_outcome
 }
 import v4.std.algebra { length }
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.verification {
@@ -36,9 +37,15 @@ fn lens_testgen_shadow_ci_marker_node(marker: Symbol) -> Node {
 
 
 fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
-  length(xs: testgen_scheduled_generators()) > 0
-    && length(xs: testgen_run_receipt(profile_ref: testgen_default_profile_ref).generators)
-      == length(xs: testgen_scheduled_generators())
+  match testgen_run_receipt_outcome(profile_ref: testgen_default_profile_ref) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match testgen_scheduled_generators_outcome() {
+        Accepted { value: roster, diagnostics: _ } =>
+          length(xs: receipt.generators) == length(xs: roster)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 

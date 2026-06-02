@@ -4178,6 +4178,19 @@ data ci_wave3_shadow_selected_testgen_receipt: SelectedTestgenReceipt = ci_testg
   profile_ref: testgen_default_profile_ref
 )
 
+fn ci_wave3_shadow_testgen_run_receipt_fixture() -> TestgenRunReceipt {
+  match testgen_run_receipt_outcome(profile_ref: testgen_default_profile_ref) {
+    Accepted { value: receipt, diagnostics: _ } => receipt
+    Rejected { diagnostics: _ } =>
+      TestgenRunReceipt {
+        profile_ref: testgen_default_profile_ref,
+        generators: Empty
+      }
+  }
+}
+
+data ci_wave3_shadow_testgen_run_receipt: TestgenRunReceipt = ci_wave3_shadow_testgen_run_receipt_fixture()
+
 fn ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() -> Bool {
   for_all(
     xs: ci_wave3_shadow_fixture_fail_closed_receipt.testgen_slots,

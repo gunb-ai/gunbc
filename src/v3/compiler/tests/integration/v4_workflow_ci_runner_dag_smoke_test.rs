@@ -1826,8 +1826,9 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
         import_includes_name(&module, &["v4", "lens", "testgen"], "Generator")
             && import_includes_name(&module, &["v4", "lens", "testgen"], "TestgenConcept")
             && import_includes_name(&module, &["v4", "lens", "testgen"], "TestgenRunReceipt")
-            && import_includes_name(&module, &["v4", "lens", "testgen"], "testgen_scheduled_generators"),
-        "{CI_DAG_PATH}: testgen shadow CI must import Generator, TestgenRunReceipt, and scheduled roster from v4.lens.testgen"
+            && import_includes_name(&module, &["v4", "lens", "testgen"], "testgen_scheduled_generators_outcome")
+            && import_includes_name(&module, &["v4", "lens", "testgen"], "testgen_scheduled_generators_roster_holds"),
+        "{CI_DAG_PATH}: testgen shadow CI must import Generator, Outcome roster authority, and roster_holds from v4.lens.testgen"
     );
     for sym in [
         "type CiActiveFloorSkipEvidence",
@@ -1844,10 +1845,10 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
         "data ci_wave3_shadow_fixture_fail_closed_receipt",
         "data ci_wave3_shadow_fixture_receipt_ok",
         "type SelectedTestgenReceipt",
-        "TestgenRunReceipt",
-        "testgen_scheduled_generators",
+        "testgen_scheduled_generators_outcome",
         "fn ci_wave3_shadow_testgen_selection_rows",
         "fn ci_testgen_selected_receipt",
+        "fn ci_wave3_shadow_testgen_run_receipt_holds",
         "data ci_wave3_shadow_testgen_run_receipt",
         "data ci_wave3_shadow_selected_testgen_receipt",
         "data witness_ci_wave3_shadow_testgen_receipts_ok",
