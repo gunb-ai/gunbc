@@ -474,6 +474,28 @@ type SelfHostedRunnerPool {
   jobserver_token_cap: Int // 🟡 gated: formatter-int-refinement — must be ≥1
 }
 
+type RunnerPoolResiliencePhase
+  = RunnerPoolDetect
+  | RunnerPoolFallback
+  | RunnerPoolComms
+  | RunnerPoolRecovery
+
+type RunnerPoolResilienceStep {
+  phase: RunnerPoolResiliencePhase
+  trigger: Symbol
+  action: Symbol
+  owner: Symbol
+  fail_closed: Bool
+}
+
+type RunnerPoolResiliencePlaybook {
+  steps: List<RunnerPoolResilienceStep>
+  detection_phase: RunnerPoolResiliencePhase
+  fallback_phase: RunnerPoolResiliencePhase
+  comms_phase: RunnerPoolResiliencePhase
+  recovery_phase: RunnerPoolResiliencePhase
+}
+
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
 type LensCiLiveWorkflowSignal {
   smoke_step_name: String
@@ -535,6 +557,16 @@ data phase1_nat_semiring_rung_gate_signal: Symbol = phase1_nat_semiring_rung_gat
 data ci_srv1_host: Symbol = ci_srv1_host
 data ci_srv2_host: Symbol = ci_srv2_host
 data ci_runner_arch_arm64: Symbol = ci_runner_arch_arm64
+data runner_pool_jobserver_coupling_lost: Symbol = runner_pool_jobserver_coupling_lost
+data runner_pool_ci_required_path_at_risk: Symbol = runner_pool_ci_required_path_at_risk
+data runner_pool_operator_status_change_required: Symbol = runner_pool_operator_status_change_required
+data runner_pool_capacity_restored: Symbol = runner_pool_capacity_restored
+data runner_pool_fail_required_path: Symbol = runner_pool_fail_required_path
+data runner_pool_route_to_github_hosted_floor: Symbol = runner_pool_route_to_github_hosted_floor
+data runner_pool_notify_parent_dashboard: Symbol = runner_pool_notify_parent_dashboard
+data runner_pool_reenable_self_hosted_capacity: Symbol = runner_pool_reenable_self_hosted_capacity
+data ci_manager_owner: Symbol = ci_manager_owner
+data ci_operator_owner: Symbol = ci_operator_owner
 
 data ci_srv1_pool: SelfHostedRunnerPool = {
   host: ci_srv1_host
@@ -556,6 +588,44 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
   ci_srv1_pool,
   ci_srv2_pool
 ]
+
+data ci_runner_pool_resilience_playbook: RunnerPoolResiliencePlaybook = {
+  steps: [
+    RunnerPoolResilienceStep {
+      phase: RunnerPoolDetect
+      trigger: runner_pool_jobserver_coupling_lost
+      action: runner_pool_fail_required_path
+      owner: ci_manager_owner
+      fail_closed: true
+    },
+    RunnerPoolResilienceStep {
+      phase: RunnerPoolFallback
+      trigger: runner_pool_ci_required_path_at_risk
+      action: runner_pool_route_to_github_hosted_floor
+      owner: ci_manager_owner
+      fail_closed: true
+    },
+    RunnerPoolResilienceStep {
+      phase: RunnerPoolComms
+      trigger: runner_pool_operator_status_change_required
+      action: runner_pool_notify_parent_dashboard
+      owner: ci_manager_owner
+      fail_closed: true
+    },
+    RunnerPoolResilienceStep {
+      phase: RunnerPoolRecovery
+      trigger: runner_pool_capacity_restored
+      action: runner_pool_reenable_self_hosted_capacity
+      owner: ci_operator_owner
+      fail_closed: true
+    }
+  ]
+  detection_phase: RunnerPoolDetect
+  fallback_phase: RunnerPoolFallback
+  comms_phase: RunnerPoolComms
+  recovery_phase: RunnerPoolRecovery
+}
+
 
 // RUNNER-ISOLATION SECURITY FLOOR — gunbc is PUBLIC on the private self-hosted fleet (srv1/srv2),
 // so fork-PR `pull_request` runs execute attacker-controlled code on those runners. The operator
@@ -4313,6 +4383,37 @@ fn ci_runner_pool_capacity_valid(pool: SelfHostedRunnerPool) -> Bool {
 fn ci_runner_pool_fleet_capacities_valid() -> Bool {
   for_all(xs: ci_self_hosted_runner_pools, predicate: ci_runner_pool_capacity_valid)
 }
+
+fn ci_runner_pool_resilience_step_fail_closed(step: RunnerPoolResilienceStep) -> Bool {
+  step.fail_closed
+}
+
+fn ci_runner_pool_resilience_playbook_fail_closed(p: RunnerPoolResiliencePlaybook) -> Bool {
+  for_all(xs: p.steps, predicate: ci_runner_pool_resilience_step_fail_closed)
+}
+
+fn ci_runner_pool_resilience_playbook_has_phase(
+  p: RunnerPoolResiliencePlaybook,
+  phase: RunnerPoolResiliencePhase
+) -> Bool {
+  count_where(
+    xs: p.steps,
+    predicate: fn(step) {
+      step.phase == phase
+    }
+  ) >= 1
+}
+
+fn ci_runner_pool_resilience_playbook_complete(p: RunnerPoolResiliencePlaybook) -> Bool {
+  ci_runner_pool_resilience_playbook_fail_closed(p: p)
+    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: p.detection_phase)
+    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: p.fallback_phase)
+    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: p.comms_phase)
+    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: p.recovery_phase)
+}
+
+data ci_runner_pool_resilience_playbook_ok: Bool =
+  ci_runner_pool_resilience_playbook_complete(p: ci_runner_pool_resilience_playbook)
 
 
 // A faithful runner-isolation floor must (a) fail closed on a re-privileged runner — both the
