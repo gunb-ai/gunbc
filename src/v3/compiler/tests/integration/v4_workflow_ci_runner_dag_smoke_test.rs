@@ -946,35 +946,26 @@ fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure()
 
 #[test]
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
-    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    let _module = parse_module(CI_DAG, CI_DAG_PATH);
+    const DEMOTED_CORPUS_EVAL_STEP: &str =
+        "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)";
     assert!(
-        CI_DAG.contains(
-            "data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal"
-        ),
-        "{CI_DAG_PATH}: must model live-workflow binding for testclaim corpus eval"
+        !CI_DAG.contains("data testclaim_corpus_eval_ci_live_workflow_signal"),
+        "{CI_DAG_PATH}: demoted Class-C gate must not retain a live-workflow signal ledger row"
     );
     assert!(
         CI_DAG.contains("ci_upsert_testclaim_corpus_eval_upstream_inputs")
-            &&         CI_DAG.contains("ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)"),
+            && CI_DAG.contains("ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)"),
         "{CI_DAG_PATH}: testclaim corpus eval execution must consume M1 rust emit via UpstreamUpsert (#4091 §1.2)"
     );
     assert!(
         CI_DAG.contains("needs: [v2_compile_src_v4, m1_rust_emit_probe_execution]"),
         "{CI_DAG_PATH}: testclaim corpus eval must declare M1 in needs for selector needs-closure (I8)"
     );
-    let live_signal = data_body(&module, "testclaim_corpus_eval_ci_live_workflow_signal");
-    let step_name = expr_string(record_body_field(live_signal, "step_name"));
-    let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
-    let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
     assert!(
-        !CI_YML.contains(&format!("- name: {step_name}")),
-        "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` demoted from required path (modeled in ci.dag; Class C)"
+        !CI_YML.contains(&format!("- name: {DEMOTED_CORPUS_EVAL_STEP}")),
+        "{CI_YML_PATH}: Wave 1 §11.7.1 — corpus eval demoted from required path (Class C)"
     );
-    assert!(
-        host_script_shell_path(record_body_field(live_signal, "host_script")).is_none(),
-        "{CI_DAG_PATH}: demoted corpus eval must use NoShellScript, not a fabricated path"
-    );
-    let _ = (non_blocking, timeout_minutes);
     assert!(
         !CI_YML.contains("v4-testclaim-corpus-gate.sh"),
         "{CI_YML_PATH}: shell bridge script must be absent from workflow"
