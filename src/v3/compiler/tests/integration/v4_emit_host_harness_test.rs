@@ -23,13 +23,16 @@
 //! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts,
 //! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
 //! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
+//! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target plus L2 Rust/Python/Go host
+//! execution for six nat-semiring law-gated fixtures, followed by law-derived five-byte MVP-2
+//! stdout parity via `emit_host_bridge` (not a `.dag` TestClaim until emit pipeline wires law
+//! subjects into host transport).
 //! **Go L1 (+0 paths, release-minimum):** `go_l1_nat_semiring_rung2` compiler-slice substrate
 //! claim parse surface + `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` (structured
 //! JSON receipt; chained from rung gate after R2-go-compile). SG-0 + INVARIANTS §P5(b) in PR body.
-//! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte
-//! stdout contract; not per-law emitted artifacts until emit pipeline wires law subjects).
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
-//! **TASKS.md** T-22 T-38.
+//! **TASKS.md** T-22 T-38; delete these hand-authored per-target snippets when generated
+//! `TestClaimRun` host transport materializes the six rung-5 law subjects for Rust/Python/Go.
 //!
 //! **TESTING.md:** substrate `.dag` models receipt assembly; behavior tests exercise
 //! `tools/emit_host_runner` / `emit_host_bridge` (real cargo + run).
@@ -117,6 +120,53 @@ const EMIT_HOST_GO_FIXTURE_SOURCE: &str =
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
     "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }";
+
+#[derive(Clone, Copy)]
+struct NatSemiringCrossTargetFixture {
+    law: &'static str,
+    rust_source: &'static str,
+    python_source: &'static str,
+    go_source: &'static str,
+}
+
+const NAT_SEMIRING_CROSS_TARGET_FIXTURES: &[NatSemiringCrossTargetFixture] = &[
+    NatSemiringCrossTargetFixture {
+        law: "add_left_identity",
+        rust_source: "fn main() { let n: u8 = 7; let lhs = 0 + n; let rhs = n; assert_eq!(lhs, rhs); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[1, lhs, rhs, 0, n]); }",
+        python_source: "import sys\nn = 7\nlhs = 0 + n\nrhs = n\nassert lhs == rhs\nsys.stdout.buffer.write(bytes([1, lhs, rhs, 0, n]))\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var n byte = 7; lhs := 0 + n; rhs := n; if lhs != rhs { panic(\"add_left_identity\") }; _, _ = os.Stdout.Write([]byte{1, lhs, rhs, 0, n}) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "add_right_identity",
+        rust_source: "fn main() { let n: u8 = 7; let lhs = n + 0; let rhs = n; assert_eq!(lhs, rhs); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[2, lhs, rhs, n, 0]); }",
+        python_source: "import sys\nn = 7\nlhs = n + 0\nrhs = n\nassert lhs == rhs\nsys.stdout.buffer.write(bytes([2, lhs, rhs, n, 0]))\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var n byte = 7; lhs := n + 0; rhs := n; if lhs != rhs { panic(\"add_right_identity\") }; _, _ = os.Stdout.Write([]byte{2, lhs, rhs, n, 0}) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "add_associativity",
+        rust_source: "fn main() { let a: u8 = 2; let b: u8 = 3; let c: u8 = 5; let lhs = (a + b) + c; let rhs = a + (b + c); assert_eq!(lhs, rhs); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[3, lhs, rhs, a, c]); }",
+        python_source: "import sys\na = 2\nb = 3\nc = 5\nlhs = (a + b) + c\nrhs = a + (b + c)\nassert lhs == rhs\nsys.stdout.buffer.write(bytes([3, lhs, rhs, a, c]))\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var a byte = 2; var b byte = 3; var c byte = 5; lhs := (a + b) + c; rhs := a + (b + c); if lhs != rhs { panic(\"add_associativity\") }; _, _ = os.Stdout.Write([]byte{3, lhs, rhs, a, c}) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "mul_left_identity",
+        rust_source: "fn main() { let n: u8 = 7; let lhs = 1 * n; let rhs = n; assert_eq!(lhs, rhs); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[4, lhs, rhs, 1, n]); }",
+        python_source: "import sys\nn = 7\nlhs = 1 * n\nrhs = n\nassert lhs == rhs\nsys.stdout.buffer.write(bytes([4, lhs, rhs, 1, n]))\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var n byte = 7; lhs := 1 * n; rhs := n; if lhs != rhs { panic(\"mul_left_identity\") }; _, _ = os.Stdout.Write([]byte{4, lhs, rhs, 1, n}) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "mul_annihilator",
+        rust_source: "fn main() { let n: u8 = 7; let lhs = 0 * n; let rhs = 0; assert_eq!(lhs, rhs); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[5, lhs, rhs, 0, n]); }",
+        python_source: "import sys\nn = 7\nlhs = 0 * n\nrhs = 0\nassert lhs == rhs\nsys.stdout.buffer.write(bytes([5, lhs, rhs, 0, n]))\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var n byte = 7; lhs := 0 * n; var rhs byte = 0; if lhs != rhs { panic(\"mul_annihilator\") }; _, _ = os.Stdout.Write([]byte{5, lhs, rhs, 0, n}) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "mul_associativity",
+        rust_source: "fn main() { let a: u8 = 2; let b: u8 = 3; let c: u8 = 5; let lhs = (a * b) * c; let rhs = a * (b * c); assert_eq!(lhs, rhs); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[6, lhs, rhs, a, c]); }",
+        python_source: "import sys\na = 2\nb = 3\nc = 5\nlhs = (a * b) * c\nrhs = a * (b * c)\nassert lhs == rhs\nsys.stdout.buffer.write(bytes([6, lhs, rhs, a, c]))\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var a byte = 2; var b byte = 3; var c byte = 5; lhs := (a * b) * c; rhs := a * (b * c); if lhs != rhs { panic(\"mul_associativity\") }; _, _ = os.Stdout.Write([]byte{6, lhs, rhs, a, c}) }\n",
+    },
+];
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -1033,20 +1083,20 @@ fn emit_host_runner_go_row_runs_and_parses_stdout() {
     emit_host_runner::runtime_value_parse_go(&receipt.stdout_bytes).expect("parse");
 }
 
-#[test]
-fn cross_target_mvp2_stdout_parity_rust_python_go() {
-    let inputs = emit_host_runner::EmitHostFixtureInputs {
-        claim_input_root: "cross_target_claim_input".to_string(),
-        expected_eval_root: "cross_target_expected_eval".to_string(),
-    };
+fn assert_cross_target_mvp2_stdout_parity_rust_python_go(fixture: NatSemiringCrossTargetFixture) {
     let pid = std::process::id();
-    let rust_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_rust_{pid}"));
-    let py_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_py_{pid}"));
-    let go_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_go_{pid}"));
+    let law = fixture.law;
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: format!("cross_target_{law}_claim_input"),
+        expected_eval_root: format!("cross_target_{law}_expected_eval"),
+    };
+    let rust_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_rust_{pid}"));
+    let py_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_py_{pid}"));
+    let go_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_go_{pid}"));
     let verdict = emit_host_bridge::run_cross_target_mvp2_python_parity_transport(
-        EMIT_HOST_FIXTURE_SOURCE,
-        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
-        EMIT_HOST_GO_FIXTURE_SOURCE,
+        fixture.rust_source,
+        fixture.python_source,
+        fixture.go_source,
         &inputs,
         &rust_dir,
         &py_dir,
@@ -1054,8 +1104,39 @@ fn cross_target_mvp2_stdout_parity_rust_python_go() {
     );
     assert_eq!(
         verdict,
-        emit_host_bridge::EmitHostCrossTargetParityVerdict::Pass
+        emit_host_bridge::EmitHostCrossTargetParityVerdict::Pass,
+        "L2 cross-target stdout parity failed for law={law}"
     );
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_add_left_identity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[0]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_add_right_identity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[1]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_add_associativity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[2]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_mul_left_identity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[3]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_mul_annihilator() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[4]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_mul_associativity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[5]);
 }
 
 #[test]
