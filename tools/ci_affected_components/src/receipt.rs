@@ -72,7 +72,9 @@ pub struct AffectedSetCiReceipt {
     pub estimated_full_run_minutes: f64,
     /// Observed wall-clock for this run (minutes). 0.0 when not supplied.
     pub actual_run_minutes: f64,
-    /// `max(0, estimated_full_run_minutes - actual_run_minutes)`. 0.0 when baseline is unset.
+    /// `max(0, estimated_full_run_minutes - actual_run_minutes)`, but `0.0` unless BOTH the baseline
+    /// is set AND `actual_run_minutes` is observed (`> 0`) — an unobserved actual never reports the
+    /// baseline as savings (fail-closed).
     pub saved_minutes: f64,
     /// True when the `git diff` read failed and the affected-set fell back to the fail-closed
     /// superset (all components). Skip-rate aggregation must exclude these rows.
@@ -227,6 +229,15 @@ mod tests {
         assert_eq!(saved_minutes(40.0, 15.0), 25.0);
         // Slower than baseline (e.g. cold cache) → clamp to 0, never negative.
         assert_eq!(saved_minutes(40.0, 55.0), 0.0);
+    }
+
+    #[test]
+    fn saved_minutes_is_zero_when_actual_unobserved_even_with_baseline() {
+        // Codex #4271 regression: a provisional baseline with no observed runtime must NOT report
+        // the full baseline as savings (fail-closed: unobserved actual ≠ instantaneous run).
+        assert_eq!(saved_minutes(15.0, 0.0), 0.0);
+        // Negative/garbage actual is likewise treated as unobserved.
+        assert_eq!(saved_minutes(15.0, -3.0), 0.0);
     }
 
     #[test]

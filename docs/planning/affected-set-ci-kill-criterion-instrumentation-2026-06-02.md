@@ -37,8 +37,12 @@ is therefore currently unmeasurable — it would be a guess. This receipt makes 
 - `bootstrap_required` — `v2 || v4` selected ⇒ the `ci_floor` v2→v4 bootstrap path (the dominant
   ~9m bootstrap + ~13m M1 emit-probe cost) would be needed. This is the prediction the skip
   decision turns on.
-- `saved_minutes = max(0, estimated_full_run_minutes − actual_run_minutes)`, clamped to `0` when the
-  baseline is unset so a missing baseline never reports phantom savings.
+- `saved_minutes = max(0, estimated_full_run_minutes − actual_run_minutes)`, but reported as `0`
+  unless **both** inputs are observed — i.e. `0` when the baseline is unset OR when
+  `actual_run_minutes` is unobserved (`<= 0`). A CI run always takes >0 minutes, so an unobserved
+  actual is "not yet measured", not an instantaneous run; subtracting it from the baseline would
+  fabricate a full-baseline saving on every run (fail-closed, INVARIANTS P3). Consequence: with the
+  provisional baseline set but the timing aggregator not yet wired, `saved_minutes` stays `0`.
 - `fail_closed` — `git diff` read failed ⇒ fail-closed superset (all buckets). Skip-rate
   aggregation must **exclude** these rows.
 
