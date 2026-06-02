@@ -1,8 +1,9 @@
 //! **Layer:** integration
 //!
-//! G.0 receipt: `src/v4/std/grounding.dag` tokenizes and parses cleanly — Branch G.0 schema
+//! G.0 receipt: `src/v4/std/grounding.dag` tokenizes and parses cleanly - Branch G.0 schema
 //! carriers (per-language fact bundle keys, hollow-alias bar, SG evidence shapes, per-target receipt).
-//! Parse smoke ratchets G.0 carriers including terminal `HollowAliasGovernanceBar` coproduct.
+//! Parse smoke ratchets G.0 carriers including terminal `HollowAliasGovernanceBar` coproduct and
+//! subject-level fact-bundle aggregation into `model_core`.
 //! Full `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers; cross-module
 //! resolution is exercised by M1 v4 full-tree emit in CI `ci_floor` (same posture as
 //! `v4_std_model_core_dag_smoke_test`).
@@ -119,16 +120,85 @@ fn v4_std_grounding_declares_g0_carriers() {
 #[test]
 fn v4_std_grounding_hollow_alias_bar_terminal_coproduct() {
     assert!(
-        GROUNDING_DAG.contains(
-            "// 🟢 terminal — G.0 hollow-alias governance posture"
-        ),
+        GROUNDING_DAG.contains("// \u{1f7e2} terminal")
+            && GROUNDING_DAG.contains("G.0 hollow-alias governance posture"),
         "HollowAliasGovernanceBar must be a closed terminal coproduct (no configurable Bool policy)"
     );
     let module = grounding_surface_or_panic();
     assert_eq!(
         sum_variant_names(&module, "HollowAliasGovernanceBar"),
         vec!["HollowAliasRequiresNamedFieldsAndKernelAmbient"],
-        "single mandatory governance posture — false cases unrepresentable"
+        "single mandatory governance posture - false cases unrepresentable"
+    );
+}
+
+#[test]
+fn v4_std_grounding_declares_a3b_testclaim_receipt_carriers() {
+    let module = grounding_surface_or_panic();
+    for name in [
+        "HostVerdictSurfaceExecutionStatus",
+        "PerTargetTestClaimReceipt",
+    ] {
+        assert!(
+            surface_declares_type(&module, name),
+            "grounding.dag must declare A.3b.3 carrier {name}"
+        );
+    }
+}
+
+#[test]
+fn v4_std_grounding_execution_status_terminal_coproduct() {
+    assert!(
+        GROUNDING_DAG
+            .contains("// 🟢 coproduct dissolution — terminal A.3b execution-provenance tag"),
+        "HostVerdictSurfaceExecutionStatus must carry 🟢 terminal coproduct dissolution receipt"
+    );
+    let module = grounding_surface_or_panic();
+    assert_eq!(
+        sum_variant_names(&module, "HostVerdictSurfaceExecutionStatus"),
+        vec!["RuntimeVerdicts", "AuthoringTimeVerdictSurface"],
+        "two closed provenance arms — runtime vs authoring-time (RR-A §6 forbids the latter as terminal pass)"
+    );
+}
+
+#[test]
+fn v4_std_grounding_testclaim_receipt_single_target_authority() {
+    let module = grounding_surface_or_panic();
+    assert_eq!(
+        type_record_field_names(&module, "PerTargetTestClaimReceipt"),
+        vec!["host_run", "execution_status", "verdict_tally"],
+        "TargetModel authority must be EmitHostRunReceipt.target only (P2); verdict surface is the folded VerdictTally"
+    );
+}
+
+#[test]
+fn v4_std_grounding_testclaim_terminal_gate_fails_closed_on_authoring_time() {
+    // RR-A §4 R1/R6: only RuntimeVerdicts is a terminal CI pass; authoring-time fails closed.
+    assert!(
+        GROUNDING_DAG.contains("fn host_verdict_surface_runtime_authoritative("),
+        "grounding.dag must expose the RuntimeVerdicts terminal-pass gate"
+    );
+    // Practice-10 disposition: the Bool coproduct-arm predicate must carry a checkable 🟡
+    // predicate-dissolution mark bound to the step-2/step-3 harness lane (peer pattern:
+    // verification.dag test_claim_ci_selection_fail_closed, nat.dag is_zero) — no permanent
+    // untagged Bool CI policy in std/.
+    assert!(
+        GROUNDING_DAG.contains(
+            "// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: a3b-host-verdict-surface-runtime-authority"
+        ) && GROUNDING_DAG.contains("forbidden: permanent untagged Bool coproduct-arm CI policy in std/grounding."),
+        "host_verdict_surface_runtime_authoritative must carry the 🟡 predicate-dissolution mark (Practice 10)"
+    );
+    assert!(
+        GROUNDING_DAG.contains("RuntimeVerdicts => true")
+            && GROUNDING_DAG.contains("AuthoringTimeVerdictSurface => false"),
+        "terminal gate must accept RuntimeVerdicts and fail closed on AuthoringTimeVerdictSurface"
+    );
+    // R1–R3 stay OPEN until the step-2 harness lands — dissolution mark must say so (no premature PROVEN).
+    assert!(
+        GROUNDING_DAG.contains("R1–R3")
+            && GROUNDING_DAG.contains("step-2 harness")
+            && GROUNDING_DAG.contains("does NOT itself run"),
+        "A.3b.3 must mark R1–R3 OPEN until the Compiler Spine step-2 harness lands (no authoring-time co-authority)"
     );
 }
 
@@ -148,7 +218,11 @@ fn v4_std_grounding_key_indexes_target_and_fact_axis() {
     assert_eq!(
         type_record_field_names(&module, "PerLanguageFactBundleKey"),
         vec!["subject_carrier", "target", "fact_axis"],
-        "registry key must use TargetModel + ModelCorePrimitiveFactAxis (P2)"
+        "registry key must use TargetModel + typed canonical fact axis (P2)"
+    );
+    assert!(
+        GROUNDING_DAG.contains("fact_axis: ModelCorePrimitiveFactAxis"),
+        "PerLanguageFactBundleKey.fact_axis must be typed, not a raw Symbol predicate/tag gate"
     );
 }
 
@@ -166,9 +240,9 @@ fn v4_std_grounding_entry_single_fact_authority() {
 fn v4_std_grounding_evidence_schema_terminal_coproduct() {
     assert!(
         GROUNDING_DAG.contains(
-            "// 🟢 coproduct dissolution — terminal G.0 evidence-family tag"
+            "// \u{1f7e2} coproduct dissolution"
         ),
-        "GroundingEvidenceSchema must carry 🟢 coproduct dissolution receipt (G.0 substrate discipline)"
+        "GroundingEvidenceSchema must carry coproduct dissolution receipt (G.0 substrate discipline)"
     );
     let module = grounding_surface_or_panic();
     assert_eq!(
@@ -193,28 +267,51 @@ fn v4_std_grounding_registry_keyed_map_authority() {
     assert_eq!(
         type_record_field_names(&module, "PerLanguageFactBundleRegistry"),
         vec!["by_key"],
-        "registry must be Map<PerLanguageFactBundleKey, Node> — not List (duplicate keys unrepresentable)"
+        "registry must expose one keyed fact authority"
     );
     assert!(
-        GROUNDING_DAG.contains("fn insert_per_language_fact_bundle_entry("),
+        GROUNDING_DAG.contains("by_key: Map<PerLanguageFactBundleKey, Node>")
+            && !GROUNDING_DAG.contains("entries: List<PerLanguageFactBundleEntry>"),
+        "registry stores one keyed fact-value authority and no raw duplicateable row list"
+    );
+    assert!(
+        GROUNDING_DAG.contains("fn insert_per_language_fact_bundle_entry(")
+            && GROUNDING_DAG.contains("feature:B-LOOKUP-1")
+            && GROUNDING_DAG.contains("match map_get(m: registry.by_key, key: key)"),
         "fail-closed registry insert rejects duplicate PerLanguageFactBundleKey"
     );
 }
 
 #[test]
-fn v4_std_grounding_registry_entries_do_not_project_incomplete_primitive_bundles() {
+fn v4_std_grounding_primitive_fact_bundle_model_core_projection_aggregates_subject() {
     assert!(
-        GROUNDING_DAG.contains("fact_axis: ModelCorePrimitiveFactAxis"),
-        "illegal fact axes unrepresentable via model_core closed coproduct (P2)"
+        GROUNDING_DAG.contains("fn primitive_fact_bundle_for_subject(")
+            && GROUNDING_DAG.contains(") -> Outcome<PrimitiveFactBundle>")
+            && GROUNDING_DAG.contains("type PerLanguageFactBundleSpecFactsFoldState")
+            && GROUNDING_DAG.contains("saw_fact: Bool")
+            && GROUNDING_DAG.contains("fn per_language_fact_bundle_spec_facts_for_subject(")
+            && GROUNDING_DAG.contains(") -> Outcome<Map<Symbol, Node>>"),
+        "registry-to-model_core projection must build one PrimitiveFactBundle per subject x target"
     );
     assert!(
-        GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol"),
-        "registry key can project the closed axis to model_core Symbol authority when an aggregation builder lands"
+        GROUNDING_DAG.contains("fn per_language_fact_bundle_subject_axis_key(")
+            && GROUNDING_DAG.contains("fn per_language_fact_bundle_insert_subject_axis(")
+            && GROUNDING_DAG.contains("map_get(\n    m: registry.by_key"),
+        "PrimitiveFactBundle.spec_facts must derive from keyed subject x target x axis lookups"
     );
     assert!(
-        !GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry(")
-            && !GROUNDING_DAG.contains("-> PrimitiveFactBundle"),
-        "single fact-axis registry entries must not project directly to complete PrimitiveFactBundle carriers"
+        GROUNDING_DAG.contains("fact_axis: ModelCoreFactAxisWidth {}")
+            && GROUNDING_DAG.contains("fact_axis: ModelCoreFactAxisEncoding {}")
+            && GROUNDING_DAG.contains("fact_axis: ModelCoreFactAxisSurfaceSpelling {}"),
+        "projection must enumerate typed model_core axes rather than folding raw rows"
+    );
+    assert!(
+        GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol(axis: fact_axis)"),
+        "spec_facts projection uses model_core Symbol authority at bundle boundary"
+    );
+    assert!(
+        !GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry("),
+        "per-entry projection would split a subject's axes across multiple PrimitiveFactBundle rows"
     );
     assert!(
         GROUNDING_DAG.contains("map_get(m: registry.by_key, key: key)"),
@@ -227,5 +324,16 @@ fn v4_std_grounding_registry_entries_do_not_project_incomplete_primitive_bundles
     assert!(
         GROUNDING_DAG.contains("Rejected { diagnostics: ds } => Rejected { diagnostics: ds }"),
         "map_get lookup failures propagate without collapsing to Absent (P3)"
+    );
+    assert!(
+        !GROUNDING_DAG.contains("Rejected { diagnostics: _ } => spec_facts"),
+        "registry projection must not erase lookup failures into partial PrimitiveFactBundle rows"
+    );
+    assert!(
+        GROUNDING_DAG.contains("per_language_fact_bundle_ungrounded_subject_reason")
+            && GROUNDING_DAG.contains("saw_fact: false")
+            && GROUNDING_DAG.contains("saw_fact: true")
+            && GROUNDING_DAG.contains("outcome_rejected(d: per_language_fact_bundle_ungrounded_subject_diagnostic"),
+        "subject aggregation must reject ungrounded subjects instead of fabricating empty PrimitiveFactBundle rows"
     );
 }
