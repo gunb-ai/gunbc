@@ -202,19 +202,14 @@ fn v4_std_grounding_registry_keyed_map_authority() {
 }
 
 #[test]
-fn v4_std_grounding_registry_entries_do_not_project_incomplete_primitive_bundles() {
+fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
     assert!(
         GROUNDING_DAG.contains("fact_axis: ModelCorePrimitiveFactAxis"),
         "illegal fact axes unrepresentable via model_core closed coproduct (P2)"
     );
     assert!(
         GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol"),
-        "registry key can project the closed axis to model_core Symbol authority when an aggregation builder lands"
-    );
-    assert!(
-        !GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry(")
-            && !GROUNDING_DAG.contains("-> PrimitiveFactBundle"),
-        "single fact-axis registry entries must not project directly to complete PrimitiveFactBundle carriers"
+        "spec_facts projection uses model_core Symbol authority at bundle boundary"
     );
     assert!(
         GROUNDING_DAG.contains("map_get(m: registry.by_key, key: key)"),

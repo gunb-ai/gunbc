@@ -24,6 +24,7 @@ import v4.std.diagnostic {
 import v4.std.host_run { EmitHostRunReceipt }
 import v4.std.model_core {
   ModelCorePrimitiveFactAxis,
+  PrimitiveFactBundle,
   model_core_primitive_fact_axis_symbol
 }
 import v4.std.node { Node, Symbol }
@@ -91,6 +92,19 @@ fn insert_per_language_fact_bundle_entry(
         )
     }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+
+// G.1 / model_core boundary: project registry row to PrimitiveFactBundle (substrate_carrier from key).
+fn primitive_fact_bundle_for_entry(entry: PerLanguageFactBundleEntry) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: entry.key.subject_carrier,
+    spec_facts: map_insert(
+      m: empty_map(),
+      key: model_core_primitive_fact_axis_symbol(axis: entry.key.fact_axis),
+      value: entry.fact_value
+    )
   }
 }
 
