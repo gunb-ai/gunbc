@@ -34,24 +34,6 @@ fn grounding_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
         .unwrap_or_else(|e| panic!("{GROUNDING_PATH}: parse: {e:?}"))
 }
 
-fn import_includes_name(
-    module: &v3_compiler::parse_surface::SurfaceModule,
-    path: &[&str],
-    name: &str,
-) -> bool {
-    module.items.iter().any(|item| match item {
-        SurfaceItem::Import {
-            path: import_path,
-            names,
-            ..
-        } => {
-            import_path.iter().map(String::as_str).collect::<Vec<_>>() == path
-                && names.iter().any(|n| n == name)
-        }
-        _ => false,
-    })
-}
-
 fn type_record_field_names<'a>(
     module: &'a v3_compiler::parse_surface::SurfaceModule,
     name: &str,
@@ -202,10 +184,32 @@ fn v4_std_grounding_evidence_schema_terminal_coproduct() {
 }
 
 #[test]
-fn v4_std_grounding_declares_g0_1_registry() {
+fn v4_std_grounding_registry_keyed_map_authority() {
     let module = grounding_surface_or_panic();
     assert!(surface_declares_type(
         &module,
         "PerLanguageFactBundleRegistry"
     ));
+    assert_eq!(
+        type_record_field_names(&module, "PerLanguageFactBundleRegistry"),
+        vec!["by_key"],
+        "registry must be Map<PerLanguageFactBundleKey, Node> — not List (duplicate keys unrepresentable)"
+    );
+    assert!(
+        GROUNDING_DAG.contains("fn insert_per_language_fact_bundle_entry("),
+        "fail-closed registry insert rejects duplicate PerLanguageFactBundleKey"
+    );
+}
+
+#[test]
+fn v4_std_grounding_primitive_fact_bundle_fail_closed_axis() {
+    assert!(
+        GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry(")
+            && GROUNDING_DAG.contains("-> Outcome<PrimitiveFactBundle>"),
+        "primitive_fact_bundle_for_entry must fail-closed on non-canonical fact_axis Symbols"
+    );
+    assert!(
+        GROUNDING_DAG.contains("fn witness_canonical_primitive_fact_axis("),
+        "canonical fact_axis witness before spec_facts projection"
+    );
 }

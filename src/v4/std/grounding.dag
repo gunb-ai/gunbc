@@ -8,11 +8,31 @@
 module v4.std.grounding
 
 
-import v4.std.collection { List, Map, empty_map, map_insert }
+import v4.std.collection { Map, empty_map, map_insert }
+import v4.std.diagnostic {
+  Diagnostic,
+  Outcome,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  outcome_accepted,
+  outcome_rejected
+}
 import v4.std.host_run { EmitHostRunReceipt }
-import v4.std.model_core { PrimitiveFactBundle }
+import v4.std.model_core {
+  PrimitiveFactBundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_overflow_disposition,
+  primitive_fact_axis_range,
+  primitive_fact_axis_signedness,
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
+  primitive_fact_axis_width
+}
 import v4.std.node { Node, Symbol }
 import v4.std.target_model { FunctionBoundarySite, TargetModel }
+import v4.std.witness { Holds, Violates, Witness }
 
 
 // --- G0.1: per-language fact bundle schema (subject_carrier × target × fact_axis) ---
@@ -34,28 +54,94 @@ type PerLanguageFactBundleEntry {
 }
 
 
+// P2: keyed registry — duplicate PerLanguageFactBundleKey rows are unrepresentable (fail-closed insert).
 type PerLanguageFactBundleRegistry {
-  entries: List<PerLanguageFactBundleEntry>
+  by_key: Map<PerLanguageFactBundleKey, Node>
+}
+
+
+fn empty_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
+  PerLanguageFactBundleRegistry { by_key: empty_map() }
+}
+
+
+data per_language_fact_bundle_duplicate_key_reason: Symbol = per_language_fact_bundle_duplicate_key_reason
+
+
+fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: per_language_fact_bundle_duplicate_key_reason,
+    at: Textual {
+      file: per_language_fact_bundle_duplicate_key_reason,
+      extent: WholeFile
+    },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn insert_per_language_fact_bundle_entry(
+  registry: PerLanguageFactBundleRegistry,
+  key: PerLanguageFactBundleKey,
+  fact_value: Node
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  match registry.by_key.lookup(key) {
+    Holds { value: _ } =>
+      outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
+    Violates { diagnostic: _ } =>
+      outcome_accepted(
+        value: PerLanguageFactBundleRegistry {
+          by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
+        }
+      )
+  }
+}
+
+
+fn witness_canonical_primitive_fact_axis(axis: Symbol) -> Witness<Symbol> {
+  match axis {
+    primitive_fact_axis_width =>
+      Holds { value: axis }
+    primitive_fact_axis_signedness =>
+      Holds { value: axis }
+    primitive_fact_axis_range =>
+      Holds { value: axis }
+    primitive_fact_axis_encoding =>
+      Holds { value: axis }
+    primitive_fact_axis_surface_spelling =>
+      Holds { value: axis }
+    primitive_fact_axis_overflow_disposition =>
+      Holds { value: axis }
+    _ =>
+      Violates {
+        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+      }
+  }
 }
 
 
 // G.1 / model_core boundary: project registry row to PrimitiveFactBundle (substrate_carrier from key).
-fn primitive_fact_bundle_for_entry(entry: PerLanguageFactBundleEntry) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: entry.key.subject_carrier,
-    spec_facts: map_insert(
-      m: empty_map(),
-      key: entry.key.fact_axis,
-      value: entry.fact_value
-    )
+// Fail-closed on non-canonical fact_axis Symbols (model_core primitive_fact_axis_*; target_model
+// catalog edges extend in G.1).
+fn primitive_fact_bundle_for_entry(entry: PerLanguageFactBundleEntry) -> Outcome<PrimitiveFactBundle> {
+  match witness_canonical_primitive_fact_axis(axis: entry.key.fact_axis) {
+    Holds { value: _ } =>
+      outcome_accepted(
+        value: PrimitiveFactBundle {
+          substrate_carrier: entry.key.subject_carrier,
+          spec_facts: map_insert(
+            m: empty_map(),
+            key: entry.key.fact_axis,
+            value: entry.fact_value
+          )
+        }
+      )
+    Violates { diagnostic: d } => outcome_rejected(d: d)
   }
 }
 
 
 // --- G0.2: no hollow aliases governance bar ---
-
-data grounding_hollow_alias_bar_reason: Symbol = grounding_hollow_alias_bar_reason
-
 
 // 🟢 terminal — G.0 hollow-alias governance posture (T-30 enforces via v4.lens.fact_density).
 // Closed nullary carrier: requires named spec facts and permits kernel-ambient atoms — no free
