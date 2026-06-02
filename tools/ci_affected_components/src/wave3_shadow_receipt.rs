@@ -81,7 +81,10 @@ pub fn write_receipt_json(path: &str, receipt: &Value) -> io::Result<()> {
     std::fs::write(path, format!("{body}\n"))
 }
 
-pub fn emit_github_notice(receipt: &Value) {
+/// Build the GitHub Actions `::notice` line for the receipt. Pure — returns the string for the
+/// binary entrypoint to print, keeping the impure stdout write at the CLI edge (CODING.md:
+/// library modules do not print; `clippy::disallowed_macros` is allowed only on the bin).
+pub fn github_notice_line(receipt: &Value) -> String {
     let changed = receipt["changed_paths"]
         .as_array()
         .map(|a| a.len())
@@ -90,9 +93,9 @@ pub fn emit_github_notice(receipt: &Value) {
         .as_str()
         .unwrap_or("unknown");
     let debt = receipt["live_eval_debt"].as_str().unwrap_or("unknown");
-    println!(
+    format!(
         "::notice title=Wave 3 shadow receipt (Class C)::ci_selection_receipt_status={status} changed_paths={changed} debt={debt} — transport status only; modeled CiSelectionReceipt (incl. fail-closed roster superset) constructed by the queued live eval"
-    );
+    )
 }
 
 #[cfg(test)]

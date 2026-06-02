@@ -4,11 +4,15 @@ use std::process::Command;
 
 pub const WAVE3_LIVE_EVAL_DEBT: &str = "node://adhoc-331899f9-19a";
 
-pub fn diff_range_for_event(event_name: &str) -> &'static str {
-    if event_name == "pull_request" {
-        "origin/main...HEAD"
-    } else {
-        "HEAD~1..HEAD"
+/// Diff range for the two supported GitHub event names. Returns `None` for any other event —
+/// the event is a CLOSED boundary (`pull_request | push`), so an unknown/misspelled name must NOT
+/// silently fall back to the push range and compute a plausible-but-wrong affected set (INVARIANTS
+/// P3 — missing/unsupported input fails closed, never a fabricated default).
+pub fn diff_range_for_event(event_name: &str) -> Option<&'static str> {
+    match event_name {
+        "pull_request" => Some("origin/main...HEAD"),
+        "push" => Some("HEAD~1..HEAD"),
+        _ => None,
     }
 }
 
@@ -27,7 +31,18 @@ pub enum GitChangedPathsRead {
 }
 
 pub fn git_read_changed_paths_for_event(event_name: &str) -> GitChangedPathsRead {
-    let range = diff_range_for_event(event_name).to_string();
+    let range = match diff_range_for_event(event_name) {
+        Some(r) => r.to_string(),
+        // Unsupported event — fail closed (P3), do NOT guess a diff range.
+        None => {
+            return GitChangedPathsRead::FailClosed {
+                range: format!("<unsupported event:{event_name}>"),
+                detail: format!(
+                    "unsupported event_name '{event_name}' (expected pull_request|push); fail-closed (all components affected)"
+                ),
+            };
+        }
+    };
     match Command::new("git")
         .args(["diff", "--name-only", &range])
         .output()
@@ -48,5 +63,35 @@ pub fn git_read_changed_paths_for_event(event_name: &str) -> GitChangedPathsRead
             detail: format!("git diff --name-only {range} failed ({e})"),
             range,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn supported_events_have_ranges() {
+        assert_eq!(
+            diff_range_for_event("pull_request"),
+            Some("origin/main...HEAD")
+        );
+        assert_eq!(diff_range_for_event("push"), Some("HEAD~1..HEAD"));
+    }
+
+    #[test]
+    fn unsupported_event_has_no_range_and_fails_closed() {
+        // Closed boundary: unknown/misspelled events must not borrow the push range (P3).
+        assert_eq!(diff_range_for_event("workflow_dispatch"), None);
+        assert_eq!(diff_range_for_event("Pull_Request"), None);
+        assert_eq!(diff_range_for_event(""), None);
+        match git_read_changed_paths_for_event("workflow_dispatch") {
+            GitChangedPathsRead::FailClosed { detail, .. } => {
+                assert!(detail.contains("unsupported event_name 'workflow_dispatch'"));
+            }
+            GitChangedPathsRead::Ok { .. } => {
+                panic!("unsupported event must fail closed, not read a guessed diff range")
+            }
+        }
     }
 }

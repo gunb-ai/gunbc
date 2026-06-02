@@ -9,7 +9,7 @@ use std::process::ExitCode;
 
 use ci_affected_components::git_diff_transport::git_read_changed_paths_for_event;
 use ci_affected_components::wave3_shadow_receipt::{
-    build_queued_shadow_receipt, emit_github_notice, write_receipt_json, EMIT_STEP_NAME,
+    build_queued_shadow_receipt, github_notice_line, write_receipt_json, EMIT_STEP_NAME,
 };
 
 fn usage() -> ! {
@@ -61,6 +61,6 @@ fn main() -> ExitCode {
         return ExitCode::from(1);
     }
     eprintln!("wrote {}", out_path.display());
-    emit_github_notice(&receipt);
+    println!("{}", github_notice_line(&receipt));
     ExitCode::SUCCESS
 }
