@@ -178,6 +178,16 @@ fn v4_std_grounding_testclaim_terminal_gate_fails_closed_on_authoring_time() {
         GROUNDING_DAG.contains("fn host_verdict_surface_runtime_authoritative("),
         "grounding.dag must expose the RuntimeVerdicts terminal-pass gate"
     );
+    // Practice-10 disposition: the Bool coproduct-arm predicate must carry a checkable 🟡
+    // predicate-dissolution mark bound to the step-2/step-3 harness lane (peer pattern:
+    // verification.dag test_claim_ci_selection_fail_closed, nat.dag is_zero) — no permanent
+    // untagged Bool CI policy in std/.
+    assert!(
+        GROUNDING_DAG.contains(
+            "// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: a3b-host-verdict-surface-runtime-authority"
+        ) && GROUNDING_DAG.contains("forbidden: permanent untagged Bool coproduct-arm CI policy in std/grounding."),
+        "host_verdict_surface_runtime_authoritative must carry the 🟡 predicate-dissolution mark (Practice 10)"
+    );
     assert!(
         GROUNDING_DAG.contains("RuntimeVerdicts => true")
             && GROUNDING_DAG.contains("AuthoringTimeVerdictSurface => false"),
