@@ -25,6 +25,7 @@ import v4.lens.testgen {
   TestgenConcept,
   TestgenRunReceipt,
   generator_id_eq,
+  generator_id_for_claim_anchor,
   generator_matches_profile,
   testgen_default_profile_ref,
   testgen_run_receipt_outcome,
@@ -3677,7 +3678,8 @@ fn ci_wave3_shadow_testgen_slots_selected(
               && count_where(
                 xs: selected_claims,
                 predicate: fn(claim) {
-                  test_claim_anchor(c: claim) == g.anchor
+                  generator_id_for_claim_anchor(anchor: test_claim_anchor(c: claim))
+                    == g.provenance.generator_id
                 }
               ) != 0
           }
@@ -4191,12 +4193,19 @@ fn ci_wave3_shadow_testgen_run_receipt_fixture() -> TestgenRunReceipt {
 
 data ci_wave3_shadow_testgen_run_receipt: TestgenRunReceipt = ci_wave3_shadow_testgen_run_receipt_fixture()
 
+fn ci_wave3_shadow_testgen_slot_unselected(slot: TestgenSlotSelection) -> Bool {
+  if slot.selected {
+    false
+  } else {
+    true
+  }
+}
+
+
 fn ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() -> Bool {
   for_all(
     xs: ci_wave3_shadow_fixture_fail_closed_receipt.testgen_slots,
-    predicate: fn(slot) {
-      slot.selected == false
-    }
+    predicate: ci_wave3_shadow_testgen_slot_unselected
   )
 }
 
