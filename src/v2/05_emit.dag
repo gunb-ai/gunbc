@@ -63,7 +63,7 @@ import v2.std.core {
   CardOptional
 }
 
-import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name, empty_lookup_cache }
+import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import std.induction { InductiveField, SubValueUnknown }
 import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like }
 import std.types { is_container_type, container_template_algebra }
@@ -335,7 +335,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), lookup_cache: empty_lookup_cache() },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table() },
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
     match_bound_names: empty_map(),
