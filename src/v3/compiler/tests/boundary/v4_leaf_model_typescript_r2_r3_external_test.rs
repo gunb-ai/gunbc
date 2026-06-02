@@ -3,10 +3,11 @@
 //! Authority: `src/v4/lens/leaf_model_verification.dag`; claim wiring in
 //! `typescript_r2a.dag`, `typescript_r2b.dag`, `typescript_r3_external.dag`.
 //! Host runners: `scripts/v4-leaf-model-typescript-r2{a,b,r3-external}-verify.sh`.
-//! TS RCA L0 worksheet receipt: this is the #4117-pattern bridge for the
-//! alpha/preview lane named in #4137 §11.8. It remains a P5(b) bridge and dissolves
-//! under `ROADMAP.md` row T-PB-B / `pb_rust_tests_outside_residual_zero` when
-//! modeled `run_target_verification` executes the same claim corpus.
+//! **P5(b) receipt:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:63); #4117-pattern bridge for
+//! #4137 §11.8 alpha/preview lane. Dissolves when T-22 modeled `run_target_verification`
+//! executes `typescript_r2a.dag`, `typescript_r2b.dag`, and `typescript_r3_external.dag`
+//! without this Rust boundary harness.
 
 use std::io::Write;
 use std::process::Command;
