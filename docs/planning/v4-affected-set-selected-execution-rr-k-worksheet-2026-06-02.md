@@ -216,4 +216,4 @@ carrier; editing only `ci.yml` for a modeled selection fact is forbidden (splits
 - `src/v4/test/claim/workflow/ci_component_affected.dag` — git-diff path-bucket claims
 - gunb-ai/gunbc#4271 — `AffectedSetCiReceipt` per-PR kill-criterion instrumentation (in flight)
 - `docs/planning/v4-runtime-testclaim-rr-i-worksheet-2026-06-02.md` — roster/claim authority (RR-I)
-- `docs/planning/v4-incremental-bootstrap-ci-perf-rr-l-worksheet-2026-06-02.md` — sibling CI cross-cut (RR-L)
+- gunb-ai/gunbc#4333 — sibling CI cross-cut worksheet (RR-L), **OPEN / not yet on main**; `docs/planning/v4-incremental-bootstrap-ci-perf-rr-l-worksheet-2026-06-02.md` lands with that PR
