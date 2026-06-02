@@ -1236,13 +1236,14 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         }
         // Drop any inline YAML comment (a ` #` trailer) before looking for an invocation.
         let line = line.split_once(" #").map_or(line, |(code, _)| code);
-        if !line.contains("bash ") {
-            continue;
-        }
+        // Key on the `.github/ci-floor/` PATH, not on a `bash ` prefix — a required floor step can
+        // be spelled `sh …`, `./…`, `source …`, etc. Filtering on `bash ` first would let those
+        // non-`bash` spellings escape the live set (openai-pro #4284). Any non-comment reference to
+        // a ci-floor path is treated as a live invocation and must canonicalize to a modeled `.sh`.
         if let Some(idx) = line.find(".github/ci-floor/") {
             // Canonicalize the path token: read from the path start until whitespace OR a shell /
             // YAML separator/quote (`"' ; & | ) ``), so quoted/punctuated spellings like
-            // `bash ".github/ci-floor/x.sh"` or `bash .github/ci-floor/x.sh; echo` canonicalize to
+            // `".github/ci-floor/x.sh"` or `.github/ci-floor/x.sh; echo` canonicalize to
             // the bare `.sh` path rather than being silently dropped.
             let token: String = line[idx..]
                 .chars()
@@ -1250,9 +1251,9 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
                     !c.is_whitespace() && !matches!(c, '"' | '\'' | ';' | '&' | '|' | ')' | '`')
                 })
                 .collect();
-            // Fail CLOSED on any ci-floor invocation we cannot canonicalize to a `*.sh` script:
-            // a non-comment `bash` line referencing `.github/ci-floor/` that does not yield a `.sh`
-            // path is treated as an unrecognized live shell the ratchet must not silently ignore
+            // Fail CLOSED on any ci-floor reference we cannot canonicalize to a `*.sh` script:
+            // a non-comment line referencing `.github/ci-floor/` that does not yield a `.sh` path
+            // is treated as an unrecognized live shell the ratchet must not silently ignore
             // (openai-pro #4284 — a new required shell in an unhandled spelling must trip the gate).
             assert!(
                 token.ends_with(".sh"),

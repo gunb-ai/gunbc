@@ -396,8 +396,9 @@ data ci_always_run_carveouts: List<CiCarveout> = [
 // between the required `.github/ci-floor/*.sh` invocations in ci.yml and these rows, matched at the
 // `shell_owner` FIELD (not bare path containment, which a row comment could satisfy fail-open),
 // reading ci.yml invocations from a comment-safe, block-form-safe, count-exact live set (a
-// commented-out `# bash …` is not counted; quoted/punctuated path spellings are canonicalized and
-// an unrecognizable ci-floor spelling trips the gate) — a new unlisted required shell fails CLOSED. RESIDUAL (tracked,
+// commented-out `# bash …` is not counted; keyed on the ci-floor PATH not a `bash ` prefix, so
+// `sh`/`./`/`source` spellings are caught too; quoted/punctuated paths are canonicalized and an
+// unrecognizable ci-floor spelling trips the gate) — a new unlisted required shell fails CLOSED. RESIDUAL (tracked,
 // openai-pro #4284): the gate keys on script path, not the modeled `(job, step)` `CiStepId`, since
 // ci.yml's step→`CiStepId` mapping is not yet string-checkable; a *second* step reusing a listed
 // script is not yet distinguished by `step_id`. Dissolves when the generated `.dag` CI step model
