@@ -638,8 +638,7 @@ fn ci_yml_line_is_job_level_field(line: &str) -> bool {
 /// Live receipt: sliced job must not declare job-level `continue-on-error` anywhere (keys are order-insensitive).
 fn ci_yml_job_level_omits_continue_on_error(job_block: &str) -> bool {
     !job_block.lines().any(|line| {
-        ci_yml_line_is_job_level_field(line)
-            && line.trim_start().starts_with("continue-on-error:")
+        ci_yml_line_is_job_level_field(line) && line.trim_start().starts_with("continue-on-error:")
     })
 }
 
