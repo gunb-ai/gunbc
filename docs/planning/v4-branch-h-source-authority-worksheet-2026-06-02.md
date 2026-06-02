@@ -67,8 +67,9 @@ consumers may consume H receipts only after the canonical source law exists. The
 
 - **H.7.1:** this worksheet plus RR-H guard/acceptance matrix.
 - **H.7.2:** after H.7.1 ratification, one small compiler module proves
-  `source.dag -> IR -> canonical_source.dag -> IR` with normalized equality, while preserving the
-  H.1/H.2 source-law receipt.
+  `source.dag -> H.1 AST -> canonical_source.dag -> H.1 AST` with normalized source-AST equality.
+  Semantic IR equality may be recorded as a secondary check only; it cannot replace or route around
+  the H.1/H.2 source-law receipt.
 - **H.7.3:** expose canonical source through `gunbc compile --target dag`; if JSON IR remains needed
   for debug, it must move to a boundary/debug-named surface.
 
