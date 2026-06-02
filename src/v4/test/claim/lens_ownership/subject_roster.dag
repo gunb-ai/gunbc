@@ -59,6 +59,7 @@ fn ownership_claim_input(ok: Bool) -> Node {
 
 
 type LensOwnershipSubject {
+  claim_id: Symbol
   claim: TestClaim
   structural_witness: Bool
   eval_subject: TestClaimEvalSubject<Node>
@@ -84,6 +85,7 @@ data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = ev
 
 data lens_ownership_subject_roster: List<LensOwnershipSubject> = [
   LensOwnershipSubject {
+    claim_id: claim_lens_ownership_resource_dependency,
     claim: claim_lens_ownership_resource_dependency,
     structural_witness: ownership_resource_dependency_claim_passes,
     eval_subject: subject_lens_ownership_resource_dependency
