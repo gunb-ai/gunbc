@@ -56,13 +56,21 @@ pub enum EmitHostCrossTargetParityVerdict {
     },
 }
 
+/// Emit-vs-eval / harness boundary: both fixture pins must be present (fail-closed).
+fn validate_emit_vs_eval_fixture_inputs(
+    inputs: &EmitHostFixtureInputs,
+) -> Result<(), emit_host_runner::HostSetupFailure> {
+    emit_host_runner::validate_emit_host_fixture_inputs(inputs)
+}
+
 /// Host-process transport: compile + run emitted Rust, returning the runner receipt.
 pub fn run_emit_host_rust_transport(
     source: &str,
     inputs: &EmitHostFixtureInputs,
     work_dir: &std::path::Path,
 ) -> Result<EmitHostRunReceipt, emit_host_runner::HostSetupFailure> {
-    run_emit_host_rust(source, inputs, work_dir)
+    validate_emit_vs_eval_fixture_inputs(inputs)?;
+    run_emit_host_rust(source, &inputs.transport(), work_dir)
 }
 
 /// Host-process transport: run emitted Python via `python3`, returning the runner receipt.
@@ -71,7 +79,8 @@ pub fn run_emit_host_python_transport(
     inputs: &EmitHostFixtureInputs,
     work_dir: &std::path::Path,
 ) -> Result<EmitHostRunReceipt, emit_host_runner::HostSetupFailure> {
-    run_emit_host_python(source, inputs, work_dir)
+    validate_emit_vs_eval_fixture_inputs(inputs)?;
+    run_emit_host_python(source, &inputs.transport(), work_dir)
 }
 
 /// Host-process transport: run emitted Go via `go run`, returning the runner receipt.
@@ -80,7 +89,8 @@ pub fn run_emit_host_go_transport(
     inputs: &EmitHostFixtureInputs,
     work_dir: &std::path::Path,
 ) -> Result<EmitHostRunReceipt, emit_host_runner::HostSetupFailure> {
-    run_emit_host_go(source, inputs, work_dir)
+    validate_emit_vs_eval_fixture_inputs(inputs)?;
+    run_emit_host_go(source, &inputs.transport(), work_dir)
 }
 
 /// True when the host exit witness is `Holds` (logical child succeeded).
@@ -310,6 +320,12 @@ pub fn run_cross_target_mvp2_python_parity_transport(
     python_work_dir: &std::path::Path,
     go_work_dir: &std::path::Path,
 ) -> EmitHostCrossTargetParityVerdict {
+    if let Err(setup) = validate_emit_vs_eval_fixture_inputs(inputs) {
+        return EmitHostCrossTargetParityVerdict::FailSetup {
+            target: "rust",
+            setup,
+        };
+    }
     run_cross_target_mvp2_python_parity_with_runners(
         rust_source,
         python_source,

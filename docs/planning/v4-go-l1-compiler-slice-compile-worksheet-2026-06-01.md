@@ -3,7 +3,7 @@
 > **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). **Slice id:** `go_l1_nat_semiring_rung2` (post-L0 PROVEN).
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.8.1 rung **L1**; Go row target "L0 complete + **L1 fixture-scale**".
-> **Prerequisites:** #4076 merged; L0 leaf-model claims PROVEN (sibling leaf-model worksheet); Go SG-1/SG-2 rows landed for atoms/generics touched by slice.
+> **Prerequisites:** #4076 merged; L0 leaf-model claims PROVEN (`docs/planning/v4-go-leaf-model-verification-worksheet-2026-06-01.md`); Go SG-1/SG-2 rows landed for atoms/generics touched by slice.
 
 ---
 
@@ -76,3 +76,4 @@ Metric allowed only as secondary:
 - `scripts/v4-phase1-nat-semiring-rung-gate.sh` — Phase 1 host transport for rungs 0–2
 - PR **#4076** — module layout prerequisite
 - PR **#3946** — ladder rung specs (lands `docs/planning/v4-ladder-rung-specs-2026-05-30.md` on merge)
+- `docs/planning/v4-go-leaf-model-verification-worksheet-2026-06-01.md` — L0 Go R1/R2 prerequisite worksheet
