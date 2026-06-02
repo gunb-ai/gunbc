@@ -32,7 +32,10 @@ import v2.compiler.infer_types {
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
-  is_recursive_type, lookup_type, lookup_type_for
+  is_recursive_type, lookup_type, lookup_type_for,
+  find_child_in_env, has_child_in_env,
+  lookup_cache_get_scrutinee, lookup_cache_get_enriched_kernel,
+  lookup_cache_put_enriched_kernel, enriched_kernel_cache_key
 }
 import v2.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
@@ -81,14 +84,15 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
 // Field lookup
 // =========================================================================
 
-fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn lookup_field_type_node(n: Node, field_name: String, env: TypeEnv) -> Node? {
+  let source_indices = env.source_indices
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     let inner = with_required_cardinality(n: n)
     if field_name == "value" {
       Some { value: inner }
     } else {
-      match lookup_field_type_node(n: inner, field_name: field_name, source_indices: source_indices) {
+      match lookup_field_type_node(n: inner, field_name: field_name, env: env) {
         Some { value: inner_result } => Some { value: with_optional_cardinality(n: inner_result) }
         None => none
       }
@@ -98,26 +102,26 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
     if has_structure {
       let is_product = n.connective == Conj
       if is_product {
-        match find_child_named(n: n, name: field_name, source_indices: source_indices) {
+        match find_child_in_env(env: env, parent: n, name: field_name) {
           Some { value: field_child } =>
             Some { value: child_type_node(ch: field_child) }
           None => none
         }
       } else {
-        lookup_coproduct_common_field_node(variants: n.children, field_name: field_name, source_indices: source_indices)
+        lookup_coproduct_common_field_node(variants: n.children, field_name: field_name, env: env)
       }
     } else { none }
   }
 }
 
-fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, env: TypeEnv) -> Node? {
   let found_in_all = variants |> all(v =>
-    has_child_named(n: v, name: field_name, source_indices: source_indices)
+    has_child_in_env(env: env, parent: v, name: field_name)
   )
   let first_field = if found_in_all {
     match variants |> first {
       Some { value: first_variant } =>
-        find_child_named(n: first_variant, name: field_name, source_indices: source_indices)
+        find_child_in_env(env: env, parent: first_variant, name: field_name)
       None => none
     }
   } else { none }
@@ -133,7 +137,16 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, 
 // =========================================================================
 
 fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
-  resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
+  let normed = normalize_access_type_node(n: n)
+  if normed.connective == NoConnective && normed.children |> count == 0 {
+    let canonical = authored_name(env: env, node: normed)
+    if canonical != "" {
+      match lookup_cache_get_scrutinee(env: env, canonical: canonical) {
+        Some { value: cached } => cached
+        None => resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
+      }
+    } else { resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map()) }
+  } else { resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map()) }
 }
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
