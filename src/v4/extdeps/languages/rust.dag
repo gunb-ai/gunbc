@@ -55,7 +55,8 @@ import v4.std.grounding {
   PerLanguageFactBundleKey,
   PerLanguageFactBundleRegistry,
   empty_per_language_fact_bundle_registry,
-  insert_per_language_fact_bundle_entry
+  insert_per_language_fact_bundle_entry,
+  primitive_fact_bundle_for_registry_subject
 }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
@@ -2131,129 +2132,6 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_integer_spec_facts(facts: RustIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
-          Holds { value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width) }
-        primitive_fact_axis_signedness =>
-          Holds { value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind) }
-        primitive_fact_axis_encoding =>
-          Holds { value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement) }
-        primitive_fact_axis_range =>
-          Holds { value: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier) }
-        primitive_fact_axis_overflow_disposition =>
-          Holds { value: rust_overflow_disposition_node(disposition: facts.overflow_disposition) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn rust_float_spec_facts(facts: RustFloatPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
-          Holds { value: rust_float_width_node(width: facts.width) }
-        primitive_fact_axis_encoding =>
-          Holds { value: rust_inhabitant_atom(id: facts.ieee754_binary) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn rust_noninteger_spec_facts(facts: RustNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
-          Holds { value: rust_inhabitant_atom(id: facts.representation) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: rust_integer_facts_node(facts: facts),
-    spec_facts: rust_integer_spec_facts(facts: facts)
-  }
-}
-
-fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: rust_float_facts_node(facts: facts),
-    spec_facts: rust_float_spec_facts(facts: facts)
-  }
-}
-
-fn rust_primitive_bundle_from_noninteger_facts(
-  facts: RustNonIntegerPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: rust_noninteger_facts_node(facts: facts),
-    spec_facts: rust_noninteger_spec_facts(facts: facts)
-  }
-}
-
-fn rust_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: rust_integer_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_primitive_bundle_from_integer_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn rust_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: rust_float_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_primitive_bundle_from_float_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn rust_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: rust_noninteger_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_primitive_bundle_from_noninteger_facts(facts: facts)
-      )
-    }
-  )
-}
-
 fn rust_symbol_node(id: Symbol) -> Node {
   rust_inhabitant_atom(id: id)
 }
@@ -2619,16 +2497,6 @@ fn rust_partiality_semantics_wave2() -> PartialitySemanticsDecl {
   }
 }
 
-fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  list_append(
-    left: list_append(
-      left: rust_primitive_bundles_from_integer_catalog(),
-      right: rust_primitive_bundles_from_float_catalog()
-    ),
-    right: rust_primitive_bundles_from_noninteger_catalog()
-  )
-}
-
 fn rust_per_language_fact_bundle_key(
   subject_carrier: Node,
   fact_axis: Symbol
@@ -2782,6 +2650,25 @@ fn rust_per_language_fact_bundle_entries() -> List<PerLanguageFactBundleEntry> {
   )
 }
 
+fn rust_insert_per_language_fact_bundle_entry_value(
+  registry: PerLanguageFactBundleRegistry,
+  entry: PerLanguageFactBundleEntry
+) -> PerLanguageFactBundleRegistry {
+  PerLanguageFactBundleRegistry {
+    by_key: map_insert(m: registry.by_key, key: entry.key, value: entry.fact_value)
+  }
+}
+
+fn rust_per_language_fact_bundle_registry_value() -> PerLanguageFactBundleRegistry {
+  fold_list(
+    xs: rust_per_language_fact_bundle_entries(),
+    empty: empty_per_language_fact_bundle_registry(),
+    cons: fn(registry, entry) {
+      rust_insert_per_language_fact_bundle_entry_value(registry: registry, entry: entry)
+    }
+  )
+}
+
 fn rust_insert_per_language_fact_bundle_entry_outcome(
   acc: Outcome<PerLanguageFactBundleRegistry>,
   entry: PerLanguageFactBundleEntry
@@ -2810,9 +2697,72 @@ fn rust_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegi
   )
 }
 
+fn rust_primitive_bundle_from_registry_subject(subject_carrier: Node) -> PrimitiveFactBundle {
+  primitive_fact_bundle_for_registry_subject(
+    registry: rust_per_language_fact_bundle_registry_value(),
+    subject_carrier: subject_carrier,
+    target: rust_mvp1_target_model()
+  )
+}
+
+fn rust_primitive_bundles_from_integer_catalog_registry() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: rust_primitive_bundle_from_registry_subject(
+          subject_carrier: rust_integer_facts_node(facts: facts)
+        )
+      )
+    }
+  )
+}
+
+fn rust_primitive_bundles_from_float_catalog_registry() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: rust_primitive_bundle_from_registry_subject(
+          subject_carrier: rust_float_facts_node(facts: facts)
+        )
+      )
+    }
+  )
+}
+
+fn rust_primitive_bundles_from_noninteger_catalog_registry() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: rust_noninteger_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: rust_primitive_bundle_from_registry_subject(
+          subject_carrier: rust_noninteger_facts_node(facts: facts)
+        )
+      )
+    }
+  )
+}
+
+fn rust_wave1_primitive_fact_bundles_from_registry() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: list_append(
+      left: rust_primitive_bundles_from_integer_catalog_registry(),
+      right: rust_primitive_bundles_from_float_catalog_registry()
+    ),
+    right: rust_primitive_bundles_from_noninteger_catalog_registry()
+  )
+}
+
 fn rust_model_core_wave1() -> ModelCore {
   ModelCore {
-    primitives: rust_wave1_primitive_fact_bundles(),
+    primitives: rust_wave1_primitive_fact_bundles_from_registry(),
     inhabitance: rust_model_core_inhabitance_decls(),
     laws: rust_model_core_law_obligations(),
     effects: rust_effect_semantics_wave2(),

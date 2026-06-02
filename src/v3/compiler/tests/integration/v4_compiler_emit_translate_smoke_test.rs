@@ -331,6 +331,7 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
         "PerLanguageFactBundleRegistry",
         "empty_per_language_fact_bundle_registry",
         "insert_per_language_fact_bundle_entry",
+        "primitive_fact_bundle_for_registry_subject",
     ] {
         assert!(
             import_includes_name(&module, &["v4", "std", "grounding"], name),
@@ -345,12 +346,22 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
         "rust_noninteger_per_language_fact_bundle_entries",
         "rust_per_language_fact_bundle_entries",
         "rust_per_language_fact_bundle_registry",
+        "rust_wave1_primitive_fact_bundles_from_registry",
     ] {
         assert!(
             surface_declares_fn(&module, name),
             "{RUST_LANGUAGE_PATH}: Rust G.1.1 fact bundle must declare {name}"
         );
     }
+    assert!(
+        fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_model_core_wave1",
+            "rust_wave1_primitive_fact_bundles_from_registry()"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust ModelCore.primitives must consume the G.1.1 registry projection"
+    );
 }
 
 #[test]
