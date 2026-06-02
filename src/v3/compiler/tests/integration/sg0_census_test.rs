@@ -954,6 +954,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
+    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
+    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
+    // replaces host-runner receipts.
+    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
     // **PR #4063 W3.4 (+0 paths):** extends harness with python transport + rung-6 additive-Monoid
@@ -966,15 +972,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
     // compiler-slice claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
+    // **PR #4285 Go L1 strict setup (+0 paths):** same-path assertion-list expansion verifies
+    // the parent rung gate fails closed when
+    // `V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT=1` and `go`/`gofmt` are missing.
+    // Dissolve with the same generated/TestClaim host setup receipt as #4229.
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
-    // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:47-51`).
+    // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
-    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
-    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
-    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
-    // replaces host-runner receipts.
-    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
     "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
@@ -1035,8 +1039,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
+    // PR #4295 (+0 paths): `check_t19_testgen_activation` same-path expansion —
+    // Rust migration of `scripts/check_t19_testgen_activation.py` (deleted #4252).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
-    // TestClaims or generated harness coverage.
+    // TestClaims or generated harness coverage (ROADMAP.md T-PB-B row).
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
     // T-16-A+ TaskManager omni fixture: compile_to_dag smoke + SQL DDL projection receipt.
     "src/v3/compiler/tests/integration/v4_test_fixture_task_manager_demo_smoke_test.rs",

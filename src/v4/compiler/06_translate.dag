@@ -74,6 +74,9 @@ import v4.std.lexing {
   VoidLexRules
 }
 import v4.std.target_model {
+  ConcreteSyntaxToken,
+  FixedToken,
+  BoundToken,
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -621,11 +624,80 @@ fn concrete_token_kind_child(parent: Node) -> Outcome<Node?> {
     edge_name: concrete_syntax_token_field_kind
   )
 }
-// 🟡 gated — feature:T-11-typed-concrete-syntax-token-variants — dissolve-on:
-// ConcreteSyntaxToken coproduct lands in target_model.dag; replace symbol-equality
-// with structural pattern matching on the typed carrier.
-fn concrete_token_kind_is_declared(kind: Symbol) -> Bool {
-  kind == concrete_syntax_token_kind_fixed || kind == concrete_syntax_token_kind_bound
+// Single Symbol -> typed-variant decode boundary for concrete syntax tokens (T-11). The
+// `concrete_syntax_token_kind_{fixed,bound}` wire tags are read exactly here; every downstream
+// consumer (token_spelling_from_model, token_sequence_item_kind) dispatches structurally on the
+// resulting ConcreteSyntaxToken carrier rather than re-comparing Symbols. Fail-closed: a kind that
+// is neither fixed nor bound, a fixed token carrying a binding, or a bound token missing one is
+// Rejected.
+fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
+  bind_outcome(
+    o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_kind),
+    f: fn(kind_node) {
+      bind_outcome(
+        o: node_atom_identity(node: kind_node),
+        f: fn(kind) {
+          bind_outcome(
+            o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_class),
+            f: fn(class_node) {
+              bind_outcome(
+                o: node_atom_identity(node: class_node),
+                f: fn(token_class) {
+                  bind_outcome(
+                    o: conj_optional_named_child(
+                      parent: token,
+                      edge_name: concrete_syntax_token_field_binding
+                    ),
+                    f: fn(binding_node) {
+                      if kind == concrete_syntax_token_kind_fixed {
+                        match binding_node {
+                          Some { value: _ } =>
+                            outcome_rejected(
+                              translate_concrete_token_kind_invalid_diagnostic(token: token)
+                            )
+                          None =>
+                            Accepted {
+                              value: FixedToken { token_class: token_class },
+                              diagnostics: None
+                            }
+                        }
+                      } else {
+                        if kind == concrete_syntax_token_kind_bound {
+                          match binding_node {
+                            Some { value: binding_node } =>
+                              bind_outcome(
+                                o: node_atom_identity(node: binding_node),
+                                f: fn(binding) {
+                                  Accepted {
+                                    value: BoundToken {
+                                      token_class: token_class,
+                                      binding: binding
+                                    },
+                                    diagnostics: None
+                                  }
+                                }
+                              )
+                            None =>
+                              outcome_rejected(
+                                translate_concrete_token_kind_invalid_diagnostic(token: token)
+                              )
+                          }
+                        } else {
+                          outcome_rejected(
+                            translate_concrete_token_kind_invalid_diagnostic(token: token)
+                          )
+                        }
+                      }
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
 }
 fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
   bind_outcome(
@@ -637,17 +709,14 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
           match class_node {
             Some { value: _ } =>
               match kind_node {
-                Some { value: kind_node } =>
+                Some { value: _ } =>
+                  // Class + kind both present: this is a concrete token iff it decodes into a
+                  // FixedToken/BoundToken variant. Structural decode replaces the former
+                  // Symbol-equality kind check (and additionally rejects malformed payloads).
                   bind_outcome(
-                    o: node_atom_identity(node: kind_node),
-                    f: fn(kind) {
-                      if concrete_token_kind_is_declared(kind: kind) {
-                        Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
-                      } else {
-                        outcome_rejected(
-                          translate_concrete_token_kind_invalid_diagnostic(token: item)
-                        )
-                      }
+                    o: concrete_syntax_token_from_node(token: item),
+                    f: fn(_) {
+                      Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
                     }
                   )
                 None =>
@@ -897,76 +966,24 @@ fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<
 }
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
   bind_outcome(
-    o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_kind),
-    f: fn(kind_node) {
-      bind_outcome(
-        o: node_atom_identity(node: kind_node),
-        f: fn(kind) {
-          bind_outcome(
-            o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_class),
-            f: fn(class_node) {
-              bind_outcome(
-                o: node_atom_identity(node: class_node),
-                f: fn(token_class) {
-                  bind_outcome(
-                    o: conj_optional_named_child(
-                      parent: token,
-                      edge_name: concrete_syntax_token_field_binding
-                    ),
-                    f: fn(binding_node) {
-                      if kind == concrete_syntax_token_kind_fixed {
-                        match binding_node {
-                          Some { value: _ } =>
-                            outcome_rejected(
-                              translate_concrete_token_kind_invalid_diagnostic(token: token)
-                            )
-                          None =>
-                            lex_rules_literal_for_class(
-                              rules: target.lex,
-                              token_class: token_class
-                            )
-                        }
-                      } else {
-                        if kind == concrete_syntax_token_kind_bound {
-                          match binding_node {
-                            Some { value: binding_node } =>
-                              bind_outcome(
-                                o: node_atom_identity(node: binding_node),
-                                f: fn(binding) {
-                                  // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: binding_spellings
-                                  match map_get(target.binding_spellings, binding) {
-                                    Some { value: spelling } =>
-                                      Accepted { value: spelling, diagnostics: None }
-                                    None =>
-                                      Rejected {
-                                        diagnostics: diagnostics_singleton(
-                                          d: translate_binding_spelling_not_found_diagnostic(
-                                            binding: binding
-                                          )
-                                        )
-                                      }
-                                  }
-                                }
-                              )
-                            None =>
-                              outcome_rejected(
-                                translate_concrete_token_kind_invalid_diagnostic(token: token)
-                              )
-                          }
-                        } else {
-                          outcome_rejected(
-                            translate_concrete_token_kind_invalid_diagnostic(token: token)
-                          )
-                        }
-                      }
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
+    o: concrete_syntax_token_from_node(token: token),
+    f: fn(decoded) {
+      match decoded {
+        FixedToken { token_class: token_class } =>
+          lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
+        BoundToken { token_class: _, binding: binding } =>
+          // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: binding_spellings
+          match map_get(target.binding_spellings, binding) {
+            Some { value: spelling } =>
+              Accepted { value: spelling, diagnostics: None }
+            None =>
+              Rejected {
+                diagnostics: diagnostics_singleton(
+                  d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+                )
+              }
+          }
+      }
     }
   )
 }
