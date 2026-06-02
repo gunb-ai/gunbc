@@ -65,20 +65,20 @@ import v4.std.model_core {
   EffectSignature,
   FailClosedAtBoundary,
   ModelCore,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisRange,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth,
+  ModelCorePrimitiveFactAxis,
   model_core_wave1_law_field_algebra,
   model_core_wave1_law_field_kind,
   model_core_wave1_law_field_subject,
   PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  PrimitiveOperationRef,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_range,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
-  primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  PrimitiveOperationRef
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
@@ -2499,7 +2499,7 @@ fn rust_partiality_semantics_wave2() -> PartialitySemanticsDecl {
 
 fn rust_per_language_fact_bundle_key(
   subject_carrier: Node,
-  fact_axis: Symbol
+  fact_axis: ModelCorePrimitiveFactAxis
 ) -> PerLanguageFactBundleKey {
   PerLanguageFactBundleKey {
     subject_carrier: subject_carrier,
@@ -2510,7 +2510,7 @@ fn rust_per_language_fact_bundle_key(
 
 fn rust_per_language_fact_bundle_entry(
   subject_carrier: Node,
-  fact_axis: Symbol,
+  fact_axis: ModelCorePrimitiveFactAxis,
   fact_value: Node
 ) -> PerLanguageFactBundleEntry {
   PerLanguageFactBundleEntry {
@@ -2529,32 +2529,32 @@ fn rust_integer_per_language_fact_bundle_entries(
   [
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
     ),
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_width,
+      fact_axis: ModelCoreFactAxisWidth {},
       fact_value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
     ),
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_signedness,
+      fact_axis: ModelCoreFactAxisSignedness {},
       fact_value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind)
     ),
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_encoding,
+      fact_axis: ModelCoreFactAxisEncoding {},
       fact_value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement)
     ),
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_range,
+      fact_axis: ModelCoreFactAxisRange {},
       fact_value: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier)
     ),
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_overflow_disposition,
+      fact_axis: ModelCoreFactAxisOverflowDisposition {},
       fact_value: rust_overflow_disposition_node(disposition: facts.overflow_disposition)
     )
   ]
@@ -2567,17 +2567,17 @@ fn rust_float_per_language_fact_bundle_entries(
   [
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
     ),
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_width,
+      fact_axis: ModelCoreFactAxisWidth {},
       fact_value: rust_float_width_node(width: facts.width)
     ),
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_encoding,
+      fact_axis: ModelCoreFactAxisEncoding {},
       fact_value: rust_inhabitant_atom(id: facts.ieee754_binary)
     )
   ]
@@ -2590,12 +2590,12 @@ fn rust_noninteger_per_language_fact_bundle_entries(
   [
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
     ),
     rust_per_language_fact_bundle_entry(
       subject_carrier: subject_carrier,
-      fact_axis: primitive_fact_axis_encoding,
+      fact_axis: ModelCoreFactAxisEncoding {},
       fact_value: rust_inhabitant_atom(id: facts.representation)
     )
   ]
@@ -2681,7 +2681,14 @@ fn rust_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegi
 fn rust_checked_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
   match rust_per_language_fact_bundle_registry() {
     Accepted { value: registry, diagnostics: _ } => registry
-    Rejected { diagnostics: _ } => empty_per_language_fact_bundle_registry()
+    Rejected { diagnostics: d } =>
+      PerLanguageFactBundleRegistry {
+        by_key: Map {
+          lookup: fn(_) {
+            Violates { diagnostic: d.head }
+          }
+        }
+      }
   }
 }
 
