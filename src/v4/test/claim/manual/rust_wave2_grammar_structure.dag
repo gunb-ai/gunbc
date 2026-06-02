@@ -66,5 +66,4 @@ fn rust_wave2_grammar_structure_outcome_satisfied(lm: Outcome<RustLanguageModel>
   }
 }
 
-data rust_wave2_grammar_structure_ready: Bool =
-  rust_wave2_grammar_structure_outcome_satisfied(lm: rust_language_model_wave2())
+data rust_wave2_grammar_structure_ready: Bool = rust_wave2_grammar_structure_outcome_satisfied(lm: rust_language_model_wave2())
