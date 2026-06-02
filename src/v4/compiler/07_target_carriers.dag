@@ -8,9 +8,12 @@ module v4.compiler.target_carriers
 
 
 import v4.std.node { Node }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model { TargetModelBundle }
 import v4.std.text { String }
 
 type LanguageModel = Node
+
+// Hub re-export: authority remains TargetModelBundle in v4.std.target_model (P2).
+type TargetModel = TargetModelBundle
 
 type TargetSource = String
