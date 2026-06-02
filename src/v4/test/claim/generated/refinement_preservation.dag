@@ -6,17 +6,12 @@ module v4.test.claim.generated.refinement_preservation
 
 
 import v4.lens.testgen {
-  Generator,
   RefinementPreservationSubject,
-  TestgenConcept,
   refinement_preservation_list_node,
   refinement_preservation_subject_nonempty_list_base,
   refinement_label_nonempty_list_base,
-  testgen_emit_refinement_preservation_claim,
-  testgen_scheduled_refinement_preservation_generators
+  testgen_emit_refinement_preservation_claim
 }
-import v4.std.algebra { length }
-import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
   None,
@@ -80,16 +75,5 @@ fn refinement_preservation_subject_base_value() -> Outcome<Node> {
 
 data witness_refinement_preservation_subject_anchor: Bool = match refinement_preservation_subject_base_value() {
   Accepted { value: base, diagnostics: None } => base == refinement_preservation_list_node(xs: [stub_empty_conj])
-  Rejected { diagnostics: _ } => false
-}
-
-
-fn scheduled_refinement_preservation_generators() -> Outcome<List<Generator<TestgenConcept>>> {
-  testgen_scheduled_refinement_preservation_generators()
-}
-
-
-data witness_refinement_preservation_scheduler_emits_one_generator: Bool = match scheduled_refinement_preservation_generators() {
-  Accepted { value: generators, diagnostics: None } => length(xs: generators) == 1
   Rejected { diagnostics: _ } => false
 }

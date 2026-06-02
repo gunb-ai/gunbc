@@ -1,0 +1,109 @@
+// src/v4/std/grounding.dag
+// Scope: Branch G.0 — grounding schema / authority (W2.2).
+// Status: design closure substrate — indexes per-language fact bundles, hollow-alias bar,
+//   SG-1 / SG-1b / SG-2 / SG-5 evidence shapes, and per-target receipt contract for Branch C/G consumers.
+// Anchor: Wave-2 plan Branch G.0 (G0.1–G0.4); INVARIANTS P1; docs/modeling-discipline.md Practice 8.
+
+
+module v4.std.grounding
+
+
+import v4.std.collection { List, Map, empty_map, map_insert }
+import v4.std.host_run { EmitHostRunReceipt }
+import v4.std.logic { Bool }
+import v4.std.model_core { PrimitiveFactBundle }
+import v4.std.node { Node, Symbol }
+import v4.std.target_model { TargetModel }
+
+
+// --- G0.1: per-language fact bundle schema (subject_carrier × target × fact_axis) ---
+
+// 🟢 coproduct dissolution — closed subject-kind axis for G.1 audit classification (not a registry key).
+type GroundingSubjectKind
+  = SubjectPrimitiveCarrier
+  | SubjectAlgebraInhabitance
+  | SubjectTargetRealization
+
+
+// P2: substrate carrier + TargetModel (language identity) + canonical fact_axis Symbol
+// (model_core primitive_fact_axis_* or target_model catalog edge) — no parallel GroundingLanguage /
+// GroundingFactClass coproducts that can drift from spec_facts.
+type PerLanguageFactBundleKey {
+  subject_carrier: Node
+  target: TargetModel
+  fact_axis: Symbol
+}
+
+
+// P2: fact payload for key.fact_axis only — no Map that can disagree with the keyed axis.
+type PerLanguageFactBundleEntry {
+  key: PerLanguageFactBundleKey
+  fact_value: Node
+}
+
+
+type PerLanguageFactBundleRegistry {
+  entries: List<PerLanguageFactBundleEntry>
+}
+
+
+// G.1 / model_core boundary: project registry row to PrimitiveFactBundle (substrate_carrier from key).
+fn primitive_fact_bundle_for_entry(entry: PerLanguageFactBundleEntry) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: entry.key.subject_carrier,
+    spec_facts: map_insert(
+      m: empty_map(),
+      key: entry.key.fact_axis,
+      value: entry.fact_value
+    )
+  }
+}
+
+
+// --- G0.2: no hollow aliases governance bar ---
+
+data grounding_hollow_alias_bar_reason: Symbol = grounding_hollow_alias_bar_reason
+
+
+// Structural bar: every non-exempt type carrier must read ≥1 spec fact (NamedFieldFacts) or be an
+// explicit kernel-ambient atom. Enforcement authority: v4.lens.fact_density (T-30); this carrier
+// records the governance contract for G.1 population audits — not a second classifier.
+type HollowAliasGovernanceBar {
+  requires_named_fact_fields: Bool
+  allows_kernel_ambient_atoms: Bool
+}
+
+
+fn hollow_alias_governance_bar() -> HollowAliasGovernanceBar {
+  HollowAliasGovernanceBar {
+    requires_named_fact_fields: true,
+    allows_kernel_ambient_atoms: true
+  }
+}
+
+
+// --- G0.3: SG-1 / SG-1b / SG-2 / SG-5 evidence (single coproduct; variant arm pins target_model edge family) ---
+
+// 🟢 coproduct dissolution — terminal G.0 evidence-family tag: one arm per closed SG-1 / SG-1b / SG-2 / SG-5
+// target_model catalog row kind (variant arm is the authority; source_carrier indexes the substrate witness).
+// P2: no parallel shape record + axis enum duplicating the same datum.
+type GroundingEvidenceSchema
+  = Sg1Evidence { source_carrier: Node }
+  | Sg1bEvidence { source_carrier: Node }
+  | Sg2Evidence { source_carrier: Node }
+  | Sg5Evidence { source_carrier: Node }
+
+
+// --- G0.4: per-target receipt schema (Branch C/G consumer contract; parallels A.3b.3) ---
+
+// Host-boundary receipt: TargetModel authority lives on EmitHostRunReceipt.target only (P2).
+// In-process T-38 eval runs project TestClaimRun at v4.compiler.eval — this schema is the
+// cross-target grounding receipt for host verification and leaf-model runners.
+type PerTargetGroundingReceipt {
+  host_run: EmitHostRunReceipt
+}
+
+
+fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> TargetModel {
+  receipt.host_run.target
+}
