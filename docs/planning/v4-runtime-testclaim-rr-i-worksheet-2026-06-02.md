@@ -54,7 +54,7 @@ Systemic fix:
        runtime behind the §5.0.2 CI-needs predicate.
 Non-goals:
   - Registry migration of Complexity / Cost / TableDecisionTree (ctrl#1425 §2.5.2 defer)
-  - Bulk #3468 scaffold (T-13-*-unresolved) dissolution — tracked, not this PR
+  - Scaffold (`T-13-*-unresolved`) dissolution of ANY family — tracked per §2 per-family trigger table, not this PR (only effect / ownership-access cross-ref #3468)
   - eval_parallel runtime (R5 / RR-A §6 "I.3 eval_parallel runtime — design only")
   - Forking run_test_claim per subject family
 Falsification probe:
@@ -80,7 +80,7 @@ Metric allowed only as secondary:
 | ----------- | ----- | ------------ |
 | RR-A (Branch A runtime engine) | Ratified #4296 | **Consume** A.2 survey + manual 5-row wedge; do not re-litigate `run_test_claim` ownership |
 | T-13 family ratchet (#4264, #4292) | MERGED | Prerequisite — the four families are the closure subject, not re-authored here |
-| #3468 signature-derived effect-kind set | Open (BLOCKING follow-up) | T-13-*-unresolved scaffolds **stay** until #3468; this PR documents, does not dissolve |
+| #3468 signature-derived effect-kind set | Open (BLOCKING follow-up) | Dissolves **only** the `effect` kind-set and `ownership` access-carrier scaffolds; the `parallelism` / `idempotency` / `ownership-mode` `*-unresolved` predicates dissolve on their own per-coproduct triggers (§2 table). This PR documents, does not dissolve |
 | I.1.1 collapse lane | Class 2 child | RR-I states the contract; collapse PR cites §4 R1–R4 |
 
 ---
@@ -108,7 +108,17 @@ grep -n 'type DependencyKindClassifier\|type ClassifiedDependencyView' src/v4/st
 **Closure contract (what "closed" means, ratified):**
 
 1. **Single classification authority.** Each family projects exactly one `List<ClassifiedDependencyView<C>>`; the dependency-edge identity lives on the inner `DependencyView`, never copied into a parallel roster field (Practice 11 sub-rule: typed-reference, not parallel-payload).
-2. **Honest unresolved arm.** Each `C` carries an explicit unresolved/unknown variant (`UnknownCoupling`, `RequiresAccessWitness`, `RequiresAlgebraWitness`, effect signature-deferred slot). The `*_relation_unresolved` / `*_unresolved` predicate lives **inside** the `*_witness`, gated `feature:T-13-*-unresolved`, dissolve-on #3468. No ad-hoc Bool predicate outside the witness.
+2. **Honest unresolved arm, per-family dissolution trigger.** Each `C` carries an explicit unresolved/unknown variant; the `*_unresolved` predicate lives **inside** the `*_witness`, gated `feature:T-13-*-unresolved`, with no ad-hoc Bool predicate outside the witness. The dissolution triggers are **distinct per family** (they are NOT all #3468 — that compression would make the scaffold receipts uncheckable):
+
+   | Lens | Gate mark (live) | Concrete dissolution trigger | #3468? |
+   | ---- | ---------------- | ---------------------------- | ------ |
+   | `parallelism` | `feature:T-13-parallelism-relation-unresolved` | substrate projects `ParallelismRelation` resolved/unresolved from coproduct (`parallelism.dag:75`) | No |
+   | `idempotency` | `feature:T-13-idempotency-verdict-unresolved` | substrate projects `IdempotencyVerdict` resolved/unresolved from coproduct (`idempotency.dag:82`) | No |
+   | `ownership` (mode) | `feature:T-13-ownership-mode-unresolved` | substrate projects `OwnershipMode` resolved/unresolved from coproduct (`ownership.dag:77`) | No |
+   | `ownership` (access carrier) | (status note `ownership.dag:3`) | deriving the closed access carrier behind `RequiresAccessWitness` | Yes (#3468 follow-up) |
+   | `effect` | `feature:T-13-effect-signature-deferred-unresolved` | `InferredFacts` decodes to a closed effect-kind carrier (`effect.dag:88`) | Yes (#3468) |
+
+   So only **effect**'s kind-set closure and **ownership**'s access-carrier follow-up cross-reference #3468; the three per-coproduct `*-unresolved` predicates (parallelism / idempotency / ownership-mode) each dissolve on their own lens's substrate-projects-resolved/unresolved trigger. An I.1.1 collapse PR closes one trigger at a time and cites the matching gate mark.
 3. **No registry migration.** Complexity / Cost / TableDecisionTree are NOT dependency-edge lenses and stay out of the family (ctrl#1425 §2.5.2). `unused_parameters` / `structural_resolution` share the shape but project non-dependency-runtime surfaces — noted, not re-authored here.
 
 **Forbidden for I.1 close:** adding a fifth dependency-runtime family by copy instead of by `ClassifiedDependencyView<NewC>`; re-authoring effect kind from `DependencyKind` (second authority); promoting `UnknownCoupling` to a concrete relation without a derived fact (I.1.1 collapse must consume a substrate fact, not a heuristic).
@@ -199,7 +209,7 @@ Default deliverable is this types/authority doc, NOT an `eval_parallel` runtime 
 
 - **I.1.1 child (`adhoc-8b1709c7-7c0`)**: consume §2 closure contract + §4 R1–R4 before any UnknownCoupling collapse.
 - **Runtime/TestClaim Mgr**: corpus promotion (§3 trigger T/T') is an implementation lane; the parametric-evaluator path (T') requires an L2.5 substrate model PR — escalate, do not improvise (`run_test_claim` is load-bearing per SELF_HOSTING).
-- **#3468 lane**: signature-derived effect/ownership kind closure dissolves the `effect`/`ownership` unresolved scaffolds — not before.
+- **#3468 lane**: closes the `effect` signature-derived kind set and the `ownership` access carrier only; the `parallelism` / `idempotency` / `ownership-mode` `*-unresolved` predicates dissolve on their own per-coproduct triggers (§2 table), independent of #3468.
 
 ---
 
@@ -208,7 +218,7 @@ Default deliverable is this types/authority doc, NOT an `eval_parallel` runtime 
 - [x] Single-authority: one `ClassifiedDependencyView<C>` per family; one `run_test_claim` interpreter
 - [x] Distinct from RR-A (runtime engine) and #3468 (kind-set closure) — no shared fork
 - [x] Spot-fix forbidden: copy-a-fifth-family, per-family runner fork, heuristic UnknownCoupling promotion, silent unsupported-row drop
-- [x] Non-goals accepted: Complexity/Cost/TableDecisionTree registry migration; bulk #3468 dissolution; eval_parallel runtime
+- [x] Non-goals accepted: Complexity/Cost/TableDecisionTree registry migration; `T-13-*-unresolved` scaffold dissolution of any family (per-family triggers in §2, not all #3468); eval_parallel runtime
 - [x] Corpus contract: promote-via-projection-or-escalated-parametric, else keep explicitly unsupported with typed trigger
 - [x] §5.0.2 CI-needs predicate accepted (eval_parallel gated p95>15m OR shadow>5m OR queue>3d)
 - [x] Falsification R1–R7 accepted
