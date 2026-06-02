@@ -1,7 +1,7 @@
 // src/v4/test/claim/workflow/testclaim_corpus_runner.dag
 // Scope: T-38 modeled corpus-level TestClaim runner over manual roster.
 // Status: wedge — evaluate manual_corpus_node_subject_rows into CorpusEvalReport.
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; CI host transport is scripts/v4-testclaim-corpus-eval.sh under positive-Y `ci_upsert_testclaim_corpus_eval_*`. T-38-PR2 (verdict SURFACE): manual_corpus_eval.dag declares the authoring-time corpus tally witness; the CI receipt now surfaces the per-row roster + tally (retired blocked_m1_subset). Forward (residual gate): per-row RUNTIME execution of `run_manual_testclaim_corpus_eval` (cargo-clean M1 emitted subset OR bootstrap-evaluator corpus path) — load-bearing, escalated as upward debt; amend when that lands.
+// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; CI host transport is scripts/v4-testclaim-corpus-eval.sh under positive-Y `ci_upsert_testclaim_corpus_eval_*`. T-38-PR2: the runner maps each manual subject row through `run_test_claim`, then manual_corpus_eval.dag gates the resulting CorpusEvalReport tally (retired blocked_m1_subset).
 
 module v4.test.claim.workflow.testclaim_corpus_runner
 
