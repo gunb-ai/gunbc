@@ -1983,7 +1983,8 @@ fn testgen_scheduled_generators_outcome() -> Outcome<List<Generator<TestgenConce
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: refinement_gens, diagnostics: d_rp } =>
       match testgen_scheduled_algebra_law_generators() {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } =>
+          Rejected { diagnostics: rejected_with_pending(pending: d_rp, rejected: d) }
         Accepted { value: algebra_gens, diagnostics: d_al } =>
           Accepted {
             value: list_append(
