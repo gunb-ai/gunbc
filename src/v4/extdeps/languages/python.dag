@@ -56,6 +56,7 @@ import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concre
 import v4.std.target_model { TargetModel }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.grounding {
+  HollowAliasGovernanceBar,
   PerLanguageFactBundleEntry,
   PerLanguageFactBundleKey,
   PerLanguageFactBundleRegistry,
@@ -73,7 +74,7 @@ import v4.std.model_core {
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_unbound_diagnostic
 }
-import v4.std.diagnostic { Outcome, outcome_accepted }
+import v4.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
 import v4.std.witness { Holds, Violates }
 import v4.std.node {
   Arrow,
@@ -912,8 +913,12 @@ fn python_g1_2_insert_entries(
   }
 }
 
+fn python_g1_2_hollow_alias_governance_bar() -> HollowAliasGovernanceBar {
+  hollow_alias_governance_bar()
+}
+
 fn python_g1_2_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
-  let _bar = hollow_alias_governance_bar()
+  let _bar = python_g1_2_hollow_alias_governance_bar()
   fold_list(
     xs: python_g1_2_fact_bundle_entries(),
     empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),

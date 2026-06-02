@@ -564,6 +564,60 @@ fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
 }
 
 #[test]
+fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
+    let module = parse_module(PYTHON_LANGUAGE_DAG, PYTHON_LANGUAGE_PATH);
+    for name in [
+        "HollowAliasGovernanceBar",
+        "PerLanguageFactBundleEntry",
+        "PerLanguageFactBundleKey",
+        "PerLanguageFactBundleRegistry",
+        "empty_per_language_fact_bundle_registry",
+        "hollow_alias_governance_bar",
+        "insert_per_language_fact_bundle_entry",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "grounding"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must consume `{name}` from v4.std.grounding"
+        );
+    }
+    for name in ["Outcome", "Accepted", "Rejected", "outcome_accepted"] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "diagnostic"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle registry must consume diagnostic `{name}`"
+        );
+    }
+    for name in [
+        "python_g1_2_fact_bundle_key",
+        "python_g1_2_fact_bundle_entry",
+        "python_g1_2_integer_fact_bundle_entries",
+        "python_g1_2_float_fact_bundle_entries",
+        "python_g1_2_complex_fact_bundle_entries",
+        "python_g1_2_bool_fact_bundle_entries",
+        "python_g1_2_singleton_fact_bundle_entries",
+        "python_g1_2_fact_bundle_entries",
+        "python_g1_2_insert_fact_bundle_entry",
+        "python_g1_2_insert_entries",
+        "python_g1_2_hollow_alias_governance_bar",
+        "python_g1_2_fact_bundle_registry",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must declare `{name}`"
+        );
+    }
+    assert_eq!(
+        surface_fn_count(&module, "python_g1_2_concrete_syntax_token"),
+        0,
+        "{PYTHON_LANGUAGE_PATH}: Python G.1.2 must not revive target-local concrete syntax token helpers"
+    );
+    assert_eq!(
+        surface_declares_type(&module, "PythonConcreteSyntaxToken"),
+        false,
+        "{PYTHON_LANGUAGE_PATH}: Python G.1.2 must consume shared ConcreteSyntaxToken authority"
+    );
+}
+
+#[test]
 fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
     let module = parse_module(KOTLIN_LANGUAGE_DAG, KOTLIN_LANGUAGE_PATH);
     assert!(
