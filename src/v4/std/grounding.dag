@@ -11,6 +11,7 @@ module v4.std.grounding
 import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.diagnostic {
   Diagnostic,
+  None,
   Outcome,
   Textual,
   Unavailable,
@@ -80,15 +81,18 @@ fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
 }
 
 
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>);
+// dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate Witness at
+// v4.std.collection:54); site: insert_per_language_fact_bundle_entry duplicate-key gate.
 fn insert_per_language_fact_bundle_entry(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
   match registry.by_key.lookup(key) {
-    Holds { value: _ } =>
+    Some { value: _ } =>
       outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    Violates { diagnostic: _ } =>
+    None =>
       outcome_accepted(
         value: PerLanguageFactBundleRegistry {
           by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
@@ -146,12 +150,13 @@ fn primitive_fact_bundle_for_entry(entry: PerLanguageFactBundleEntry) -> Outcome
 // 🟢 terminal — G.0 hollow-alias governance posture (T-30 enforces via v4.lens.fact_density).
 // Closed nullary carrier: requires named spec facts and permits kernel-ambient atoms — no free
 // Bool configuration that could represent requires_named_fact_fields=false (P2 / illegal states).
+// `{}` on single-arm coproduct only (v2 export; rust_leaf_model_claim.dag).
 type HollowAliasGovernanceBar
-  = HollowAliasRequiresNamedFieldsAndKernelAmbient
+  = HollowAliasRequiresNamedFieldsAndKernelAmbient {}
 
 
 fn hollow_alias_governance_bar() -> HollowAliasGovernanceBar {
-  HollowAliasRequiresNamedFieldsAndKernelAmbient
+  HollowAliasRequiresNamedFieldsAndKernelAmbient {}
 }
 
 
