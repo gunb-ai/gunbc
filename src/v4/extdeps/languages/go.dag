@@ -174,14 +174,11 @@ type GoCost {
   allocation_cost: Int
 }
 
-// GoConcreteSyntaxToken: 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
-type GoConcreteSyntaxToken
-  = GoFixedToken { token_class: Symbol }
-  | GoBoundToken { token_class: Symbol, binding: Symbol }
+// ConcreteSyntaxToken: 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
 
 type GoGrammarRelationRow {
   production: GrammarProduction
-  tokens: List<GoConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
 
 type GoLanguageModel {
@@ -311,24 +308,24 @@ data go_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data go_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data go_mvp1_source_text: String = "func add(x int, y int) int { return x + y }"
 
-fn go_mvp1_concrete_tokens() -> List<GoConcreteSyntaxToken> {
+fn go_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    GoFixedToken { token_class: go_token_kw_func },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_fn_add },
-    GoFixedToken { token_class: go_token_lparen },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
-    GoFixedToken { token_class: go_token_ty_int },
-    GoFixedToken { token_class: go_token_comma },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
-    GoFixedToken { token_class: go_token_ty_int },
-    GoFixedToken { token_class: go_token_rparen },
-    GoFixedToken { token_class: go_token_ty_int },
-    GoFixedToken { token_class: go_token_lbrace },
-    GoFixedToken { token_class: go_token_kw_return },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
-    GoFixedToken { token_class: go_token_plus },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
-    GoFixedToken { token_class: go_token_rbrace }
+    FixedToken { token_class: go_token_kw_func },
+    BoundToken { token_class: go_token_ident, binding: go_binding_fn_add },
+    FixedToken { token_class: go_token_lparen },
+    BoundToken { token_class: go_token_ident, binding: go_binding_param_x },
+    FixedToken { token_class: go_token_ty_int },
+    FixedToken { token_class: go_token_comma },
+    BoundToken { token_class: go_token_ident, binding: go_binding_param_y },
+    FixedToken { token_class: go_token_ty_int },
+    FixedToken { token_class: go_token_rparen },
+    FixedToken { token_class: go_token_ty_int },
+    FixedToken { token_class: go_token_lbrace },
+    FixedToken { token_class: go_token_kw_return },
+    BoundToken { token_class: go_token_ident, binding: go_binding_param_x },
+    FixedToken { token_class: go_token_plus },
+    BoundToken { token_class: go_token_ident, binding: go_binding_param_y },
+    FixedToken { token_class: go_token_rbrace }
   ]
 }
 
@@ -1310,16 +1307,16 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
   }
 }
 
-fn go_concrete_token_class(token: GoConcreteSyntaxToken) -> Symbol {
+fn go_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    GoFixedToken { token_class: c } => c
-    GoBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn go_concrete_token_node(token: GoConcreteSyntaxToken) -> Node {
+fn go_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   match token {
-    GoFixedToken { token_class: c } =>
+    FixedToken { token_class: c } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
@@ -1327,7 +1324,7 @@ fn go_concrete_token_node(token: GoConcreteSyntaxToken) -> Node {
           go_named_edge(name: concrete_syntax_token_field_class, target: go_inhabitant_atom(id: c))
         ]
       }
-    GoBoundToken { token_class: c, binding: b } =>
+    BoundToken { token_class: c, binding: b } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
@@ -1339,7 +1336,7 @@ fn go_concrete_token_node(token: GoConcreteSyntaxToken) -> Node {
   }
 }
 
-fn go_positional_token_edge(token: GoConcreteSyntaxToken) -> Edge {
+fn go_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge { label: Positional, target: go_concrete_token_node(token: token) }
 }
 
@@ -1372,7 +1369,7 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 
-fn go_formal_rhs_from_tokens(tokens: List<GoConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn go_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1443,7 +1440,7 @@ fn go_mvp1_grammar_relation_row() -> GoGrammarRelationRow {
   }
 }
 
-fn go_relation_token_edges(tokens: List<GoConcreteSyntaxToken>) -> List<Edge> {
+fn go_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,

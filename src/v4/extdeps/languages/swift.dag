@@ -216,15 +216,12 @@ type SwiftLanguageModel {
 }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-type SwiftConcreteSyntaxToken
-  = SwiftFixedToken { token_class: Symbol }
-  | SwiftBoundToken { token_class: Symbol, binding: Symbol }
 
 // 🟢 grounded.
 type SwiftGrammarRelationRow {
   production: GrammarProduction
   emitted: Node
-  tokens: List<SwiftConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
 
 data swift_language_model_surface_id: Symbol = swift_language_model_surface_id
@@ -367,27 +364,27 @@ data swift_mvp1_source_literal: Symbol = swift_mvp1_source_literal
 data swift_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data swift_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
-fn swift_mvp1_concrete_tokens() -> List<SwiftConcreteSyntaxToken> {
+fn swift_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    SwiftFixedToken { token_class: swift_token_kw_func },
-    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_fn_add },
-    SwiftFixedToken { token_class: swift_token_lparen },
-    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
-    SwiftFixedToken { token_class: swift_token_colon },
-    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
-    SwiftFixedToken { token_class: swift_token_comma },
-    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
-    SwiftFixedToken { token_class: swift_token_colon },
-    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
-    SwiftFixedToken { token_class: swift_token_rparen },
-    SwiftFixedToken { token_class: swift_token_arrow },
-    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
-    SwiftFixedToken { token_class: swift_token_lbrace },
-    SwiftFixedToken { token_class: swift_token_kw_return },
-    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
-    SwiftBoundToken { token_class: swift_token_operator, binding: swift_binding_op_plus },
-    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
-    SwiftFixedToken { token_class: swift_token_rbrace }
+    FixedToken { token_class: swift_token_kw_func },
+    BoundToken { token_class: swift_token_ident, binding: swift_binding_fn_add },
+    FixedToken { token_class: swift_token_lparen },
+    BoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
+    FixedToken { token_class: swift_token_colon },
+    BoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
+    FixedToken { token_class: swift_token_comma },
+    BoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
+    FixedToken { token_class: swift_token_colon },
+    BoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
+    FixedToken { token_class: swift_token_rparen },
+    FixedToken { token_class: swift_token_arrow },
+    BoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
+    FixedToken { token_class: swift_token_lbrace },
+    FixedToken { token_class: swift_token_kw_return },
+    BoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
+    BoundToken { token_class: swift_token_operator, binding: swift_binding_op_plus },
+    BoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
+    FixedToken { token_class: swift_token_rbrace }
   ]
 }
 data swift_mvp1_source_text: String = "func add(x: Int32, y: Int32) -> Int32 { return x + y }"
@@ -727,16 +724,16 @@ fn swift_mvp1_source_text_authority() -> String {
   swift_mvp1_source_text
 }
 
-fn swift_concrete_token_class(token: SwiftConcreteSyntaxToken) -> Symbol {
+fn swift_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    SwiftFixedToken { token_class: c } => c
-    SwiftBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn swift_concrete_token_node(token: SwiftConcreteSyntaxToken) -> Node {
+fn swift_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   match token {
-    SwiftFixedToken { token_class: c } =>
+    FixedToken { token_class: c } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
@@ -750,7 +747,7 @@ fn swift_concrete_token_node(token: SwiftConcreteSyntaxToken) -> Node {
           )
         ]
       }
-    SwiftBoundToken { token_class: c, binding: b } =>
+    BoundToken { token_class: c, binding: b } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
@@ -771,7 +768,7 @@ fn swift_concrete_token_node(token: SwiftConcreteSyntaxToken) -> Node {
   }
 }
 
-fn swift_mvp1_positional_token_edge(token: SwiftConcreteSyntaxToken) -> Edge {
+fn swift_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge {
     label: Positional,
     target: swift_concrete_token_node(token: token)
@@ -826,7 +823,7 @@ fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn swift_grammar_sequence_fold_step(acc: GrammarExpr, token: SwiftConcreteSyntaxToken) -> GrammarExpr {
+fn swift_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
   let token_class = swift_concrete_token_class(token: token)
   if token_class == swift_token_kw_func {
     acc
@@ -856,7 +853,7 @@ fn swift_mvp1_grammar_relation_row() -> SwiftGrammarRelationRow {
   }
 }
 
-fn swift_relation_token_edges(tokens: List<SwiftConcreteSyntaxToken>) -> List<Edge> {
+fn swift_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1094,7 +1091,7 @@ fn swift_wave1_lex() -> LexRules {
 
 
 
-fn swift_formal_rhs_from_tokens(tokens: List<SwiftConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn swift_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,

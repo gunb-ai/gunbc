@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/python.dag
 // Scope: Python 3.14 Reference primitive fact-bundles + T-11 MVP-1 grammar-data target model.
-// Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonConcreteSyntaxToken, PythonGrammarRelationRow, PythonLanguageModel, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_language_model_surface_id, python_surface_spelling_int, python_surface_spelling_float, python_surface_spelling_complex, python_surface_spelling_bool, python_surface_spelling_none, python_surface_spelling_notimplemented, python_surface_spelling_ellipsis, python_std_projection_int, python_std_projection_float, python_std_projection_complex, python_std_projection_bool, python_std_projection_none, python_std_projection_notimplemented, python_std_projection_ellipsis, python_repr_int_arbitrary_precision, python_repr_float_machine_double_precision, python_repr_complex_pair_machine_double_precision, python_repr_bool_int_subtype, python_repr_singleton_sole_inhabitant, python_facts_field_surface_spelling, python_facts_field_encoding, python_facts_field_machine_representation, python_facts_field_component_machine_representation, python_facts_field_std_projection, python_facts_field_singleton_kind, python_inhabitant_int, python_inhabitant_float, python_inhabitant_field_atom, python_inhabitant_field_facts, python_inhabitant_field_int, python_inhabitant_field_float, python_witness_int_ordered_ring_arbitrary_precision, python_witness_float_approximate_field, python_witness_bool_boolean_algebra, python_tag_singleton_none, python_tag_singleton_notimplemented, python_tag_singleton_ellipsis, python_token_kw_def, python_token_kw_return, python_token_kw_if, python_token_ident, python_token_int_literal, python_token_colon, python_token_rparen_suite_indent, python_token_colon_if_suite_indent, python_token_newline_if_stmt, python_token_newline_return_outer, python_token_newline_return_inner, python_token_lparen, python_token_rparen, python_token_comma, python_token_equal, python_token_plus, python_token_greater, python_production_mvp1_fn_add, python_production_fn_def, python_production_suite, python_production_stmt, python_production_assign_stmt, python_production_if_stmt, python_production_return_stmt, python_production_comparison, python_production_additive, python_production_primary, python_production_additive_tail, python_production_comparison_tail, python_formal_epsilon_shim_terminal, python_surface_fn_item, python_surface_suite, python_surface_stmt, python_surface_assign_stmt, python_surface_if_stmt, python_surface_return_stmt, python_surface_comparison, python_surface_additive, python_surface_primary, python_surface_additive_tail, python_surface_comparison_tail, python_mvp1_parse_fixture_file, python_binding_fn_add, python_binding_param_x, python_binding_param_y, python_relation_rule_mvp1_fn_add, python_mvp1_source_literal, python_mvp1_source_text_field, python_mvp1_source_grammar_field, python_mvp1_source_text, python_mvp1_concrete_tokens, python_facts_int, python_facts_float, python_facts_complex, python_facts_bool, python_facts_none, python_facts_notimplemented, python_facts_ellipsis, python_integer_facts_catalog, python_float_facts_catalog, python_complex_facts_catalog, python_bool_facts_catalog, python_singleton_facts_catalog, py_bool_grounding, python_inhabitant_atom, python_named_edge, python_singleton_kind_tag, python_integer_facts_node, python_float_facts_node, python_complex_facts_node, python_bool_facts_node, python_singleton_facts_node, python_integer_spec_facts, python_float_spec_facts, python_complex_spec_facts, python_bool_spec_facts, python_singleton_spec_facts, python_primitive_bundle_from_integer_facts, python_primitive_bundle_from_float_facts, python_primitive_bundle_from_complex_facts, python_primitive_bundle_from_bool_facts, python_primitive_bundle_from_singleton_facts, python_primitive_bundles_from_integer_catalog, python_primitive_bundles_from_float_catalog, python_primitive_bundles_from_complex_catalog, python_primitive_bundles_from_bool_catalog, python_primitive_bundles_from_singleton_catalog, python_wave1_primitive_fact_bundles, python_integer_algebra_witness_node, python_float_algebra_witness_node, python_bool_algebra_witness_node, python_integer_algebra_inhabitance, python_float_algebra_inhabitance, python_bool_algebra_inhabitance, python_integer_algebra_inhabitance_decls, python_float_algebra_inhabitance_decls, python_bool_algebra_inhabitance_decls, python_model_core_inhabitance_decls, python_model_core_wave1, python_inhabitant_node, python_int_inhabitant_node, python_float_inhabitant_node, python_declared_inhabitants_root, python_mvp1_selection_policy_node, python_mvp1_emitted_add_fn_node, python_concrete_token_class, python_concrete_token_node, python_positional_token_edge, python_positional_edges_from_token_classes, python_mvp1_serialize_source_children, python_mvp1_serialize_source_node, python_formal_rhs_from_token_classes, python_formal_symbol_to_grammar_expr, python_formal_epsilon_grammar_expr, PythonFormalRhsToExprState, python_formal_rhs_to_grammar_expr, PythonFormalAltChoiceState, python_formal_alternatives_to_choice_expr, python_formal_rhs_alternatives_accum_empty, python_formal_collect_rhs_alternative, python_formal_rhs_alternatives_from_productions, python_formal_productions_to_grammar_expr, python_formal_production_alts, python_formal_productions_to_grammar_production, python_formal_production_mvp1_fn_add, python_wave1_formal_productions, python_grammar_production_mvp1_fn_add, python_mvp1_grammar_relation_row, python_relation_token_edges, python_grammar_relation_row_node, python_mvp1_translation_rules_node, python_mvp1_target_model_node, python_mvp1_binding_spellings, python_mvp1_target_model, python_lex_rule, python_ident_lex_pattern, python_ident_lex_rule, python_nonzero_digit_char_pattern, python_decimal_int_literal_pattern, python_int_literal_lex_rule, python_wave1_lex_rules, python_wave1_lex, python_grammar_atom, python_wave1_grammar_root, python_wave1_grammar, python_wave1_lex_token_symbol, python_catalog_surface_spelling_eq, python_catalog_surface_fold_false, python_integer_catalog_surface_step, python_integer_catalog_surface_symbol, python_float_catalog_surface_step, python_float_catalog_surface_symbol, python_complex_catalog_surface_step, python_complex_catalog_surface_symbol, python_bool_catalog_surface_step, python_bool_catalog_surface_symbol, python_singleton_catalog_surface_step, python_singleton_catalog_surface_symbol, python_catalog_surface_symbol, python_language_model_canonical_symbols, python_language_model_wave1
+// Owns: PythonSingletonKind, PythonScalar, PythonCost, ConcreteSyntaxToken, PythonGrammarRelationRow, PythonLanguageModel, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_language_model_surface_id, python_surface_spelling_int, python_surface_spelling_float, python_surface_spelling_complex, python_surface_spelling_bool, python_surface_spelling_none, python_surface_spelling_notimplemented, python_surface_spelling_ellipsis, python_std_projection_int, python_std_projection_float, python_std_projection_complex, python_std_projection_bool, python_std_projection_none, python_std_projection_notimplemented, python_std_projection_ellipsis, python_repr_int_arbitrary_precision, python_repr_float_machine_double_precision, python_repr_complex_pair_machine_double_precision, python_repr_bool_int_subtype, python_repr_singleton_sole_inhabitant, python_facts_field_surface_spelling, python_facts_field_encoding, python_facts_field_machine_representation, python_facts_field_component_machine_representation, python_facts_field_std_projection, python_facts_field_singleton_kind, python_inhabitant_int, python_inhabitant_float, python_inhabitant_field_atom, python_inhabitant_field_facts, python_inhabitant_field_int, python_inhabitant_field_float, python_witness_int_ordered_ring_arbitrary_precision, python_witness_float_approximate_field, python_witness_bool_boolean_algebra, python_tag_singleton_none, python_tag_singleton_notimplemented, python_tag_singleton_ellipsis, python_token_kw_def, python_token_kw_return, python_token_kw_if, python_token_ident, python_token_int_literal, python_token_colon, python_token_rparen_suite_indent, python_token_colon_if_suite_indent, python_token_newline_if_stmt, python_token_newline_return_outer, python_token_newline_return_inner, python_token_lparen, python_token_rparen, python_token_comma, python_token_equal, python_token_plus, python_token_greater, python_production_mvp1_fn_add, python_production_fn_def, python_production_suite, python_production_stmt, python_production_assign_stmt, python_production_if_stmt, python_production_return_stmt, python_production_comparison, python_production_additive, python_production_primary, python_production_additive_tail, python_production_comparison_tail, python_formal_epsilon_shim_terminal, python_surface_fn_item, python_surface_suite, python_surface_stmt, python_surface_assign_stmt, python_surface_if_stmt, python_surface_return_stmt, python_surface_comparison, python_surface_additive, python_surface_primary, python_surface_additive_tail, python_surface_comparison_tail, python_mvp1_parse_fixture_file, python_binding_fn_add, python_binding_param_x, python_binding_param_y, python_relation_rule_mvp1_fn_add, python_mvp1_source_literal, python_mvp1_source_text_field, python_mvp1_source_grammar_field, python_mvp1_source_text, python_mvp1_concrete_tokens, python_facts_int, python_facts_float, python_facts_complex, python_facts_bool, python_facts_none, python_facts_notimplemented, python_facts_ellipsis, python_integer_facts_catalog, python_float_facts_catalog, python_complex_facts_catalog, python_bool_facts_catalog, python_singleton_facts_catalog, py_bool_grounding, python_inhabitant_atom, python_named_edge, python_singleton_kind_tag, python_integer_facts_node, python_float_facts_node, python_complex_facts_node, python_bool_facts_node, python_singleton_facts_node, python_integer_spec_facts, python_float_spec_facts, python_complex_spec_facts, python_bool_spec_facts, python_singleton_spec_facts, python_primitive_bundle_from_integer_facts, python_primitive_bundle_from_float_facts, python_primitive_bundle_from_complex_facts, python_primitive_bundle_from_bool_facts, python_primitive_bundle_from_singleton_facts, python_primitive_bundles_from_integer_catalog, python_primitive_bundles_from_float_catalog, python_primitive_bundles_from_complex_catalog, python_primitive_bundles_from_bool_catalog, python_primitive_bundles_from_singleton_catalog, python_wave1_primitive_fact_bundles, python_integer_algebra_witness_node, python_float_algebra_witness_node, python_bool_algebra_witness_node, python_integer_algebra_inhabitance, python_float_algebra_inhabitance, python_bool_algebra_inhabitance, python_integer_algebra_inhabitance_decls, python_float_algebra_inhabitance_decls, python_bool_algebra_inhabitance_decls, python_model_core_inhabitance_decls, python_model_core_wave1, python_inhabitant_node, python_int_inhabitant_node, python_float_inhabitant_node, python_declared_inhabitants_root, python_mvp1_selection_policy_node, python_mvp1_emitted_add_fn_node, python_concrete_token_class, python_concrete_token_node, python_positional_token_edge, python_positional_edges_from_token_classes, python_mvp1_serialize_source_children, python_mvp1_serialize_source_node, python_formal_rhs_from_token_classes, python_formal_symbol_to_grammar_expr, python_formal_epsilon_grammar_expr, PythonFormalRhsToExprState, python_formal_rhs_to_grammar_expr, PythonFormalAltChoiceState, python_formal_alternatives_to_choice_expr, python_formal_rhs_alternatives_accum_empty, python_formal_collect_rhs_alternative, python_formal_rhs_alternatives_from_productions, python_formal_productions_to_grammar_expr, python_formal_production_alts, python_formal_productions_to_grammar_production, python_formal_production_mvp1_fn_add, python_wave1_formal_productions, python_grammar_production_mvp1_fn_add, python_mvp1_grammar_relation_row, python_relation_token_edges, python_grammar_relation_row_node, python_mvp1_translation_rules_node, python_mvp1_target_model_node, python_mvp1_binding_spellings, python_mvp1_target_model, python_lex_rule, python_ident_lex_pattern, python_ident_lex_rule, python_nonzero_digit_char_pattern, python_decimal_int_literal_pattern, python_int_literal_lex_rule, python_wave1_lex_rules, python_wave1_lex, python_grammar_atom, python_wave1_grammar_root, python_wave1_grammar, python_wave1_lex_token_symbol, python_catalog_surface_spelling_eq, python_catalog_surface_fold_false, python_integer_catalog_surface_step, python_integer_catalog_surface_symbol, python_float_catalog_surface_step, python_float_catalog_surface_symbol, python_complex_catalog_surface_step, python_complex_catalog_surface_symbol, python_bool_catalog_surface_step, python_bool_catalog_surface_symbol, python_singleton_catalog_surface_step, python_singleton_catalog_surface_symbol, python_catalog_surface_symbol, python_language_model_canonical_symbols, python_language_model_wave1
 // Consumes: v4.std.model_core (ModelCore + axis symbols), v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra.
 // Status: T-4 python slice + T-4.17 wave-2a lex/grammar — Python Reference primitives; ModelCore inhabitance for int/float/bool; complex inhabitance deferred; laws/effects/partiality empty (wave-2b); 🟡 gated feature:T-6-token-layout-trivia-policy + feature:python-wave2a-decimal-int-literal (decimal 0|[1-9][0-9]* only; not 0b/0o/0x/underscores); canonical_symbols via catalog + wave-1 lex/grammar/MVP; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.python.org/3.14/reference/datamodel.html
@@ -116,15 +116,12 @@ type PythonCost {
 }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-type PythonConcreteSyntaxToken
-  = PythonFixedToken { token_class: Symbol }
-  | PythonBoundToken { token_class: Symbol, binding: Symbol }
 
 // 🟢 grounded.
 type PythonGrammarRelationRow {
   production: FormalProduction
   emitted: Node
-  tokens: List<PythonConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
 
 // 🟡 gated — feature:language-model-lex-grammar-bundle — per-language lex/grammar/core
@@ -280,20 +277,20 @@ data python_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data python_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data python_mvp1_source_text: String = "def add(x, y): return x + y"
 
-fn python_mvp1_concrete_tokens() -> List<PythonConcreteSyntaxToken> {
+fn python_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    PythonFixedToken { token_class: python_token_kw_def },
-    PythonBoundToken { token_class: python_token_ident, binding: python_binding_fn_add },
-    PythonFixedToken { token_class: python_token_lparen },
-    PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_x },
-    PythonFixedToken { token_class: python_token_comma },
-    PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_y },
-    PythonFixedToken { token_class: python_token_rparen },
-    PythonFixedToken { token_class: python_token_colon },
-    PythonFixedToken { token_class: python_token_kw_return },
-    PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_x },
-    PythonFixedToken { token_class: python_token_plus },
-    PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_y }
+    FixedToken { token_class: python_token_kw_def },
+    BoundToken { token_class: python_token_ident, binding: python_binding_fn_add },
+    FixedToken { token_class: python_token_lparen },
+    BoundToken { token_class: python_token_ident, binding: python_binding_param_x },
+    FixedToken { token_class: python_token_comma },
+    BoundToken { token_class: python_token_ident, binding: python_binding_param_y },
+    FixedToken { token_class: python_token_rparen },
+    FixedToken { token_class: python_token_colon },
+    FixedToken { token_class: python_token_kw_return },
+    BoundToken { token_class: python_token_ident, binding: python_binding_param_x },
+    FixedToken { token_class: python_token_plus },
+    BoundToken { token_class: python_token_ident, binding: python_binding_param_y }
   ]
 }
 
@@ -880,16 +877,16 @@ fn python_mvp1_emitted_add_fn_node() -> Node {
   }
 }
 
-fn python_concrete_token_class(token: PythonConcreteSyntaxToken) -> Symbol {
+fn python_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    PythonFixedToken { token_class: c } => c
-    PythonBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn python_concrete_token_node(token: PythonConcreteSyntaxToken) -> Node {
+fn python_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   match token {
-    PythonFixedToken { token_class: c } =>
+    FixedToken { token_class: c } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
@@ -897,7 +894,7 @@ fn python_concrete_token_node(token: PythonConcreteSyntaxToken) -> Node {
           python_named_edge(name: concrete_syntax_token_field_class, target: python_inhabitant_atom(id: c))
         ]
       }
-    PythonBoundToken { token_class: c, binding: b } =>
+    BoundToken { token_class: c, binding: b } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
@@ -909,7 +906,7 @@ fn python_concrete_token_node(token: PythonConcreteSyntaxToken) -> Node {
   }
 }
 
-fn python_positional_token_edge(token: PythonConcreteSyntaxToken) -> Edge {
+fn python_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge { label: Positional, target: python_concrete_token_node(token: token) }
 }
 
@@ -1108,7 +1105,7 @@ fn python_mvp1_grammar_relation_row() -> PythonGrammarRelationRow {
   }
 }
 
-fn python_relation_token_edges(tokens: List<PythonConcreteSyntaxToken>) -> List<Edge> {
+fn python_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,
