@@ -3658,33 +3658,30 @@ fn ci_wave3_shadow_testclaim_selection_rows(affected: AffectedSet) -> List<CiTes
 }
 
 
-// F.2-P2 / F.2.6 — testgen shadow selection (profile-gated; NOT fail-closed). On
-// `AffectedSetFailClosed` the claim partition is a superset but testgen slots stay unselected.
-fn ci_wave3_shadow_testgen_slots_selected(
+// F.2-P2 / F.2.6 — testgen shadow selection (profile-gated; NOT fail-closed on affected-set).
+// Scheduler `Rejected` must propagate as `Outcome::Rejected` (P3) — never `Empty` slots.
+fn ci_wave3_shadow_testgen_slots_selected_from_roster(
   affected: AffectedSet,
-  profile_ref: Symbol
+  profile_ref: Symbol,
+  roster: List<Generator<TestgenConcept>>
 ) -> List<Generator<TestgenConcept>> {
   if ci_affected_set_is_fail_closed(affected: affected) {
     Empty
   } else {
     let selected_claims = ci_wave3_shadow_testclaims_selected(affected: affected)
-    match testgen_scheduled_generators_outcome() {
-      Rejected { diagnostics: _ } => Empty
-      Accepted { value: roster, diagnostics: _ } =>
-        filter(
-          xs: roster,
-          predicate: fn(g) {
-            generator_matches_profile(g: g, profile_ref: profile_ref)
-              && count_where(
-                xs: selected_claims,
-                predicate: fn(claim) {
-                  generator_id_for_claim_anchor(anchor: test_claim_anchor(c: claim))
-                    == g.provenance.generator_id
-                }
-              ) != 0
-          }
-        )
-    }
+    filter(
+      xs: roster,
+      predicate: fn(g) {
+        generator_matches_profile(g: g, profile_ref: profile_ref)
+          && count_where(
+            xs: selected_claims,
+            predicate: fn(claim) {
+              generator_id_for_claim_anchor(anchor: test_claim_anchor(c: claim))
+                == g.provenance.generator_id
+            }
+          ) != 0
+      }
+    )
   }
 }
 
@@ -3735,18 +3732,16 @@ fn ci_wave3_shadow_testgen_selection_row(
 }
 
 
-fn ci_wave3_shadow_testgen_selection_rows(
+fn ci_wave3_shadow_testgen_selection_rows_for_roster(
   affected: AffectedSet,
-  profile_ref: Symbol
+  profile_ref: Symbol,
+  roster: List<Generator<TestgenConcept>>
 ) -> List<TestgenSlotSelection> {
-  let selected_generators = ci_wave3_shadow_testgen_slots_selected(
+  let selected_generators = ci_wave3_shadow_testgen_slots_selected_from_roster(
     affected: affected,
-    profile_ref: profile_ref
+    profile_ref: profile_ref,
+    roster: roster
   )
-  let roster = match testgen_scheduled_generators_outcome() {
-    Rejected { diagnostics: _ } => Empty
-    Accepted { value: gens, diagnostics: _ } => gens
-  }
   fold_list(
     xs: filter(
       xs: roster,
@@ -3770,14 +3765,80 @@ fn ci_wave3_shadow_testgen_selection_rows(
 }
 
 
-fn ci_testgen_selected_receipt(affected: AffectedSet, profile_ref: Symbol) -> SelectedTestgenReceipt {
-  SelectedTestgenReceipt {
-    profile_ref: profile_ref,
+fn ci_wave3_shadow_testgen_selection_rows_outcome(
+  affected: AffectedSet,
+  profile_ref: Symbol
+) -> Outcome<List<TestgenSlotSelection>> {
+  match testgen_scheduled_generators_outcome() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roster, diagnostics: d_sched } =>
+      match testgen_run_receipt_outcome(profile_ref: profile_ref) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: _, diagnostics: d_run } =>
+          Accepted {
+            value: ci_wave3_shadow_testgen_selection_rows_for_roster(
+              affected: affected,
+              profile_ref: profile_ref,
+              roster: roster
+            ),
+            diagnostics: d_sched
+          }
+      }
+  }
+}
+
+
+fn ci_testgen_selected_receipt_outcome(
+  affected: AffectedSet,
+  profile_ref: Symbol
+) -> Outcome<SelectedTestgenReceipt> {
+  match ci_wave3_shadow_testgen_selection_rows_outcome(
     affected: affected,
-    slots: ci_wave3_shadow_testgen_selection_rows(
-      affected: affected,
-      profile_ref: profile_ref
-    )
+    profile_ref: profile_ref
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: slots, diagnostics: d } =>
+      Accepted {
+        value: SelectedTestgenReceipt {
+          profile_ref: profile_ref,
+          affected: affected,
+          slots: slots
+        },
+        diagnostics: d
+      }
+  }
+}
+
+
+fn ci_testgen_selected_receipt_fixture(
+  affected: AffectedSet,
+  profile_ref: Symbol
+) -> SelectedTestgenReceipt {
+  match ci_testgen_selected_receipt_outcome(
+    affected: affected,
+    profile_ref: profile_ref
+  ) {
+    Accepted { value: receipt, diagnostics: _ } => receipt
+    Rejected { diagnostics: _ } =>
+      SelectedTestgenReceipt {
+        profile_ref: profile_ref,
+        affected: affected,
+        slots: Empty
+      }
+  }
+}
+
+
+fn ci_wave3_shadow_testgen_slots_fixture(
+  affected: AffectedSet,
+  profile_ref: Symbol
+) -> List<TestgenSlotSelection> {
+  match ci_wave3_shadow_testgen_selection_rows_outcome(
+    affected: affected,
+    profile_ref: profile_ref
+  ) {
+    Accepted { value: slots, diagnostics: _ } => slots
+    Rejected { diagnostics: _ } => Empty
   }
 }
 
