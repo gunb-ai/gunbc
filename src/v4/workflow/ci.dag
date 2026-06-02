@@ -150,8 +150,8 @@ type CiCommand
   | V4T15SelfHostFixedPointCommand
   | M1RustEmitProbeCommand
   | LeafModelGoVerifyCommand
-  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1) — forbidden: bypassing narrowing to run full corpus unconditionally. Forward (T-38-PR2): amend when modeled runner evaluates manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts in CI.
-  | TestClaimCorpusEvalCommand { selection_fn: Symbol }
+  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1); verdict_surface must name the T-22 manual CorpusEvalReport surface (`manual_corpus_node_runtime_value_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed`) using declaration-qualified authorities so per-row TestClaimRun verdict facts are projected, not replaced by host-owned strings. Forbidden: bypassing narrowing to run full corpus unconditionally or reporting corpus status outside the modeled TestClaimRun roster.
+  | TestClaimCorpusEvalCommand { selection_fn: Symbol, verdict_surface: TestClaimCorpusVerdictSurfaceAuthority }
   // 🟡 gated — feature:phase1-nat-semiring-rung-gate — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: delete scripts/v4-phase1-nat-semiring-rung-gate.sh and the paired CI step when TestClaimRun verdicts evaluate phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets) and emit PROVEN rung0/rung1/rung2 receipts; until then the host transport carries the §2.4 verdict matrix. Authority: Ladder/Fixture Manager (PR #3938 §11.1 lane 2). Forbidden: repurposing M1RustEmitProbeCommand for fixture-scoped gates (corpus-wide diagnostic, not fixture×rung) or repurposing TestClaimCorpusEvalCommand (full-corpus T-38, narrows by affected-set not by fixture roster).
   | Phase1NatSemiringRungGateCommand
 
@@ -159,6 +159,23 @@ type CiJob {
   id: Symbol
   command: CiCommand
   needs: List<Symbol>
+}
+
+type TestClaimCorpusDeclarationAuthority {
+  module_path: Symbol
+  declaration_name: Symbol
+}
+
+// 🟡 bounded bridge — feature:t38-testclaim-corpus-eval-qualified-authority — dissolve-on-arrival:
+// generated item-registry reflection replaces these declaration-qualified handles with canonical
+// module/declaration references. Until then, this record carries declaration-qualified symbolic
+// handles for each manual T-22 corpus verdict surface handle; forbidden: raw unqualified verdict
+// symbols or CI-local placeholder symbols for roster/report/tally/witness.
+type TestClaimCorpusVerdictSurfaceAuthority {
+  run_roster: TestClaimCorpusDeclarationAuthority
+  eval_report: TestClaimCorpusDeclarationAuthority
+  verdict_tally: TestClaimCorpusDeclarationAuthority
+  gate_witness: TestClaimCorpusDeclarationAuthority
 }
 
 type CiGate {
@@ -534,6 +551,49 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
   ci_srv2_pool
 ]
 
+// RUNNER-ISOLATION SECURITY FLOOR — gunbc is PUBLIC on the private self-hosted fleet (srv1/srv2),
+// so fork-PR `pull_request` runs execute attacker-controlled code on those runners. The operator
+// runner de-privilege (jobs run as the unprivileged `ghrunner` user, not root, no passwordless
+// sudo) is the ONLY thing keeping fork-PR code off srv1/srv2 root. That de-priv lives in the
+// fleet's actions-runner host config, OUTSIDE this repo — so a silent host-side regression
+// (runner re-installed as root, sudoers loosened) would re-expose the fleet with NO in-repo diff
+// to catch it. This policy is the in-CI regression guard: a cheap job that adversarially probes
+// its OWN runtime privilege on every run and fails closed the moment the runner is re-privileged.
+// It is a structural FLOOR, not a component-gated job: it runs unconditionally (no `affected`
+// mask, no draft gate) because the fork-PR exposure exists wherever a runner executes at all.
+// ci.yml coverage: the `infra_isolation` job + its carrier Job record are bound byte-for-byte by
+// the full-workflow carrier dsl/gunbc/ci_github_actions_workflow.dag (structural-match + SHA-pin
+// tests in t_ci_workflow_as_data_demo_test) — no dedicated hand-Rust binding test (P5: that carrier
+// already deep-covers the projection; a separate assertion would only grow src/v3 hand-Rust).
+// The check set is live-verified against the operator de-priv by calm-gull-119 (CI floor
+// coordination, 2026-06-01): the de-privileged `ghrunner` account is non-root, member of NONE of
+// {docker, sudo, lxd, wheel, root}, cannot read the GitHub App private key at
+// /etc/actions-runner/app.pem, has no passwordless sudo, and cannot read /var/run/docker.sock
+// (docker.sock is a root-equivalent escape primitive). Each fact is a regression sentinel.
+type RunnerIsolationPolicy {
+  guard_job_name: String // ci.yml job id that enforces the de-priv floor (operator branch-protection key)
+  guard_step_name: String // the assertion step name (ci.dag↔ci.yml binding anchor)
+  privileged_groups: List<String> // membership in ANY is a de-priv regression — fail closed
+  app_private_key_path: String // the GitHub App key; readable by the runner = regression
+  docker_socket_path: String // root-equivalent escape primitive; readable OR writable (socket connect) = regression
+  forbid_root_uid: Bool // a job running as uid 0 is a de-priv regression — fail closed
+  forbid_passwordless_sudo: Bool // `sudo -n` succeeding is root-equivalent — fail closed
+  timeout_minutes: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  blocks_required_path: Bool // a privileged runner blocks the merge (wired into ci.needs, not advisory)
+}
+
+data ci_runner_isolation_policy: RunnerIsolationPolicy = {
+  guard_job_name: "infra_isolation"
+  guard_step_name: "Assert runner is de-privileged (adversarial)"
+  privileged_groups: ["docker", "sudo", "lxd", "wheel", "root"]
+  app_private_key_path: "/etc/actions-runner/app.pem"
+  docker_socket_path: "/var/run/docker.sock"
+  forbid_root_uid: true
+  forbid_passwordless_sudo: true
+  timeout_minutes: 5
+  blocks_required_path: true
+}
+
 // 🟡 gated — CI build-cache projection NOT YET MODELED HERE — feature:elastic-cache-interface
 //   — authority: dsl/std/cache_interface.dag (Modeling DFS Worksheet B; landed PR #4095). The
 //   internal planning worksheets (elastic-cache-interface / elastic-ci-redesign) were deleted in
@@ -589,6 +649,11 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   }
 }
 
+data m1_rust_emit_probe_shared_dag_out_env: String = "V4_M1_DAG_EMIT_OUT"
+data m1_rust_emit_probe_shared_dag_log_env: String = "V4_M1_DAG_EMIT_LOG"
+data m1_rust_dag_emit_parity_receipt_test: String = "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet"
+data v4_bootstrap_reuse_log_env: String = "V4_BOOTSTRAP_REUSE_LOG"
+
 data ci_v3_determinism_profile: CiBuildProfile = Release
 data ci_v3_self_host_fixed_point_profile: CiBuildProfile = Release
 
@@ -608,7 +673,7 @@ data ci_v4_bootstrap_gate_result_skip_guard_if: String = "if: always() && (needs
 fn ci_job_testclaim_corpus_eval_execution_mk() -> CiJob {
   CiJob {
     id: testclaim_corpus_eval_execution,
-    command: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn },
+    command: ci_testclaim_corpus_eval_command(),
     needs: [v2_compile_src_v4, m1_rust_emit_probe_execution]
   }
 }
@@ -879,11 +944,16 @@ fn ci_upsert_v2_compile_src_v4_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_v2_compile_src_v4: CiUpsertStepSymbol = ci_upsert_v2_compile_src_v4_mk()
 
+// #4091 §1.2 four-compile collapse — M1 consumes v2_compile_src_v4's resolved closure
+// (target-independent front-end) via UpstreamUpsert and re-emits its rust target, rather
+// than re-running parse/lower/infer over the 332-source src/v4 closure. `src/v4/**` stays
+// for affected-set invalidation (mirrors v4_t15 / testclaim_corpus_eval upstream pattern).
 data ci_upsert_m1_rust_emit_probe_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/**"),
   ci_upsert_file_set_input(segment: "scripts/v4-m1*"),
   ci_upsert_file_set_input(segment: "Cargo.toml"),
-  ci_upsert_file_set_input(segment: "Cargo.lock")
+  ci_upsert_file_set_input(segment: "Cargo.lock"),
+  ci_upsert_upstream_job_input(job: v2_compile_src_v4)
 ]
 
 fn ci_upsert_m1_rust_emit_probe_execution_mk() -> CiUpsertStepSymbol {
@@ -925,9 +995,13 @@ fn ci_upsert_leaf_model_go_verify_execution_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_leaf_model_go_verify_execution: CiUpsertStepSymbol = ci_upsert_leaf_model_go_verify_execution_mk()
 
+// #4091 §1.2 four-compile collapse — rung gate consumes v2_compile_src_v4's resolved closure
+// via UpstreamUpsert and re-emits its own rung targets, rather than re-running the front-end
+// over the 332-source src/v4 closure. `src/v4/**` stays for affected-set invalidation.
 data ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "scripts/v4-phase1-nat-semiring*"),
-  ci_upsert_file_set_input(segment: "src/v4/**")
+  ci_upsert_file_set_input(segment: "src/v4/**"),
+  ci_upsert_upstream_job_input(job: v2_compile_src_v4)
 ]
 
 fn ci_upsert_phase1_nat_semiring_rung_gate_execution_mk() -> CiUpsertStepSymbol {
@@ -948,16 +1022,71 @@ fn ci_upsert_phase1_nat_semiring_rung_gate_execution_mk() -> CiUpsertStepSymbol 
 
 data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStepSymbol = ci_upsert_phase1_nat_semiring_rung_gate_execution_mk()
 
-// Claim ids align with `manual_corpus_node_runtime_value_rows` (v4.test.claim.manual.manual_corpus_roster).
+// 🟡 bounded bridge — feature:t38-testclaim-corpus-roster-claim-ref-frontier — owner:Runtime/TestClaim Manager — dissolve-on-arrival:
+// generated roster/item-registry reflection derives these TestClaimRef inputs directly from
+// `manual_corpus_node_runtime_value_rows` (v4.test.claim.manual.manual_corpus_roster); until
+// then this closed list is a claim-ref cache frontier mirror for the same T-22 roster authority.
+// Forbidden: adding/removing manual corpus rows without the matching claim id here.
 data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
   claim_eval_mvp2_test_claim_route,
   claim_rust_language_model_emit_mechanical_reverification,
   claim_rust_language_model_emit_subsumption_reverifies
 ]
 
+data v4_test_claim_manual_manual_corpus_roster: Symbol = v4_test_claim_manual_manual_corpus_roster
+data v4_test_claim_workflow_testclaim_corpus_runner: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
+data v4_test_claim_workflow_manual_corpus_eval: Symbol = v4_test_claim_workflow_manual_corpus_eval
+data manual_corpus_node_runtime_value_rows: Symbol = manual_corpus_node_runtime_value_rows
+data run_manual_testclaim_corpus_eval: Symbol = run_manual_testclaim_corpus_eval
+data corpus_report_tally: Symbol = corpus_report_tally
+data witness_manual_corpus_gate_closed: Symbol = witness_manual_corpus_gate_closed
+data ci_testclaim_corpus_module_manual_roster_path: Symbol = v4_test_claim_manual_manual_corpus_roster
+data ci_testclaim_corpus_module_runner_path: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
+data ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval
+data ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows_name: Symbol = manual_corpus_node_runtime_value_rows
+data ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: Symbol = run_manual_testclaim_corpus_eval
+data ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally
+data ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: Symbol = witness_manual_corpus_gate_closed
+
+fn ci_testclaim_corpus_declaration_authority(
+  module_path: Symbol,
+  declaration_name: Symbol
+) -> TestClaimCorpusDeclarationAuthority {
+  TestClaimCorpusDeclarationAuthority { module_path: module_path, declaration_name: declaration_name }
+}
+
+fn ci_testclaim_corpus_verdict_surface_authority() -> TestClaimCorpusVerdictSurfaceAuthority {
+  TestClaimCorpusVerdictSurfaceAuthority {
+    run_roster: ci_testclaim_corpus_declaration_authority(
+      module_path: ci_testclaim_corpus_module_manual_roster_path,
+      declaration_name: ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows_name
+    ),
+    eval_report: ci_testclaim_corpus_declaration_authority(
+      module_path: ci_testclaim_corpus_module_runner_path,
+      declaration_name: ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name
+    ),
+    verdict_tally: ci_testclaim_corpus_declaration_authority(
+      module_path: ci_testclaim_corpus_module_runner_path,
+      declaration_name: ci_testclaim_corpus_decl_corpus_report_tally_name
+    ),
+    gate_witness: ci_testclaim_corpus_declaration_authority(
+      module_path: ci_testclaim_corpus_module_eval_path,
+      declaration_name: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name
+    )
+  }
+}
+
+fn ci_testclaim_corpus_eval_command() -> CiCommand {
+  TestClaimCorpusEvalCommand {
+    selection_fn: ci_testclaim_corpus_selection_fn,
+    verdict_surface: ci_testclaim_corpus_verdict_surface_authority()
+  }
+}
+
 data ci_upsert_testclaim_corpus_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/manual/**"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval.dag"),
   ci_upsert_file_set_input(segment: "scripts/v4-testclaim-corpus-eval.sh")
 ]
 
@@ -991,19 +1120,25 @@ fn ci_upsert_testclaim_corpus_eval_execution_mk() -> CiUpsertStepSymbol {
   CiUpsertStepSymbol {
   inputs: ci_upsert_testclaim_corpus_eval_execution_inputs
   verify: ci_command_projection_node(
-    c: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }
+    c: ci_testclaim_corpus_eval_command()
   )
   create: ci_job_projection_node(j: ci_job_testclaim_corpus_eval_execution_row)
   resolve: ci_atom(sym: testclaim_corpus_eval_execution)
   payload_type: ci_command_projection_node(
-    c: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }
+    c: ci_testclaim_corpus_eval_command()
   )
   }
 }
 
 data ci_upsert_testclaim_corpus_eval_execution: CiUpsertStepSymbol = ci_upsert_testclaim_corpus_eval_execution_mk()
 
-data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = ci_upsert_lens_inputs_from_required_lenses(lenses: lens_ci_required_lenses)
+// #4091 §1.2 four-compile collapse — lens-CI semantic v4 compile consumes v2_compile_src_v4's
+// resolved closure via UpstreamUpsert (appended to the per-lens output refs) and re-emits its
+// rust target, rather than re-running the front-end over the 332-source src/v4 closure.
+data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = list_snoc_item(
+  xs: ci_upsert_lens_inputs_from_required_lenses(lenses: lens_ci_required_lenses),
+  item: ci_upsert_upstream_job_input(job: v2_compile_src_v4)
+)
 
 fn ci_upsert_lens_ci_registry_execution_mk() -> CiUpsertStepSymbol {
   CiUpsertStepSymbol {
@@ -1547,8 +1682,12 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     V4T15SelfHostFixedPointCommand => true
     M1RustEmitProbeCommand => true
     LeafModelGoVerifyCommand => true
-    TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
-      fn_name == ci_testclaim_corpus_selection_fn
+    TestClaimCorpusEvalCommand {
+      selection_fn: fn_name,
+      verdict_surface: surface
+    } =>
+      (fn_name == ci_testclaim_corpus_selection_fn)
+        && (surface == ci_testclaim_corpus_verdict_surface_authority())
     Phase1NatSemiringRungGateCommand => true
   }
 }
@@ -1634,6 +1773,13 @@ data ci_projection_command_produces_edge: Symbol = ci_projection_command_produce
 data ci_projection_command_test_name_edge: Symbol = ci_projection_command_test_name_edge
 data ci_projection_command_lenses_edge: Symbol = ci_projection_command_lenses_edge
 data ci_projection_command_selection_fn_edge: Symbol = ci_projection_command_selection_fn_edge
+data ci_projection_command_verdict_surface_edge: Symbol = ci_projection_command_verdict_surface_edge
+data ci_projection_corpus_surface_run_roster_edge: Symbol = ci_projection_corpus_surface_run_roster_edge
+data ci_projection_corpus_surface_eval_report_edge: Symbol = ci_projection_corpus_surface_eval_report_edge
+data ci_projection_corpus_surface_verdict_tally_edge: Symbol = ci_projection_corpus_surface_verdict_tally_edge
+data ci_projection_corpus_surface_gate_witness_edge: Symbol = ci_projection_corpus_surface_gate_witness_edge
+data ci_projection_declaration_module_edge: Symbol = ci_projection_declaration_module_edge
+data ci_projection_declaration_name_edge: Symbol = ci_projection_declaration_name_edge
 data ci_projection_gate_policy_job_edge: Symbol = ci_projection_gate_policy_job_edge
 data ci_projection_upsert_inputs_edge: Symbol = ci_projection_upsert_inputs_edge
 data ci_projection_upsert_verify_edge: Symbol = ci_projection_upsert_verify_edge
@@ -2047,14 +2193,59 @@ fn ci_command_projection_node(c: CiCommand) -> Node {
     V4T15SelfHostFixedPointCommand => ci_atom(sym: ci_cache_cmd_v4_t15_self_host_tag)
     M1RustEmitProbeCommand => ci_atom(sym: ci_cache_cmd_m1_probe_tag)
     LeafModelGoVerifyCommand => ci_atom(sym: ci_cache_cmd_leaf_model_go_verify_tag)
-    TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
+    TestClaimCorpusEvalCommand {
+      selection_fn: fn_name,
+      verdict_surface: surface
+    } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          ci_named_edge(name: ci_projection_command_selection_fn_edge, target: ci_atom(sym: fn_name))
+          ci_named_edge(name: ci_projection_command_selection_fn_edge, target: ci_atom(sym: fn_name)),
+          ci_named_edge(
+            name: ci_projection_command_verdict_surface_edge,
+            target: ci_testclaim_corpus_verdict_surface_projection_node(surface: surface)
+          )
         ]
       }
     Phase1NatSemiringRungGateCommand => ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+  }
+}
+
+
+fn ci_declaration_authority_projection_node(a: TestClaimCorpusDeclarationAuthority) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_declaration_module_edge, target: ci_atom(sym: a.module_path)),
+      ci_named_edge(name: ci_projection_declaration_name_edge, target: ci_atom(sym: a.declaration_name))
+    ]
+  }
+}
+
+
+fn ci_testclaim_corpus_verdict_surface_projection_node(
+  surface: TestClaimCorpusVerdictSurfaceAuthority
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(
+        name: ci_projection_corpus_surface_run_roster_edge,
+        target: ci_declaration_authority_projection_node(a: surface.run_roster)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_eval_report_edge,
+        target: ci_declaration_authority_projection_node(a: surface.eval_report)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_verdict_tally_edge,
+        target: ci_declaration_authority_projection_node(a: surface.verdict_tally)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_gate_witness_edge,
+        target: ci_declaration_authority_projection_node(a: surface.gate_witness)
+      )
+    ]
   }
 }
 
@@ -2634,6 +2825,8 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/manual/")
   } else if segment == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag" {
     path == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
+  } else if segment == "src/v4/test/claim/workflow/manual_corpus_eval.dag" {
+    path == "src/v4/test/claim/workflow/manual_corpus_eval.dag"
   } else if segment == "scripts/v4-testclaim-*" {
     ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-testclaim-")
   } else {
@@ -3945,7 +4138,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         workflow_policy: true,
         release_distribution: false
       )
-    TestClaimCorpusEvalCommand { selection_fn: _ } =>
+    TestClaimCorpusEvalCommand { selection_fn: _, verdict_surface: _ } =>
       ci_job_component_mask_row(
         v2: false,
         v3: false,
@@ -4149,6 +4342,29 @@ fn ci_runner_pool_capacity_valid(pool: SelfHostedRunnerPool) -> Bool {
 fn ci_runner_pool_fleet_capacities_valid() -> Bool {
   for_all(xs: ci_self_hosted_runner_pools, predicate: ci_runner_pool_capacity_valid)
 }
+
+
+// A faithful runner-isolation floor must (a) fail closed on a re-privileged runner — both the
+// uid-0 and the passwordless-sudo regression shapes — (b) be a required-path gate, since an
+// advisory-only guard would let a fork-PR exposure ride through on a green-with-warnings merge, and
+// (c) carry ALL the modeled sentinel facts the comment above advertises as part of the guard: the
+// privileged-group set the job greps, the App-private-key path it must not be able to read, and the
+// docker.sock path it must not be able to access. Without (c) the receipt would pass for a policy
+// that silently drops three of the five advertised de-priv checks (P3 fail-closed: the validator
+// must be no weaker than the policy it certifies).
+fn ci_runner_isolation_policy_valid(p: RunnerIsolationPolicy) -> Bool {
+  p.forbid_root_uid
+    && p.forbid_passwordless_sudo
+    && p.blocks_required_path
+    && ci_int_positive(n: p.timeout_minutes)
+    && length(xs: p.privileged_groups) >= 1
+    && p.app_private_key_path != ""
+    && p.docker_socket_path != ""
+}
+
+
+// Receipt: the runner de-priv regression guard is modeled as a fail-closed, required-path floor.
+data ci_runner_isolation_policy_ok: Bool = ci_runner_isolation_policy_valid(p: ci_runner_isolation_policy)
 
 
 // RULING-1: 🟢 operator fact — M1 rust-emit probe parallelism. The emitted-tree `cargo check` runs

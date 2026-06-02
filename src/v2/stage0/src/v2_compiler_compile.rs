@@ -2383,178 +2383,7 @@ pub fn compile_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
-    {
-        let frontend = front_end_sources(sources);
-        let newline_indices = frontend.newline_indices.clone();
-        match frontend.graph.clone() {
-            None => Rc::new(PipelineResult {
-                files: Rc::new(vec![]),
-                diagnostics: frontend.diagnostics.clone(),
-                complexity: empty_complexity_report(),
-                ownership: Rc::new(vec![]),
-                artifact_plan: empty_artifact_plan(),
-                newline_indices: newline_indices.clone(),
-            }),
-            Some(graph) => {
-                let graph_diags = graph.diagnostics.clone();
-                let resolve_errors = Rc::new({
-                    let mut __result = Vec::new();
-                    for d in graph_diags.iter().cloned() {
-                        if is_error_diagnostic(d.diagnostic.clone()) {
-                            __result.push(d);
-                        }
-                    }
-                    __result
-                });
-                if ((resolve_errors.len() as i64) > 0) {
-                    return Rc::new(PipelineResult {
-                        files: Rc::new(vec![]),
-                        diagnostics: frontend.diagnostics.clone(),
-                        complexity: empty_complexity_report(),
-                        ownership: Rc::new(vec![]),
-                        artifact_plan: empty_artifact_plan(),
-                        newline_indices: newline_indices.clone(),
-                    });
-                }
-                let source_indices = newline_indices.clone().iter().cloned().fold(
-                    v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
-                        v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
-                    },
-                );
-                let norm = normalize_graph(graph.clone(), source_indices.clone());
-                let norm_diags = norm.diagnostics.clone();
-                let norm_errors = Rc::new({
-                    let mut __result = Vec::new();
-                    for d in norm_diags.clone().iter().cloned() {
-                        if is_error_diagnostic(d.diagnostic.clone()) {
-                            __result.push(d);
-                        }
-                    }
-                    __result
-                });
-                if ((norm_errors.len() as i64) > 0) {
-                    return Rc::new(PipelineResult {
-                        files: Rc::new(vec![]),
-                        diagnostics: v2_rt::concat(
-                            frontend.diagnostics.clone(),
-                            norm_diags.clone(),
-                        ),
-                        complexity: empty_complexity_report(),
-                        ownership: Rc::new(vec![]),
-                        artifact_plan: empty_artifact_plan(),
-                        newline_indices: newline_indices.clone(),
-                    });
-                }
-                let typed = reconcile(
-                    norm.graph.clone(),
-                    source_indices.clone(),
-                    frontend.intern_table.clone(),
-                );
-                let typed_diags = typed.diagnostics.clone();
-                let func_entries = extract_func_entries(typed.clone());
-                let recursion_ctx = build_recursion_context(typed.clone());
-                let complexity =
-                    build_complexity_report(func_entries, recursion_ctx, source_indices.clone());
-                let complexity_diags = complexity_diagnostics(complexity.clone());
-                let all_diags = v2_rt::concat(typed_diags.clone(), complexity_diags);
-                let type_errors = Rc::new({
-                    let mut __result = Vec::new();
-                    for d in typed_diags.clone().iter().cloned() {
-                        if is_error_diagnostic(d.diagnostic.clone()) {
-                            __result.push(d);
-                        }
-                    }
-                    __result
-                });
-                if ((type_errors.len() as i64) > 0) {
-                    return Rc::new(PipelineResult {
-                        files: Rc::new(vec![]),
-                        diagnostics: v2_rt::concat(
-                            v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
-                            all_diags.clone(),
-                        ),
-                        complexity: complexity.clone(),
-                        ownership: Rc::new(vec![]),
-                        artifact_plan: empty_artifact_plan(),
-                        newline_indices: newline_indices.clone(),
-                    });
-                }
-                let ownership = extract_ownership_proofs(typed.clone());
-                let ownership_diags = ownership_diagnostics(ownership.clone());
-                let ownership_errors = Rc::new({
-                    let mut __result = Vec::new();
-                    for d in ownership_diags.clone().iter().cloned() {
-                        if is_error_diagnostic(d.diagnostic.clone()) {
-                            __result.push(d);
-                        }
-                    }
-                    __result
-                });
-                if ((ownership_errors.len() as i64) > 0) {
-                    return Rc::new(PipelineResult {
-                        files: Rc::new(vec![]),
-                        diagnostics: v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
-                                all_diags.clone(),
-                            ),
-                            ownership_diags.clone(),
-                        ),
-                        complexity: complexity.clone(),
-                        ownership: ownership.clone(),
-                        artifact_plan: empty_artifact_plan(),
-                        newline_indices: newline_indices.clone(),
-                    });
-                }
-                let artifact_plan = default_artifact_plan(
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for m in typed.modules.clone().iter().cloned() {
-                            __result
-                                .push(authored_name_at(source_indices.clone(), m.module.clone()));
-                        }
-                        __result
-                    }),
-                    target,
-                );
-                let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
-                let emit_files = emit_result.files.clone();
-                let emit_diags = emit_result.diagnostics.clone();
-                let emit_errors = Rc::new({
-                    let mut __result = Vec::new();
-                    for d in emit_diags.clone().iter().cloned() {
-                        if is_error_diagnostic(d.diagnostic.clone()) {
-                            __result.push(d);
-                        }
-                    }
-                    __result
-                });
-                let final_files = if ((emit_errors.len() as i64) > 0) {
-                    Rc::new(vec![])
-                } else {
-                    emit_files
-                };
-                Rc::new(PipelineResult {
-                    files: final_files,
-                    diagnostics: v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
-                                all_diags.clone(),
-                            ),
-                            ownership_diags.clone(),
-                        ),
-                        emit_diags.clone(),
-                    ),
-                    complexity: complexity.clone(),
-                    ownership: ownership.clone(),
-                    artifact_plan: artifact_plan.clone(),
-                    newline_indices: newline_indices.clone(),
-                })
-            }
-        }
-    }
+    emit_resolved_for_target(compile_to_resolved(sources), target)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2707,6 +2536,62 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                     newline_indices: newline_indices.clone(),
                 })
             }
+        }
+    }
+}
+
+pub fn emit_resolved_for_target(
+    resolved: Rc<ResolvedPipelineResult>,
+    target: RenderTarget,
+) -> Rc<PipelineResult> {
+    match resolved.graph.clone() {
+        None => Rc::new(PipelineResult {
+            files: Rc::new(vec![]),
+            diagnostics: resolved.diagnostics.clone(),
+            complexity: resolved.complexity.clone(),
+            ownership: resolved.ownership.clone(),
+            artifact_plan: empty_artifact_plan(),
+            newline_indices: resolved.newline_indices.clone(),
+        }),
+        Some(typed) => {
+            let artifact_plan = default_artifact_plan(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for m in typed.modules.clone().iter().cloned() {
+                        __result.push(authored_name_at(
+                            resolved.source_indices.clone(),
+                            m.module.clone(),
+                        ));
+                    }
+                    __result
+                }),
+                target,
+            );
+            let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
+            let emit_files = emit_result.files.clone();
+            let emit_diags = emit_result.diagnostics.clone();
+            let emit_errors = Rc::new({
+                let mut __result = Vec::new();
+                for d in emit_diags.clone().iter().cloned() {
+                    if is_error_diagnostic(d.diagnostic.clone()) {
+                        __result.push(d);
+                    }
+                }
+                __result
+            });
+            let final_files = if ((emit_errors.len() as i64) > 0) {
+                Rc::new(vec![])
+            } else {
+                emit_files
+            };
+            Rc::new(PipelineResult {
+                files: final_files,
+                diagnostics: v2_rt::concat(resolved.diagnostics.clone(), emit_diags.clone()),
+                complexity: resolved.complexity.clone(),
+                ownership: resolved.ownership.clone(),
+                artifact_plan: artifact_plan.clone(),
+                newline_indices: resolved.newline_indices.clone(),
+            })
         }
     }
 }

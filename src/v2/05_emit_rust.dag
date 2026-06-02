@@ -6034,12 +6034,13 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           None => "compile_error!(\"BoundedLattice data missing bottom\")"
         }
-        concat("            Rc::new(BoundedLattice {\n",
+        let inner = concat("Rc::new(BoundedLattice {\n",
           "                meet: Rc::new(", meet_str, "),\n",
           "                join: Rc::new(", join_str, "),\n",
           "                top: Box::new(", top_str, "),\n",
           "                bottom: Box::new(", bottom_str, "),\n",
           "            })")
+        concat("            ", inner)
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
@@ -6415,14 +6416,12 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
   let base = use_lines |> join(separator: "\n")
   if has_pipeline {
     let pipeline_mod = module_to_filename(name: "v2.compiler.compile")
-    let artifact_mod = module_to_filename(name: "v2.compiler.artifact")
     let core_mod = module_to_filename(name: "v2.std.core")
     concat(base,
       "\nuse std::collections::HashMap;\n",
       "use std::rc::Rc;\n",
       "use ", crate_name, "::", pipeline_mod, ";\n",
       "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
-      "use ", crate_name, "::", artifact_mod, ";\n",
       "use ", crate_name, "::", core_mod, "::", "{",
       "\n    diagnostic_to_message, diagnostic_to_span,\n",
       "    byte_to_line_col, source_line_at, NewlineIndex,\n",
@@ -6465,7 +6464,7 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
       make_indent(level: depth + 2), "source_dir: Option<String>,\n",
       make_indent(level: depth + 2), "#[arg(long)]\n",
       make_indent(level: depth + 2), "output_dir: String,\n",
-      make_indent(level: depth + 2), "/// Target language: rust, python, go, dag\n",
+      make_indent(level: depth + 2), "/// Target language: rust, python, go, dag, or + separated set such as rust+dag\n",
       make_indent(level: depth + 2), "#[arg(long, default_value = \"rust\")]\n",
       make_indent(level: depth + 2), "target: String,\n",
       make_indent(level: depth + 1), "},")
@@ -6573,19 +6572,9 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipe
 // FF-9: import-driven source resolution from source roots with transitive imports.
 fn emit_compile_match_arm(crate_name: String) -> String {
   let pipeline_mod = module_to_filename(name: "v2.compiler.compile")
-  let artifact_mod = module_to_filename(name: "v2.compiler.artifact")
   concat(
     "Commands::Compile { source_roots, source_dir, output_dir, target } => {\n",
-    "            let render_target = match target.as_str() {\n",
-    "                \"rust\" => ", artifact_mod, "::RenderTarget::Rust,\n",
-    "                \"python\" => ", artifact_mod, "::RenderTarget::Python,\n",
-    "                \"go\" => ", artifact_mod, "::RenderTarget::Go,\n",
-    "                \"dag\" => ", artifact_mod, "::RenderTarget::Dag,\n",
-    "                other => {\n",
-    "                    eprintln!(\"unknown target: {}. supported: rust, python, go, dag\", other);\n",
-    "                    std::process::exit(1);\n",
-    "                }\n",
-    "            };\n",
+    "            let render_targets = parse_render_targets(&target);\n",
     "\n",
     "            let sources = if !source_roots.is_empty() {\n",
     "                // FF-9: Import-driven resolution from source roots\n",
@@ -6653,31 +6642,43 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "                std::process::exit(1);\n",
     "            };\n",
     "\n",
-    "            let result = ", pipeline_mod, "::compile_sources(Rc::new(sources), render_target);\n",
-    "\n",
-    "            std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n",
-    "                .unwrap_or_else(|e| panic!(\"failed to create output dir: {}\", e));\n",
-    "            for file in result.files.iter() {\n",
-    "                let out_path = format!(\"{}/{}\", output_dir, file.path);\n",
-    "                if let Some(parent) = std::path::Path::new(&out_path).parent() {\n",
-    "                    std::fs::create_dir_all(parent).ok();\n",
+    "            if render_targets.len() == 1 {\n",
+    "                let result = ", pipeline_mod, "::compile_sources(Rc::new(sources), render_targets[0].1.clone());\n",
+    "                write_output_files(&output_dir, &result);\n",
+    "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", result.files.len(), result.diagnostics.len());\n",
+    "                render_diagnostics(&result);\n",
+    "                if hard_errors(&result) {\n",
+    "                    std::process::exit(1);\n",
     "                }\n",
-    "                std::fs::write(&out_path, &*file.content)\n",
-    "                    .unwrap_or_else(|e| panic!(\"failed to write {}: {}\", file.path, e));\n",
-    "            }\n",
-    "            eprintln!(\"compiled: {} files emitted, {} diagnostics\",\n",
-    "                result.files.len(), result.diagnostics.len());\n",
-    "            render_diagnostics(&result);\n",
-    "            // Complexity violations are non-blocking (analyzer limitations).\n",
-    "            let hard_errors = result.diagnostics.iter().any(|d| {\n",
-    "                !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n",
-    "            });\n",
-    "            if hard_errors {\n",
-    "                std::process::exit(1);\n",
-    "            }\n",
-    "            if result.files.is_empty() {\n",
-    "                eprintln!(\"error: no files emitted\");\n",
-    "                std::process::exit(1);\n",
+    "                if result.files.is_empty() {\n",
+    "                    eprintln!(\"error: no files emitted\");\n",
+    "                    std::process::exit(1);\n",
+    "                }\n",
+    "            } else {\n",
+    "                let resolved = ", pipeline_mod, "::compile_to_resolved(Rc::new(sources));\n",
+    "                let mut any_hard_errors = false;\n",
+    "                let mut any_empty = false;\n",
+    "                let mut total_files = 0usize;\n",
+    "                let mut total_diagnostics = 0usize;\n",
+    "                for (name, render_target) in render_targets {\n",
+    "                    let result = ", pipeline_mod, "::emit_resolved_for_target(resolved.clone(), render_target);\n",
+    "                    let target_output_dir = format!(\"{}/{}\", output_dir, name);\n",
+    "                    write_output_files(&target_output_dir, &result);\n",
+    "                    eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", name, result.files.len(), result.diagnostics.len());\n",
+    "                    render_diagnostics(&result);\n",
+    "                    any_hard_errors |= hard_errors(&result);\n",
+    "                    any_empty |= result.files.is_empty();\n",
+    "                    total_files += result.files.len();\n",
+    "                    total_diagnostics += result.diagnostics.len();\n",
+    "                }\n",
+    "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", total_files, total_diagnostics);\n",
+    "                if any_hard_errors {\n",
+    "                    std::process::exit(1);\n",
+    "                }\n",
+    "                if any_empty {\n",
+    "                    eprintln!(\"error: no files emitted for at least one target\");\n",
+    "                    std::process::exit(1);\n",
+    "                }\n",
     "            }\n",
     "        },")
 }
@@ -6697,12 +6698,69 @@ fn emit_run_match_arm(crate_name: String) -> String {
 // Emit module-level functions for FF-9 import resolution.
 fn emit_main_pipeline_fns(crate_name: String) -> String {
   let pipeline_mod = module_to_filename(name: "v2.compiler.compile")
+  let artifact_mod = module_to_filename(name: "v2.compiler.artifact")
   concat(
     emit_collect_dag_files_fn(),
     emit_extract_module_path_fn(),
     emit_extract_import_paths_fn(),
     emit_build_module_index_fn(),
-    emit_resolve_transitively_fn(crate_name: crate_name, pipeline_mod: pipeline_mod))
+    emit_resolve_transitively_fn(crate_name: crate_name, pipeline_mod: pipeline_mod),
+    emit_compile_target_helpers(crate_name: crate_name, pipeline_mod: pipeline_mod, artifact_mod: artifact_mod))
+}
+
+fn emit_compile_target_helpers(crate_name: String, pipeline_mod: String, artifact_mod: String) -> String {
+  concat(
+    "fn render_target_from_name(target: &str) -> Option<", crate_name, "::", artifact_mod, "::RenderTarget> {\n",
+    "    match target {\n",
+    "        \"rust\" => Some(", crate_name, "::", artifact_mod, "::RenderTarget::Rust),\n",
+    "        \"python\" => Some(", crate_name, "::", artifact_mod, "::RenderTarget::Python),\n",
+    "        \"go\" => Some(", crate_name, "::", artifact_mod, "::RenderTarget::Go),\n",
+    "        \"dag\" => Some(", crate_name, "::", artifact_mod, "::RenderTarget::Dag),\n",
+    "        _ => None,\n",
+    "    }\n",
+    "}\n",
+    "\n",
+    "fn parse_render_targets(target: &str) -> Vec<(String, ", crate_name, "::", artifact_mod, "::RenderTarget)> {\n",
+    "    let mut targets = Vec::new();\n",
+    "    for part in target.split('+') {\n",
+    "        let trimmed = part.trim();\n",
+    "        if trimmed.is_empty() {\n",
+    "            continue;\n",
+    "        }\n",
+    "        match render_target_from_name(trimmed) {\n",
+    "            Some(render_target) => targets.push((trimmed.to_string(), render_target)),\n",
+    "            None => {\n",
+    "                eprintln!(\"unknown target: {}. supported: rust, python, go, dag, rust+dag\", target);\n",
+    "                std::process::exit(1);\n",
+    "            }\n",
+    "        }\n",
+    "    }\n",
+    "    if targets.is_empty() {\n",
+    "        eprintln!(\"error: --target must name at least one target\");\n",
+    "        std::process::exit(1);\n",
+    "    }\n",
+    "    targets\n",
+    "}\n",
+    "\n",
+    "fn write_output_files(output_dir: &str, result: &", crate_name, "::", pipeline_mod, "::PipelineResult) {\n",
+    "    std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n",
+    "        .unwrap_or_else(|e| panic!(\"failed to create output dir: {}\", e));\n",
+    "    for file in result.files.iter() {\n",
+    "        let out_path = format!(\"{}/{}\", output_dir, file.path);\n",
+    "        if let Some(parent) = std::path::Path::new(&out_path).parent() {\n",
+    "            std::fs::create_dir_all(parent).ok();\n",
+    "        }\n",
+    "        std::fs::write(&out_path, &*file.content)\n",
+    "            .unwrap_or_else(|e| panic!(\"failed to write {}: {}\", file.path, e));\n",
+    "    }\n",
+    "}\n",
+    "\n",
+    "fn hard_errors(result: &", crate_name, "::", pipeline_mod, "::PipelineResult) -> bool {\n",
+    "    result.diagnostics.iter().any(|d| {\n",
+    "        !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n",
+    "    })\n",
+    "}\n",
+    "\n")
 }
 
 fn emit_collect_dag_files_fn() -> String {
