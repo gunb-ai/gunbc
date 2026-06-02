@@ -1,0 +1,18 @@
+// src/v4/test/claim/lens_ownership/subject_roster.dag
+// Scope: T-38B lens_ownership TestClaim subject roster (RuntimeValue wedge).
+// Status: single-leaf family — expand when additional lens_ownership claims land.
+
+module v4.test.claim.lens_ownership.subject_roster
+
+
+import v4.compiler.eval { TestClaimEvalSubject }
+import v4.std.collection { List }
+import v4.std.node { Node }
+import v4.test.claim.lens_ownership.resource_dependency {
+  subject_ownership_resource_dependency_receipt
+}
+
+
+data lens_ownership_subject_rows: List<TestClaimEvalSubject<Node>> = [
+  subject_ownership_resource_dependency_receipt
+]
