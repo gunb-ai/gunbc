@@ -8,15 +8,7 @@
 module v4.std.grounding
 
 
-import v4.std.collection {
-  Absent,
-  Map,
-  Optional,
-  Present,
-  empty_map,
-  map_get,
-  map_insert
-}
+import v4.std.collection { Map, empty_map, map_get, map_insert }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -104,7 +96,7 @@ fn per_language_fact_bundle_missing_key_diagnostic() -> Diagnostic {
 fn per_language_fact_bundle_lookup_optional(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey
-) -> Outcome<Optional<Node>> {
+) -> Outcome<Node?> {
   map_get(registry.by_key, key)
 }
 
@@ -116,8 +108,8 @@ fn per_language_fact_bundle_lookup(
   match per_language_fact_bundle_lookup_optional(registry: registry, key: key) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
-        Present { value: value } => Holds { value: value }
-        Absent => Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
+        Some { value: value } => Holds { value: value }
+        None => Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
       }
     Rejected { diagnostics: d } => Violates { diagnostic: d.head }
   }
@@ -132,9 +124,9 @@ fn insert_per_language_fact_bundle_entry(
   match per_language_fact_bundle_lookup_optional(registry: registry, key: key) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
-        Present { value: _ } =>
+        Some { value: _ } =>
           outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-        Absent =>
+        None =>
           outcome_accepted(
             value: PerLanguageFactBundleRegistry {
               by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
