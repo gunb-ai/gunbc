@@ -474,14 +474,7 @@ type SelfHostedRunnerPool {
   jobserver_token_cap: Int // 🟡 gated: formatter-int-refinement — must be ≥1
 }
 
-type RunnerPoolResiliencePhase
-  = RunnerPoolDetect
-  | RunnerPoolFallback
-  | RunnerPoolComms
-  | RunnerPoolRecovery
-
 type RunnerPoolResilienceStep {
-  phase: RunnerPoolResiliencePhase
   trigger: Symbol
   action: Symbol
   owner: Symbol
@@ -590,28 +583,24 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
 
 data ci_runner_pool_resilience_playbook: RunnerPoolResiliencePlaybook = {
   detection: RunnerPoolResilienceStep {
-    phase: RunnerPoolDetect
     trigger: runner_pool_jobserver_coupling_lost
     action: runner_pool_fail_required_path
     owner: ci_manager_owner
     fail_closed: true
   }
   fallback: RunnerPoolResilienceStep {
-    phase: RunnerPoolFallback
     trigger: runner_pool_ci_required_path_at_risk
     action: runner_pool_route_to_github_hosted_floor
     owner: ci_manager_owner
     fail_closed: true
   }
   comms: RunnerPoolResilienceStep {
-    phase: RunnerPoolComms
     trigger: runner_pool_operator_status_change_required
     action: runner_pool_notify_parent_dashboard
     owner: ci_manager_owner
     fail_closed: true
   }
   recovery: RunnerPoolResilienceStep {
-    phase: RunnerPoolRecovery
     trigger: runner_pool_capacity_restored
     action: runner_pool_reenable_self_hosted_capacity
     owner: ci_operator_owner
@@ -4388,16 +4377,8 @@ fn ci_runner_pool_resilience_playbook_fail_closed(p: RunnerPoolResiliencePlayboo
     && ci_runner_pool_resilience_step_fail_closed(step: p.recovery)
 }
 
-fn ci_runner_pool_resilience_playbook_phases_valid(p: RunnerPoolResiliencePlaybook) -> Bool {
-  p.detection.phase == RunnerPoolDetect
-    && p.fallback.phase == RunnerPoolFallback
-    && p.comms.phase == RunnerPoolComms
-    && p.recovery.phase == RunnerPoolRecovery
-}
-
 fn ci_runner_pool_resilience_playbook_complete(p: RunnerPoolResiliencePlaybook) -> Bool {
   ci_runner_pool_resilience_playbook_fail_closed(p: p)
-    && ci_runner_pool_resilience_playbook_phases_valid(p: p)
 }
 
 data ci_runner_pool_resilience_playbook_ok: Bool = ci_runner_pool_resilience_playbook_complete(p: ci_runner_pool_resilience_playbook)
