@@ -119,18 +119,19 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
 }
 
 // =========================================================================
-// Complexity fail-closed gate (opt-in)
+// Complexity analysis (opt-in; v2 emission gate unchanged)
 //
-// Decidability enforcement flows through the complexity classifier:
-// classify_recursion_pattern produces UnresolvableRecursion for non-
-// descending self-calls (fn spin(n: n)), which becomes CostUnknown,
-// which complexity_diagnostics surfaces as a hard compile error.
-// No separate walker needed — the complexity stage IS the gate.
+// When enabled, classify_recursion_pattern / build_complexity_report can
+// surface ComplexityUnknown for non-descending self-calls (fn spin(n: n)).
 //
-// Complexity analysis is opt-in (analyze_complexity: false by default):
-// build_complexity_report dominates full-src compile time and is not
-// consumed by emission. Callers that need the report or CX gate pass
-// CompilePipelineOptions { analyze_complexity: true }.
+// v2 does NOT fail-closed on those diagnostics today — emission gates on
+// typed_diags only (see type_errors filter below); main.rs and dag run
+// carve out ComplexityUnknown (00_core.dag is_interpreter_blocking_diagnostic,
+// cx-design.md C6). Tier-1 CX enforcement is v3 Pure Bootstrap scope.
+//
+// Default-off skips build_complexity_report (~356s full-src compile) because
+// the report is not consumed by emission. Callers that need the report or
+// CX diagnostics pass CompilePipelineOptions { analyze_complexity: true }.
 // =========================================================================
 
 type CompilePipelineOptions {
