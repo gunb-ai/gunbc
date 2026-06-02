@@ -7,8 +7,9 @@
 
 module std.cache_interface
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int }
-import std.measure { Measure, Memory, One }
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
+import std.measure { ByteSize }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 
 // --- §1.6 dimension enums + branded carriers ---------------------------------
 //
@@ -20,11 +21,7 @@ import std.measure { Measure, Memory, One }
 // consumer: ci harness cache projection + downstream cache lookup planner
 // dissolve-on-arrival: Grounding binds literal row fields when first consumer lands
 
-type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
-type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")
 type StorageSurface = NonEmptyStr where brand("StorageSurface")
-type LogicalTime = NonEmptyStr where brand("LogicalTime")
-type ByteSize = Measure<Memory, One>
 
 // 🟡 STAGED — §1.6 axis (gate: header above).
 type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree
