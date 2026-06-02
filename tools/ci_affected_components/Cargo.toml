@@ -11,3 +11,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "detect-ci-affected-components"
 path = "src/main.rs"
+
+[[bin]]
+name = "emit-ci-wave3-shadow-receipt"
+path = "src/bin/emit_ci_wave3_shadow_receipt.rs"
+
+[dependencies]
+serde_json = { workspace = true }
