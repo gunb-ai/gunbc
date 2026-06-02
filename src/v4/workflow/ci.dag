@@ -126,6 +126,7 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
 import v4.test.claim.lens_ownership.subject_roster {
   LensOwnershipSubject,
+  lens_ownership_subject_claim_id,
   lens_ownership_subject_roster
 }
 import v4.test.claim.lens_effect.effect_depends_on { claim_lens_effect_depends_on_runtime_verdict }
@@ -1116,7 +1117,7 @@ data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
 fn ci_lens_ownership_family_eval_claim_ids_from_roster(
   roster: List<LensOwnershipSubject>
 ) -> List<Symbol> {
-  map(roster, fn(subject) { subject.claim_id })
+  map(roster, fn(subject) { lens_ownership_subject_claim_id(subject: subject) })
 }
 
 data ci_lens_ownership_family_eval_claim_ids: List<Symbol> = ci_lens_ownership_family_eval_claim_ids_from_roster(roster: lens_ownership_subject_roster)

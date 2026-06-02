@@ -47,28 +47,32 @@ def main() -> None:
         subject_roster,
         (
             "type LensOwnershipSubject",
-            "claim_id: Symbol",
+            "claim: TestClaim",
             "data claim_lens_ownership_resource_dependency_id: Symbol = claim_lens_ownership_resource_dependency",
-            "eval_subject: TestClaimEvalSubject<Node>",
             "ownership_resource_dependency_claim_passes",
             "fn ownership_claim_input(ok: Bool) -> Node",
             "lhs: ownership_claim_input(ok: ownership_resource_dependency_claim_passes)",
             "rhs: ownership_claim_pass_node()",
             "fn lens_ownership_resource_dependency_subject() -> LensOwnershipSubject",
+            "LensOwnershipSubject { claim: claim_lens_ownership_resource_dependency }",
+            "fn lens_ownership_subject_claim_id(subject: LensOwnershipSubject) -> Symbol",
             "fn lens_ownership_subject_eval_subject(subject: LensOwnershipSubject) -> TestClaimEvalSubject<Node>",
             "fn lens_ownership_subject_structural_witness(subject: LensOwnershipSubject) -> Bool",
-            "claim_lens_ownership_resource_dependency_id => ownership_resource_dependency_claim_passes",
+            "match subject.claim",
+            "claim_lens_ownership_resource_dependency => ownership_resource_dependency_claim_passes",
+            "claim_lens_ownership_resource_dependency => subject_lens_ownership_resource_dependency",
             "data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node>",
             "eval_test_claim_subject(",
             "data lens_ownership_subject_roster: List<LensOwnershipSubject>",
             "lens_ownership_resource_dependency_subject()",
-            "claim_id: claim_lens_ownership_resource_dependency_id",
-            "eval_subject: subject_lens_ownership_resource_dependency",
             "data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>>",
             "lens_ownership_subject_roster",
             "lens_ownership_subject_eval_subject(subject: subject)",
         ),
     )
+
+    if "claim_id: Symbol" in subject_roster.split("type LensOwnershipSubject")[1].split("}", 1)[0]:
+        raise SystemExit("LensOwnershipSubject must not store claim_id parallel to eval_subject")
 
     roster_body = subject_roster.split("data lens_ownership_node_subject_rows:")[1].split("\n\n", 1)[0]
     if "lens_ownership_subject_roster" not in roster_body or "lens_ownership_subject_eval_subject(subject: subject)" not in roster_body:
@@ -113,10 +117,11 @@ def main() -> None:
             "src/v4/test/claim/lens_ownership/subject_roster.dag",
             "src/v4/test/claim/workflow/lens_ownership_family_eval.dag",
             "LensOwnershipSubject",
+            "lens_ownership_subject_claim_id",
             "ci_lens_ownership_family_eval_claim_ids_from_roster",
             "ci_lens_ownership_family_eval_claim_ids",
             "ci_lens_ownership_subject_roster_decl_name",
-            "subject.claim_id",
+            "lens_ownership_subject_claim_id(subject: subject)",
             "roster: lens_ownership_subject_roster",
             "witness_lens_ownership_family_gate_closed",
         ),
