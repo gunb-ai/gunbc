@@ -1177,121 +1177,17 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
   CompileResult { files: [], diagnostics: frontend.diagnostics }
 }
 
+// Single full-pipeline entry for one target. The target-agnostic front-end
+// (compile_to_resolved) and the target-dependent tail (emit_resolved) are the
+// SINGLE authority for the gates, diagnostics, artifact_plan, and files —
+// compile_sources is exactly their composition, NOT a second copy of the tail.
+// The identity compile_sources(s, t) == emit_resolved(compile_to_resolved(s), t)
+// holds gate-for-gate: every early-return in compile_to_resolved produces a
+// graph=none ResolvedPipelineResult whose diagnostics/complexity/ownership
+// emit_resolved passes through unchanged, and the clean path appends emit_diags
+// (concat is associative, so the diagnostic order is identical).
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
-  let frontend = front_end_sources(sources: sources)
-  let newline_indices = frontend.newline_indices
-  match frontend.graph {
-    None =>
-      PipelineResult {
-        files: [],
-        diagnostics: frontend.diagnostics,
-        complexity: empty_complexity_report(),
-        ownership: [],
-        artifact_plan: empty_artifact_plan(),
-        newline_indices: newline_indices
-      }
-    Some { value: graph } => {
-      let graph_diags = graph.diagnostics
-
-      // Gate: if resolve produced errors, do not proceed to typecheck.
-      let resolve_errors = graph_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if resolve_errors |> count > 0 {
-        return PipelineResult {
-          files: [],
-          diagnostics: frontend.diagnostics,
-          complexity: empty_complexity_report(),
-          ownership: [],
-          artifact_plan: empty_artifact_plan(),
-          newline_indices: newline_indices
-        }
-      }
-
-      let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
-
-      let norm = normalize_graph(graph: graph, source_indices: source_indices)
-      let norm_diags = norm.diagnostics
-
-      // Gate: if normalization produced errors (bare parameterized types,
-      // arity mismatches), do not proceed to infer.
-      let norm_errors = norm_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if norm_errors |> count > 0 {
-        return PipelineResult {
-          files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags),
-          complexity: empty_complexity_report(),
-          ownership: [],
-          artifact_plan: empty_artifact_plan(),
-          newline_indices: newline_indices
-        }
-      }
-
-      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
-      let typed_diags = typed.diagnostics
-
-      // Stage 5: Complexity analysis.
-      // Every function gets a concrete cost from the lowering table.
-      // No violations possible — CostUnknown is deleted from CostExpr.
-      // PERF-6: topological processing + transit eviction bounds working set
-      // to the call graph frontier width, not total function count.
-      let func_entries = extract_func_entries(typed: typed)
-      let recursion_ctx = build_recursion_context(typed: typed)
-      let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
-      let complexity_diags = complexity_diagnostics(complexity: complexity)
-
-      // Gate: type errors block emission. Complexity violations are surfaced
-      // in the final diagnostics (visible to the user) but non-blocking
-      // until the violation count reaches 0. The ratchet test enforces that
-      // the count doesn't increase.
-      let all_diags = concat(typed_diags, complexity_diags)
-      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if type_errors |> count > 0 {
-        return PipelineResult {
-          files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
-          complexity: complexity,
-          ownership: [],
-          artifact_plan: empty_artifact_plan(),
-          newline_indices: newline_indices
-        }
-      }
-
-      let ownership = extract_ownership_proofs(typed: typed)
-      let ownership_diags = ownership_diagnostics(proofs: ownership)
-
-      // Gate: ownership errors block emission (Early Detection invariant).
-      let ownership_errors = ownership_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if ownership_errors |> count > 0 {
-        return PipelineResult {
-          files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
-          complexity: complexity,
-          ownership: ownership,
-          artifact_plan: empty_artifact_plan(),
-          newline_indices: newline_indices
-        }
-      }
-
-      let artifact_plan = default_artifact_plan(
-        root_modules: typed.modules |> map(m => authored_name_at(source_indices: source_indices, node: m.module)),
-        target: target
-      )
-
-      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
-      let emit_files = emit_result.files
-      let emit_diags = emit_result.diagnostics
-      let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-
-      let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
-      PipelineResult {
-        files: final_files,
-        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags, emit_diags),
-        complexity: complexity,
-        ownership: ownership,
-        artifact_plan: artifact_plan,
-        newline_indices: newline_indices
-      }
-    }
-  }
+  emit_resolved(resolved: compile_to_resolved(sources: sources), target: target)
 }
 
 type ResolvedPipelineResult {

@@ -205,11 +205,14 @@ fn main() {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
-            let target_names = if target_names.is_empty() {
-                vec!["rust".to_string()]
-            } else {
-                target_names
-            };
+            // Fail-closed: clap supplies default_value="rust" when --target is
+            // omitted, so an empty list here means malformed explicit input
+            // (e.g. `--target ,` or `--target ""`). Do NOT silently default to
+            // rust — error out (INVARIANTS P3 / M5 fail-closed).
+            if target_names.is_empty() {
+                eprintln!("error: --target resolved to no targets (empty or only separators); supported: rust, python, go, dag");
+                std::process::exit(1);
+            }
             let multi_target = target_names.len() > 1;
             // Validate every target up front (fail-closed before any front-end work).
             for tname in &target_names {
