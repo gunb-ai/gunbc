@@ -91,6 +91,16 @@ fn ts_g2_sg1_symbol_evidence() -> GroundingEvidenceSchema {
 }
 
 
+fn ts_g2_sg1_bool_evidence() -> GroundingEvidenceSchema {
+  Sg1Evidence { source_carrier: bool_node() }
+}
+
+
+fn ts_g2_sg1_text_string_evidence() -> GroundingEvidenceSchema {
+  Sg1Evidence { source_carrier: ts_std_text_string_type_node() }
+}
+
+
 fn ts_g2_sg2_evidence() -> GroundingEvidenceSchema {
   Sg2Evidence { source_carrier: symbol_kernel_type_node() }
 }
@@ -110,6 +120,27 @@ fn ts_g2_sg1_symbol_evidence_targets_canonical_carrier() -> Bool {
   match ts_g2_sg1_symbol_evidence() {
     Sg1Evidence { source_carrier } =>
       ts_g2_source_carrier_eq(a: source_carrier, b: symbol_kernel_type_node())
+    _ => false
+  }
+}
+
+
+fn ts_g2_sg1_bool_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg1_bool_evidence() {
+    Sg1Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(a: source_carrier, b: bool_node())
+    _ => false
+  }
+}
+
+
+fn ts_g2_sg1_text_string_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg1_text_string_evidence() {
+    Sg1Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(
+        a: source_carrier,
+        b: ts_std_text_string_type_node()
+      )
     _ => false
   }
 }
@@ -161,6 +192,8 @@ fn ts_g2_sg1_atom_lookup_accepts(source_carrier: Node) -> Bool {
 
 fn ts_g2_sg1_atom_realizations_hold() -> Bool {
   ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
+    && ts_g2_sg1_bool_evidence_targets_canonical_carrier()
+    && ts_g2_sg1_text_string_evidence_targets_canonical_carrier()
     && ts_g2_sg1_atom_lookup_accepts(source_carrier: symbol_kernel_type_node())
     && ts_g2_sg1_atom_lookup_accepts(source_carrier: bool_node())
     && ts_g2_sg1_atom_lookup_accepts(source_carrier: ts_std_text_string_type_node())
