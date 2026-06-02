@@ -8,10 +8,12 @@
 module v4.std.grounding
 
 
-import v4.std.collection { Map, empty_map, map_insert }
+import v4.std.collection { Absent, Map, Present, empty_map, map_get, map_insert }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   Outcome,
+  Rejected,
   Textual,
   Unavailable,
   UserInputBoundary,
@@ -72,23 +74,23 @@ fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
 }
 
 
-// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>);
-// dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate Witness at
-// v4.std.collection:54); site: insert_per_language_fact_bundle_entry duplicate-key gate.
 fn insert_per_language_fact_bundle_entry(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match map_get(registry.by_key, key) {
-    Some { value: _ } =>
-      outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    None =>
-      outcome_accepted(
-        value: PerLanguageFactBundleRegistry {
-          by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
-        }
-      )
+  match map_get(m: registry.by_key, key: key) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: _ } =>
+        outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
+      Absent =>
+        outcome_accepted(
+          value: PerLanguageFactBundleRegistry {
+            by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
+          }
+        )
+    }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 

@@ -217,8 +217,15 @@ fn v4_std_grounding_registry_entries_do_not_project_incomplete_primitive_bundles
         "single fact-axis registry entries must not project directly to complete PrimitiveFactBundle carriers"
     );
     assert!(
-        GROUNDING_DAG.contains("feature:B-LOOKUP-1")
-            && GROUNDING_DAG.contains("match map_get(registry.by_key, key)"),
-        "registry insert uses documented bootstrap map_get bridge until Witness dispatch"
+        GROUNDING_DAG.contains("map_get(m: registry.by_key, key: key)"),
+        "registry insert must use v4.std.collection map_get authority (B-LOOKUP-1 / P2)"
+    );
+    assert!(
+        GROUNDING_DAG.contains("Present { value: _ }") && GROUNDING_DAG.contains("Absent =>"),
+        "duplicate-key gate: Present => reject, Absent => accept insert"
+    );
+    assert!(
+        GROUNDING_DAG.contains("Rejected { diagnostics: ds } => Rejected { diagnostics: ds }"),
+        "map_get lookup failures propagate without collapsing to Absent (P3)"
     );
 }
