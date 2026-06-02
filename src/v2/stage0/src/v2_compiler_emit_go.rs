@@ -4,7 +4,6 @@
 pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffix};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
-pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;

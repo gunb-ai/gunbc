@@ -4,7 +4,6 @@
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
 pub use crate::std_syntax::LiteralValue;
-pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_infer_env::TypeEnv;

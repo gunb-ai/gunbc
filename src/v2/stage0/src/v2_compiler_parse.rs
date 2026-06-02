@@ -17,9 +17,7 @@ use crate::std_syntax::BodyKind::{
 use crate::std_syntax::ItemFormKind::OtherForm;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 pub use crate::std_syntax::{BinOp, LiteralValue};
-pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
-pub use crate::std_syntax::{BodyKind, ItemFormKind};
 pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
 use crate::v2_std_core::Cardinality::{CardOptional, Required};

@@ -16,7 +16,6 @@ use crate::std_computation::CallPattern::{
 };
 use crate::std_computation::IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
 pub use crate::std_computation::ShrinkFactor;
-pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 pub use crate::std_computation::{lower_call_pattern, size_bound_param, type_iteration_dimension};
 pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget};
@@ -39,7 +38,6 @@ pub use crate::std_induction::{
 pub use crate::std_induction::{AtomicCost, CostBound, PolynomialExponent, SubValueRelation};
 use crate::std_syntax::BinOp::{Div, Sub};
 use crate::std_syntax::LiteralValue::{LitInt, LitNull};
-pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::DescentSource::{

@@ -10,7 +10,6 @@ pub use crate::generated_method_template_projection::{
 };
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;

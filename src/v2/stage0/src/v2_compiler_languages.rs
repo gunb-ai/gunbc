@@ -58,7 +58,6 @@ pub use crate::extdeps_languages_rust_emit::{
 };
 pub use crate::extdeps_languages_rust_syntax::{rust_item_forms, rust_operators};
 use crate::std_syntax::AlgebraFieldKind::*;
-pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };

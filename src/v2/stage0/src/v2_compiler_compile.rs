@@ -2,7 +2,6 @@
 // Source module: v2.compiler.compile
 
 pub use crate::std_computation::ShrinkFactor;
-pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,

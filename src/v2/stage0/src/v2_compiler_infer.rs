@@ -6,7 +6,6 @@ pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
-pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -25,7 +24,6 @@ use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
-pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
