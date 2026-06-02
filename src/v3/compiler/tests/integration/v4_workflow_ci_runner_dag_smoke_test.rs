@@ -2005,16 +2005,37 @@ fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
         // Equivalence witness compares the two paths' rows.
         "inprocess_equivalence_harness_entries() == inprocess_equivalence_inprocess_entries()",
         "data witness_inprocess_equivalence: Bool = inprocess_equivalence_holds()",
-        // Executable receipt: equality gates a TestClaim run through the same interpreter.
-        "data run_inprocess_equivalence_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(",
     ] {
         assert!(
             INPROCESS_EQUIVALENCE_DAG.contains(needle),
             "{INPROCESS_EQUIVALENCE_PATH}: A.1.5a equivalence contract must carry `{needle}`"
         );
     }
+    // Tracked deferral (RR-A §6): the equivalence spec must NOT declare an authoring-time
+    // `data run_*: TestClaimRun = run_test_claim(...)` co-authority row. Runtime execution and
+    // roster/claim-id wiring belong to the A.1 harness lane, named in the file's DEFERRAL note.
+    // Structural check (substring would false-match the prose in the DEFERRAL note).
+    let declares_test_claim_run_data = module.items.iter().any(|item| {
+        use v3_compiler::parse_surface::SurfaceType;
+        matches!(
+            item,
+            SurfaceItem::Data {
+                ty: SurfaceType::Named { name, .. },
+                ..
+            } if name == "TestClaimRun"
+        )
+    });
     assert!(
-        surface_declares_test_claim_data(&module, "claim_inprocess_equivalence_receipt"),
-        "{INPROCESS_EQUIVALENCE_PATH}: must declare the equivalence TestClaim receipt"
+        !declares_test_claim_run_data,
+        "{INPROCESS_EQUIVALENCE_PATH}: must not declare a `data : TestClaimRun` harness-row receipt (RR-A §6 authoring-time co-authority)"
+    );
+    assert!(
+        !surface_declares_fn(&module, "inprocess_equivalence_pass_node"),
+        "{INPROCESS_EQUIVALENCE_PATH}: equivalence spec must not carry an EqualsClaim receipt scaffold"
+    );
+    assert!(
+        INPROCESS_EQUIVALENCE_DAG.contains("DEFERRAL")
+            && INPROCESS_EQUIVALENCE_DAG.contains("A.1 harness lane"),
+        "{INPROCESS_EQUIVALENCE_PATH}: must carry the explicit harness-execution deferral note"
     );
 }
