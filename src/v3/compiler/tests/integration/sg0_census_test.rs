@@ -316,15 +316,13 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // § SG-0 hand-authored compiler non-test paths (`T-PB-B` / `pb_rust_tests_outside_residual_zero`).
     // Dissolution: delete when substrate eval owns host dispatch without hand-Rust bridge.
     "src/v3/compiler/src/emit_host_bridge.rs",
-    // T-22: substrate eval intercept for `run_emit_host_rust` → `emit_host_runner` (rust row only).
-    // Receipt assembly delegates to `emit_host_receipt_from_source` via `eval_callable_declaration`.
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** paired TEST row
-    // `v4_emit_host_eval_dispatch_test.rs`; explicit deferral lane T-PB-B /
-    // `pb_rust_tests_outside_residual_zero` (checkable: `r1_release_acceptance.dag` TestClaim
-    // name `pb_rust_tests_outside_residual_zero` and `ROADMAP.md` T-PB-B row);
-    // substrate `emit_host.dag` T-22 rust intercept.
-    // Dissolution: substrate Callable dispatch owns transport without this intercept; retires with
-    // `emit_host_bridge.rs` when the T-PB-B lane closes.
+    // T-22: `emit_host_eval.rs` — rust row (#4225/#4254 main) + python transport wire (this PR).
+    // **P5 receipt (Mechanism (b)) — disposition (3) explicit deferral:** lane **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (gate marker
+    // `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag:25`; ROADMAP `ROADMAP.md:31`, `:43`).
+    // Paired tests: `v4_emit_host_eval_dispatch_test.rs` + in-module python eval dispatch tests.
+    // Census **+0 NON_TEST** (row on main since #4225; this PR extends eval hook, no new SG-0 path).
+    // Dissolution: substrate Callable dispatch owns all host rows without this hand-Rust eval hook.
     "src/v3/compiler/src/emit_host_eval.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/emit_rust_bin_shim.rs",
@@ -958,8 +956,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
     // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
     // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
-    // explicit deferral lane T-PB-B / `pb_rust_tests_outside_residual_zero`
-    // (`r1_release_acceptance.dag` TestClaim name); dissolves when `.dag` TestClaim execution
+    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
+    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
     // replaces host-runner receipts.
     "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
@@ -1032,8 +1030,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
     // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
-    // PR #4226 (+0 paths): TS SG-2 arrow wire-shape golden probes (ts_sg2_arrow_labeled_xy_emitted,
-    // ts_sg2_arrow_mixed_wire_emitted); behavioral TestClaims in sg2_typescript_type_expression_projection.dag.
     "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
     // E0308 W1-A2: `src/v4/std/text.dag` HostStringText host-string/text-carrier boundary.
     // Explicit P5 deferral: ROADMAP.md § "Nine lanes" row `T-PB-B` /
@@ -1043,8 +1039,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
+    // PR #4295 (+0 paths): `check_t19_testgen_activation` same-path expansion —
+    // Rust migration of `scripts/check_t19_testgen_activation.py` (deleted #4252).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
-    // TestClaims or generated harness coverage.
+    // TestClaims or generated harness coverage (ROADMAP.md T-PB-B row).
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
     // T-16-A+ TaskManager omni fixture: compile_to_dag smoke + SQL DDL projection receipt.
     "src/v3/compiler/tests/integration/v4_test_fixture_task_manager_demo_smoke_test.rs",
