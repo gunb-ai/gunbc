@@ -1068,8 +1068,8 @@ fn emit_host_receipt_value(
 mod tests {
     use super::*;
     use crate::dag::{
-        ArrowBody, AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, Field, TypeConnective,
-        TemplateArgument,
+        ArrowBody, AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, Field,
+        TemplateArgument, TypeConnective,
     };
     use crate::diagnostics::SourceSpan;
     use crate::evaluator::{EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder};
@@ -1168,32 +1168,320 @@ mod tests {
         }
     }
 
-    const V4_NODE_DAG: &str = include_str!("../../../v4/std/node.dag");
-    const V4_NODE_PATH: &str = "src/v4/std/node.dag";
-    const V4_ALGEBRA_DAG: &str = include_str!("../../../v4/std/algebra.dag");
-    const V4_ALGEBRA_PATH: &str = "src/v4/std/algebra.dag";
-    const V4_DIAGNOSTIC_DAG: &str = include_str!("../../../v4/std/diagnostic.dag");
     const V4_DIAGNOSTIC_PATH: &str = "src/v4/std/diagnostic.dag";
-    const V4_WITNESS_DAG: &str = include_str!("../../../v4/std/witness.dag");
     const V4_WITNESS_PATH: &str = "src/v4/std/witness.dag";
+    const V4_COLLECTION_PATH: &str = "src/v4/std/collection.dag";
+    const V4_ALGEBRA_PATH: &str = "src/v4/std/algebra.dag";
+    const V4_MACHINE_PATH: &str = "src/v4/std/machine.dag";
+    const V4_TEXT_PATH: &str = "src/v4/std/text.dag";
+
+    fn push_named_decl(
+        dag: &mut Dag,
+        name: &str,
+        connective: TypeConnective,
+        file: &str,
+    ) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective,
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn push_anonymous_decl(dag: &mut Dag, connective: TypeConnective, file: &str) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: None,
+            connective,
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn push_disj_type(
+        dag: &mut Dag,
+        name: &str,
+        file: &str,
+        variants: &[(&str, DeclarationId)],
+    ) -> DeclarationId {
+        push_named_decl(
+            dag,
+            name,
+            TypeConnective::Disj {
+                variants: variants
+                    .iter()
+                    .map(|(label, ty)| Field {
+                        label: (*label).to_string(),
+                        ty: *ty,
+                    })
+                    .collect(),
+            },
+            file,
+        )
+    }
+
+    fn push_conj_type(
+        dag: &mut Dag,
+        name: &str,
+        file: &str,
+        fields: &[(&str, DeclarationId)],
+    ) -> DeclarationId {
+        push_named_decl(
+            dag,
+            name,
+            TypeConnective::Conj {
+                children: fields
+                    .iter()
+                    .map(|(label, ty)| Field {
+                        label: (*label).to_string(),
+                        ty: *ty,
+                    })
+                    .collect(),
+            },
+            file,
+        )
+    }
+
+    fn push_list_instantiation(
+        dag: &mut Dag,
+        list_template: DeclarationId,
+        elem: DeclarationId,
+        file: &str,
+    ) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template: list_template,
+                arguments: vec![TemplateArgument {
+                    parameter: list_template,
+                    value: elem,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn wire_free_monoid_variant_constructors(
+        dag: &mut Dag,
+        free_monoid: DeclarationId,
+        elem: DeclarationId,
+        file: &str,
+    ) {
+        let TypeConnective::Disj { variants } = dag.declaration(free_monoid).connective.clone()
+        else {
+            panic!("FreeMonoid must be a sum type");
+        };
+        for label in ["Empty", "Cons"] {
+            let arm_ty = variants
+                .iter()
+                .find(|variant| variant.label == label)
+                .expect(label)
+                .ty;
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template: arm_ty,
+                    arguments: vec![TemplateArgument {
+                        parameter: arm_ty,
+                        value: elem,
+                    }],
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: span(file),
+            });
+        }
+    }
+
+    /// Hermetic v4 std carrier stubs (authority-qualified by `span.file` suffix).
+    ///
+    /// Avoids `compile_to_dag_modules_in_order` on `diagnostic.dag` fn bodies (R3 Gap 9) while
+    /// exercising the same `v4_carrier_*` lookup paths used by python eval dispatch reification.
+    fn dag_with_hermetic_v4_emit_host_carriers() -> Dag {
+        let mut dag = Dag::new();
+        let bool_ty = dag.declaration_by_name("Bool").expect("bootstrap Bool").id;
+        let symbol_ty = push_named_decl(
+            &mut dag,
+            "Symbol",
+            TypeConnective::Atom(AtomPayload::TypeParam("Symbol".to_string())),
+            V4_DIAGNOSTIC_PATH,
+        );
+        let node_ty = push_named_decl(
+            &mut dag,
+            "Node",
+            TypeConnective::Atom(AtomPayload::TypeParam("Node".to_string())),
+            V4_DIAGNOSTIC_PATH,
+        );
+        let _diagnostic_ty = push_conj_type(
+            &mut dag,
+            "Diagnostic",
+            V4_DIAGNOSTIC_PATH,
+            &[
+                ("reason", symbol_ty),
+                ("at", node_ty),
+                ("correction", node_ty),
+            ],
+        );
+        let external_contract_unknown = push_anonymous_decl(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam(
+                "ExternalContractUnknown".to_string(),
+            )),
+            V4_DIAGNOSTIC_PATH,
+        );
+        let _no_correction_reason = push_disj_type(
+            &mut dag,
+            "NoCorrectionReason",
+            V4_DIAGNOSTIC_PATH,
+            &[("ExternalContractUnknown", external_contract_unknown)],
+        );
+        let _correction = push_disj_type(
+            &mut dag,
+            "Correction",
+            V4_DIAGNOSTIC_PATH,
+            &[("Unavailable", external_contract_unknown)],
+        );
+        let _locus = push_disj_type(
+            &mut dag,
+            "Locus",
+            V4_DIAGNOSTIC_PATH,
+            &[("PortLocus", external_contract_unknown)],
+        );
+        let _diagnostics = push_disj_type(
+            &mut dag,
+            "Diagnostics",
+            V4_DIAGNOSTIC_PATH,
+            &[("None", external_contract_unknown)],
+        );
+        let _outcome = push_disj_type(
+            &mut dag,
+            "Outcome",
+            V4_DIAGNOSTIC_PATH,
+            &[
+                ("Accepted", external_contract_unknown),
+                ("Rejected", external_contract_unknown),
+            ],
+        );
+        let holds_payload = push_conj_type(
+            &mut dag,
+            "WitnessHolds",
+            V4_WITNESS_PATH,
+            &[("value", external_contract_unknown)],
+        );
+        let violates_payload = push_conj_type(
+            &mut dag,
+            "WitnessViolates",
+            V4_WITNESS_PATH,
+            &[("diagnostic", external_contract_unknown)],
+        );
+        push_disj_type(
+            &mut dag,
+            "Witness",
+            V4_WITNESS_PATH,
+            &[("Holds", holds_payload), ("Violates", violates_payload)],
+        );
+        let byte_ty = push_named_decl(
+            &mut dag,
+            "Byte",
+            TypeConnective::Atom(AtomPayload::TypeParam("Byte".to_string())),
+            V4_MACHINE_PATH,
+        );
+        let string_ty = push_named_decl(
+            &mut dag,
+            "String",
+            TypeConnective::Atom(AtomPayload::TypeParam("String".to_string())),
+            V4_TEXT_PATH,
+        );
+        let empty_arm = push_anonymous_decl(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("FreeMonoidEmpty".to_string())),
+            V4_ALGEBRA_PATH,
+        );
+        let elem_param = push_anonymous_decl(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            V4_ALGEBRA_PATH,
+        );
+        let tail_param = push_anonymous_decl(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("FreeMonoidTail".to_string())),
+            V4_ALGEBRA_PATH,
+        );
+        let cons_payload = push_conj_type(
+            &mut dag,
+            "FreeMonoidCons",
+            V4_ALGEBRA_PATH,
+            &[("head", elem_param), ("tail", tail_param)],
+        );
+        let free_monoid = push_disj_type(
+            &mut dag,
+            "FreeMonoid",
+            V4_ALGEBRA_PATH,
+            &[("Empty", empty_arm), ("Cons", cons_payload)],
+        );
+        let list_template = push_named_decl(
+            &mut dag,
+            "List",
+            TypeConnective::Atom(AtomPayload::TypeParam("List".to_string())),
+            V4_COLLECTION_PATH,
+        );
+        let diagnostic_ty = dag
+            .declarations()
+            .iter()
+            .find(|decl| {
+                decl.name.as_deref() == Some("Diagnostic")
+                    && decl.span.file.ends_with(V4_DIAGNOSTIC_PATH)
+            })
+            .expect("Diagnostic stub")
+            .id;
+        for elem in [bool_ty, byte_ty, string_ty, diagnostic_ty] {
+            push_list_instantiation(&mut dag, list_template, elem, V4_COLLECTION_PATH);
+            wire_free_monoid_variant_constructors(&mut dag, free_monoid, elem, V4_ALGEBRA_PATH);
+        }
+        dag
+    }
 
     fn dag_with_v4_emit_host_carrier_authorities() -> Dag {
-        let sources = [
-            (V4_NODE_DAG, V4_NODE_PATH),
-            (V4_ALGEBRA_DAG, V4_ALGEBRA_PATH),
-            (V4_DIAGNOSTIC_DAG, V4_DIAGNOSTIC_PATH),
-            (V4_WITNESS_DAG, V4_WITNESS_PATH),
-        ];
-        match compile_to_dag_modules_in_order(&sources) {
-            Ok(dag) => dag,
-            Err(CompileError::Semantic(dag)) => {
-                panic!(
-                    "emit_host eval carrier modules: semantic errors: {:?}",
-                    dag.diagnostics().iter().collect::<Vec<_>>()
-                );
-            }
-            Err(other) => panic!("emit_host eval carrier modules: {other:?}"),
-        }
+        dag_with_hermetic_v4_emit_host_carriers()
     }
 
     #[test]
@@ -1252,7 +1540,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "v3 compile_to_dag_modules_in_order cannot yet parse diagnostic.dag fn bodies (R3 Gap 9)"]
     fn v4_witness_variant_resolution_uses_witness_dag_not_dimensions() {
         let dag = dag_with_v4_emit_host_carrier_authorities();
         assert!(
@@ -1399,14 +1686,57 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "v3 compile_to_dag_modules_in_order cannot yet parse diagnostic.dag fn bodies (R3 Gap 9)"]
+    fn try_dispatch_emit_host_python_reifies_accepted_receipt_for_pass_fixture() {
+        let mut dag = dag_with_hermetic_v4_emit_host_carriers();
+        let callee_decl = run_emit_host_python_decl(&mut dag);
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+        let operands = eval_dispatch_operands();
+        let result =
+            try_dispatch_emit_host_python(&dag, callee_decl, &operands, &mut state, &strategy)
+                .expect("python dispatch must claim emit_host.dag row")
+                .expect("python dispatch must succeed for pass fixture");
+        let Value::VariantValue { tag, payload } = &result else {
+            panic!("expected Outcome variant, got {result:?}");
+        };
+        assert_eq!(
+            v4_carrier_variant_tag(&dag, V4_STD_DIAGNOSTIC_AUTHORITY, "Outcome", "Accepted")
+                .expect("Outcome::Accepted"),
+            *tag
+        );
+        let Value::RecordValue(outcome_fields) = &**payload else {
+            panic!("expected Accepted payload record");
+        };
+        let Value::RecordValue(receipt_fields) = &outcome_fields
+            .iter()
+            .find(|field| field.label == "value")
+            .expect("Accepted.value")
+            .value
+        else {
+            panic!("expected EmitHostRunReceipt record");
+        };
+        let source = receipt_fields
+            .iter()
+            .find(|field| field.label == "source_text")
+            .expect("receipt.source_text")
+            .value
+            .clone();
+        assert_eq!(
+            source,
+            Value::LiteralValue(LiteralBits::String(
+                EVAL_DISPATCH_PYTHON_FIXTURE.to_string()
+            ))
+        );
+    }
+
+    #[test]
     fn run_emit_host_python_eval_dispatch_via_evaluator_callable_transform() {
         use crate::dag::TransformTarget;
         use crate::evaluator::{
             eval_node, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder,
         };
 
-        let mut dag = dag_with_v4_emit_host_carrier_authorities();
+        let mut dag = dag_with_hermetic_v4_emit_host_carriers();
         let callee_decl = run_emit_host_python_decl(&mut dag);
         let span = SourceSpan::new("emit_host_eval_dispatch_test.v3", 0, 1);
         let target_port = dag.alloc_port(None);
