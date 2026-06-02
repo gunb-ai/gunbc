@@ -2238,3 +2238,55 @@ fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
         "{INPROCESS_EQUIVALENCE_PATH}: must carry the explicit harness-execution deferral note"
     );
 }
+
+#[test]
+fn v4_workflow_ci_source_authority_receipt_consumes_h72_claims() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "round_trip", "source_authority_contract"],
+            "claim_source_authority_contract_compiles"
+        ) && import_includes_name(
+            &module,
+            &["v4", "test", "claim", "round_trip", "source_authority_contract"],
+            "claim_bmin_canonical_dag_source_parse_print_law"
+        ),
+        "{CI_DAG_PATH}: F.11b must import H.7.2 source-authority claim declarations directly"
+    );
+    for needle in [
+        "| SourceAuthorityReceiptEvalCommand { claims: List<Symbol> }",
+        "data ci_source_authority_receipt_claim_ids: List<Symbol> = [",
+        "claim_source_authority_contract_compiles",
+        "claim_bmin_canonical_dag_source_parse_print_law",
+        "fn ci_source_authority_receipt_eval_command() -> CiCommand",
+        "SourceAuthorityReceiptEvalCommand { claims: ci_source_authority_receipt_claim_ids }",
+        "id: source_authority_receipt_eval_execution",
+        "command: ci_source_authority_receipt_eval_command()",
+        "id: source_authority_receipt_eval_signal",
+        "job: source_authority_receipt_eval_execution",
+        "claims == ci_source_authority_receipt_claim_ids",
+        "ci_cache_cmd_source_authority_receipt_eval_tag",
+        "ci_projection_command_claim_ids_edge",
+        "ci_symbol_list_projection_node(xs: claims)",
+        "ci_upsert_file_set_input(segment: \"src/v4/compiler/source_authority.dag\")",
+        "ci_upsert_file_set_input(segment: \"src/v4/test/claim/round_trip/source_authority_contract.dag\")",
+        "ci_upsert_upstream_job_input(job: v2_compile_src_v4)",
+        "ci_upsert_source_authority_receipt_eval_claim_ref_inputs",
+        "ci_upsert_test_claim_ref_input(claim_id: claim_id)",
+        "step: ci_upsert_source_authority_receipt_eval_execution",
+        "step: ci_upsert_source_authority_receipt_eval_signal",
+        "JobStep {\n    job: source_authority_receipt_eval_execution,\n    step: source_authority_receipt_eval_execution",
+        "GateStep {\n    job: source_authority_receipt_eval_execution,\n    gate: source_authority_receipt_eval_signal",
+        "SourceAuthorityReceiptEvalCommand { claims: _ } =>\n      ci_job_component_mask_row(",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: F.11b source-authority CI receipt consumption must carry `{needle}`"
+        );
+    }
+    assert!(
+        !CI_DAG.contains("dag-artifact.json") && !CI_DAG.contains("--target dag"),
+        "{CI_DAG_PATH}: F.11b CI receipt consumption must not use JSON IR as source authority"
+    );
+}
