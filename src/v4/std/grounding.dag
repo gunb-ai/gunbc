@@ -27,6 +27,7 @@ import v4.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth,
   ModelCorePrimitiveFactAxis,
+  PrimitiveFactBundle,
   model_core_primitive_fact_axis_symbol
 }
 import v4.std.node { Node, Symbol }
@@ -97,7 +98,6 @@ fn insert_per_language_fact_bundle_entry(
 }
 
 
-<<<<<<< HEAD
 fn per_language_fact_bundle_subject_axis_key(
   subject_carrier: Node,
   target: TargetModel,
@@ -200,8 +200,6 @@ fn primitive_fact_bundle_for_subject(
 }
 
 
-=======
->>>>>>> origin/main
 // --- G0.2: no hollow aliases governance bar ---
 
 // 🟢 terminal — G.0 hollow-alias governance posture (T-30 enforces via v4.lens.fact_density).

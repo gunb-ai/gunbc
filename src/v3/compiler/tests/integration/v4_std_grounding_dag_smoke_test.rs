@@ -213,18 +213,13 @@ fn v4_std_grounding_registry_keyed_map_authority() {
 }
 
 #[test]
-<<<<<<< HEAD
 fn v4_std_grounding_primitive_fact_bundle_model_core_projection_aggregates_subject() {
-=======
-fn v4_std_grounding_registry_entries_do_not_project_incomplete_primitive_bundles() {
->>>>>>> origin/main
     assert!(
         GROUNDING_DAG.contains("fn primitive_fact_bundle_for_subject(")
             && GROUNDING_DAG.contains("fn per_language_fact_bundle_spec_facts_for_subject("),
         "registry-to-model_core projection must build one PrimitiveFactBundle per subject x target"
     );
     assert!(
-<<<<<<< HEAD
         GROUNDING_DAG.contains("fn per_language_fact_bundle_subject_axis_key(")
             && GROUNDING_DAG.contains("fn per_language_fact_bundle_insert_subject_axis(")
             && GROUNDING_DAG.contains("map_get(\n    registry.by_key"),
@@ -239,15 +234,6 @@ fn v4_std_grounding_registry_entries_do_not_project_incomplete_primitive_bundles
     assert!(
         GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol(axis: fact_axis)"),
         "spec_facts projection uses model_core Symbol authority at bundle boundary"
-=======
-        GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol"),
-        "registry key can project the closed axis to model_core Symbol authority when an aggregation builder lands"
-    );
-    assert!(
-        !GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry(")
-            && !GROUNDING_DAG.contains("-> PrimitiveFactBundle"),
-        "single fact-axis registry entries must not project directly to complete PrimitiveFactBundle carriers"
->>>>>>> origin/main
     );
     assert!(
         !GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry("),
