@@ -22,12 +22,7 @@ import v4.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v4.std.lexing {
-  LexRules,
-  ModeledLexRules,
-  VoidLexRules,
-  lex_rule_set_token_class_member
-}
+import v4.std.lexing { LexRules }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
@@ -113,72 +108,39 @@ type LexCoversFormalTerminal {
 
 
 type GrammarTerminalLexCoverage {
-  covers: fn(FormalTerminal) -> Witness<LexCoversFormalTerminal>
+  lex: LexRules
+  grammar: WellFormedFormalGrammar
 }
 
 
 // Branch B ingestion-unification ruling (2026-06-02): concrete syntax is a
 // single authority row. Terminal coverage is part of the authority: consumers
-// must route grammar terminal use through terminal_coverage, which fails closed
-// unless LexRules has a TokenRule for the terminal identity. LexPattern and
-// GrammarExpr remain operational projections until CP-1b convergence; they are
-// not independent authorities.
+// must construct the schema with a terminal_coverage witness proving every
+// FormalTerminal.identity is produced by the LexRules token rules. LexPattern
+// and GrammarExpr remain operational projections until CP-1b convergence; they
+// are not independent authorities.
 type ConcreteSyntaxSchema {
   lex: LexRules
   grammar: WellFormedFormalGrammar
-  terminal_coverage: GrammarTerminalLexCoverage
-}
-
-
-data concrete_syntax_terminal_not_lexed: Symbol = concrete_syntax_terminal_not_lexed
-
-
-fn lex_rules_cover_formal_terminal(
-  lex: LexRules,
-  terminal: FormalTerminal
-) -> Witness<LexCoversFormalTerminal> {
-  match lex {
-    VoidLexRules =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: concrete_syntax_terminal_not_lexed,
-          at: node_locus(node: formal_terminal_to_node(terminal: terminal)),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
-    ModeledLexRules { root: rules } =>
-      if lex_rule_set_token_class_member(rules: rules, token_class: terminal.identity) {
-        Holds {
-          value: LexCoversFormalTerminal {
-            terminal: terminal,
-            token_class: terminal.identity
-          }
-        }
-      } else {
-        Violates {
-          diagnostic: Diagnostic {
-            reason: concrete_syntax_terminal_not_lexed,
-            at: node_locus(node: formal_terminal_to_node(terminal: terminal)),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        }
-      }
-  }
+  terminal_coverage: Witness<GrammarTerminalLexCoverage>
 }
 
 
 fn concrete_syntax_schema(
   lex: LexRules,
-  grammar: WellFormedFormalGrammar
-) -> ConcreteSyntaxSchema {
-  ConcreteSyntaxSchema {
-    lex: lex,
-    grammar: grammar,
-    terminal_coverage: GrammarTerminalLexCoverage {
-      covers: fn(terminal) {
-        lex_rules_cover_formal_terminal(lex: lex, terminal: terminal)
+  grammar: WellFormedFormalGrammar,
+  terminal_coverage: Witness<GrammarTerminalLexCoverage>
+) -> Witness<ConcreteSyntaxSchema> {
+  match terminal_coverage {
+    Holds { value: _ } =>
+      Holds {
+        value: ConcreteSyntaxSchema {
+          lex: lex,
+          grammar: grammar,
+          terminal_coverage: terminal_coverage
+        }
       }
-    }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 

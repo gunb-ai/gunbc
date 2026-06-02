@@ -22,7 +22,7 @@
 | Row | Status | Required shape |
 |---|---|---|
 | Bmin.1 | Open | `.dag` parses through one declared `ConcreteSyntaxSchema`; no bespoke `.dag` parser walk. |
-| Bmin.2 | Staged | `ConcreteSyntaxSchema.terminal_coverage` fails closed unless each consumed `FormalTerminal.identity` is covered by `LexRules` token rules; downstream parser projection still needs the structural morphism from this authority. |
+| Bmin.2 | Staged | `ConcreteSyntaxSchema.terminal_coverage` is a required `Witness<GrammarTerminalLexCoverage>` proving each `FormalTerminal.identity` is covered by `LexRules` token rules; downstream parser projection still needs the structural morphism and enumerating validator from this authority. |
 | Bmin.3 | Open | `WellFormedFormalGrammar` is the validating constructor/witness boundary for formal grammar authority. |
 | Bmin.4 | Blocked on H.7.1 | Round-trip claim may consume Bmin.1-3 only after source authority can state the normalized source AST parse/print law. Do not use `dag-artifact.json` or `--target dag` JSON IR equality as source authority. |
 | Bmin.5 | Blocked on H.7.1 | Canonical source emission waits for canonical `.dag` source AST plus deterministic serializer; do not claim bit-identical fidelity before W1b compare lands. |
