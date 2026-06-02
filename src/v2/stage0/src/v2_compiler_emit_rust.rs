@@ -3443,27 +3443,60 @@ pub fn wildcard_reexport_surface_names(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    match v2_rt::map_get(&export_sets, import_module.clone()) {
+    let local_candidates = match v2_rt::map_get(&export_sets, import_module.clone()) {
         None => Rc::new(Vec::new()),
-        Some(exported) => Rc::new({
+        Some(exported) => Rc::new(v2_rt::map_keys(&exported)),
+    };
+    let wildcard_pool_candidates = match typed_module_by_name(
+        import_module.clone(),
+        typed_modules.clone(),
+        source_indices.clone(),
+    ) {
+        None => Rc::new(Vec::new()),
+        Some(tm) => Rc::new({
             let mut __result = Vec::new();
-            for n in Rc::new(v2_rt::map_keys(&exported)).iter().cloned() {
-                if match reexport_source_module_name(
-                    n.clone(),
-                    import_module.clone(),
-                    typed_modules.clone(),
-                    export_sets.clone(),
-                    source_indices.clone(),
-                ) {
-                    Some(src) => src.as_str() != import_module.as_str(),
-                    None => false,
-                } {
-                    __result.push(n);
+            for imp in module_imports(tm.module.clone())
+                .iter()
+                .cloned()
+                .filter(|imp| import_is_all(imp.clone()))
+            {
+                let src_mod = authored_name_at(source_indices.clone(), imp.clone());
+                if let Some(exported) = v2_rt::map_get(&export_sets, src_mod) {
+                    for n in v2_rt::map_keys(&exported).iter().cloned() {
+                        __result.push(n);
+                    }
                 }
             }
             __result
         }),
-    }
+    };
+    Rc::new({
+        let mut __result = Vec::new();
+        let mut seen: HashMap<String, bool> = HashMap::new();
+        for n in local_candidates
+            .iter()
+            .chain(wildcard_pool_candidates.iter())
+            .cloned()
+        {
+            if v2_rt::map_get(&Rc::new(seen.clone()), n.clone()) == Some(true) {
+                continue;
+            }
+            seen.insert(n.clone(), true);
+            if match reexport_source_module_name(
+                n.clone(),
+                import_module.clone(),
+                typed_modules.clone(),
+                export_sets.clone(),
+                source_indices.clone(),
+            ) {
+                Some(src) => src.as_str() != import_module.as_str(),
+                None => false,
+            } {
+                __result.push(n);
+            }
+        }
+        __result
+    })
 }
 
 pub fn graph_type_import_module_filename(

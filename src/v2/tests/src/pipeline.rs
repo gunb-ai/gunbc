@@ -1843,7 +1843,7 @@ fn sg8_reexported_enum_parent_specific_import_uses_defining_module() {
 fn sg8_wildcard_import_through_proxy_reaches_defining_module_variant() {
     let files = &[
         ("def.dag", "module sg8_def\ntype E = A | B\n"),
-        ("proxy.dag", "module sg8_proxy\nimport sg8_def { B }\n"),
+        ("proxy.dag", "module sg8_proxy\nimport sg8_def\n"),
         (
             "use_mod.dag",
             "module sg8_use\nimport sg8_proxy\nfn f() -> E { B }\n",
