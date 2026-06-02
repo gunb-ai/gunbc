@@ -115,7 +115,7 @@ pub fn try_dispatch_emit_host_go(
         Ok(source) => source,
         Err(err) => return Some(Err(err)),
     };
-    let inputs = match emit_host_fixture_inputs(dag, &operands[2]) {
+    let inputs = match emit_host_fixture_inputs(dag, &operands[2], state, strategy) {
         Ok(inputs) => inputs,
         Err(err) => return Some(Err(err)),
     };
