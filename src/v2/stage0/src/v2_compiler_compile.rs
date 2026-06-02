@@ -59,12 +59,12 @@ pub use crate::v2_std_core::{
     expr_call_func_at, expr_method_name_at, field_access_field_at, field_binding_name_at,
     field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
-    field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at, intern,
+    field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at,
     is_error_diagnostic, lambda_param_names_at, make_error_node, module_imports, module_items,
     no_span, param_node_default_value, param_node_name_at, param_node_span, param_node_type_expr,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, BinOp, CallSemantics,
-    Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
-    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternResult, InternTable,
+    pre_intern_tokens, record_lit_type_name_at, resource_use_name_at, resource_use_resource, BinOp,
+    CallSemantics, Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternTable,
     LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
     TextFile, Token, UnaryOpKind, VarBindingKind,
 };
@@ -103,6 +103,12 @@ pub struct FrontendAccum {
     pub parse_results: Rc<Vec<Rc<ParseResult>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontendPrepared {
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub newline_index: Rc<NewlineIndex>,
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
@@ -2314,38 +2320,58 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
-        let acc = sources.iter().cloned().fold(
+        let prepared = Rc::new({
+            let mut __result = Vec::new();
+            for s in sources.iter().cloned() {
+                __result.push({
+                    let tokens = tokenize(s.content.clone(), s.path.clone());
+                    let si = build_newline_index(s.path.clone(), s.content.clone());
+                    Rc::new(FrontendPrepared {
+                        tokens: tokens.clone(),
+                        newline_index: si.clone(),
+                    })
+                });
+            }
+            __result
+        });
+        let intern_table = prepared.clone().iter().cloned().fold(
+            empty_intern_table(),
+            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
+        );
+        let parsed = prepared.clone().iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
                 newline_indices: Rc::new(vec![]),
-                intern_table: empty_intern_table(),
+                intern_table: intern_table,
             }),
-            |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| {
+            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
                 {
-                    let tokens = tokenize(s.content.clone(), s.path.clone());
-                    let si = build_newline_index(s.path.clone(), s.content.clone());
                     let parsed = parse_with_table(
-                        tokens.clone(),
+                        p.tokens.clone(),
                         v2_rt::rc_map_insert(
                             v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                            si.file.clone(),
-                            si.clone(),
+                            p.newline_index.clone().file.clone(),
+                            p.newline_index.clone(),
                         ),
                         acc.intern_table,
                     );
-                    let pr = parsed.result.clone();
                     Rc::new(FrontendAccum {
-                        parse_results: v2_rt::rc_list_push(acc.parse_results, pr.clone()),
-                        newline_indices: v2_rt::rc_list_push(acc.newline_indices, si.clone()),
+                        parse_results: v2_rt::rc_list_push(
+                            acc.parse_results,
+                            parsed.result.clone(),
+                        ),
+                        newline_indices: v2_rt::rc_list_push(
+                            acc.newline_indices,
+                            p.newline_index.clone(),
+                        ),
                         intern_table: parsed.intern_table.clone(),
                     })
                 }
             },
         );
-        let parse_results = acc.parse_results.clone();
-        let newline_indices = acc.newline_indices.clone();
-        let intern_table = acc.intern_table.clone();
+        let parse_results = parsed.parse_results.clone();
+        let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
         let has_parse_errors = {
             let mut __found = false;
@@ -2362,7 +2388,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 graph: None,
                 diagnostics: parse_diagnostics,
                 newline_indices: newline_indices.clone(),
-                intern_table: intern_table,
+                intern_table: parsed.intern_table.clone(),
             })
         } else {
             {
@@ -2384,7 +2410,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     graph: Some(graph.clone()),
                     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
                     newline_indices: newline_indices.clone(),
-                    intern_table: intern_table,
+                    intern_table: parsed.intern_table.clone(),
                 })
             }
         }
