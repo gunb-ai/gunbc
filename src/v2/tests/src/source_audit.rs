@@ -1037,10 +1037,7 @@ fn l1_ratchet_pattern_from_dag(data_name: &str) -> String {
         .lines()
         .find(|l| l.contains(&marker))
         .unwrap_or_else(|| panic!("missing `{marker}` in {}", ratchet.display()));
-    let rest = line
-        .split_once(&marker)
-        .expect("marker on line")
-        .1;
+    let rest = line.split_once(&marker).expect("marker on line").1;
     unescape_dag_string_literal(rest)
 }
 
