@@ -36,7 +36,7 @@
 
 use v3_compiler::emit_host_bridge;
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceVariant};
+use v3_compiler::parse_surface::{SurfaceItem, SurfaceVariant};
 use v3_compiler::tokenize_for_test;
 
 const EMIT_HOST_DAG: &str = include_str!("../../../../v4/compiler/emit_host.dag");
@@ -52,10 +52,6 @@ const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
 const NAT_SEMIRING_RUNG_3_4_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
 const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
-const NAT_SEMIRING_RUNG_0_TO_2_DAG: &str =
-    include_str!("../../../../v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag");
-const NAT_SEMIRING_RUNG_0_TO_2_PATH: &str =
-    "src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag";
 const NAT_SEMIRING_RUNG_5_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_5.dag");
 const NAT_SEMIRING_RUNG_5_PATH: &str = "src/v4/test/claim/nat_semiring/rung_5.dag";
