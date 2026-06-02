@@ -8,6 +8,7 @@ module v4.std.target_model
 import v4.std.algebra {
   Cons,
   Empty,
+  FreeMonoid,
   fold_list,
   free_monoid_field_head,
   free_monoid_field_tail,
@@ -2283,6 +2284,7 @@ data target_model_edge_collection_realization: Symbol = target_model_edge_collec
 type TargetCollectionReprKind
   = TargetCollectionReprBTreeSet
   | TargetCollectionReprHashSet
+  | TargetCollectionReprVec
 
 // SG-5 — per-representation wire authority (kind + generic-apply shape; no fill-in String templates).
 type TargetRepresentation {
@@ -2327,12 +2329,85 @@ data target_collection_row_field_alternatives: Symbol = target_collection_row_fi
 data target_collection_row_field_fallback: Symbol = target_collection_row_field_fallback
 data target_collection_set_no_representation: Symbol = target_collection_set_no_representation
 data target_collection_set_no_representation_port: Symbol = target_collection_set_no_representation_port
+data target_collection_free_monoid_no_representation: Symbol = target_collection_free_monoid_no_representation
+data target_collection_free_monoid_no_representation_port: Symbol = target_collection_free_monoid_no_representation_port
+data target_collection_realization_lookup_miss: Symbol = target_collection_realization_lookup_miss
+data target_collection_realization_lookup_ambiguous: Symbol = target_collection_realization_lookup_ambiguous
 
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: target_collection_set_no_representation,
     at: port_locus(port: target_collection_set_no_representation_port),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_collection_free_monoid_no_representation_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: target_collection_free_monoid_no_representation,
+    at: port_locus(port: target_collection_free_monoid_no_representation_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_collection_realization_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_collection_realization_lookup_miss,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_collection_realization_lookup_ambiguous_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_collection_realization_lookup_ambiguous,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟢 coproduct dissolution — SG-5 collection realization lookup state (missing / unique / ambiguous).
+type TargetCollectionRealizationLookup
+  = TargetCollectionRealizationMissing
+  | TargetCollectionRealizationUnique { row: TargetCollectionRealization }
+  | TargetCollectionRealizationAmbiguous
+
+fn target_collection_realization_lookup_step(
+  acc: TargetCollectionRealizationLookup,
+  row: TargetCollectionRealization,
+  source_carrier: Node
+) -> TargetCollectionRealizationLookup {
+  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+    match acc {
+      TargetCollectionRealizationMissing => TargetCollectionRealizationUnique { row: row }
+      TargetCollectionRealizationUnique { row: _ } => TargetCollectionRealizationAmbiguous
+      TargetCollectionRealizationAmbiguous => TargetCollectionRealizationAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+
+fn target_collection_realization_lookup_in_catalog(
+  catalog: FreeMonoid<TargetCollectionRealization>,
+  source_carrier: Node
+) -> Outcome<TargetCollectionRealization> {
+  match fold_list(
+    xs: catalog,
+    empty: TargetCollectionRealizationMissing,
+    cons: fn(acc, row) {
+      target_collection_realization_lookup_step(
+        acc: acc,
+        row: row,
+        source_carrier: source_carrier
+      )
+    }
+  ) {
+    TargetCollectionRealizationMissing =>
+      outcome_rejected(target_collection_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+    TargetCollectionRealizationUnique { row: row } => outcome_accepted(row)
+    TargetCollectionRealizationAmbiguous =>
+      outcome_rejected(target_collection_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
   }
 }
 
@@ -2347,11 +2422,13 @@ fn target_collection_repr_kind_atom(kind: TargetCollectionReprKind) -> Symbol {
   match kind {
     TargetCollectionReprBTreeSet => target_collection_repr_kind_btree_set
     TargetCollectionReprHashSet => target_collection_repr_kind_hash_set
+    TargetCollectionReprVec => target_collection_repr_kind_vec
   }
 }
 
 data target_collection_repr_kind_btree_set: Symbol = target_collection_repr_kind_btree_set
 data target_collection_repr_kind_hash_set: Symbol = target_collection_repr_kind_hash_set
+data target_collection_repr_kind_vec: Symbol = target_collection_repr_kind_vec
 
 fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectionReprKind> {
   if id == target_collection_repr_kind_btree_set {
@@ -2360,7 +2437,11 @@ fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectio
     if id == target_collection_repr_kind_hash_set {
       optional_present(value: TargetCollectionReprHashSet)
     } else {
-      optional_absent()
+      if id == target_collection_repr_kind_vec {
+        optional_present(value: TargetCollectionReprVec)
+      } else {
+        optional_absent()
+      }
     }
   }
 }
@@ -2469,6 +2550,42 @@ fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
 
 fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
+}
+
+fn target_collection_free_monoid_carrier_head(node: Node) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
+}
+
+// 🟡 gated — predicate-dissolution interim (INVARIANTS.md P3 / Practice 10) —
+// owner: vivid-lynx-81 / Rust RCA SG critical path; lane: SG-COLLECTION-PROJECTION;
+// planning-row: ROADMAP.md § "What v4 is building toward" rows `src/v4/std/` and
+// `Compiler stages`; bind: PR #4218 / node://adhoc-2d1d6d4b-023. Dissolve-on:
+// introduce a canonical collection-carrier projection returning `(kind, element)` once for
+// Set and FreeMonoid, then delete the paired Bool predicates/accessors before a third
+// collection carrier lands.
+fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Instantiation } =>
+      match target_collection_free_monoid_carrier_head(node: node) {
+        Present { value: head } =>
+          match head.kind {
+            TypeNode { connective: Atom { identity: id } } =>
+              id == target_carrier_free_monoid
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn target_collection_free_monoid_element_type_node(free_monoid_node: Node) -> Optional<Node> {
+  let positional = node_positional_child_targets(node: free_monoid_node)
+  if length(xs: positional) == 2 {
+    list_at_optional(xs: positional, index: 1)
+  } else {
+    optional_absent()
+  }
 }
 
 // ═══ SG-RC — TargetUseSiteOwnershipRealization (canonical home) ═══
