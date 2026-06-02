@@ -1,18 +1,18 @@
 // src/v4/lens/parallelism.dag
 // Scope: parallelism lens — independence visible in dependency-graph structure (THESIS:208).
-// Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; no copied endpoints, no parallel substrate (Practice 11 sub-rule: parallel-payload vs typed-reference).
+// Status: T-13 family ratchet + I.1.1 UnknownCoupling collapse — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; unresolved coupling is a typed coproduct arm sourced from `tree.facts.lookup(dependency.source)`, with no copied endpoints and no parallel substrate (Practice 11 sub-rule: parallel-payload vs typed-reference).
 
 
 module v4.lens.parallelism
 
-import v4.compiler.infer { InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
   ClassifiedDependencyView,
   DependencyKindClassifier,
   DependencyView,
-  classify_dependency_view,
+  classify_dependency_kind,
   classified_dependency_view_eq
 }
 import v4.std.diagnostic {
@@ -34,48 +34,106 @@ type ParallelismRelation
   = DataDependent
   | EffectCoupled
   | BarrierCoupled
-  | UnknownCoupling
+  | UnresolvedCoupling { diagnostic: Diagnostic }
+
+// 🟡 coproduct dissolution — feature:parallelism-relation-kind-policy-axis — consumer:parallelism_relation_for_view — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved directly from a parallelism fact carrier.
+type ParallelismKindPolicy
+  = KnownParallelismRelation { relation: ParallelismRelation }
+  | ReadsParallelismFacts
 
 type ParallelismFact {
   dependencies: List<ClassifiedDependencyView<ParallelismRelation>>
 }
 
-fn parallelism_dependency_kind_classifier() -> DependencyKindClassifier<ParallelismRelation> {
+fn parallelism_dependency_kind_classifier() -> DependencyKindClassifier<ParallelismKindPolicy> {
   DependencyKindClassifier {
-    contains: DataDependent,
-    binds_to: DataDependent,
-    type_depends_on: UnknownCoupling,
-    data_depends_on: DataDependent,
-    effect_depends_on: EffectCoupled,
-    resource_depends_on: EffectCoupled,
-    module_depends_on: UnknownCoupling,
-    barrier_before: BarrierCoupled,
-    placement_depends_on: UnknownCoupling,
-    model_depends_on: UnknownCoupling,
-    projection_depends_on: UnknownCoupling,
-    generated_from: UnknownCoupling,
-    verified_by: UnknownCoupling,
-    promoted_by: UnknownCoupling,
-    bootstrap_depends_on: UnknownCoupling
+    contains: KnownParallelismRelation { relation: DataDependent },
+    binds_to: KnownParallelismRelation { relation: DataDependent },
+    type_depends_on: ReadsParallelismFacts,
+    data_depends_on: KnownParallelismRelation { relation: DataDependent },
+    effect_depends_on: KnownParallelismRelation { relation: EffectCoupled },
+    resource_depends_on: KnownParallelismRelation { relation: EffectCoupled },
+    module_depends_on: ReadsParallelismFacts,
+    barrier_before: KnownParallelismRelation { relation: BarrierCoupled },
+    placement_depends_on: ReadsParallelismFacts,
+    model_depends_on: ReadsParallelismFacts,
+    projection_depends_on: ReadsParallelismFacts,
+    generated_from: ReadsParallelismFacts,
+    verified_by: ReadsParallelismFacts,
+    promoted_by: ReadsParallelismFacts,
+    bootstrap_depends_on: ReadsParallelismFacts
   }
 }
 
-fn parallelism_classify(view: DependencyView) -> ClassifiedDependencyView<ParallelismRelation> {
-  classify_dependency_view(classifier: parallelism_dependency_kind_classifier(), view: view)
+fn parallelism_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: parallelism_reason_unresolved_projection,
+    at: Textual { file: parallelism_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn parallelism_facts_for_source(tree: InferredTree, view: DependencyView) -> Witness<InferredFacts> {
+  tree.facts.lookup(view.source)
+}
+
+fn unresolved_parallelism_relation(
+  tree: InferredTree,
+  view: DependencyView
+) -> ParallelismRelation {
+  match parallelism_facts_for_source(tree: tree, view: view) {
+    Violates { diagnostic: d } => UnresolvedCoupling { diagnostic: d }
+    Holds { value: _ } => UnresolvedCoupling { diagnostic: parallelism_witness_diagnostic() }
+  }
+}
+
+fn parallelism_relation_for_policy(
+  tree: InferredTree,
+  view: DependencyView,
+  policy: ParallelismKindPolicy
+) -> ParallelismRelation {
+  match policy {
+    KnownParallelismRelation { relation: r } => r
+    ReadsParallelismFacts => unresolved_parallelism_relation(tree: tree, view: view)
+  }
+}
+
+fn parallelism_relation_for_view(
+  tree: InferredTree,
+  view: DependencyView
+) -> ParallelismRelation {
+  parallelism_relation_for_policy(
+    tree: tree,
+    view: view,
+    policy: classify_dependency_kind(
+      classifier: parallelism_dependency_kind_classifier(),
+      kind: view.kind
+    )
+  )
+}
+
+fn parallelism_classify(
+  tree: InferredTree,
+  view: DependencyView
+) -> ClassifiedDependencyView<ParallelismRelation> {
+  ClassifiedDependencyView {
+    dependency: view,
+    classification: parallelism_relation_for_view(tree: tree, view: view)
+  }
 }
 
 fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> ParallelismFact {
   ParallelismFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_snoc_item(xs: acc, item: parallelism_classify(view: view))
+      list_snoc_item(xs: acc, item: parallelism_classify(tree: tree, view: view))
     })
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-parallelism-relation-unresolved — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved from coproduct; forbidden: parallel ad-hoc UnknownCoupling Bool predicates outside parallelism_witness.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-parallelism-relation-unresolved — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved from coproduct; forbidden: parallel ad-hoc unresolved Bool predicates outside parallelism_witness.
 fn parallelism_relation_unresolved(relation: ParallelismRelation) -> Bool {
   match relation {
-    UnknownCoupling => true
+    UnresolvedCoupling { diagnostic: _ } => true
     DataDependent => false
     EffectCoupled => false
     BarrierCoupled => false
@@ -86,14 +144,6 @@ fn parallelism_fact_unresolved(fact: ParallelismFact) -> Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
     acc || parallelism_relation_unresolved(relation: dep.classification)
   })
-}
-
-fn parallelism_witness_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: parallelism_reason_unresolved_projection,
-    at: Textual { file: parallelism_projection_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
 }
 
 fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<ParallelismFact> {
@@ -119,8 +169,8 @@ fn parallelism_relation_eq(a: ParallelismRelation, b: ParallelismRelation) -> Bo
       BarrierCoupled => true
       _ => false
     }
-    UnknownCoupling => match b {
-      UnknownCoupling => true
+    UnresolvedCoupling { diagnostic: ad } => match b {
+      UnresolvedCoupling { diagnostic: bd } => ad == bd
       _ => false
     }
   }
