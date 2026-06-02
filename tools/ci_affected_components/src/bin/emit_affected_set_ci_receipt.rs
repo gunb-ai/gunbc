@@ -120,9 +120,8 @@ fn main() -> ExitCode {
     let (changed_paths, flags, fail_closed) =
         match git_read_changed_paths_for_event(opts.event_name.as_str()) {
             GitChangedPathsRead::Ok { paths, .. } => {
-                let flags = ci_component_affected_from_changed_paths(
-                    paths.iter().map(String::as_str),
-                );
+                let flags =
+                    ci_component_affected_from_changed_paths(paths.iter().map(String::as_str));
                 (paths, flags, false)
             }
             GitChangedPathsRead::FailClosed { detail, .. } => {
