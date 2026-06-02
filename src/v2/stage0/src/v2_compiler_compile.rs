@@ -2359,7 +2359,9 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                         v2_rt::rc_map_insert(acc, si.file.clone(), si.clone())
                     },
                 );
+                let __t_resolve = std::time::Instant::now();
                 let graph = resolve_modules(modules, source_indices);
+                eprintln!("[PROF] front_end: resolve_modules = {:?}", __t_resolve.elapsed());
                 Rc::new(FrontendResult {
                     graph: Some(graph.clone()),
                     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
@@ -2400,7 +2402,9 @@ pub struct ResolvedPipelineResult {
 
 pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {
     {
+        let __t_fe = std::time::Instant::now();
         let frontend = front_end_sources(sources);
+        eprintln!("[PROF] ===== front_end_sources TOTAL = {:?} =====", __t_fe.elapsed());
         let newline_indices = frontend.newline_indices.clone();
         match frontend.graph.clone() {
             None => Rc::new(ResolvedPipelineResult {
@@ -2438,7 +2442,9 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                         v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
+                let __t_norm = std::time::Instant::now();
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
+                eprintln!("[PROF] normalize_graph = {:?}", __t_norm.elapsed());
                 let norm_diags = norm.diagnostics.clone();
                 let norm_errors = Rc::new({
                     let mut __result = Vec::new();
@@ -2462,16 +2468,24 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                         newline_indices: newline_indices.clone(),
                     });
                 }
+                let __t_infer = std::time::Instant::now();
                 let typed = reconcile(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
                 );
+                eprintln!("[PROF] reconcile (type inference) = {:?}", __t_infer.elapsed());
                 let typed_diags = typed.diagnostics.clone();
+                let __t_fe2 = std::time::Instant::now();
                 let func_entries = extract_func_entries(typed.clone());
+                eprintln!("[PROF] extract_func_entries = {:?}", __t_fe2.elapsed());
+                let __t_rec = std::time::Instant::now();
                 let recursion_ctx = build_recursion_context(typed.clone());
+                eprintln!("[PROF] build_recursion_context = {:?}", __t_rec.elapsed());
+                let __t_cx = std::time::Instant::now();
                 let complexity =
                     build_complexity_report(func_entries, recursion_ctx, source_indices.clone());
+                eprintln!("[PROF] build_complexity_report = {:?}", __t_cx.elapsed());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
                 let all_diags = v2_rt::concat(typed_diags.clone(), complexity_diags);
                 let type_errors = Rc::new({
