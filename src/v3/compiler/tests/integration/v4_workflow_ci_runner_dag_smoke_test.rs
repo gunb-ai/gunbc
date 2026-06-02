@@ -21,6 +21,14 @@
 //! Dissolve-on: A15 Shape-B/T-24 emitted `ci.yml` plus `.dag` TestClaim execution covers the
 //! live component receipt and Wave 3 deferral without this hand-Rust parse harness.
 //!
+//! **INVARIANTS P5 — checkable receipt for PR #4251 (`infra_isolation` required-path):** feature
+//! `infra-isolation-required-gate`; consumers `v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path`,
+//! `v4_workflow_ci_wave1_*`, `v4_workflow_ci_wave3_node_selection_still_shadow_*`. SAME-PATH edit:
+//! updates the existing `ci`-aggregator-needs assertions to the `[affected, ci_floor, infra_isolation]`
+//! triple — no new test fn or authority surface (the modeled de-priv guard's coverage is the
+//! byte-for-byte carrier structural-match, not a hand-Rust binding test; ROADMAP row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero`). Dissolve-on: same A15 Shape-B/T-24 lane as above.
+//!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
