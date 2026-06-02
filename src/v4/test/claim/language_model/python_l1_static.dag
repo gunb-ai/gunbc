@@ -1,11 +1,12 @@
 // src/v4/test/claim/language_model/python_l1_static.dag
-// Scope: PY-L1-STATIC-STRUCTURAL — pyright static structural analysis as a third,
-//   distinct verification authority alongside CPython compile and runtime exec
-//   (docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md Worksheet A).
+// Scope: PY-L1-STATIC-STRUCTURAL — pyright (Worksheet A) and mypy (Worksheet B) static
+//   structural authorities alongside CPython compile and runtime exec
+//   (docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md).
 // Authority: Modeling DFS Arbiter ruling proud-fox-405 (msg_41813c03).
-// Fixtures: src/v4/lens/leaf_model_verification.dag (python_l1_static_*).
-// Receipt authority: these modeled TestClaims. (A shell host-runner formerly exercised
-// pyright over the roster; scripts/ runners were retired repo-wide per operator directive #4252.)
+// Fixtures: src/v4/lens/leaf_model_verification.dag (python_l1_static_* / python_l1_static_mypy_*).
+// Receipt authority: these modeled TestClaims. Pyright roster (#4231); mypy companion host
+// runner (Worksheet B): scripts/v4-leaf-model-python-l1-mypy-static-verify.sh. (Pyright shell
+// runners retired repo-wide per operator directive #4252.)
 
 module v4.test.claim.language_model.python_l1_static
 
@@ -19,10 +20,16 @@ import v4.extdeps.typecheckers.pyright {
   pyright_diag_report_undefined_variable,
   pyright_diag_report_missing_imports
 }
+import v4.extdeps.typecheckers.mypy {
+  mypy_tool_id,
+  mypy_profile_l1_id,
+  mypy_diag_return_value
+}
 import v4.lens.leaf_model_verification {
   python_l1_static_fixture,
   python_l1_static_undefined_variable_fixture_pair,
-  python_l1_static_missing_import_fixture_pair
+  python_l1_static_missing_import_fixture_pair,
+  python_l1_static_mypy_fixture
 }
 import v4.std.leaf_model_verification {
   LeafModelPythonStaticFixturePair,
@@ -195,6 +202,52 @@ data claim_python_l1_static_missing_import_verdicts_wired: TestClaim = EqualsCla
     p: python_l1_static_missing_import_fixture_pair(),
     expected_diag_code: pyright_diag_report_missing_imports
   )),
+  rhs: python_l1_static_claim_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+// Worksheet B — same claim id and shared fixture sources; distinct mypy profile/tool namespace.
+fn python_l1_static_mypy_fixture_pair_wired() -> Bool {
+  python_l1_static_mypy_fixture().claim_id == leaf_model_claim_python_l1_static_return_type
+    && python_l1_static_mypy_fixture().surface_spelling_fact == python_surface_spelling_int
+    && match leaf_model_python_static_happy_invocation(c: python_l1_static_mypy_fixture().happy).analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+    && match leaf_model_python_static_falsification_invocation(c: python_l1_static_mypy_fixture().falsification).analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+    && leaf_model_python_static_happy_invocation(c: python_l1_static_mypy_fixture().happy).tool_profile_ref == mypy_profile_l1_id
+    && leaf_model_python_static_falsification_invocation(c: python_l1_static_mypy_fixture().falsification).tool_profile_ref == mypy_profile_l1_id
+}
+
+data claim_python_l1_static_mypy_fixture_pair_wired: TestClaim = EqualsClaim {
+  label: "language_model/python_l1_static: mypy fixture pair binds L1 static claim id + BlockingForRung",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: python_l1_static_claim_bool_atom(b: python_l1_static_mypy_fixture_pair_wired()),
+  rhs: python_l1_static_claim_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+fn python_l1_static_mypy_expected_verdicts_wired() -> Bool {
+  match leaf_model_python_static_happy_verdict(c: python_l1_static_mypy_fixture().happy) {
+    StaticAnalysisAccepted => true
+    StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
+    StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+  }
+  && match leaf_model_python_static_falsification_verdict(c: python_l1_static_mypy_fixture().falsification) {
+       StaticAnalysisAccepted => false
+       StaticAnalysisRejected { tool_id: t, diagnostic_code: d } =>
+         t == mypy_tool_id && d == mypy_diag_return_value
+       StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+     }
+}
+
+data claim_python_l1_static_mypy_expected_verdicts_wired: TestClaim = EqualsClaim {
+  label: "language_model/python_l1_static: mypy happy=Accepted, falsification=Rejected(mypy, return-value)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: python_l1_static_claim_bool_atom(b: python_l1_static_mypy_expected_verdicts_wired()),
   rhs: python_l1_static_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
