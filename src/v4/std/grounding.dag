@@ -8,10 +8,12 @@
 module v4.std.grounding
 
 
-import v4.std.collection { Map, empty_map, map_insert }
+import v4.std.collection { Absent, Map, Present, empty_map, map_get, map_insert }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   Outcome,
+  Rejected,
   Textual,
   Unavailable,
   UserInputBoundary,
@@ -22,7 +24,6 @@ import v4.std.diagnostic {
 import v4.std.host_run { EmitHostRunReceipt }
 import v4.std.model_core {
   ModelCorePrimitiveFactAxis,
-  PrimitiveFactBundle,
   model_core_primitive_fact_axis_symbol
 }
 import v4.std.node { Node, Symbol }
@@ -73,36 +74,23 @@ fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
 }
 
 
-// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>);
-// dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate Witness at
-// v4.std.collection:54); site: insert_per_language_fact_bundle_entry duplicate-key gate.
 fn insert_per_language_fact_bundle_entry(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match map_get(registry.by_key, key) {
-    Some { value: _ } =>
-      outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    None =>
-      outcome_accepted(
-        value: PerLanguageFactBundleRegistry {
-          by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
-        }
-      )
-  }
-}
-
-
-// G.1 / model_core boundary: project registry row to PrimitiveFactBundle (substrate_carrier from key).
-fn primitive_fact_bundle_for_entry(entry: PerLanguageFactBundleEntry) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: entry.key.subject_carrier,
-    spec_facts: map_insert(
-      m: empty_map(),
-      key: model_core_primitive_fact_axis_symbol(axis: entry.key.fact_axis),
-      value: entry.fact_value
-    )
+  match map_get(m: registry.by_key, key: key) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: _ } =>
+        outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
+      Absent =>
+        outcome_accepted(
+          value: PerLanguageFactBundleRegistry {
+            by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
+          }
+        )
+    }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 
