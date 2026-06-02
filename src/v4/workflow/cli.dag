@@ -17,7 +17,7 @@ import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.artifact { GeneratorId, GeneratedArtifact, GeneratorProvenance }
 import v4.workflow.bootstrap {
-  bootstrap_corpus_eval_entry_fn,
+  run_manual_testclaim_corpus_eval,
   witness_bootstrap_evaluator_corpus_harness_well_formed
 }
 
@@ -97,10 +97,10 @@ fn gunbc_testgen_route_provenance(
 // RR-A §5.2: canonical `gunbc test` row for manual corpus harness — selection_fn names the
 // bootstrap stage0 Run entry (`run_manual_testclaim_corpus_eval` in testclaim_corpus_runner).
 data gunbc_test_manual_corpus_harness_route: GunbcTestRoute = GunbcTestRoute {
-  selection_fn: bootstrap_corpus_eval_entry_fn
+  selection_fn: run_manual_testclaim_corpus_eval
 }
 
 fn gunbc_test_manual_corpus_harness_route_well_formed() -> Bool {
-  (gunbc_test_manual_corpus_harness_route.selection_fn == bootstrap_corpus_eval_entry_fn)
+  (gunbc_test_manual_corpus_harness_route.selection_fn == run_manual_testclaim_corpus_eval)
     && witness_bootstrap_evaluator_corpus_harness_well_formed
 }

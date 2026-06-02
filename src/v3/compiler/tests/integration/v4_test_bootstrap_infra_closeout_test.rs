@@ -949,9 +949,9 @@ fn rr_a_step2_bootstrap_evaluator_corpus_harness_entry() {
     assert!(
         BOOTSTRAP_DAG.contains("type BootstrapEvaluatorCorpusHarnessEntry")
             && BOOTSTRAP_DAG.contains("fn bootstrap_evaluator_corpus_harness_entry()")
-            && BOOTSTRAP_DAG.contains("entry_fn: bootstrap_corpus_eval_entry_fn")
-            && BOOTSTRAP_DAG.contains("data bootstrap_corpus_eval_entry_fn: Symbol = bootstrap_corpus_eval_entry_fn")
-            && BOOTSTRAP_DAG.contains("run_manual_testclaim_corpus_eval")
+            && BOOTSTRAP_DAG.contains("entry_fn: run_manual_testclaim_corpus_eval")
+            && BOOTSTRAP_DAG.contains("data run_manual_testclaim_corpus_eval: Symbol = run_manual_testclaim_corpus_eval")
+            && BOOTSTRAP_DAG.contains("entry_module: v4_test_claim_workflow_testclaim_corpus_runner")
             && BOOTSTRAP_DAG.contains("runtime_model: v4_evaluator_runtime_wave1()")
             && BOOTSTRAP_DAG.contains("stage0_binary: v4_stage0_binary")
             && BOOTSTRAP_DAG.contains("data witness_bootstrap_evaluator_corpus_harness_well_formed: Bool"),
@@ -959,7 +959,7 @@ fn rr_a_step2_bootstrap_evaluator_corpus_harness_entry() {
     );
     assert!(
         CLI_DAG.contains("data gunbc_test_manual_corpus_harness_route: GunbcTestRoute")
-            && CLI_DAG.contains("selection_fn: bootstrap_corpus_eval_entry_fn")
+            && CLI_DAG.contains("selection_fn: run_manual_testclaim_corpus_eval")
             && CLI_DAG.contains("fn gunbc_test_manual_corpus_harness_route_well_formed()"),
         "cli.dag must expose gunbc test route bound to bootstrap corpus harness entry"
     );

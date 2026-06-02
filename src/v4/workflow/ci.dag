@@ -117,7 +117,9 @@ import v4.workflow.bootstrap {
   bootstrap_hash_pin_projection_node,
   bootstrap_plan,
   bootstrap_stage_output,
-  v4_stage0_binary
+  run_manual_testclaim_corpus_eval,
+  v4_stage0_binary,
+  v4_test_claim_workflow_testclaim_corpus_runner
 }
 import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_mechanical_reverification,
@@ -1292,10 +1294,8 @@ data lens_ownership_structural_witnesses_hold: Symbol = lens_ownership_structura
 data witness_lens_ownership_family_gate_closed: Symbol = witness_lens_ownership_family_gate_closed
 
 data v4_test_claim_manual_manual_corpus_roster: Symbol = v4_test_claim_manual_manual_corpus_roster
-data v4_test_claim_workflow_testclaim_corpus_runner: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
 data v4_test_claim_workflow_manual_corpus_eval: Symbol = v4_test_claim_workflow_manual_corpus_eval
 data manual_corpus_node_subject_rows: Symbol = manual_corpus_node_subject_rows
-data run_manual_testclaim_corpus_eval: Symbol = run_manual_testclaim_corpus_eval
 data corpus_report_tally: Symbol = corpus_report_tally
 data witness_manual_corpus_gate_closed: Symbol = witness_manual_corpus_gate_closed
 data manual_testclaim_subject_roster_family_receipt: Symbol = manual_testclaim_subject_roster_family_receipt

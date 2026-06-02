@@ -706,6 +706,12 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
 }
 
 
+// --- P2: canonical manual corpus declaration symbols (CI + bootstrap harness single authority) ---
+
+data run_manual_testclaim_corpus_eval: Symbol = run_manual_testclaim_corpus_eval
+data v4_test_claim_workflow_testclaim_corpus_runner: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
+
+
 // --- RR-A §5.2 / A.1: bootstrap evaluator corpus harness (stage0 Run entry) ---
 
 // Modeled `gunbc run --source-root … --function run_manual_testclaim_corpus_eval` surface for
@@ -719,17 +725,13 @@ type BootstrapEvaluatorCorpusHarnessEntry {
   entry_module: Symbol
 }
 
-// Symbol identities align with ci.dag `run_manual_testclaim_corpus_eval` / testclaim_corpus_runner module path.
-data bootstrap_corpus_eval_entry_fn: Symbol = bootstrap_corpus_eval_entry_fn
-data bootstrap_corpus_eval_entry_module: Symbol = bootstrap_corpus_eval_entry_module
-
 fn bootstrap_evaluator_corpus_harness_entry() -> BootstrapEvaluatorCorpusHarnessEntry {
   BootstrapEvaluatorCorpusHarnessEntry {
     runtime_model: v4_evaluator_runtime_wave1(),
     stage0_binary: v4_stage0_binary,
     source_root: v4_dag_source,
-    entry_fn: bootstrap_corpus_eval_entry_fn,
-    entry_module: bootstrap_corpus_eval_entry_module
+    entry_fn: run_manual_testclaim_corpus_eval,
+    entry_module: v4_test_claim_workflow_testclaim_corpus_runner
   }
 }
 
@@ -737,8 +739,8 @@ fn bootstrap_evaluator_corpus_harness_well_formed(entry: BootstrapEvaluatorCorpu
   (entry.runtime_model == v4_evaluator_runtime_wave1())
     && (entry.stage0_binary == v4_stage0_binary)
     && (entry.source_root == v4_dag_source)
-    && (entry.entry_fn == bootstrap_corpus_eval_entry_fn)
-    && (entry.entry_module == bootstrap_corpus_eval_entry_module)
+    && (entry.entry_fn == run_manual_testclaim_corpus_eval)
+    && (entry.entry_module == v4_test_claim_workflow_testclaim_corpus_runner)
 }
 
 data bootstrap_manual_corpus_harness: BootstrapEvaluatorCorpusHarnessEntry = bootstrap_evaluator_corpus_harness_entry()
