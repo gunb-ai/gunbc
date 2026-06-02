@@ -35,7 +35,7 @@ Deepest unsound boundary:
   passes shape checks until T-30 fires at compile time.
 Systemic fix:
   G.0 registry keys (subject_carrier × target × fact_axis; per-key fact_value only), with
-  `by_key` as a key-only duplicate index and ordered `entries` as the sole fact-value authority for subject×target aggregation,
+  `by_key: Map<PerLanguageFactBundleKey, Node>` as the single keyed fact authority for subject×target aggregation,
   plus SG evidence schema variants
   (SG-1 / SG-1b / SG-2 / SG-5) keyed to target_model bundle edges; G.3 CompilesClaim/EqualsClaim rows per spine stage.
 Non-goals:
@@ -53,7 +53,7 @@ Metric allowed only as secondary:
 
 | Row | Deliverable | Authority |
 |-----|-------------|-----------|
-| G0.1 | `PerLanguageFactBundleKey` (`subject_carrier` + `target` + `ModelCorePrimitiveFactAxis`) + entry `fact_value`; registry `by_key: Map<PerLanguageFactBundleKey, PerLanguageFactBundleKey>` rejects duplicate axis rows without carrying fact values, and `entries: List<…>` is the sole fact-value row set for subject aggregation | `v4.std.grounding` → `primitive_fact_bundle_for_subject` → `model_core` |
+| G0.1 | `PerLanguageFactBundleKey` (`subject_carrier` + `target` + `ModelCorePrimitiveFactAxis`) + entry `fact_value`; registry `by_key: Map<PerLanguageFactBundleKey, Node>` is the single keyed fact authority and rejects duplicate axis rows before insertion | `v4.std.grounding` → `primitive_fact_bundle_for_subject` → `model_core` |
 | G0.2 | `HollowAliasGovernanceBar` (governance; T-30 enforces) | `v4.std.grounding` → `v4.lens.fact_density` |
 | G0.3 | `GroundingEvidenceSchema` (Sg1/Sg1b/Sg2/Sg5 variants carry `source_carrier`) | `v4.std.grounding` → `v4.std.target_model` |
 | G0.4 | `PerTargetGroundingReceipt` (`EmitHostRunReceipt`; target via `host_run.target`) | `v4.std.grounding` → `v4.std.host_run` |
@@ -73,7 +73,7 @@ Metric allowed only as secondary:
 ## §3 Cross-branch consumers
 
 - **Branch C:** `PerTargetGroundingReceipt` for per-target host verification receipts.
-- **Branch G.1:** populate `PerLanguageFactBundleRegistry` via `insert_per_language_fact_bundle_entry` per RCA manager (one `fact_value` per keyed `fact_axis`; key-only `by_key` rejects duplicates and `entries` feeds `primitive_fact_bundle_for_subject` aggregation).
+- **Branch G.1:** populate `PerLanguageFactBundleRegistry` via `insert_per_language_fact_bundle_entry` per RCA manager (one `fact_value` per keyed `fact_axis`; `by_key` is the keyed fact authority and feeds `primitive_fact_bundle_for_subject` aggregation).
 - **Branch G.2:** SG-1/2/5 executable claims use `GroundingEvidenceSchema`.
 - **Branch A.2:** corpus folders `claim_pipeline_*` activate under T-38B when runner rows land.
 

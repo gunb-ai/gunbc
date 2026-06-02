@@ -196,14 +196,13 @@ fn v4_std_grounding_registry_keyed_map_authority() {
     ));
     assert_eq!(
         type_record_field_names(&module, "PerLanguageFactBundleRegistry"),
-        vec!["by_key", "entries"],
-        "registry must retain a duplicate-key index and ordered entries for subject aggregation"
+        vec!["by_key"],
+        "registry must expose one keyed fact authority"
     );
     assert!(
-        GROUNDING_DAG
-            .contains("by_key: Map<PerLanguageFactBundleKey, PerLanguageFactBundleKey>")
-            && GROUNDING_DAG.contains("entries: List<PerLanguageFactBundleEntry>"),
-        "registry stores a key-only duplicate index and one fact-value row set for model_core projection"
+        GROUNDING_DAG.contains("by_key: Map<PerLanguageFactBundleKey, Node>")
+            && !GROUNDING_DAG.contains("entries: List<PerLanguageFactBundleEntry>"),
+        "registry stores one keyed fact-value authority and no raw duplicateable row list"
     );
     assert!(
         GROUNDING_DAG.contains("fn insert_per_language_fact_bundle_entry(")
@@ -221,16 +220,19 @@ fn v4_std_grounding_primitive_fact_bundle_model_core_projection_aggregates_subje
         "registry-to-model_core projection must build one PrimitiveFactBundle per subject x target"
     );
     assert!(
-        GROUNDING_DAG.contains("fold_list(") && GROUNDING_DAG.contains("xs: registry.entries"),
-        "PrimitiveFactBundle.spec_facts must aggregate all matching registry entries"
+        GROUNDING_DAG.contains("fn per_language_fact_bundle_subject_axis_key(")
+            && GROUNDING_DAG.contains("fn per_language_fact_bundle_insert_subject_axis(")
+            && GROUNDING_DAG.contains("map_get(\n    registry.by_key"),
+        "PrimitiveFactBundle.spec_facts must derive from keyed subject x target x axis lookups"
     );
     assert!(
-        GROUNDING_DAG.contains("PerLanguageFactBundleSpecFactsFoldState")
-            && GROUNDING_DAG.contains("per_language_fact_bundle_spec_facts_fold_step"),
-        "aggregation fold must use typed state instead of untyped host-side traversal"
+        GROUNDING_DAG.contains("fact_axis: ModelCoreFactAxisWidth {}")
+            && GROUNDING_DAG.contains("fact_axis: ModelCoreFactAxisEncoding {}")
+            && GROUNDING_DAG.contains("fact_axis: ModelCoreFactAxisSurfaceSpelling {}"),
+        "projection must enumerate typed model_core axes rather than folding raw rows"
     );
     assert!(
-        GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol(axis: entry.key.fact_axis)"),
+        GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol(axis: fact_axis)"),
         "spec_facts projection uses model_core Symbol authority at bundle boundary"
     );
     assert!(
