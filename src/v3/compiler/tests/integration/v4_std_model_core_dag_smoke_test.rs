@@ -140,7 +140,6 @@ fn v4_std_model_core_declares_ratified_q1_carriers() {
     let module = model_core_surface_or_panic();
     for name in [
         "ModelCore",
-        "ModelCorePrimitiveFactAxis",
         "PrimitiveFactBundle",
         "AlgebraInhabitanceDecl",
         "AlgebraLawObligation",
@@ -279,14 +278,6 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
             "declared axis Symbol `{axis}` is the canonical key for PrimitiveFactBundle.spec_facts"
         );
     }
-    assert!(
-        MODEL_CORE_DAG.contains("type ModelCorePrimitiveFactAxis")
-            && MODEL_CORE_DAG.contains("= ModelCoreFactAxisWidth {}")
-            && MODEL_CORE_DAG.contains("| ModelCoreFactAxisEncoding {}")
-            && MODEL_CORE_DAG.contains("| ModelCoreFactAxisSurfaceSpelling {}")
-            && MODEL_CORE_DAG.contains("fn model_core_primitive_fact_axis_symbol(axis: ModelCorePrimitiveFactAxis) -> Symbol"),
-        "ModelCorePrimitiveFactAxis must be the typed canonical carrier for new grounding registries, with a single Symbol projection at the legacy spec_facts boundary"
-    );
 }
 
 #[test]

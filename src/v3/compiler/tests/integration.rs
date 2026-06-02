@@ -145,6 +145,8 @@ mod m1_fn_external_body_reconciliation_test;
 mod m1_lens_structural_resolution_test;
 #[path = "integration/m1_substrate_test.rs"]
 mod m1_substrate_test;
+#[path = "boundary/m2_emit_multi_field_struct_variant_test.rs"]
+mod m2_emit_multi_field_struct_variant_test;
 #[path = "integration/m2_feature_parity_test.rs"]
 mod m2_feature_parity_test;
 #[path = "integration/m2_field_access_binding_test.rs"]

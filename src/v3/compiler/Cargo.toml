@@ -91,10 +91,6 @@ path = "src/bin/self_host_fixed_point.rs"
 # Subcommands wrap `v3_compiler::r1c_e_gates::check_*` so the host `#[test]`
 # harness and the `.dag`-driven gate share one implementation.
 [[bin]]
-name = "boundary_emit_gates"
-path = "src/bin/boundary_emit_gates.rs"
-
-[[bin]]
 name = "r1c_e_emit_gates"
 path = "src/bin/r1c_e_emit_gates.rs"
 

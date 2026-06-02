@@ -155,13 +155,6 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // the tokenizer share. Either path retires `regen_tokenize.rs` and
     // shrinks the parallel shim set.
     let expected: BTreeSet<String> = [
-        // F.14 / T-PB-B: `ExecuteCommand` logical child for
-        // `tests/dag/boundary_emit_gates.template.dag`. Calls
-        // `v3_compiler::boundary_emit_gates::check_*`; exits 0/1 (PR #792 host boundary).
-        // **P5 dissolution:** delete when ROADMAP.md **PB-Runtime-External-Toolchain-TestClaims**
-        // / **T-PB-B** `pb_rust_tests_outside_residual_zero` retires remaining `tests/boundary/*.rs`
-        // host shims and this bin is no longer referenced by any `.dag` `ExecuteCommand` claim.
-        "boundary_emit_gates.rs",
         // R1C-E (T-Emit `.dag` `TestClaim` wrappers): irreducible host-shim
         // for the `ExecuteCommand` logical child that the `.dag` claim
         // invokes. Calls into `v3_compiler::r1c_e_gates::check_*` (single
@@ -199,8 +192,6 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     assert_eq!(
         actual, expected,
         "SG-6 hand-authored bin census changed. The census is \
-         `boundary_emit_gates` (F.14 / T-PB-B class-5 boundary `.dag` `ExecuteCommand` child; \
-         dissolves with PB-Runtime-External-Toolchain-TestClaims / zero-floor boundary migration), \
          `gunbc_ci` (modeled CI host shim), `r1c_e_emit_gates` (R1C-E T-Emit `.dag` wrapper logical child; \
          issue #973), `regen_parse` (reads `src/v3/std/parse_surface.dag` for Surface \
          carriers), `regen_tokenize` (reads `src/v3/compiler/tokenize.dag`), \

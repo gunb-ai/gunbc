@@ -502,20 +502,6 @@ fn affected_set_rerun_nodes(affected_set_value: AffectedSet) -> RerunNodeSet {
 }
 
 
-// Node-precise CI-consumer bridge: a closure `AffectedSetReading` (edit-locus +
-// dependency-closure frontier from `affected_set_reading`) is already the exact set of
-// Nodes whose rebuild/re-test the CI runner must rerun. Its `affected` list IS the rerun
-// frontier — no change-set re-derivation. This is the single authority converting a
-// node-precise reading into the `RerunNodeSet` consumed by `v4.workflow.ci`
-// `ci_select_from_affected_set_reading`. Always `Produced`; fail-closed for the reading
-// path lives upstream in `affected_set_reading_from_git_diff` (Witness Violates).
-fn affected_set_reading_rerun_nodes(reading: AffectedSetReading) -> RerunNodeSet {
-  RerunNodeSetProduced {
-    nodes: reading.affected
-  }
-}
-
-
 fn record_affected_exclusion(
   acc: AffectedSetFoldAcc,
   change: Change,
