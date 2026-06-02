@@ -1668,7 +1668,7 @@ fn countdown(n: Int) -> Int {
 // These tests exercise the TokenPosition dimension (CX-A) and the
 // lambda-iteration descent path (CX-C) added for parser/tree proofs.
 //
-// Note: The bootstrap pipeline skips complexity analysis (compile.dag §817).
+// Default compile pipeline skips complexity (analyze_complexity: false).
 // We call build_complexity_report directly to get real complexity results.
 
 fn compile_dag_with_complexity(
@@ -2091,10 +2091,9 @@ fn complexity_self_analysis_subset() {
         );
         return;
     }
-    // The complexity report is computed inside compile_sources but not printed
-    // (disabled in compile.dag for memory). This test validates the pipeline
-    // compiles cleanly; full complexity dump requires PERF-3 (memory budget).
-    eprintln!("complexity self-analysis requires PERF-3 (memory budget) to run inline");
+    // Complexity analysis is opt-in (analyze_complexity: false by default).
+    // This test validates the default pipeline compiles cleanly.
+    eprintln!("complexity self-analysis requires compile_sources_with_options(analyze_complexity: true)");
 }
 
 #[test]
@@ -3137,7 +3136,7 @@ fn cx_bound_metadata_field_is_not_descent_witness() {
 fn cx_forever_bound_produces_violation() {
     // SameArgumentCall → Forever → CostUnknown → violation (honest "I don't know")
     let source = "module cx_forever\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     let class = result
         .complexity
         .function_classes
@@ -3315,7 +3314,7 @@ fn cx_constant_absorption_in_linear_function() {
     // A function with constant work + a fold over a list should be O(|items|),
     // not O(1 + |items|) or O(1 + 1 + |items| + 1).
     let source = "module cx_absorb\n\nfn sum_items(items: List<Int>) -> Int {\n  let start = 0\n  items |> fold(init: start, f: (acc, x) => acc + x)\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -3335,7 +3334,7 @@ fn cx_pure_constant_function_is_o1() {
     // A function with only constant operations should be O(1).
     let source =
         "module cx_const\n\nfn add_three(a: Int, b: Int, c: Int) -> Int {\n  a + b + c\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -3354,7 +3353,7 @@ fn cx_pure_constant_function_is_o1() {
 fn cx_idempotent_addition_two_folds() {
     // Two folds over the same collection: O(|items| + |items|) = O(|items|)
     let source = "module cx_idem\n\nfn sum_and_count(items: List<Int>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = items |> fold(init: 0, f: (acc, x) => acc + 1)\n  s + c\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -3373,7 +3372,7 @@ fn cx_idempotent_addition_two_folds() {
 fn cx_idempotent_max_in_match() {
     // Match with equal-cost branches: O(max(|items|, |items|)) = O(|items|)
     let source = "module cx_max\n\nfn process(items: List<Int>, flag: Bool) -> Int {\n  if flag {\n    items |> fold(init: 0, f: (acc, x) => acc + x)\n  } else {\n    items |> fold(init: 0, f: (acc, x) => acc + 1)\n  }\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -3392,7 +3391,7 @@ fn cx_idempotent_max_in_match() {
 fn cx_multi_variable_legend() {
     // Function iterating over two different collections: O(n + m) where n = items, m = names
     let source = "module cx_legend\n\nfn process_both(items: List<Int>, names: List<String>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = names |> fold(init: 0, f: (acc, n) => acc + 1)\n  s + c\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -10662,8 +10661,13 @@ fn dump_complexity_report() {
     collect_dag_sources(&ws, &ws.join("src/v2"), &mut all_sources);
 
     eprintln!("Compiling {} .dag files...", all_sources.len());
-    let result =
-        v2_compiler::v2_compiler_compile::compile_sources(Rc::new(all_sources), RenderTarget::Rust);
+    let result = v2_compiler::v2_compiler_compile::compile_sources_with_options(
+        Rc::new(all_sources),
+        RenderTarget::Rust,
+        v2_compiler::v2_compiler_compile::CompilePipelineOptions {
+            analyze_complexity: true,
+        },
+    );
 
     let cx = &result.complexity;
     eprintln!(
