@@ -5,6 +5,11 @@
 //!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full `compile_to_dag` import merge
 //! deferred until cross-module v4 load lands (peer v4 smoke posture).
+//!
+//! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+//! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:57); dissolves when T-38B
+//! `.dag` TestClaim execution replaces this hand-Rust parse harness.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
