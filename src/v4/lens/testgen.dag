@@ -1387,7 +1387,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
         subject: lbe_subject_conj_dag_surface(),
         mock: lbe_io_mock_conj_dag_surface(),
       },
-      provenance: generator_provenance(id: testgen_gen_id_lbe_conj),
+      provenance: generator_provenance(id: generator_id_for_manual_anchor(key: ManualLbeConjDagSurface)),
       profile_metadata: default_generator_profile(),
     },
     Generator {
@@ -1398,7 +1398,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
         subject: lbe_subject_disj_dag_surface(),
         mock: lbe_io_mock_disj_dag_surface(),
       },
-      provenance: generator_provenance(id: testgen_gen_id_lbe_disj),
+      provenance: generator_provenance(id: generator_id_for_manual_anchor(key: ManualLbeDisjDagSurface)),
       profile_metadata: default_generator_profile(),
     },
     Generator {
@@ -1409,7 +1409,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
         subject: lbe_subject_transform_dag_surface(),
         mock: lbe_io_mock_transform_dag_surface(),
       },
-      provenance: generator_provenance(id: testgen_gen_id_lbe_transform),
+      provenance: generator_provenance(id: generator_id_for_manual_anchor(key: ManualLbeTransformDagSurface)),
       profile_metadata: default_generator_profile(),
     },
   ]
@@ -1623,7 +1623,7 @@ fn testgen_algebra_law_generator_from_nat_obligation(
           slot: AlgebraLaw {
             subject: algebra_law_subject_from_nat_obligation(o: obligation),
           },
-          provenance: generator_provenance(id: testgen_gen_id_algebra_law),
+          provenance: generator_provenance(id: generator_id_for_manual_anchor(key: anchor)),
           profile_metadata: default_generator_profile(),
         },
         diagnostics: None,
@@ -1891,7 +1891,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant },
-      provenance: generator_provenance(id: testgen_gen_id_coproduct_compiles),
+      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimCompilesClaimVariant)),
       profile_metadata: default_generator_profile(),
     },
     Generator {
@@ -1901,7 +1901,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant },
-      provenance: generator_provenance(id: testgen_gen_id_coproduct_diagnostic),
+      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimDiagnosticClaimVariant)),
       profile_metadata: default_generator_profile(),
     },
     Generator {
@@ -1911,7 +1911,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_equals()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant },
-      provenance: generator_provenance(id: testgen_gen_id_coproduct_equals),
+      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimEqualsClaimVariant)),
       profile_metadata: default_generator_profile(),
     },
     Generator {
@@ -1921,7 +1921,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant },
-      provenance: generator_provenance(id: testgen_gen_id_coproduct_roundtrip),
+      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimRoundTripClaimVariant)),
       profile_metadata: default_generator_profile(),
     },
   ]
@@ -2155,7 +2155,7 @@ fn bootstrap_claim_generator_for_manual_anchor(
               classification: test_claim_classification(c: claim),
               anchor: test_claim_anchor(c: claim),
               slot: slot,
-              provenance: generator_provenance(id: testgen_gen_id_bootstrap_manual_anchor),
+              provenance: generator_provenance(id: generator_id_for_claim_anchor(anchor: test_claim_anchor(c: claim))),
               profile_metadata: default_generator_profile(),
             },
             diagnostics: diagnostics_merge(outer: d0, inner: d1)

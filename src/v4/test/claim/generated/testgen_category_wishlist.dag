@@ -153,7 +153,11 @@ data t19_generator_wishlist_dag_surface_production: Symbol = t19_generator_wishl
 data t19_generator_wishlist_count_symbol: Symbol = t19_generator_wishlist_count_symbol
 
 
-// F.2-P1: stable per-generator identities for the wishlist generators (GeneratorId = Symbol).
+// F.2-P1: explicit per-row GeneratorIds for the wishlist ledger. These rows are NOT the
+// scheduled generators; several carry a placeholder ManualAnchorAbsent anchor, so identity
+// cannot be derived from the anchor (that would collapse distinct ledger rows). Each row
+// therefore mints its own unique id. Dissolves with the ledger as rows graduate to scheduled
+// generators (which derive their id from a real ClaimAnchorKey via generator_id_for_claim_anchor).
 data wishlist_gen_id_type_construction: Symbol = wishlist_gen_id_type_construction
 data wishlist_gen_id_algebra_law: Symbol = wishlist_gen_id_algebra_law
 data wishlist_gen_id_diagnostic_exhaustiveness: Symbol = wishlist_gen_id_diagnostic_exhaustiveness

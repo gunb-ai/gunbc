@@ -179,6 +179,20 @@ fn v4_lens_testgen_generator_carries_provenance_and_profile_fields() {
             && TESTGEN_DAG.contains("fn generator_carries_provenance"),
         "testgen must expose the provenance-integrity witness fns (close-criterion witness)"
     );
+    // Identity must be DERIVED from the row's canonical ClaimAnchorKey (single authority,
+    // unique per row) — not a coarse static category symbol shared across distinct anchors.
+    assert!(
+        TESTGEN_DAG
+            .contains("fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId")
+            && TESTGEN_DAG
+                .contains("fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId"),
+        "testgen must derive GeneratorId from the canonical anchor (no per-row collision)"
+    );
+    assert!(
+        !TESTGEN_DAG.contains("testgen_gen_id_bootstrap_manual_anchor")
+            && !TESTGEN_DAG.contains("testgen_gen_id_algebra_law"),
+        "the shared static GeneratorIds (one id across distinct-anchor rows) must be gone — identity is anchor-derived"
+    );
     // Provenance must not re-declare artifact law in the testgen lens.
     assert!(
         !TESTGEN_DAG.contains("type GeneratorProvenance")
