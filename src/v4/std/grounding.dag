@@ -81,18 +81,16 @@ fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
 }
 
 
-// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>);
-// dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate Witness at
-// v4.std.collection:54); site: insert_per_language_fact_bundle_entry duplicate-key gate.
+// P3: consume the canonical Map.lookup Witness boundary; duplicate keys reject, absent keys insert.
 fn insert_per_language_fact_bundle_entry(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
   match registry.by_key.lookup(key) {
-    Some { value: _ } =>
+    Holds { value: _ } =>
       outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    None =>
+    Violates { diagnostic: _ } =>
       outcome_accepted(
         value: PerLanguageFactBundleRegistry {
           by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
