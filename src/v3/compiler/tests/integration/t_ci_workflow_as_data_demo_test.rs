@@ -1321,7 +1321,7 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
             (
                 "l1-ratchet",
                 "ShellCommand",
-                "scripts/l1-ratchet.sh --check".to_string()
+                "gunbc run --source-root dsl --function run_l1_ratchet".to_string()
             ),
             ("lint", "LintCommand", String::new()),
             ("tests", "TestCommand", String::new()),
@@ -1595,8 +1595,12 @@ fn ci_uses_affected_set_selection_binary_shim_unknown_receipt_full_roster() {
     assert_eq!(plan, full);
 }
 
-const WORKFLOW_PATH_REGEX_FORBIDDEN_SUBSTRINGS: &str =
-    include_str!("../../../../../scripts/workflow-path-regex-forbidden-substrings.txt");
+// Inlined from deleted `scripts/workflow-path-regex-forbidden-substrings.txt` (operator 2026-06-01).
+const WORKFLOW_PATH_REGEX_FORBIDDEN_SUBSTRINGS: &str = r#"
+git diff --name-only
+needs.changes.outputs
+grep -vE '^(docs/.*|[^/]+\.md)$'
+"#;
 
 fn workflow_path_regex_forbidden_substrings() -> impl Iterator<Item = &'static str> {
     WORKFLOW_PATH_REGEX_FORBIDDEN_SUBSTRINGS
@@ -1653,7 +1657,7 @@ fn workflow_no_path_regex_policy_ci_yml() {
         for forbidden in workflow_path_regex_forbidden_substrings() {
             assert!(
                 !raw.contains(forbidden),
-                "{} must not contain Layer-2 selection fingerprint `{forbidden}` (gate ci_uses_affected_set_selection; single authority: scripts/workflow-path-regex-forbidden-substrings.txt)",
+                "{} must not contain Layer-2 selection fingerprint `{forbidden}` (gate ci_uses_affected_set_selection; inlined forbidden-substrings roster)",
                 path.display()
             );
         }

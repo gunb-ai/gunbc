@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) dispatch for P5(b) net +1 on `EXPECTED_HAND_AUTHORED_TEST` (`v4_test_fixture_task_manager_demo_smoke_test.rs`); concrete dispatch evidence: `docs/briefs/r4-program-dispatch-plan.md` T-16 full-stack omni-emission demo row. Primary checkable lane cite is `_internal/ROADMAP_OPS.md` Nine lanes row T-PB-B / `pb_rust_tests_outside_residual_zero` with same-PR `_internal/INVARIANTS_OPS.md` SG-0 hand-authored integration test receipts table row for that path. T-16-A+ context: `src/v4/test/fixture/task_manager_demo.dag` parse ratchet + Shape-B `task_to_sql_create_table`; retire when exercised by `.dag` `TestClaim` rows or a generated harness without this host Rust parse ratchet.

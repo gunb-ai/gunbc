@@ -1,8 +1,0 @@
-SG-0 hand-path delta: +1
-SG-0 pairing: (c) follow-up dispatch via gunbc#2827
-
-P5 / Dispatch-Discipline Mechanisms **(b)** — **exactly one** checkable receipt for this PR’s `src/v3/` hand-Rust (per `INVARIANTS.md` §P5 Mechanism **(b)**):
-
-**Receipt — explicit deferral (single surface):** the new `EXPECTED_HAND_AUTHORED_TEST` line in `src/v3/compiler/tests/integration/sg0_census_test.rs` plus the matching `INVARIANTS.md` SG-0 integration-test table row for `src/v3/compiler/tests/integration/t_gate_58_apply_lens_self_application_test.rs`, naming **ROADMAP.md** `### Nine lanes` → **T-PB-B** / `pb_rust_tests_outside_residual_zero` and **docs/r3-program-plan.md** §1.8 gate **#58** `apply_lens_self_application_demonstrated` (lane **T-Lens-Self-Application**). **Dissolution:** port the bootstrap timing enforcement receipt to a `.dag` `TestClaim` / generated harness when PB-Runtime/TestClaim coverage subsumes the same `generated_full_bootstrap_dag()` facts without this Rust harness.
-
-**Co-listed paths (same PR, same P5 surface — not additional receipts):** per the INVARIANTS table row’s “Co-receipt” clause on that integration-test path, this PR also expands `src/v3/compiler/src/enforced_lens_application.rs` (timing `EnforcedApplication` host consumer; dissolution: fold into the generated lens-fold path with gate #92 LAS parity) and `src/v3/compiler/build.rs` (default-rank std `STAGED_FILES` order from `import v3.std.*` lines + Kahn topo tie-break; dissolution: fuller import-graph topo in the producer if non-`v3.std` edges need ordering). They are bookkeeping for the **same** gate #58 / T-PB-B deferral above, not three independent P5(b) receipts.

@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_lens_registry_dag_smoke_test.rs` (INVARIANTS §P5(b) P2-staging `compile_to_dag` receipt for `src/v4/lens/registry.dag`). Follow-up dispatch for a **generated** registry consumer remains tracked in `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3 + the smoke-test dissolution row in `INVARIANTS.md`.
