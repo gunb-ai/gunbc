@@ -1704,16 +1704,18 @@ fn variant_defining_module_filename_for_import(variant_name: String, import_modu
     Some { value: _parent } => module_to_filename(name: import_module)
     None =>
       match explicit_import_source_module_for_name(name: variant_name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
-        Some { value: hop } if hop != import_module =>
-          variant_defining_module_filename_for_import(
-            variant_name: variant_name,
-            import_module: hop,
-            typed_modules: typed_modules,
-            export_sets: export_sets,
-            source_indices: source_indices,
-            fallback: fallback
-          )
-        _ => fallback
+        Some { value: hop } =>
+          if hop != import_module {
+            variant_defining_module_filename_for_import(
+              variant_name: variant_name,
+              import_module: hop,
+              typed_modules: typed_modules,
+              export_sets: export_sets,
+              source_indices: source_indices,
+              fallback: fallback
+            )
+          } else { fallback }
+        None => fallback
       }
   }
 }
