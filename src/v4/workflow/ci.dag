@@ -4185,7 +4185,7 @@ fn ci_testclaim_selection_digest(row: CiTestClaimSelection) -> Hash {
   combine_hash(
     a: ci_claim_anchor_digest(anchor: row.anchor),
     b: combine_hash(
-      a: ci_string_digest(value: row.label),
+      a: ci_string_digest(s: row.label),
       b: combine_hash(
         a: ci_testclaim_variant_digest(variant: row.coproduct_variant),
         b: combine_hash(
@@ -4303,7 +4303,7 @@ fn ci_selection_receipt_lookup(
       match acc {
         CiSelectionReceiptFound { receipt: _ } => acc
         CiSelectionReceiptMissing { key: missing_key } =>
-          if row.key == missing_key {
+          if ci_selection_receipt_storage_key(receipt: row.receipt) == missing_key {
             CiSelectionReceiptFound { receipt: row.receipt }
           } else {
             acc

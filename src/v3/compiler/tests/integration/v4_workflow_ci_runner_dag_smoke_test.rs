@@ -2464,7 +2464,7 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         "ci_affected_dependency_list_digest(xs: row.affected_intersection)",
         "ci_symbol_digest(sym: row.reason)",
         "ci_claim_anchor_digest(anchor: row.anchor)",
-        "ci_string_digest(value: row.label)",
+        "ci_string_digest(s: row.label)",
         "ci_testclaim_variant_digest(variant: row.coproduct_variant)",
         "ci_bool_digest(value: row.selected)",
         "ci_test_classification_digest(classification: row.generator.classification)",
@@ -2476,7 +2476,7 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         "data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup",
         "ci_selection_receipt_lookup(",
         "init: CiSelectionReceiptMissing { key: key }",
-        "if row.key == missing_key",
+        "if ci_selection_receipt_storage_key(receipt: row.receipt) == missing_key",
         "CiSelectionReceiptFound { receipt: row.receipt }",
         "ci_selection_receipt_storage_key(receipt: receipt) == ci_selection_receipt_shadow_fixture_storage_key",
         "CiSelectionReceiptMissing { key: _ } => false",
@@ -2494,6 +2494,10 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         !CI_DAG.contains("fallback: ci_wave3_shadow_fixture_fail_closed_receipt")
             && !CI_DAG.contains("data ci_selection_receipt_shadow_fixture_storage_key: Symbol"),
         "{CI_DAG_PATH}: F.11c lookup misses must not expose fallback receipts or caller-authored Symbol keys"
+    );
+    assert!(
+        !CI_DAG.contains("if row.key == missing_key"),
+        "{CI_DAG_PATH}: F.11c lookup must recompute receipt keys instead of trusting store row keys"
     );
     assert!(
         !CI_DAG.contains("let decisions_match = length(xs: receipt.decisions)")
