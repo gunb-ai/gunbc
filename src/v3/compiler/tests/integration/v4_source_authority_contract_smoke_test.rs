@@ -1,9 +1,11 @@
 //! **Layer:** integration
 //!
-//! Branch H.7.2 source-authority shape contract: the compiler surface must model
-//! canonical `.dag` source round trips as source text plus source AST/IR equality,
-//! without treating `dag-artifact.json` as source authority. This smoke is intentionally
-//! parser-level until substrate equality and canonical `.dag` `TargetModel` execution land.
+//! Branch H.7.2 source-authority shape contract plus B-min Bmin.4-Bmin.5
+//! canonical `.dag` source parse/print law: the compiler surface must model
+//! canonical `.dag` source round trips as source text plus normalized source AST/IR
+//! equality, without treating `dag-artifact.json` or `--target dag` JSON IR as source
+//! authority. This smoke is intentionally parser-level until substrate equality and
+//! canonical `.dag` `TargetModel` execution land.
 //!
 //! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
 //! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
@@ -113,6 +115,36 @@ fn v4_source_authority_contract_uses_source_and_serializer_authorities() {
         "{SOURCE_AUTHORITY_PATH}: law must carry proven semantic equality payload"
     );
     assert!(
+        SOURCE_AUTHORITY_DAG.contains("canonical_source_law: CanonicalDagSourceEmissionLaw"),
+        "{SOURCE_AUTHORITY_PATH}: round-trip law must carry the B-min canonical source emission law"
+    );
+    assert!(
+        surface_declares_type(&module, "NormalizedDagSourceAst"),
+        "{SOURCE_AUTHORITY_PATH}: B-min law must name normalized .dag source AST explicitly"
+    );
+    assert!(
+        SOURCE_AUTHORITY_DAG.contains("type NormalizedDagSourceAst {\n  tree: NormalizedTree")
+            && SOURCE_AUTHORITY_DAG.contains("o: normalize(parse_tree: ast.tree)"),
+        "{SOURCE_AUTHORITY_PATH}: normalized source AST must consume the compiler normalize stage"
+    );
+    assert!(
+        surface_declares_type(&module, "NormalizedDagSourceParsePrintLaw"),
+        "{SOURCE_AUTHORITY_PATH}: B-min law must model parse/print over normalized source AST"
+    );
+    assert!(
+        surface_declares_type(&module, "DeterministicDagSourceSerializerLaw"),
+        "{SOURCE_AUTHORITY_PATH}: Bmin.5 must model deterministic canonical source serialization"
+    );
+    assert!(
+        SOURCE_AUTHORITY_DAG.contains(
+            "type CanonicalDagSourceEmissionLaw {\n  canonical_source: DagSource"
+        ) && SOURCE_AUTHORITY_DAG.contains("type DeterministicDagSourceSerializerLaw {}")
+            && SOURCE_AUTHORITY_DAG.contains(
+                "type NormalizedDagSourceParsePrintLaw {\n  normalized_source_law: NormalizedSourceAstEqual"
+            ),
+        "{SOURCE_AUTHORITY_PATH}: canonical source must have one owner; subordinate law carriers must not duplicate it"
+    );
+    assert!(
         !SOURCE_AUTHORITY_DAG.contains("type SourceAuthorityRoundTripReceipt"),
         "{SOURCE_AUTHORITY_PATH}: receipt carrier must not duplicate forgeable law fields"
     );
@@ -130,6 +162,10 @@ fn v4_source_authority_contract_uses_source_and_serializer_authorities() {
         "{SOURCE_AUTHORITY_PATH}: round-trip entrypoint"
     );
     assert!(
+        surface_declares_fn(&module, "canonical_dag_source_parse_print_law"),
+        "{SOURCE_AUTHORITY_PATH}: Bmin.4-Bmin.5 entrypoint"
+    );
+    assert!(
         import_includes_name(
             &module,
             &["v4", "compiler", "translate"],
@@ -145,6 +181,10 @@ fn v4_source_authority_contract_uses_source_and_serializer_authorities() {
         !SOURCE_AUTHORITY_DAG.contains("dag-artifact.json"),
         "{SOURCE_AUTHORITY_PATH}: JSON debug artifact must not be source authority"
     );
+    assert!(
+        !SOURCE_AUTHORITY_DAG.contains("--target dag"),
+        "{SOURCE_AUTHORITY_PATH}: target dag JSON IR equality must not be source authority"
+    );
 }
 
 #[test]
@@ -159,12 +199,32 @@ fn v4_source_authority_claim_imports_contract_entrypoint() {
         "{CLAIM_PATH}: claim must import source_authority_round_trip"
     );
     assert!(
+        import_includes_name(
+            &claim,
+            &["v4", "compiler", "source_authority"],
+            "canonical_dag_source_parse_print_law"
+        ),
+        "{CLAIM_PATH}: B-min claim must import canonical_dag_source_parse_print_law"
+    );
+    assert!(
         CLAIM_DAG.contains("source_authority_round_trip_boundary_holds()"),
         "{CLAIM_PATH}: claim input must structurally depend on the source-authority boundary"
+    );
+    assert!(
+        CLAIM_DAG.contains("canonical_dag_source_parse_print_boundary_holds()"),
+        "{CLAIM_PATH}: B-min claim input must structurally depend on the parse/print law boundary"
     );
     assert!(
         CLAIM_DAG.contains("Accepted { value: witness, diagnostics: _ }")
             && CLAIM_DAG.contains("Holds { value: _law }"),
         "{CLAIM_PATH}: claim must project the round-trip witness to pass/fail claim input"
+    );
+    assert!(
+        CLAIM_DAG.contains("claim_bmin_canonical_dag_source_parse_print_law"),
+        "{CLAIM_PATH}: must declare the Bmin.4-Bmin.5 canonical source law claim"
+    );
+    assert!(
+        !CLAIM_DAG.contains("dag-artifact.json") && !CLAIM_DAG.contains("--target dag"),
+        "{CLAIM_PATH}: claim must not cite JSON IR source-fidelity evidence"
     );
 }
