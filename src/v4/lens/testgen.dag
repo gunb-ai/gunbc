@@ -1967,29 +1967,41 @@ fn scheduled_generators_carry_provenance() -> Bool {
 }
 
 
-// F.2-P2 / F.2.6 — aggregate every scheduled producer (Outcome schedulers contribute on
-// Accepted only; Rejected does not fail-closed-expand the roster). v4.std.diagnostic has
-// bind_outcome/outcome_accepted but no canonical Outcome→default fold yet — explicit match
-// (same shape as outcome_generators_carry_provenance below).
-fn outcome_scheduled_generators(o: Outcome<List<Generator<TestgenConcept>>>) -> List<Generator<TestgenConcept>> {
-  match o {
-    Accepted { value: gens, diagnostics: _ } => gens
-    Rejected { diagnostics: _ } => Empty
+// F.2-P2 / F.2.6 — static schedulers (always List) plus Outcome schedulers combined
+// fail-closed: any Rejected scheduler rejects the whole roster (P3 — no silent truncation).
+fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>> {
+  list_append(
+    left: testgen_scheduled_language_behavior_generators(),
+    right: testgen_scheduled_coproduct_exhaustiveness_generators()
+  )
+}
+
+
+fn testgen_scheduled_generators_outcome() -> Outcome<List<Generator<TestgenConcept>>> {
+  let base = testgen_scheduled_generators_static_base()
+  match testgen_scheduled_refinement_preservation_generators() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: refinement_gens, diagnostics: d_rp } =>
+      match testgen_scheduled_algebra_law_generators() {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: algebra_gens, diagnostics: d_al } =>
+          Accepted {
+            value: list_append(
+              left: base,
+              right: list_append(left: refinement_gens, right: algebra_gens)
+            ),
+            diagnostics: diagnostics_merge(outer: d_rp, inner: d_al)
+          }
+      }
   }
 }
 
 
-fn testgen_scheduled_generators() -> List<Generator<TestgenConcept>> {
-  list_append(
-    left: list_append(
-      left: testgen_scheduled_language_behavior_generators(),
-      right: testgen_scheduled_coproduct_exhaustiveness_generators()
-    ),
-    right: list_append(
-      left: outcome_scheduled_generators(o: testgen_scheduled_refinement_preservation_generators()),
-      right: outcome_scheduled_generators(o: testgen_scheduled_algebra_law_generators())
-    )
-  )
+fn testgen_scheduled_generators_roster_holds() -> Bool {
+  match testgen_scheduled_generators_outcome() {
+    Accepted { value: gens, diagnostics: _ } => length(xs: gens) > 0
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 
@@ -2000,11 +2012,18 @@ type TestgenRunReceipt {
 }
 
 
-fn testgen_run_receipt(profile_ref: Symbol) -> TestgenRunReceipt {
-  TestgenRunReceipt {
-    profile_ref: profile_ref,
-    generators: testgen_scheduled_generators()
-  }
+fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt> {
+  bind_outcome(
+    o: testgen_scheduled_generators_outcome(),
+    f: fn(gens) {
+      outcome_accepted(
+        value: TestgenRunReceipt {
+          profile_ref: profile_ref,
+          generators: gens
+        }
+      )
+    }
+  )
 }
 
 
