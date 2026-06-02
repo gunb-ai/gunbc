@@ -20,7 +20,16 @@ import v4.lens.registry {
   UnusedParameters,
   lens_registry_ids_resolve
 }
-import v4.lens.testgen { Generator, TestgenConcept }
+import v4.lens.testgen {
+  Generator,
+  TestgenConcept,
+  TestgenRunReceipt,
+  generator_id_eq,
+  generator_matches_profile,
+  testgen_default_profile_ref,
+  testgen_run_receipt,
+  testgen_scheduled_generators
+}
 import v4.lens.affected_set {
   RerunNodeSet,
   RerunNodeSetFailClosed,
@@ -106,6 +115,7 @@ import v4.std.algebra {
 }
 import v4.std.verification {
   TestClaim,
+  test_claim_anchor,
   test_claim_ci_selection_fail_closed,
   test_claim_evaluation_touches_rerun_frontier
 }
@@ -513,6 +523,13 @@ type TestgenSlotSelection {
   emits_claim_anchor: ClaimAnchorKey
   selected: Bool
   reason: CiClaimSelectionReason
+}
+
+// F.2.6 — shadow CI selection partition (profile-gated; NOT fail-closed on affected-set).
+type SelectedTestgenReceipt {
+  profile_ref: Symbol
+  affected: AffectedSet
+  slots: List<TestgenSlotSelection>
 }
 
 // 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — amend W1.5 `CiSelectionReceipt` — dissolve-on-arrival: receipt partition drives GHA scheduling + TestClaimRun verdict surface (Wave 4); forbidden: parallel shadow receipt genus.
@@ -3639,6 +3656,119 @@ fn ci_wave3_shadow_testclaim_selection_rows(affected: AffectedSet) -> List<CiTes
 }
 
 
+// F.2-P2 / F.2.6 — testgen shadow selection (profile-gated; NOT fail-closed). On
+// `AffectedSetFailClosed` the claim partition is a superset but testgen slots stay unselected.
+fn ci_wave3_shadow_testgen_slots_selected(
+  affected: AffectedSet,
+  profile_ref: Symbol
+) -> List<Generator<TestgenConcept>> {
+  if ci_affected_set_is_fail_closed(affected: affected) {
+    Empty
+  } else {
+    let selected_claims = ci_wave3_shadow_testclaims_selected(affected: affected)
+    filter(
+      xs: testgen_scheduled_generators(),
+      predicate: fn(g) {
+        generator_matches_profile(g: g, profile_ref: profile_ref)
+          && count_where(
+            xs: selected_claims,
+            predicate: fn(claim) {
+              test_claim_anchor(c: claim) == g.anchor
+            }
+          ) != 0
+      }
+    )
+  }
+}
+
+
+fn ci_wave3_shadow_testgen_selection_reason(
+  g: Generator<TestgenConcept>,
+  affected: AffectedSet,
+  profile_ref: Symbol,
+  selected: Bool
+) -> CiClaimSelectionReason {
+  if !generator_matches_profile(g: g, profile_ref: profile_ref) {
+    ShadowObserveOnly
+  } else if ci_affected_set_is_fail_closed(affected: affected) {
+    ShadowObserveOnly
+  } else if selected {
+    TestgenSlotMapped
+  } else {
+    ShadowObserveOnly
+  }
+}
+
+
+fn ci_wave3_shadow_testgen_selection_row(
+  g: Generator<TestgenConcept>,
+  affected: AffectedSet,
+  profile_ref: Symbol,
+  selected_generators: List<Generator<TestgenConcept>>
+) -> TestgenSlotSelection {
+  let selected = count_where(
+    xs: selected_generators,
+    predicate: fn(candidate) {
+      generator_id_eq(left: candidate, right: g)
+    }
+  ) != 0
+  TestgenSlotSelection {
+    generator: g,
+    emits_claim_anchor: g.anchor,
+    selected: selected,
+    reason: ci_wave3_shadow_testgen_selection_reason(
+      g: g,
+      affected: affected,
+      profile_ref: profile_ref,
+      selected: selected
+    )
+  }
+}
+
+
+fn ci_wave3_shadow_testgen_selection_rows(
+  affected: AffectedSet,
+  profile_ref: Symbol
+) -> List<TestgenSlotSelection> {
+  let selected_generators = ci_wave3_shadow_testgen_slots_selected(
+    affected: affected,
+    profile_ref: profile_ref
+  )
+  fold_list(
+    xs: filter(
+      xs: testgen_scheduled_generators(),
+      predicate: fn(g) {
+        generator_matches_profile(g: g, profile_ref: profile_ref)
+      }
+    ),
+    empty: Empty,
+    cons: fn(acc, g) {
+      list_snoc_item(
+        xs: acc,
+        item: ci_wave3_shadow_testgen_selection_row(
+          g: g,
+          affected: affected,
+          profile_ref: profile_ref,
+          selected_generators: selected_generators
+        )
+      )
+    }
+  )
+}
+
+
+fn ci_testgen_selected_receipt(affected: AffectedSet, profile_ref: Symbol) -> SelectedTestgenReceipt {
+  SelectedTestgenReceipt {
+    profile_ref: profile_ref,
+    affected: affected,
+    slots: ci_wave3_shadow_testgen_selection_rows(
+      affected: affected,
+      profile_ref: profile_ref
+    )
+  }
+}
+
+
 // W1.5 step-only shadow — `git_diff` is host transport for ChangeSet paths until T-21 wires RepoPath edits.
 // Phase 1: provenance is always `FixtureReceipt` (empty claim/testgen rows). `LivePrGitDiff` is forbidden here;
 // live PR receipts use `ci_selection_receipt_shadow_from_git_diff` (adhoc-331899f9-19a) with populated partitions.
@@ -4025,9 +4155,36 @@ data ci_wave3_shadow_fixture_fail_closed_receipt: CiSelectionReceipt = ci_select
   testclaim_decisions: ci_wave3_shadow_testclaim_selection_rows(
     affected: ci_wave3_shadow_fail_closed_affected
   ),
-  testgen_slots: Empty,
+  testgen_slots: ci_wave3_shadow_testgen_selection_rows(
+    affected: ci_wave3_shadow_fail_closed_affected,
+    profile_ref: testgen_default_profile_ref
+  ),
   component_affected_comparison: ci_component_affected_fail_closed()
 )
+
+// F.2.6 — T-38 shadow lane: full scheduled roster + profile-gated selection receipt.
+data ci_wave3_shadow_testgen_run_receipt: TestgenRunReceipt = testgen_run_receipt(
+  profile_ref: testgen_default_profile_ref
+)
+
+data ci_wave3_shadow_selected_testgen_receipt: SelectedTestgenReceipt = ci_testgen_selected_receipt(
+  affected: ci_wave3_shadow_fail_closed_affected,
+  profile_ref: testgen_default_profile_ref
+)
+
+fn ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() -> Bool {
+  for_all(
+    xs: ci_wave3_shadow_fixture_fail_closed_receipt.testgen_slots,
+    predicate: fn(slot) {
+      !slot.selected
+    }
+  )
+}
+
+fn ci_wave3_shadow_fixture_testgen_slots_populated_holds() -> Bool {
+  length(xs: testgen_scheduled_generators()) > 0
+    && length(xs: ci_wave3_shadow_fixture_fail_closed_receipt.testgen_slots) > 0
+}
 
 fn ci_wave3_shadow_fixture_fail_closed_superset_holds() -> Bool {
   let selected = ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected)

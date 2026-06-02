@@ -6,7 +6,7 @@ module v4.lens.testgen
 
 
 import v4.std.collection { List }
-import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right, non_empty, list_snoc_item }
+import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right, list_append, non_empty, list_snoc_item }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -1964,6 +1964,55 @@ fn scheduled_generators_carry_provenance() -> Bool {
     && all_generators_carry_provenance(gens: testgen_scheduled_coproduct_exhaustiveness_generators())
     && outcome_generators_carry_provenance(o: testgen_scheduled_refinement_preservation_generators())
     && outcome_generators_carry_provenance(o: testgen_scheduled_algebra_law_generators())
+}
+
+
+// F.2-P2 / F.2.6 — aggregate every scheduled producer (Outcome schedulers contribute on
+// Accepted only; Rejected does not fail-closed-expand the roster).
+fn outcome_scheduled_generators(o: Outcome<List<Generator<TestgenConcept>>>) -> List<Generator<TestgenConcept>> {
+  match o {
+    Accepted { value: gens, diagnostics: _ } => gens
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+
+fn testgen_scheduled_generators() -> List<Generator<TestgenConcept>> {
+  list_append(
+    left: list_append(
+      left: testgen_scheduled_language_behavior_generators(),
+      right: testgen_scheduled_coproduct_exhaustiveness_generators()
+    ),
+    right: list_append(
+      left: outcome_scheduled_generators(o: testgen_scheduled_refinement_preservation_generators()),
+      right: outcome_scheduled_generators(o: testgen_scheduled_algebra_law_generators())
+    )
+  )
+}
+
+
+// F.2.6 — full scheduled-generator roster for T-38 / shadow CI (profile authority).
+type TestgenRunReceipt {
+  profile_ref: Symbol
+  generators: List<Generator<TestgenConcept>>
+}
+
+
+fn testgen_run_receipt(profile_ref: Symbol) -> TestgenRunReceipt {
+  TestgenRunReceipt {
+    profile_ref: profile_ref,
+    generators: testgen_scheduled_generators()
+  }
+}
+
+
+fn generator_matches_profile(g: Generator<TestgenConcept>, profile_ref: Symbol) -> Bool {
+  g.profile_metadata.profile_ref == profile_ref
+}
+
+
+fn generator_id_eq(left: Generator<TestgenConcept>, right: Generator<TestgenConcept>) -> Bool {
+  left.provenance.generator_id == right.provenance.generator_id
 }
 
 
