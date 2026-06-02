@@ -1066,8 +1066,7 @@ fn ci_lens_ownership_family_eval_claim_ids_from_roster(
   map(roster, fn(subject) { subject.claim_id })
 }
 
-data ci_lens_ownership_family_eval_claim_ids: List<Symbol> =
-  ci_lens_ownership_family_eval_claim_ids_from_roster(roster: lens_ownership_subject_roster)
+data ci_lens_ownership_family_eval_claim_ids: List<Symbol> = ci_lens_ownership_family_eval_claim_ids_from_roster(roster: lens_ownership_subject_roster)
 
 data ci_upsert_lens_ownership_family_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/lens_ownership/resource_dependency.dag"),
