@@ -1488,6 +1488,37 @@ fn imported_name_is_non_emittable_type(name: String, import_module: String, type
 }
 
 // Walk explicit re-export chains (resolve get_exported_names surfaces) to the defining module.
+fn name_in_transitive_export_surface(name: String, module_name: String, visited: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if visited |> any(v => v == module_name) {
+    false
+  } else {
+    let in_local = match map_get(export_sets, module_name) {
+      Some { value: exported } => map_get(exported, name) == Some { value: true }
+      None => false
+    }
+    if in_local {
+      true
+    } else {
+      match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices) {
+        None => false
+        Some { value: tm } =>
+          module_imports(n: tm.module)
+            |> filter(imp => import_is_all(n: imp))
+            |> any(imp =>
+              name_in_transitive_export_surface(
+                name: name,
+                module_name: authored_name_at(source_indices: source_indices, node: imp),
+                visited: concat(visited, [module_name]),
+                export_sets: export_sets,
+                typed_modules: typed_modules,
+                source_indices: source_indices
+              )
+            )
+      }
+    }
+  }
+}
+
 fn reexport_source_module_name(name: String, import_module: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> String? {
   reexport_source_module_name_with_visited(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices)
 }
