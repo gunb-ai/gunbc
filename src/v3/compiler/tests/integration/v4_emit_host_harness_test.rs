@@ -30,6 +30,11 @@
 //! **Go L1 (+0 paths, release-minimum):** `go_l1_nat_semiring_rung2` compiler-slice substrate
 //! claim parse surface + `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` (structured
 //! JSON receipt; chained from rung gate after R2-go-compile). SG-0 + INVARIANTS §P5(b) in PR body.
+//! **PR #4285 Go L1 strict setup (+0 SG-0 paths):** same-path assertion-list expansion pins
+//! `V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT=1` fail-closed setup behavior when `go` /
+//! `gofmt` are absent. Explicit P5 deferral remains ROADMAP T-PB-B /
+//! `pb_rust_tests_outside_residual_zero`; retire this host-process setup probe when `.dag`
+//! `TestClaim` execution or a generated harness owns strict child-gate toolchain setup receipts.
 //! **PR #4222 L1 fixture coverage (+0 SG-0 paths):** same-path assertion-list expansion pins
 //! `rung_l1_python_runtime.dag` coverage + six per-law Python runtime claim rows. Explicit P5
 //! deferral remains T-PB-B / T-22: retire this host parse-surface probe when `.dag` TestClaim
