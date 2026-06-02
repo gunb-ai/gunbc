@@ -1814,6 +1814,7 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "ci_atom(sym: a.module_path)",
         "ci_atom(sym: a.declaration_name)",
         "feature:t38-testclaim-corpus-roster-claim-ref-frontier",
+        "claim_lens_effect_depends_on_runtime_verdict",
         "generated roster/item-registry reflection derives these TestClaimRef inputs directly from",
         "Forbidden: adding/removing manual corpus rows without the matching claim id here.",
         "ci_upsert_file_set_input(segment: \"src/v4/test/claim/workflow/manual_corpus_eval.dag\")",
