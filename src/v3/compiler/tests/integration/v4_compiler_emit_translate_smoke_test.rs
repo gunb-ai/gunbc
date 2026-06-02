@@ -22,6 +22,21 @@
 //! LanguageModel / lex/grammar surface on `python.dag`. **PR #3840 (+0 census paths):**
 //! adds T-11 grammar-inverse compile-inferred TestClaim parse/import receipts for
 //! python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`).
+//! **PR #4297 (Branch C.1–C.5).** P5 / V3-HAND-RUST-GATE receipt (INVARIANTS §P5 Mechanism (b);
+//! `_internal/INVARIANTS_OPS.md`): **same-path SG-0 deferral under ROADMAP row T-PB-B /
+//! `pb_rust_tests_outside_residual_zero`** (ROADMAP.md:43,63 — "keeping same-path SG-0 expansions
+//! at +0 new paths until the matching claim runner executes those facts directly"). This edit is
+//! **assertion-only on an already-census-listed harness**: **+0 new census paths** (the
+//! `EXPECTED_HAND_AUTHORED_TEST` row for this file is unchanged), **no new or deleted hand-Rust
+//! test file**, and net Rust-test line count flat-to-down. The assertions were *retargeted*, not
+//! added: `v4_dag_language_model_declares_surface_emit_rows` now requires `dag.dag` to import the
+//! shared carrier + `concrete_syntax_token_to_node` (no longer spelling the wire-form
+//! `concrete_syntax_token_kind_*` Symbols inline), and `assert_imports_shared_token_kinds` →
+//! `assert_imports_shared_token_serializer` now requires the shared-serializer import
+//! (rust/java/typescript/swift/wasm). Both track the T-11 single-author serialization morphism.
+//! Dissolution trigger (= this file's existing trigger, unchanged): retires under T-PB-B when the
+//! `.dag` `TestClaim` / generated-runner replacement executes these facts directly (see the
+//! **Dissolution** note below).
 //! See INVARIANTS.md row `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt
 //! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
 //!

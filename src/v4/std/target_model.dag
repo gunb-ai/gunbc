@@ -92,6 +92,12 @@ data serialize_source_field_source_grammar: Symbol = serialize_source_field_sour
 // T-11 shared concrete-syntax-token carrier (single authority per INVARIANTS P2).
 // FixedToken: a terminal whose spelling is the token class' literal lexeme.
 // BoundToken: a terminal whose spelling is resolved from a binding (e.g. an identifier site).
+// 🟢 coproduct dissolution — terminal sum, no further dissolution. FixedToken and BoundToken are
+// genuine one-at-a-time alternatives (a concrete-syntax terminal is either a fixed lexeme or a
+// binding-resolved terminal, never both) and the bound arm carries a `binding` payload the fixed
+// arm lacks — an irreducible sum, not compressed record coordinates (INVARIANTS §C-vs-coordinates
+// at INVARIANTS.md:179-184). Inherits the 🟢 classification the dissolved per-language
+// *ConcreteSyntaxToken coproducts carried before this carrier consolidated them.
 type ConcreteSyntaxToken
   = FixedToken { token_class: Symbol }
   | BoundToken { token_class: Symbol, binding: Symbol }
