@@ -217,6 +217,8 @@ fn v4_std_grounding_primitive_fact_bundle_model_core_projection_aggregates_subje
     assert!(
         GROUNDING_DAG.contains("fn primitive_fact_bundle_for_subject(")
             && GROUNDING_DAG.contains(") -> Outcome<PrimitiveFactBundle>")
+            && GROUNDING_DAG.contains("type PerLanguageFactBundleSpecFactsFoldState")
+            && GROUNDING_DAG.contains("saw_fact: Bool")
             && GROUNDING_DAG.contains("fn per_language_fact_bundle_spec_facts_for_subject(")
             && GROUNDING_DAG.contains(") -> Outcome<Map<Symbol, Node>>"),
         "registry-to-model_core projection must build one PrimitiveFactBundle per subject x target"
@@ -256,5 +258,12 @@ fn v4_std_grounding_primitive_fact_bundle_model_core_projection_aggregates_subje
     assert!(
         !GROUNDING_DAG.contains("Rejected { diagnostics: _ } => spec_facts"),
         "registry projection must not erase lookup failures into partial PrimitiveFactBundle rows"
+    );
+    assert!(
+        GROUNDING_DAG.contains("per_language_fact_bundle_ungrounded_subject_reason")
+            && GROUNDING_DAG.contains("saw_fact: false")
+            && GROUNDING_DAG.contains("saw_fact: true")
+            && GROUNDING_DAG.contains("outcome_rejected(d: per_language_fact_bundle_ungrounded_subject_diagnostic"),
+        "subject aggregation must reject ungrounded subjects instead of fabricating empty PrimitiveFactBundle rows"
     );
 }

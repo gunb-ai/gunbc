@@ -652,6 +652,11 @@ fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
         "{PYTHON_LANGUAGE_PATH}: Python G.1.2 registry rejection must not be coerced to an empty primitive list"
     );
     for name in [
+        "python_integer_spec_facts",
+        "python_float_spec_facts",
+        "python_complex_spec_facts",
+        "python_bool_spec_facts",
+        "python_singleton_spec_facts",
         "python_primitive_bundle_from_integer_facts",
         "python_primitive_bundle_from_float_facts",
         "python_primitive_bundle_from_complex_facts",

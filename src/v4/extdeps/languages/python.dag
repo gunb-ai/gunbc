@@ -71,13 +71,9 @@ import v4.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
   PartialitySemanticsDecl,
-  PrimitiveFactBundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_surface_spelling,
-  primitive_fact_axis_unbound_diagnostic
+  PrimitiveFactBundle
 }
 import v4.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
-import v4.std.witness { Holds, Violates }
 import v4.std.node {
   Arrow,
   Atom,
@@ -485,91 +481,6 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ]
-  }
-}
-
-fn python_integer_spec_facts(facts: PythonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
-          Holds { value: python_inhabitant_atom(id: facts.encoding) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn python_float_spec_facts(facts: PythonFloatPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
-          Holds { value: python_inhabitant_atom(id: facts.machine_representation) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn python_complex_spec_facts(facts: PythonComplexPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
-          Holds { value: python_inhabitant_atom(id: facts.component_machine_representation) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn python_bool_spec_facts(facts: PythonBoolPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
-          Holds { value: python_inhabitant_atom(id: facts.encoding) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn python_singleton_spec_facts(facts: PythonSingletonPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
-          Holds { value: python_inhabitant_atom(id: python_repr_singleton_sole_inhabitant) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
   }
 }
 
