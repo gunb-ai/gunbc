@@ -7,6 +7,7 @@ module v4.test.claim.lens_testgen.shadow_ci_receipt
 import v4.lens.testgen {
   testgen_default_profile_ref,
   testgen_run_receipt_outcome,
+  testgen_scheduled_generators_matching_profile,
   testgen_scheduled_generators_outcome
 }
 import v4.std.algebra { length }
