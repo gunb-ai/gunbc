@@ -31,6 +31,10 @@ const NAT_SUBSTRATE_DAG: &str = include_str!("../../../../v4/std/nat.dag");
 const WITNESS_VALIDITY_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/witness_validity.dag");
 const WITNESS_VALIDITY_PATH: &str = "src/v4/test/claim/generated/witness_validity.dag";
+const LENS_TESTGEN_DAG_INPUT_SURFACE_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_testgen/dag_input_surface.dag");
+const LENS_TESTGEN_DAG_INPUT_SURFACE_PATH: &str =
+    "src/v4/test/claim/lens_testgen/dag_input_surface.dag";
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -58,6 +62,10 @@ fn v4_lens_testgen_p9_registry_owner_claim_parses_and_checks_registry_exclusivit
 fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
     let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
+    let lens_testgen_claim = parse_module(
+        LENS_TESTGEN_DAG_INPUT_SURFACE_DAG,
+        LENS_TESTGEN_DAG_INPUT_SURFACE_PATH,
+    );
     assert_eq!(
         module_paths(&testgen),
         vec![vec!["v4", "lens", "testgen"]],
@@ -67,6 +75,34 @@ fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
         module_paths(&verification),
         vec![vec!["v4", "std", "verification"]],
         "`TestClaim` schema should remain v4.std.verification"
+    );
+    assert_eq!(
+        module_paths(&lens_testgen_claim),
+        vec![vec!["v4", "test", "claim", "lens_testgen", "dag_input_surface"]],
+        "lens_testgen claim module should stay under recursive T-22 discovery"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
+    let module = parse_module(
+        LENS_TESTGEN_DAG_INPUT_SURFACE_DAG,
+        LENS_TESTGEN_DAG_INPUT_SURFACE_PATH,
+    );
+    assert!(
+        function_count(&module, "language_behavior_generator_uses_dag_input") == 1
+            && function_count(&module, "scheduled_language_behavior_generators_cover_dag_inputs")
+                == 1
+            && function_count(&module, "bootstrap_generator_has_conj_dag_input_surface") == 1,
+        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: claim file must prove scheduled + bootstrap .dag input surface"
+    );
+    assert!(
+        LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("dag_language_model_surface_id")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("testgen_scheduled_language_behavior_generators")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("bootstrap_claim_generator_for_manual_anchor")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim"),
+        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring"
     );
 }
 
