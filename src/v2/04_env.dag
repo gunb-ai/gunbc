@@ -96,7 +96,9 @@ fn lookup_cache_index_children(cache: LookupCache, parent: Node, source_indices:
       else {
         let child_index = fold(parent.children, init: empty_map(), f: (acc, child) =>
           let child_name = authored_name_at(source_indices: source_indices, node: child)
-          if child_name == "" { acc } else { map_insert(acc, child_name, child) }
+          if child_name == "" { acc }
+          else if map_get(acc, child_name) != none { acc }
+          else { map_insert(acc, child_name, child) }
         )
         LookupCache {
           authored_names: cache.authored_names,
