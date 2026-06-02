@@ -2,6 +2,7 @@
 module v2.compiler.infer_env
 
 import v2.std.core { Node, SourceSpan, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named }
+import v2.compiler.infer_types { KernelTypeBuild }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
@@ -12,7 +13,7 @@ type LookupCache {
   authored_names: Map<String, String>
   child_by_name: Map<String, Map<String, Node>>
   scrutinee_by_key: Map<String, Node>
-  enriched_kernel: Map<String, Node>
+  enriched_kernel: Map<String, KernelTypeBuild>
 }
 
 type TypeEnv {
@@ -226,7 +227,7 @@ fn lookup_cache_get_scrutinee(env: TypeEnv, key: String) -> Node? {
   map_get(env.lookup_cache.scrutinee_by_key, key)
 }
 
-fn lookup_cache_put_enriched_kernel(env: TypeEnv, key: String, enriched: Node) -> TypeEnv {
+fn lookup_cache_put_enriched_kernel(env: TypeEnv, key: String, built: KernelTypeBuild) -> TypeEnv {
   if map_get(env.lookup_cache.enriched_kernel, key) != none { env }
   else {
     TypeEnv {
@@ -240,13 +241,13 @@ fn lookup_cache_put_enriched_kernel(env: TypeEnv, key: String, enriched: Node) -
         authored_names: env.lookup_cache.authored_names,
         child_by_name: env.lookup_cache.child_by_name,
         scrutinee_by_key: env.lookup_cache.scrutinee_by_key,
-        enriched_kernel: map_insert(env.lookup_cache.enriched_kernel, key, enriched)
+        enriched_kernel: map_insert(env.lookup_cache.enriched_kernel, key, built)
       }
     }
   }
 }
 
-fn lookup_cache_get_enriched_kernel(env: TypeEnv, key: String) -> Node? {
+fn lookup_cache_get_enriched_kernel(env: TypeEnv, key: String) -> KernelTypeBuild? {
   map_get(env.lookup_cache.enriched_kernel, key)
 }
 

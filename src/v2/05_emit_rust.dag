@@ -1789,17 +1789,19 @@ fn reexport_variant_parent_in_import_module(variant_name: String, import_module:
         Some { value: parent } => Some { value: parent }
         None =>
           match explicit_import_source_module_for_name(name: variant_name, import_module: src_mod, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
-            Some { value: hop } if hop != src_mod =>
-              reexport_variant_parent_in_import_module(
-                variant_name: variant_name,
-                import_module: hop,
-                registry: registry,
-                type_summaries: type_summaries,
-                typed_modules: typed_modules,
-                export_sets: export_sets,
-                source_indices: source_indices
-              )
-            _ => None
+            Some { value: hop } =>
+              if hop != src_mod {
+                reexport_variant_parent_in_import_module(
+                  variant_name: variant_name,
+                  import_module: hop,
+                  registry: registry,
+                  type_summaries: type_summaries,
+                  typed_modules: typed_modules,
+                  export_sets: export_sets,
+                  source_indices: source_indices
+                )
+              } else { none }
+            None => none
           }
       }
   }
