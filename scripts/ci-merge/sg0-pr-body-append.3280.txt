@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +3
-
-SG-0 pairing: (c) Net add is three `EXPECTED_HAND_AUTHORED_TEST` rows for v4 extdeps `compile_to_dag` smokes (`v4_extdeps_cpp_dag_smoke_test.rs`, `v4_extdeps_machine_code_dag_smoke_test.rs`, `v4_extdeps_lean_dag_smoke_test.rs`) plus matching INVARIANTS §P5(b) receipt rows per T-PB-B. Dispatch: retire each path when the corresponding `.dag` is exercised only by `.dag` `TestClaim` / generated harness; follow-close tracked in gunbc#3280 (this PR).

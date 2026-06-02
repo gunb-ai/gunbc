@@ -1,5 +1,0 @@
-SG-0 hand-path delta: +0
-
-SG-0 pairing: (c) Net +0 on `EXPECTED_HAND_AUTHORED_NON_TEST` — T-24 interim Rust mirrors (`tools/ci_affected_components` lib/main/runner_pool) live outside v3-compiler SG-0 census with INVARIANTS §P5(b) rows. Follow-up dispatch: dissolve when `ci.dag` eval / generated CI runner owns affected-set and M1 parallelism without parallel Rust path logic (T-24 emission slice; tracked gunbc#3853).
-
-SG-0 pairing: (c) Net +0 on `EXPECTED_HAND_AUTHORED_TEST` — same-path expansion of `v4_workflow_ci_runner_dag_smoke_test.rs` (INVARIANTS §P5(b) row updated per PR #3853): set-equality `ci.dag` ↔ `tools/ci_affected_components` path-bucket parity (`v4_workflow_ci_workflow_policy_prefixes_align_rust_mirror`, `v4_workflow_ci_component_bucket_prefixes_align_rust_mirror`) plus behavioral fixtures aligned with `ci_component_affected.dag` (`assert_ci_dag_rust_mirror_full_parity` in M1 `--exact` binding step). Deferral: `_internal/ROADMAP_OPS.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`; dissolve when affected-set projection runs from `.dag` eval only (tracked gunbc#3853).

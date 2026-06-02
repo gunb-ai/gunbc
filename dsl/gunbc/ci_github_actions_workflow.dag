@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 55664be209f9bad37e69937fa85120f61c94acb20dcda574e3d563ab61927144
+// Source-SHA256(.github/workflows/ci.yml): 55512a228095d4125057914a86604aa8b30f9fd611dd76fceecd266a8f787c6d
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -30,13 +30,36 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }
   },
   jobs: [{
+      id: "infra_isolation",
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+      steps: [RunStep {
+          name: Some { value: "Assert runner is de-privileged (adversarial)" },
+          id: none,
+          run: "fail(){ echo \"::error::INFRA ISOLATION REGRESSION: $1\"; exit 1; }\n[ \"$(id -u)\" -ne 0 ] || fail \"running as root\"\nfor g in docker sudo lxd wheel root; do id -nG | tr ' ' '\\n' | grep -qx \"$g\" && fail \"in privileged group $g\"; done\ncat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail \"can read the App private key\"\nsudo -n true 2>/dev/null && fail \"has passwordless sudo\"\n{ test -r /var/run/docker.sock || test -w /var/run/docker.sock; } && fail \"can read or write docker.sock\"\necho \"OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, docker.sock inaccessible\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }],
+      needs: [],
+      env: none,
+      outputs: none,
+      if_condition: none,
+      strategy: none,
+      timeout_minutes: Some { value: 5 },
+      continue_on_error: false,
+      concurrency: none
+    }, {
       id: "fmt",
       name: none,
       runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
-          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:\n# the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start\n# and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable\n# dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold\"\nfi\n",
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step -- gate on the socket's PARENT DIR being writable, not the socket file:\n# the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start\n# and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable\n# dir -> cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold\"\nfi\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -103,12 +126,11 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "affected",
       name: none,
-      continue_on_error: true,
       runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
-          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:\n# the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start\n# and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable\n# dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold\"\nfi\n",
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step -- gate on the socket's PARENT DIR being writable, not the socket file:\n# the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start\n# and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable\n# dir -> cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold\"\nfi\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -180,6 +202,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 15 },
+      continue_on_error: false,
       concurrency: none
     }, {
       id: "ci_floor",
@@ -188,7 +211,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
-          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:\n# the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start\n# and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable\n# dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold\"\nfi\n",
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step -- gate on the socket's PARENT DIR being writable, not the socket file:\n# the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start\n# and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable\n# dir -> cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold\"\nfi\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -264,19 +287,29 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)" },
           id: none,
-          run: "bash scripts/v4-m1-rust-emit-probe.sh",
+          run: "bash .github/ci-floor/v4-m1-rust-emit-probe.sh",
           shell: Bash,
-          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_CARGO_CHECK_JOBS_CEILING": "64", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
+          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_DAG_EMIT_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_M1_DAG_EMIT_LOG": "${{ runner.temp }}/v4-bootstrap.shared.log", "V4_M1_CARGO_CHECK_JOBS_CEILING": "64", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: Some { value: 20 }
         }, RunStep {
+          name: Some { value: "v2 DAG emit parity receipt (required before bootstrap reuse)" },
+          id: none,
+          run: "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
           name: Some { value: "v2 -> v4 bootstrap compile (fail-closed full)" },
           id: none,
-          run: "bash scripts/v4-bootstrap-viability.sh",
+          run: "bash .github/ci-floor/v4-bootstrap-viability.sh",
           shell: Bash,
-          env: { "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_BOOTSTRAP_TIMEOUT_SECS": "900" },
+          env: { "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_BOOTSTRAP_REUSE_LOG": "${{ runner.temp }}/v4-bootstrap.shared.log", "V4_BOOTSTRAP_TIMEOUT_SECS": "900" },
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
@@ -285,16 +318,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           name: Some { value: "M1 v4 workflow CI model/YAML binding smoke" },
           id: none,
           run: "set -euo pipefail\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet\n",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "no-new-shell ratchet (required CI path)" },
-          id: none,
-          run: "bash scripts/check-ci-no-new-shell.sh --self-test\nbash scripts/check-ci-no-new-shell.sh\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -317,7 +340,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Validate prerequisites (fail-closed under skipped/failed deps)" },
           id: none,
-          run: "set -euo pipefail\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; affected is shadow-only)\"\n",
+          run: "set -euo pipefail\nif [[ \"${{ needs.affected.result }}\" != \"success\" ]]; then\n  echo \"::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.infra_isolation.result }}\" != \"success\" ]]; then\n  echo \"::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied (affected receipt + four Class-A gates in ci_floor; infra_isolation de-priv guard green)\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -327,7 +350,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "ci receipt (section 11.7.1 floor)" },
           id: none,
-          run: "echo \"::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)\"\n",
+          run: "echo \"::notice::Required CI: fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag structural receipt)\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -335,7 +358,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["ci_floor"],
+      needs: ["affected", "ci_floor", "infra_isolation"],
       env: none,
       outputs: none,
       if_condition: Some { value: "${{ always() && github.event.pull_request.draft != true }}" },

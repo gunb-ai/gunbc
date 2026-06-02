@@ -1,2 +1,0 @@
-SG-0 hand-path delta: +1
-SG-0 pairing: (c) follow-up dispatch for host-test residual under docs/briefs/t-pb-b-1.md; tracked by ROADMAP.md T-PB-B / pb_rust_tests_outside_residual_zero until the generic TestClaim runner executes this receipt without a Rust harness.

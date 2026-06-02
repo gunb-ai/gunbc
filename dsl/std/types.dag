@@ -301,6 +301,9 @@ type EpochMs       = Int where range(min: 0)
 type Duration      = Int where range(min: 0)
 type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
 type Seconds       = Int where range(min: 0), brand("Seconds")
+// Opaque logical-instant nominal (fabric/cache observation axes). Not wall-clock
+// `Timestamp` (ISO String); comparable logical time for availability and receipts.
+type LogicalTime   = NonEmptyStr where brand("LogicalTime")
 
 // --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
 // Addresses deficit D15 from domain-modeling-comprehensive.md S9.
