@@ -72,9 +72,10 @@ pub struct AffectedSetCiReceipt {
     pub estimated_full_run_minutes: f64,
     /// Observed wall-clock for this run (minutes). 0.0 when not supplied.
     pub actual_run_minutes: f64,
-    /// `max(0, estimated_full_run_minutes - actual_run_minutes)`, but `0.0` unless BOTH the baseline
-    /// is set AND `actual_run_minutes` is observed (`> 0`) — an unobserved actual never reports the
-    /// baseline as savings (fail-closed).
+    /// Structurally derived skip savings (minutes). `0.0` when `fail_closed`, when
+    /// `bootstrap_required` (no ci_floor bootstrap skip opportunity), when the baseline is unset,
+    /// or when `actual_run_minutes` is unobserved — never from runtime variance alone on paths
+    /// that would still run bootstrap.
     pub saved_minutes: f64,
     /// True when the `git diff` read failed and the affected-set fell back to the fail-closed
     /// superset (all components). Skip-rate aggregation must exclude these rows.
@@ -112,16 +113,24 @@ pub fn bootstrap_required(flags: CiComponentAffected) -> bool {
     flags.v2 || flags.v4
 }
 
-/// `saved_minutes = max(0, estimated_full_run_minutes - actual_run_minutes)`, but **only when both
-/// inputs are observed**. It is `0.0` when the baseline is unset OR when `actual_run_minutes` is
-/// unobserved (`<= 0.0`).
+/// Structurally derived skip savings for the kill-criterion aggregate.
 ///
-/// Fail-closed discipline (INVARIANTS P3): a CI run always takes >0 minutes, so `actual <= 0.0` means
-/// "not yet measured", not "instantaneous run". Subtracting an unobserved actual from the baseline
-/// would fabricate a full-baseline saving on every run — exactly the phantom savings this guard
-/// exists to prevent. Until the timing aggregator populates `actual_run_minutes`, savings are
-/// reported as unknown (`0.0`), never as the baseline.
-pub fn saved_minutes(estimated_full_run_minutes: f64, actual_run_minutes: f64) -> f64 {
+/// Returns `0.0` (unknown / not applicable) unless **all** of:
+/// - `!fail_closed` — diff read succeeded (superset rows must not enter savings aggregates),
+/// - `!bootstrap_required` — the affected-set would skip the `ci_floor` bootstrap path,
+/// - baseline is set and `actual_run_minutes > 0` (observed wall-clock).
+///
+/// When eligible, `max(0, estimated_full_run_minutes - actual_run_minutes)`. INVARIANTS P3:
+/// bootstrap-required or fail-closed PRs must never report positive savings from runtime variance.
+pub fn saved_minutes(
+    estimated_full_run_minutes: f64,
+    actual_run_minutes: f64,
+    bootstrap_required: bool,
+    fail_closed: bool,
+) -> f64 {
+    if fail_closed || bootstrap_required {
+        return 0.0;
+    }
     if estimated_full_run_minutes <= BASELINE_FULL_RUN_MINUTES_UNSET || actual_run_minutes <= 0.0 {
         return 0.0;
     }
@@ -151,7 +160,12 @@ pub fn affected_set_ci_receipt(
         wall_clock_by_job,
         estimated_full_run_minutes,
         actual_run_minutes,
-        saved_minutes: saved_minutes(estimated_full_run_minutes, actual_run_minutes),
+        saved_minutes: saved_minutes(
+            estimated_full_run_minutes,
+            actual_run_minutes,
+            bootstrap_required(flags),
+            fail_closed,
+        ),
         fail_closed,
     }
 }
@@ -224,20 +238,48 @@ mod tests {
     #[test]
     fn saved_minutes_clamps_and_handles_unset_baseline() {
         // Unset baseline → no phantom savings.
-        assert_eq!(saved_minutes(BASELINE_FULL_RUN_MINUTES_UNSET, 12.0), 0.0);
-        // Faster than baseline → positive savings.
-        assert_eq!(saved_minutes(40.0, 15.0), 25.0);
+        assert_eq!(
+            saved_minutes(BASELINE_FULL_RUN_MINUTES_UNSET, 12.0, false, false),
+            0.0
+        );
+        // Faster than baseline, skip-eligible path → positive savings.
+        assert_eq!(saved_minutes(40.0, 15.0, false, false), 25.0);
         // Slower than baseline (e.g. cold cache) → clamp to 0, never negative.
-        assert_eq!(saved_minutes(40.0, 55.0), 0.0);
+        assert_eq!(saved_minutes(40.0, 55.0, false, false), 0.0);
     }
 
     #[test]
     fn saved_minutes_is_zero_when_actual_unobserved_even_with_baseline() {
         // Codex #4271 regression: a provisional baseline with no observed runtime must NOT report
         // the full baseline as savings (fail-closed: unobserved actual ≠ instantaneous run).
-        assert_eq!(saved_minutes(15.0, 0.0), 0.0);
+        assert_eq!(saved_minutes(15.0, 0.0, false, false), 0.0);
         // Negative/garbage actual is likewise treated as unobserved.
-        assert_eq!(saved_minutes(15.0, -3.0), 0.0);
+        assert_eq!(saved_minutes(15.0, -3.0, false, false), 0.0);
+    }
+
+    #[test]
+    fn saved_minutes_positive_only_on_skip_eligible_path_with_observed_timing() {
+        let flags = flags_for(["src/v4/test/claim/workflow/affected_set_ci_runner.dag"]);
+        assert!(!bootstrap_required(flags));
+        let receipt = affected_set_ci_receipt(
+            vec!["src/v4/test/claim/workflow/affected_set_ci_runner.dag".to_string()],
+            flags,
+            false,
+            0,
+            BTreeMap::new(),
+            40.0,
+            15.0,
+        );
+        assert_eq!(receipt.saved_minutes, 25.0);
+    }
+
+    #[test]
+    fn saved_minutes_is_zero_when_bootstrap_required_or_fail_closed() {
+        // Bootstrap-required PRs still run ci_floor today; baseline−actual is variance, not skip savings.
+        assert_eq!(saved_minutes(40.0, 15.0, true, false), 0.0);
+        // Fail-closed superset rows must not enter savings aggregates.
+        assert_eq!(saved_minutes(40.0, 15.0, false, true), 0.0);
+        assert_eq!(saved_minutes(40.0, 15.0, true, true), 0.0);
     }
 
     #[test]
@@ -269,7 +311,8 @@ mod tests {
         ] {
             assert!(json.get(key).is_some(), "missing key {key}");
         }
-        assert_eq!(receipt.saved_minutes, 25.0);
+        // v4 substrate diff ⇒ bootstrap_required; savings are structurally N/A (not skip-eligible).
+        assert_eq!(receipt.saved_minutes, 0.0);
         assert!(receipt.bootstrap_required);
     }
 }
