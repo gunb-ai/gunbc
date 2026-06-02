@@ -14,7 +14,7 @@
 //! Affected-set component receipt promotion: `affected` is now a live fail-closed receipt; Wave 3
 //! node-frontier TestClaim selection remains shadow until the whole-program Dag CI input lands.
 //! Wave 3 §11.7.2 shadow receipt Phase 1: same doc (`v4_workflow_ci_wave3_*`; P5(b) receipt table).
-//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174).
+//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174 / #4214).
 //!
 //! **INVARIANTS P5 — checkable receipt for this PR:** feature `affected-component-live-receipt`;
 //! consumers `v4_workflow_ci_wave1_*` and `v4_workflow_ci_wave3_node_selection_still_shadow_*`.
@@ -734,6 +734,20 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     assert!(
         CI_DAG.contains(
+            "data m1_rust_emit_probe_shared_dag_out_env: String = \"V4_M1_DAG_EMIT_OUT\""
+        ) && CI_DAG.contains(
+            "data m1_rust_emit_probe_shared_dag_log_env: String = \"V4_M1_DAG_EMIT_LOG\""
+        ) && CI_DAG.contains(
+            "data m1_rust_dag_emit_parity_receipt_test: String = \"cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet\""
+        ) && CI_DAG.contains("data v4_bootstrap_reuse_log_env: String = \"V4_BOOTSTRAP_REUSE_LOG\""),
+        "{CI_DAG_PATH}: shared M1/bootstrap closure env names must be modeled"
+    );
+    assert!(
+        m1_step.contains("V4_M1_DAG_EMIT_OUT:") && m1_step.contains("V4_M1_DAG_EMIT_LOG:"),
+        "{CI_YML_PATH}: `{step_name}` must emit the DAG artifact from the shared rust+dag closure"
+    );
+    assert!(
+        CI_DAG.contains(
             "M1RustEmitProbeCommand =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true,\n        testclaim_corpus: true,\n        workflow_policy: true,\n        release_distribution: true\n      )"
         ),
         "{CI_DAG_PATH}: M1RustEmitProbeCommand mask must match ci.yml step if (I8 / T-22 upstream)"
@@ -816,6 +830,80 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
         "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
+    );
+    let bootstrap_step =
+        workflow_step_block(CI_YML, "v2 -> v4 bootstrap compile (fail-closed full)");
+    let parity_step = workflow_step_block(
+        CI_YML,
+        "v2 DAG emit parity receipt (required before bootstrap reuse)",
+    );
+    assert!(
+        parity_step.contains(
+            "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet"
+        ),
+        "{CI_YML_PATH}: bootstrap reuse must be preceded by the v2 DAG emit parity receipt"
+    );
+    assert!(
+        CI_YML.find("v2 DAG emit parity receipt (required before bootstrap reuse)")
+            < CI_YML.find("v2 -> v4 bootstrap compile (fail-closed full)"),
+        "{CI_YML_PATH}: parity receipt must run before bootstrap reuse"
+    );
+    assert!(
+        bootstrap_step.contains("V4_BOOTSTRAP_REUSE_LOG:"),
+        "{CI_YML_PATH}: bootstrap step must validate the shared M1 DAG artifact instead of recompiling src/v4"
+    );
+}
+
+// P5(b) receipt: `ROADMAP.md` § **Nine lanes** **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
+// same-path expansion in this file (SG-0 delta 0 — path already in `EXPECTED_HAND_AUTHORED_TEST`;
+// #4091 §1.2 four-compile collapse modeled UpstreamUpsert pin for m1 / lens-CI / phase1 rung gate).
+
+/// #4091 §1.2 four-compile collapse: the modeled ci_pipeline jobs that re-ran a full src/v4
+/// 332-source closure compile must consume `v2_compile_src_v4`'s resolved closure via
+/// UpstreamUpsert (front-end shared once; each job re-emits its own target) instead of each
+/// independently re-running parse/lower/infer. Pins the artifact-consumption edge for m1,
+/// lens-CI, and the phase1 rung gate. (bootstrap-dag is split out: its dissolution target is
+/// `ModelMissingSubstrate { what: v4_bootstrap_dag_emit_ci_job }` — substrate, follow-up.)
+#[test]
+fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure() {
+    // Slice the `data <symbol>...` definition up to the next top-level `\ndata ` so the
+    // upstream-edge assertion is scoped to each job's own inputs block.
+    let block_for = |symbol: &str| -> &str {
+        let start = CI_DAG
+            .find(&format!("data {symbol}"))
+            .unwrap_or_else(|| panic!("{CI_DAG_PATH}: missing `data {symbol}`"));
+        let rest = &CI_DAG[start..];
+        let end = rest[1..]
+            .find("\ndata ")
+            .map(|i| i + 1)
+            .unwrap_or(rest.len());
+        &rest[..end]
+    };
+    let upstream_edge = "ci_upsert_upstream_job_input(job: v2_compile_src_v4)";
+    // Each formerly-recompiling job declares the upstream artifact edge on its CiUpsertStep
+    // inputs, mirroring the v4_t15 / testclaim_corpus_eval pattern at ci.dag:807.
+    assert!(
+        block_for("ci_upsert_m1_rust_emit_probe_execution_inputs").contains(upstream_edge),
+        "{CI_DAG_PATH}: M1 rust emit probe must consume v2_compile_src_v4's resolved closure via UpstreamUpsert (#4091 §1.2 four-compile collapse)"
+    );
+    assert!(
+        block_for("ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs")
+            .contains(upstream_edge),
+        "{CI_DAG_PATH}: phase1 rung gate must consume v2_compile_src_v4's resolved closure via UpstreamUpsert (#4091 §1.2 four-compile collapse)"
+    );
+    // lens-CI inputs are computed (list_snoc_item over per-lens refs); the upstream edge is
+    // appended in the data initializer.
+    assert!(
+        block_for("ci_upsert_lens_ci_registry_execution_inputs").contains(upstream_edge),
+        "{CI_DAG_PATH}: lens-CI registry execution must consume v2_compile_src_v4's resolved closure via UpstreamUpsert (#4091 §1.2 four-compile collapse)"
+    );
+    // The three jobs already declare v2_compile_src_v4 in `needs` (ordering); the collapse turns
+    // those ordering deps into real artifact-consumption edges (above). Spot-check needs stay.
+    assert!(
+        CI_DAG.contains("id: m1_rust_emit_probe_execution,")
+            && CI_DAG.contains("id: lens_ci_registry_execution,")
+            && CI_DAG.contains("id: phase1_nat_semiring_rung_gate_execution,"),
+        "{CI_DAG_PATH}: collapse must not remove the three modeled closure-compile jobs"
     );
 }
 
