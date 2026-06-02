@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net add is one `EXPECTED_HAND_AUTHORED_TEST` row for R3 gate #90 (`lens_enforcement_carrier_landed`) integration receipt (`r3_gate_90_lens_enforcement_carrier_landed_test.rs`). Dispatch evidence for T-LAS substrate sequencing: gunbc#3129 (this PR).

@@ -1,2 +1,0 @@
-SG-0 hand-path delta: +1
-SG-0 pairing: (c) follow-up dispatch remains tracked by docs/briefs/r3-pb-t-lensproducer-sub1-lens-apply-retirement.md and docs/briefs/r3-pb-t-lensproducer-sub2-lens-testgen-retirement.md for Item 4 retirement preconditions.
