@@ -3296,8 +3296,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
   }
 }
 
-data ts_per_language_fact_bundle_registry_outcome: Outcome<PerLanguageFactBundleRegistry> =
-  ts_build_per_language_fact_bundle_registry()
+data ts_per_language_fact_bundle_registry_outcome: Outcome<PerLanguageFactBundleRegistry> = ts_build_per_language_fact_bundle_registry()
 
 
 // 🟡 coproduct dissolution — SL-T4-WAVE2B-TS-LAW-KEY — feature:model-core-law-expression-carrier — scaffold:T-4-wave-2b · law-kind coproduct for ts_model_core_law_node kind edge — owner:T-4 typescript language model lane — dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
