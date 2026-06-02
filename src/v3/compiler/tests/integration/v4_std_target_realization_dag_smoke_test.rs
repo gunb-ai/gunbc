@@ -34,7 +34,7 @@
 //! golden probes (`typescript.dag`). Behavioral contracts (wire-shape, labeled serialize,
 //! mixed-wire rejection) live in `src/v4/test/claim/manual/sg2_typescript_type_expression_projection.dag`;
 //! dissolves when manual-claim runner executes those `TestClaim`s without this file. ROADMAP:
-//! `_internal/ROADMAP_OPS.md` § **Nine lanes** / T-PB-B (`pb_rust_tests_outside_residual_zero`).
+//! `ROADMAP.md` § **Nine lanes** / T-PB-B (`pb_rust_tests_outside_residual_zero`).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
@@ -613,6 +613,11 @@ fn v4_typescript_language_model_binds_record_field_label_separator_in_shared_row
         TYPESCRIPT_LANGUAGE_DAG
             .contains("field_label_separator: optional_present(value: ts_token_colon)"),
         "{TYPESCRIPT_LANGUAGE_PATH}: TS record row must bind ':' through shared TargetGenericApply"
+    );
+    assert!(
+        !TYPESCRIPT_LANGUAGE_DAG.contains("feature:target-record-field-label-binding")
+            && !TYPESCRIPT_LANGUAGE_DAG.contains("structural surface only"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: record-label Lane H disposition is live; stale gated prose must stay deleted"
     );
     assert!(
         TYPESCRIPT_LANGUAGE_DAG.contains("target_type_expr_field_field_label_separator"),

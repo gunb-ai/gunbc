@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 use std::process::ExitCode;
 use std::{env, fs};
 
-use ci_affected_components::git_read::{diff_range, read_changed_paths, GitDiffRead};
+use ci_affected_components::git_diff_transport::{
+    git_read_changed_paths_for_event, GitChangedPathsRead,
+};
 use ci_affected_components::receipt::{affected_set_ci_receipt, BASELINE_FULL_RUN_MINUTES_UNSET};
 use ci_affected_components::{
     ci_component_affected_fail_closed, ci_component_affected_from_changed_paths,
@@ -115,18 +117,19 @@ fn read_job_timings(path: Option<&str>) -> BTreeMap<String, u64> {
 fn main() -> ExitCode {
     let opts = parse_args();
 
-    let range = diff_range(opts.event_name.as_str());
-    let (changed_paths, flags, fail_closed) = match read_changed_paths(range) {
-        GitDiffRead::Ok(changed) => {
-            let flags =
-                ci_component_affected_from_changed_paths(changed.iter().map(String::as_str));
-            (changed, flags, false)
-        }
-        GitDiffRead::FailClosed { reason } => {
-            eprintln!("error: {reason}");
-            (Vec::new(), ci_component_affected_fail_closed(), true)
-        }
-    };
+    let (changed_paths, flags, fail_closed) =
+        match git_read_changed_paths_for_event(opts.event_name.as_str()) {
+            GitChangedPathsRead::Ok { paths, .. } => {
+                let flags = ci_component_affected_from_changed_paths(
+                    paths.iter().map(String::as_str),
+                );
+                (paths, flags, false)
+            }
+            GitChangedPathsRead::FailClosed { detail, .. } => {
+                eprintln!("error: {detail}");
+                (Vec::new(), ci_component_affected_fail_closed(), true)
+            }
+        };
 
     let receipt = affected_set_ci_receipt(
         changed_paths,

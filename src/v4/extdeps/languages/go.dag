@@ -47,6 +47,12 @@ import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
   ModelCore,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth,
+  ModelCorePrimitiveFactAxis,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
@@ -56,7 +62,15 @@ import v4.std.model_core {
   primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.grounding {
+  empty_per_language_fact_bundle_registry,
+  insert_per_language_fact_bundle_entry,
+  PerLanguageFactBundleEntry,
+  PerLanguageFactBundleKey,
+  PerLanguageFactBundleRegistry
+}
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
@@ -67,11 +81,6 @@ import v4.std.target_model {
   ValueSymbolToOwnedString,
   char_kernel_type_atom,
   char_kernel_type_node,
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -89,6 +98,7 @@ import v4.std.target_model {
   target_value_template_for_kind
 }
 import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
+import v4.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
 import v4.std.witness { Holds, Violates }
 import v4.std.algebra {
   BooleanAlgebra,
@@ -174,14 +184,12 @@ type GoCost {
   allocation_cost: Int
 }
 
-// GoConcreteSyntaxToken: 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
-type GoConcreteSyntaxToken
-  = GoFixedToken { token_class: Symbol }
-  | GoBoundToken { token_class: Symbol, binding: Symbol }
+// Tokens are the shared v4.std.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
+// per-target Go coproduct dissolved into that std authority.
 
 type GoGrammarRelationRow {
   production: GrammarProduction
-  tokens: List<GoConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
 
 type GoLanguageModel {
@@ -311,24 +319,24 @@ data go_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data go_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data go_mvp1_source_text: String = "func add(x int, y int) int { return x + y }"
 
-fn go_mvp1_concrete_tokens() -> List<GoConcreteSyntaxToken> {
+fn go_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    GoFixedToken { token_class: go_token_kw_func },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_fn_add },
-    GoFixedToken { token_class: go_token_lparen },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
-    GoFixedToken { token_class: go_token_ty_int },
-    GoFixedToken { token_class: go_token_comma },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
-    GoFixedToken { token_class: go_token_ty_int },
-    GoFixedToken { token_class: go_token_rparen },
-    GoFixedToken { token_class: go_token_ty_int },
-    GoFixedToken { token_class: go_token_lbrace },
-    GoFixedToken { token_class: go_token_kw_return },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
-    GoFixedToken { token_class: go_token_plus },
-    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
-    GoFixedToken { token_class: go_token_rbrace }
+    FixedToken { token_class: go_token_kw_func },
+    BoundToken { token_class: go_token_ident, binding: go_binding_fn_add },
+    FixedToken { token_class: go_token_lparen },
+    BoundToken { token_class: go_token_ident, binding: go_binding_param_x },
+    FixedToken { token_class: go_token_ty_int },
+    FixedToken { token_class: go_token_comma },
+    BoundToken { token_class: go_token_ident, binding: go_binding_param_y },
+    FixedToken { token_class: go_token_ty_int },
+    FixedToken { token_class: go_token_rparen },
+    FixedToken { token_class: go_token_ty_int },
+    FixedToken { token_class: go_token_lbrace },
+    FixedToken { token_class: go_token_kw_return },
+    BoundToken { token_class: go_token_ident, binding: go_binding_param_x },
+    FixedToken { token_class: go_token_plus },
+    BoundToken { token_class: go_token_ident, binding: go_binding_param_y },
+    FixedToken { token_class: go_token_rbrace }
   ]
 }
 
@@ -1021,6 +1029,283 @@ fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
+fn go_per_language_fact_bundle_key(
+  subject: Node,
+  axis: ModelCorePrimitiveFactAxis
+) -> PerLanguageFactBundleKey {
+  PerLanguageFactBundleKey {
+    subject_carrier: subject,
+    target: go_mvp1_target_model(),
+    fact_axis: axis
+  }
+}
+
+fn go_per_language_fact_bundle_entry(
+  subject: Node,
+  axis: ModelCorePrimitiveFactAxis,
+  fact_value: Node
+) -> PerLanguageFactBundleEntry {
+  PerLanguageFactBundleEntry {
+    key: go_per_language_fact_bundle_key(subject: subject, axis: axis),
+    fact_value: fact_value
+  }
+}
+
+fn go_integer_per_language_fact_bundle_entries(
+  facts: GoIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => [
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSurfaceSpelling {},
+        fact_value: go_inhabitant_atom(id: surface_spelling)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisWidth {},
+        fact_value: go_signed_int_width_node(width: width)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSignedness {},
+        fact_value: go_int_kind_node(kind: Signed)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisOverflowDisposition {},
+        fact_value: go_overflow_node(
+          overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+        )
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisEncoding {},
+        fact_value: go_inhabitant_atom(id: encoding)
+      )
+    ]
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => [
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSurfaceSpelling {},
+        fact_value: go_inhabitant_atom(id: surface_spelling)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisWidth {},
+        fact_value: go_unsigned_int_width_node(width: width)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSignedness {},
+        fact_value: go_int_kind_node(kind: Unsigned)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisOverflowDisposition {},
+        fact_value: go_overflow_node(
+          overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+        )
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisEncoding {},
+        fact_value: go_inhabitant_atom(id: encoding)
+      )
+    ]
+  }
+}
+
+fn go_float_per_language_fact_bundle_entries(
+  facts: GoFloatPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_float_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_float_facts_node(facts: facts),
+      axis: ModelCoreFactAxisWidth {},
+      fact_value: go_float_width_node(width: facts.width)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_float_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.ieee754_binary)
+    )
+  ]
+}
+
+fn go_complex_per_language_fact_bundle_entries(
+  facts: GoComplexPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_complex_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_complex_facts_node(facts: facts),
+      axis: ModelCoreFactAxisWidth {},
+      fact_value: go_complex_width_node(width: facts.width)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_complex_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.component_ieee754_binary)
+    )
+  ]
+}
+
+fn go_bool_per_language_fact_bundle_entries(
+  facts: GoBoolPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_bool_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_bool_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.encoding)
+    )
+  ]
+}
+
+fn go_string_per_language_fact_bundle_entries(
+  facts: GoStringPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_string_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_string_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.encoding)
+    )
+  ]
+}
+
+fn go_per_language_fact_bundle_entries_from_integer_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_integer_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_float_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_float_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_complex_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_complex_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_bool_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_bool_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_bool_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_string_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_string_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_g1_3_per_language_fact_bundle_entry_rows() -> List<PerLanguageFactBundleEntry> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: go_per_language_fact_bundle_entries_from_integer_catalog(),
+          right: go_per_language_fact_bundle_entries_from_float_catalog()
+        ),
+        right: go_per_language_fact_bundle_entries_from_complex_catalog()
+      ),
+      right: go_per_language_fact_bundle_entries_from_bool_catalog()
+    ),
+    right: go_per_language_fact_bundle_entries_from_string_catalog()
+  )
+}
+
+fn go_g1_3_per_language_fact_bundle_registry_step(
+  acc: Outcome<PerLanguageFactBundleRegistry>,
+  entry: PerLanguageFactBundleEntry
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  bind_outcome(o: acc, f: fn(registry) {
+    insert_per_language_fact_bundle_entry(
+      registry: registry,
+      key: entry.key,
+      fact_value: entry.fact_value
+    )
+  })
+}
+
+fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  fold_list(
+    xs: go_g1_3_per_language_fact_bundle_entry_rows(),
+    empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
+    cons: go_g1_3_per_language_fact_bundle_registry_step
+  )
+}
+
 fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
   match facts {
     GoSignedIntegerPrimitiveFacts {
@@ -1310,36 +1595,19 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
   }
 }
 
-fn go_concrete_token_class(token: GoConcreteSyntaxToken) -> Symbol {
+fn go_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    GoFixedToken { token_class: c } => c
-    GoBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn go_concrete_token_node(token: GoConcreteSyntaxToken) -> Node {
-  match token {
-    GoFixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: concrete_syntax_token_kind_fixed)),
-          go_named_edge(name: concrete_syntax_token_field_class, target: go_inhabitant_atom(id: c))
-        ]
-      }
-    GoBoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: concrete_syntax_token_kind_bound)),
-          go_named_edge(name: concrete_syntax_token_field_class, target: go_inhabitant_atom(id: c)),
-          go_named_edge(name: concrete_syntax_token_field_binding, target: go_inhabitant_atom(id: b))
-        ]
-      }
-  }
+fn go_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn go_positional_token_edge(token: GoConcreteSyntaxToken) -> Edge {
+fn go_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge { label: Positional, target: go_concrete_token_node(token: token) }
 }
 
@@ -1372,7 +1640,7 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 
-fn go_formal_rhs_from_tokens(tokens: List<GoConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn go_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1443,7 +1711,7 @@ fn go_mvp1_grammar_relation_row() -> GoGrammarRelationRow {
   }
 }
 
-fn go_relation_token_edges(tokens: List<GoConcreteSyntaxToken>) -> List<Edge> {
+fn go_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,

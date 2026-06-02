@@ -27,11 +27,9 @@ import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
+  BoundToken,
+  FixedToken,
+  concrete_syntax_token_to_node,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens
@@ -101,6 +99,42 @@ type WellFormedFormalGrammar {
 }
 
 
+type GrammarTerminalLexCoverageObligation {
+  lex: LexRules
+  grammar: WellFormedFormalGrammar
+}
+
+
+// Branch B ingestion-unification ruling (2026-06-02): concrete syntax is a
+// single authority row. Terminal coverage is an explicit obligation on the
+// carrier, not a completed proof in this PR: Bmin.2 must replace this obligation
+// with an enumerating validator tying every FormalTerminal.identity to LexRules
+// token rules. LexPattern and GrammarExpr remain operational projections until
+// CP-1b convergence; they are not independent authorities.
+type ConcreteSyntaxSchema {
+  terminal_coverage: GrammarTerminalLexCoverageObligation
+}
+
+
+fn concrete_syntax_schema(
+  terminal_coverage: GrammarTerminalLexCoverageObligation
+) -> ConcreteSyntaxSchema {
+  ConcreteSyntaxSchema {
+    terminal_coverage: terminal_coverage
+  }
+}
+
+
+fn concrete_syntax_schema_lex(schema: ConcreteSyntaxSchema) -> LexRules {
+  schema.terminal_coverage.lex
+}
+
+
+fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFormalGrammar {
+  schema.terminal_coverage.grammar
+}
+
+
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
   = Terminal { token_class: Symbol }
@@ -140,6 +174,7 @@ type ParseGrammar
   | ModeledGrammar { root: GrammarRoot }
 
 
+// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — bind TASKS.md T-6/T-7 — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
 type GrammarSchema {
   lex: LexRules
   grammar: ParseGrammar
@@ -408,44 +443,14 @@ fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
 
 
 fn grammar_concrete_fixed_token_node(token_class: Symbol) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [
-      grammar_named_edge(
-        name: concrete_syntax_token_field_kind,
-        target: grammar_atom(identity: concrete_syntax_token_kind_fixed)
-      ),
-      grammar_named_edge(
-        name: concrete_syntax_token_field_class,
-        target: grammar_atom(identity: token_class)
-      )
-    ]
-  }
+  concrete_syntax_token_to_node(token: FixedToken { token_class: token_class })
 }
 
 
 fn grammar_concrete_bound_token_node(token_class: Symbol, binding: Symbol) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [
-      grammar_named_edge(
-        name: concrete_syntax_token_field_kind,
-        target: grammar_atom(identity: concrete_syntax_token_kind_bound)
-      ),
-      grammar_named_edge(
-        name: concrete_syntax_token_field_class,
-        target: grammar_atom(identity: token_class)
-      ),
-      grammar_named_edge(
-        name: concrete_syntax_token_field_binding,
-        target: grammar_atom(identity: binding)
-      )
-    ]
-  }
+  concrete_syntax_token_to_node(
+    token: BoundToken { token_class: token_class, binding: binding }
+  )
 }
 
 

@@ -1,9 +1,10 @@
 // src/v4/compiler/emit_host.dag
 // Scope: T-38 / rung-4 host harness — emit + host execute + eval compare (compiler orchestration).
-// Status: T-22 rust row — eval intercept (`emit_host_eval.rs`) runs `emit_host_runner` and
+// Status: T-22 rust/go rows — eval intercept (`emit_host_eval.rs`) runs `emit_host_runner` and
 //   assembles receipts via `emit_host_receipt_from_source` (substrate eval, not hand-encoded).
-//   Python/go rows stay `transport_not_wired`. `emit_host_bridge.rs` remains for W3 harness
-//   until T-PB-B dissolution (SG-0 + `v4_emit_host_eval_dispatch_test.rs` receipts).
+//   T-22 python row — eval intercept dispatches `run_emit_host_python` → `emit_host_runner` and
+//   hand-reifies `v4.std.host_run` in `emit_host_eval.rs` (claim-only transport pins).
+//   `emit_host_bridge.rs` remains for W3 harness until T-PB-B dissolution (SG-0 receipts).
 // Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
 // Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
 
@@ -207,6 +208,9 @@ fn run_emit_host_rust(
   }
 }
 
+// Substrate row: body stays fail-closed; T-22 eval intercept hand-reifies `v4.std.host_run`
+// in `emit_host_eval.rs` (rust/go route through substrate `emit_host_receipt_from_source`).
+// Asymmetry is tracked under T-PB-B until python receipt assembly moves into `.dag`.
 fn run_emit_host_python(
   target: TargetModel,
   source: TargetSource,

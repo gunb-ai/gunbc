@@ -19,7 +19,7 @@ import v2.std.core {
   LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
   NewlineIndex, build_newline_index,
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at,
-  InternTable, InternResult, empty_intern_table, intern
+  InternTable, empty_intern_table, pre_intern_tokens
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_with_table, ParseResult }
@@ -72,6 +72,11 @@ type FrontendAccum {
   intern_table: InternTable
 }
 
+type FrontendPrepared {
+  tokens: List<Token>
+  newline_index: NewlineIndex
+}
+
 // =========================================================================
 // Function extraction for pipeline analyses
 // =========================================================================
@@ -119,14 +124,34 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
 }
 
 // =========================================================================
-// Complexity fail-closed gate
+// Complexity analysis (opt-in; v2 emission gate unchanged)
 //
-// Decidability enforcement flows through the complexity classifier:
-// classify_recursion_pattern produces UnresolvableRecursion for non-
-// descending self-calls (fn spin(n: n)), which becomes CostUnknown,
-// which complexity_diagnostics surfaces as a hard compile error.
-// No separate walker needed — the complexity stage IS the gate.
+// When enabled, classify_recursion_pattern / build_complexity_report can
+// surface ComplexityUnknown for non-descending self-calls (fn spin(n: n)).
+//
+// v2 does NOT fail-closed on those diagnostics today — emission gates on
+// typed_diags only (see type_errors filter below); main.rs and dag run
+// carve out ComplexityUnknown (00_core.dag is_interpreter_blocking_diagnostic,
+// cx-design.md C6). Tier-1 CX enforcement is v3 Pure Bootstrap scope.
+//
+// Default-off skips build_complexity_report (~356s full-src compile) because
+// the report is not consumed by emission. Callers that need the report or
+// CX diagnostics pass CompilePipelineOptions { analyze_complexity: true }.
 // =========================================================================
+
+type CompilePipelineOptions {
+  analyze_complexity: Bool
+}
+
+fn default_compile_pipeline_options() -> CompilePipelineOptions {
+  CompilePipelineOptions { analyze_complexity: false }
+}
+
+fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
+  let func_entries = extract_func_entries(typed: typed)
+  let recursion_ctx = build_recursion_context(typed: typed)
+  build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
+}
 
 fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
   complexity.violations |> map(v =>
@@ -1094,24 +1119,26 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
 }
 
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
-  let acc = sources |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: empty_intern_table() }, f: (acc, s) =>
+  let prepared = sources |> map(s =>
     let tokens = tokenize(source: s.content, file: s.path)
     let si = build_newline_index(file: s.path, source: s.content)
-    let parsed = parse_with_table(tokens: tokens, source_indices: map_insert(empty_map(), si.file, si), intern_table: acc.intern_table)
-    let pr = parsed.result
+    FrontendPrepared { tokens: tokens, newline_index: si }
+  )
+  let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
+  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
+    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
     FrontendAccum {
-      parse_results: list_push(acc.parse_results, pr),
-      newline_indices: list_push(acc.newline_indices, si),
+      parse_results: list_push(acc.parse_results, parsed.result),
+      newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table
     }
   )
-  let parse_results = acc.parse_results
-  let newline_indices = acc.newline_indices
-  let intern_table = acc.intern_table
+  let parse_results = parsed.parse_results
+  let newline_indices = parsed.newline_indices
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let has_parse_errors = parse_results |> any(p => p.error != None)
   if has_parse_errors {
-    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: intern_table }
+    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: parsed.intern_table }
   } else {
     let modules = parse_results |> map(p => p.module.value)
     let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
@@ -1120,7 +1147,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       graph: Some { value: graph },
       diagnostics: concat(parse_diagnostics, graph.diagnostics),
       newline_indices: newline_indices,
-      intern_table: intern_table
+      intern_table: parsed.intern_table
     }
   }
 }
@@ -1135,7 +1162,18 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
 }
 
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
-  emit_resolved_for_target(resolved: compile_to_resolved(sources: sources), target: target)
+  compile_sources_with_options(
+    sources: sources,
+    target: target,
+    options: default_compile_pipeline_options()
+  )
+}
+
+fn compile_sources_with_options(sources: List<SourceFile>, target: RenderTarget, options: CompilePipelineOptions) -> PipelineResult {
+  emit_resolved_for_target(
+    resolved: compile_to_resolved_with_options(sources: sources, options: options),
+    target: target
+  )
 }
 
 type ResolvedPipelineResult {
@@ -1148,6 +1186,13 @@ type ResolvedPipelineResult {
 }
 
 fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
+  compile_to_resolved_with_options(
+    sources: sources,
+    options: default_compile_pipeline_options()
+  )
+}
+
+fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompilePipelineOptions) -> ResolvedPipelineResult {
   let frontend = front_end_sources(sources: sources)
   let newline_indices = frontend.newline_indices
   match frontend.graph {
@@ -1191,10 +1236,16 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
 
       let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
       let typed_diags = typed.diagnostics
-      let func_entries = extract_func_entries(typed: typed)
-      let recursion_ctx = build_recursion_context(typed: typed)
-      let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
-      let complexity_diags = complexity_diagnostics(complexity: complexity)
+      let complexity = if options.analyze_complexity {
+        run_complexity_analysis(typed: typed, source_indices: source_indices)
+      } else {
+        empty_complexity_report()
+      }
+      let complexity_diags = if options.analyze_complexity {
+        complexity_diagnostics(complexity: complexity)
+      } else {
+        []
+      }
       let all_diags = concat(typed_diags, complexity_diags)
 
       let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))

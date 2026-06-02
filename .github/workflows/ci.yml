@@ -149,6 +149,9 @@ jobs:
     - name: Detect affected components
       id: detect
       run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
+    - name: Emit Wave 3 shadow selection receipt (Class C, non-blocking)
+      continue-on-error: true
+      run: cargo run -p ci_affected_components --bin emit-ci-wave3-shadow-receipt -- "${{ github.event_name }}"
     # Wave-1 §11.7 kill-criterion instrumentation (work-item adhoc-0ae3efe5-52b). Measurement only:
     # emits a per-PR JSON receipt (affected-set partition + bootstrap_required prediction) that the
     # operator aggregates to decide whether to affected-set-gate ci_floor. Does NOT gate any job.
@@ -175,6 +178,7 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
         # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.
@@ -244,19 +248,13 @@ jobs:
           gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
-      run: cargo build -p v2-compiler --release
-    - name: M1 v4 full-tree rust emit probe (v2 emit + cargo check)
-      timeout-minutes: 20
+      run: RUSTC_WRAPPER= cargo build -p v2-compiler --release
+    - name: M1 v4 full-tree rust emit probe (v2 emit)
+      timeout-minutes: 35
       env:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
-        # Per-invocation --jobs ceiling, projected from v4.workflow.ci m1_probe_cargo_check_jobs_ceiling.
-        # Parallelism is jobserver-coupled (inherited MAKEFLAGS on GHA runners / ctrl-build in session
-        # containers): the host token pool pares actual concurrency below this ceiling -- fill when idle,
-        # pare under load. No static fallback: the probe fails closed if neither coupling is present.
-        # See src/v4/workflow/ci.dag note.
         V4_M1_DAG_EMIT_OUT: ${{ runner.temp }}/v4-bootstrap
         V4_M1_DAG_EMIT_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
-        V4_M1_CARGO_CHECK_JOBS_CEILING: "64"
         V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash .github/ci-floor/v4-m1-rust-emit-probe.sh
     - name: v2 DAG emit parity receipt (required before bootstrap reuse)

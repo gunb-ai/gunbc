@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric+string primitive fact-bundles, ModelCore wave-1 (primitives+inhabitance), wave-2b (laws+effects+partiality+string).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
-// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; G.1.4: wave-2b `PerLanguageFactBundleRegistry` via `insert_per_language_fact_bundle_entry`; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW, SL-T4-WAVE2B-TS-LAW-KEY.
 // 🟡
@@ -77,6 +77,7 @@ import v4.std.model_core {
   EffectSignature,
   FailClosedAtBoundary,
   ModelCore,
+  ModelCorePrimitiveFactAxis,
   model_core_wave1_law_field_algebra,
   model_core_wave1_law_field_kind,
   model_core_wave1_law_field_subject,
@@ -93,11 +94,19 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  Outcome,
   Rejected,
   Unavailable,
   node_locus
 }
+import v4.std.grounding {
+  PerLanguageFactBundleKey,
+  PerLanguageFactBundleRegistry,
+  empty_per_language_fact_bundle_registry,
+  insert_per_language_fact_bundle_entry
+}
 import v4.std.node_query { find_named_child }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -119,11 +128,6 @@ import v4.std.target_model {
   TargetTypeExprVariantSlot
 }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -226,15 +230,12 @@ type TsLanguageModel {
 }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-type TsConcreteSyntaxToken
-  = TsFixedToken { token_class: Symbol }
-  | TsBoundToken { token_class: Symbol, binding: Symbol }
 
 // 🟢 grounded.
 type TsGrammarRelationRow {
   production: FormalProduction
   emitted: Node
-  tokens: List<TsConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
 
 data ts_language_model_surface_id: Symbol = ts_language_model_surface_id
@@ -401,28 +402,28 @@ data ts_mvp1_source_literal: Symbol = ts_mvp1_source_literal
 data ts_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data ts_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
-fn ts_mvp1_concrete_tokens() -> List<TsConcreteSyntaxToken> {
+fn ts_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    TsFixedToken { token_class: ts_token_kw_function },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_fn_add },
-    TsFixedToken { token_class: ts_token_lparen },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_comma },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_rparen },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_lbrace },
-    TsFixedToken { token_class: ts_token_kw_return },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-    TsFixedToken { token_class: ts_token_plus },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
-    TsFixedToken { token_class: ts_token_semicolon },
-    TsFixedToken { token_class: ts_token_rbrace }
+    FixedToken { token_class: ts_token_kw_function },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_fn_add },
+    FixedToken { token_class: ts_token_lparen },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_comma },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_rparen },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_lbrace },
+    FixedToken { token_class: ts_token_kw_return },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+    FixedToken { token_class: ts_token_plus },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
+    FixedToken { token_class: ts_token_semicolon },
+    FixedToken { token_class: ts_token_rbrace }
   ]
 }
 data ts_mvp1_source_text: String = "function add(x: number, y: number): number { return x + y; }"
@@ -640,51 +641,19 @@ fn ts_mvp1_source_text_authority() -> String {
   ts_mvp1_source_text
 }
 
-fn ts_concrete_token_class(token: TsConcreteSyntaxToken) -> Symbol {
+fn ts_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    TsFixedToken { token_class: c } => c
-    TsBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn ts_concrete_token_node(token: TsConcreteSyntaxToken) -> Node {
-  match token {
-    TsFixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          ts_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: ts_inhabitant_atom(id: concrete_syntax_token_kind_fixed)
-          ),
-          ts_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: ts_inhabitant_atom(id: c)
-          )
-        ]
-      }
-    TsBoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          ts_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: ts_inhabitant_atom(id: concrete_syntax_token_kind_bound)
-          ),
-          ts_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: ts_inhabitant_atom(id: c)
-          ),
-          ts_named_edge(
-            name: concrete_syntax_token_field_binding,
-            target: ts_inhabitant_atom(id: b)
-          )
-        ]
-      }
-  }
+fn ts_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn ts_mvp1_positional_token_edge(token: TsConcreteSyntaxToken) -> Edge {
+fn ts_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge {
     label: Positional,
     target: ts_concrete_token_node(token: token)
@@ -775,7 +744,7 @@ fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   }
 }
 
-fn ts_relation_token_edges(tokens: List<TsConcreteSyntaxToken>) -> List<Edge> {
+fn ts_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1033,22 +1002,22 @@ fn ts_wave2a_task_serialize_source_witness() -> Witness<Node> {
   }
 }
 
-fn ts_pr3_identity_concrete_tokens() -> List<TsConcreteSyntaxToken> {
+fn ts_pr3_identity_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    TsFixedToken { token_class: ts_token_kw_function },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_pr3_identity },
-    TsFixedToken { token_class: ts_token_lparen },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_rparen },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_lbrace },
-    TsFixedToken { token_class: ts_token_kw_return },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-    TsFixedToken { token_class: ts_token_semicolon },
-    TsFixedToken { token_class: ts_token_rbrace }
+    FixedToken { token_class: ts_token_kw_function },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_pr3_identity },
+    FixedToken { token_class: ts_token_lparen },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_rparen },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_lbrace },
+    FixedToken { token_class: ts_token_kw_return },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+    FixedToken { token_class: ts_token_semicolon },
+    FixedToken { token_class: ts_token_rbrace }
   ]
 }
 
@@ -1419,7 +1388,7 @@ fn ts_mvp1_target_model() -> TargetModel {
 // (no name-keyed Outcome/Witness/Refined special cases — INVARIANTS P3 / SG-2 worksheet).
 // Connective → TS surface (ECMA / TS Handbook):
 //   atom          ident / keyword primitive (number, string, boolean, ...)
-//   conj          { ... }  structural surface only   (object type — see 🟡 record gap below)
+//   conj          { id: T, ... }                    (object type; shared field-label separator)
 //   disj          union A | B                        (primary sum-type surface)
 //   arrow         (T) => U positional wire from source projection today; arrow_form param slots +
 //                 TargetTypeExprArrowWireShape labeled serialize/decode staged on carrier — live
@@ -1429,7 +1398,6 @@ fn ts_mvp1_target_model() -> TargetModel {
 //                                                      mirrors Rust; the Cardinality source carries a
 //                                                      head carrier, so a head-less tuple does not fit)
 //   instantiation generic apply Foo<Bar, Baz>        (angle brackets — no Rust ::<>)
-// 🟡 gated — feature:target-record-field-label-binding — carrier:TargetGenericApply conj_form (open/separator/close, no field-label `:` token) + serializer:serialize_type_expr_record_bounded (06_translate) drops slot labels; Rust conj_form identical — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains field-label-separator token AND the shared record serializer emits each slot's Named label + `:`, then TS records serialize as `{ id: T, ... }` — forbidden: redefining the shared carrier or the load-bearing 06_translate serializer in this row, or claiming faithful labeled `{ id: T }`. L0 SG-2 probe (Instantiation `Rc<FooBar<X,Y>>`) does not exercise record field-name fidelity. (rationale in PR #4176)
 fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
     atom_form: TargetAtomTypeShape {
@@ -2401,14 +2369,14 @@ fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
 
 
 
-fn ts_formal_grammar_symbol_from_token(token: TsConcreteSyntaxToken) -> FormalGrammarSymbol {
+fn ts_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
   match token {
-    TsFixedToken { token_class: c } => grammar_formal_terminal(identity: c)
-    TsBoundToken { token_class: c, binding: b } => grammar_formal_terminal_bound(identity: c, binding: b)
+    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } => grammar_formal_terminal_bound(identity: c, binding: b)
   }
 }
 
-fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn ts_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -3200,6 +3168,136 @@ fn ts_wave2b_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     right: [ts_primitive_bundle_from_string_facts(facts: ts_facts_string)]
   )
 }
+
+
+// --- G.1.4: per-language fact bundle registry (wave-2b primitives × canonical fact axes) ---
+
+fn ts_g14_grounding_target_model() -> TargetModel {
+  ts_sg2_type_expr_target_model()
+}
+
+fn ts_insert_per_language_primitive_axis(
+  registry: PerLanguageFactBundleRegistry,
+  subject: Node,
+  target: TargetModel,
+  axis: ModelCorePrimitiveFactAxis,
+  value: Node
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  insert_per_language_fact_bundle_entry(
+    registry: registry,
+    key: PerLanguageFactBundleKey {
+      subject_carrier: subject,
+      target: target,
+      fact_axis: axis
+    },
+    fact_value: value
+  )
+}
+
+fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  let target = ts_g14_grounding_target_model()
+  let number_subject = ts_number_facts_node(facts: ts_facts_number)
+  let bigint_subject = ts_bigint_facts_node(facts: ts_facts_bigint)
+  let bool_subject = ts_bool_facts_node(facts: ts_facts_boolean)
+  let string_subject = ts_string_facts_node(facts: ts_facts_string)
+  match ts_insert_per_language_primitive_axis(
+    registry: empty_per_language_fact_bundle_registry(),
+    subject: number_subject,
+    target: target,
+    axis: ModelCoreFactAxisSurfaceSpelling {},
+    value: ts_inhabitant_atom(id: ts_facts_number.surface_spelling)
+  ) {
+    Accepted { value: r0, diagnostics: _ } =>
+      match ts_insert_per_language_primitive_axis(
+        registry: r0,
+        subject: number_subject,
+        target: target,
+        axis: ModelCoreFactAxisWidth {},
+        value: ts_inhabitant_atom(id: ts_tag_bits64)
+      ) {
+        Accepted { value: r1, diagnostics: _ } =>
+          match ts_insert_per_language_primitive_axis(
+            registry: r1,
+            subject: number_subject,
+            target: target,
+            axis: ModelCoreFactAxisEncoding {},
+            value: ts_inhabitant_atom(id: ts_facts_number.ieee754_binary)
+          ) {
+            Accepted { value: r2, diagnostics: _ } =>
+              match ts_insert_per_language_primitive_axis(
+                registry: r2,
+                subject: bigint_subject,
+                target: target,
+                axis: ModelCoreFactAxisSurfaceSpelling {},
+                value: ts_inhabitant_atom(id: ts_facts_bigint.surface_spelling)
+              ) {
+                Accepted { value: r3, diagnostics: _ } =>
+                  match ts_insert_per_language_primitive_axis(
+                    registry: r3,
+                    subject: bigint_subject,
+                    target: target,
+                    axis: ModelCoreFactAxisEncoding {},
+                    value: ts_inhabitant_atom(id: ts_facts_bigint.encoding)
+                  ) {
+                    Accepted { value: r4, diagnostics: _ } =>
+                      match ts_insert_per_language_primitive_axis(
+                        registry: r4,
+                        subject: bool_subject,
+                        target: target,
+                        axis: ModelCoreFactAxisSurfaceSpelling {},
+                        value: ts_inhabitant_atom(id: ts_facts_boolean.surface_spelling)
+                      ) {
+                        Accepted { value: r5, diagnostics: _ } =>
+                          match ts_insert_per_language_primitive_axis(
+                            registry: r5,
+                            subject: bool_subject,
+                            target: target,
+                            axis: ModelCoreFactAxisEncoding {},
+                            value: ts_inhabitant_atom(id: ts_facts_boolean.encoding)
+                          ) {
+                            Accepted { value: r6, diagnostics: _ } =>
+                              match ts_insert_per_language_primitive_axis(
+                                registry: r6,
+                                subject: string_subject,
+                                target: target,
+                                axis: ModelCoreFactAxisSurfaceSpelling {},
+                                value: ts_inhabitant_atom(id: ts_facts_string.surface_spelling)
+                              ) {
+                                Accepted { value: r7, diagnostics: _ } =>
+                                  ts_insert_per_language_primitive_axis(
+                                    registry: r7,
+                                    subject: string_subject,
+                                    target: target,
+                                    axis: ModelCoreFactAxisEncoding {},
+                                    value: ts_inhabitant_atom(id: ts_facts_string.encoding)
+                                  )
+                                Rejected { diagnostics: d } =>
+                                  Rejected { diagnostics: d }
+                              }
+                            Rejected { diagnostics: d } =>
+                              Rejected { diagnostics: d }
+                          }
+                        Rejected { diagnostics: d } =>
+                          Rejected { diagnostics: d }
+                      }
+                    Rejected { diagnostics: d } =>
+                      Rejected { diagnostics: d }
+                  }
+                Rejected { diagnostics: d } =>
+                  Rejected { diagnostics: d }
+              }
+            Rejected { diagnostics: d } =>
+              Rejected { diagnostics: d }
+          }
+        Rejected { diagnostics: d } =>
+          Rejected { diagnostics: d }
+      }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+data ts_per_language_fact_bundle_registry_outcome: Outcome<PerLanguageFactBundleRegistry> = ts_build_per_language_fact_bundle_registry()
 
 
 // 🟡 coproduct dissolution — SL-T4-WAVE2B-TS-LAW-KEY — feature:model-core-law-expression-carrier — scaffold:T-4-wave-2b · law-kind coproduct for ts_model_core_law_node kind edge — owner:T-4 typescript language model lane — dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).

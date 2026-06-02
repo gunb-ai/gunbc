@@ -42,6 +42,29 @@ data primitive_fact_axis_surface_spelling: Symbol = primitive_fact_axis_surface_
 data primitive_fact_axis_overflow_disposition: Symbol = primitive_fact_axis_overflow_disposition
 
 
+// 🟢 terminal — closed model_core primitive fact-axis vocabulary (PrimitiveFactBundle P2).
+// G.0 keys `PerLanguageFactBundleKey.fact_axis` here; target_model catalog axes widen in G.1.
+type ModelCorePrimitiveFactAxis
+  = ModelCoreFactAxisWidth {}
+  | ModelCoreFactAxisSignedness {}
+  | ModelCoreFactAxisRange {}
+  | ModelCoreFactAxisEncoding {}
+  | ModelCoreFactAxisSurfaceSpelling {}
+  | ModelCoreFactAxisOverflowDisposition {}
+
+
+fn model_core_primitive_fact_axis_symbol(axis: ModelCorePrimitiveFactAxis) -> Symbol {
+  match axis {
+    ModelCoreFactAxisWidth {} => primitive_fact_axis_width
+    ModelCoreFactAxisSignedness {} => primitive_fact_axis_signedness
+    ModelCoreFactAxisRange {} => primitive_fact_axis_range
+    ModelCoreFactAxisEncoding {} => primitive_fact_axis_encoding
+    ModelCoreFactAxisSurfaceSpelling {} => primitive_fact_axis_surface_spelling
+    ModelCoreFactAxisOverflowDisposition {} => primitive_fact_axis_overflow_disposition
+  }
+}
+
+
 type PrimitiveFactBundle {
   substrate_carrier: Node
   spec_facts: Map<Symbol, Node>

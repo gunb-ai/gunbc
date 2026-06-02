@@ -15,6 +15,12 @@
 //! Wave-0 wiring sentences inside `bootstrap_claim_generator_for_manual_anchor` / `Generator`
 //! construction until M2 can compile this module end-to-end (codex **#14839** — bounded parse
 //! ratchet, not a permanent substitute for `.dag` `TestClaim` coverage).
+//!
+//! **PR #4265 P5 receipt (+0 SG-0 paths):** same-path expansion for the T-38B
+//! `lens_effect/effect_depends_on` TestClaimRun roster receipt. This uses the existing
+//! `EXPECTED_HAND_AUTHORED_TEST` census entry for this file; dissolves under ROADMAP.md
+//! **T-PB-B / `pb_rust_tests_outside_residual_zero`** when generated or `.dag` TestClaim
+//! coverage owns the lens_effect roster/claim-id receipt without this Rust string ratchet.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
@@ -35,6 +41,13 @@ const LENS_TESTGEN_DAG_INPUT_SURFACE_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_testgen/dag_input_surface.dag");
 const LENS_TESTGEN_DAG_INPUT_SURFACE_PATH: &str =
     "src/v4/test/claim/lens_testgen/dag_input_surface.dag";
+const LENS_EFFECT_DEPENDS_ON_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_effect/effect_depends_on.dag");
+const LENS_EFFECT_DEPENDS_ON_PATH: &str = "src/v4/test/claim/lens_effect/effect_depends_on.dag";
+const LENS_TESTGEN_GENERATOR_PROVENANCE_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_testgen/generator_provenance.dag");
+const LENS_TESTGEN_GENERATOR_PROVENANCE_PATH: &str =
+    "src/v4/test/claim/lens_testgen/generator_provenance.dag";
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -96,7 +109,10 @@ fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
         LENS_TESTGEN_DAG_INPUT_SURFACE_PATH,
     );
     assert!(
-        function_count(&module, "language_behavior_generator_uses_dag_input") == 1
+        function_count(&module, "language_behavior_generator_uses_conj_dag_input") == 1
+            && function_count(&module, "language_behavior_generator_uses_disj_dag_input") == 1
+            && function_count(&module, "language_behavior_generator_uses_transform_dag_input") == 1
+            && function_count(&module, "language_behavior_generator_uses_dag_input") == 1
             && function_count(&module, "scheduled_language_behavior_generators_cover_dag_inputs")
                 == 1
             && function_count(&module, "bootstrap_generator_has_conj_dag_input_surface") == 1,
@@ -107,8 +123,139 @@ fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("testgen_scheduled_language_behavior_generators")
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("bootstrap_claim_generator_for_manual_anchor")
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim")
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim"),
-        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring"
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
+                "data witness_lens_testgen_schedules_dag_input_surface_green: Bool"
+            )
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
+                "data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool"
+            )
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("for_all(")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
+                "language_behavior_generator_uses_disj_dag_input"
+            )
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
+                "language_behavior_generator_uses_transform_dag_input"
+            )
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("stub_empty_disj")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("stub_empty_transform")
+            && !LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("compile-only until T-19"),
+        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring or green witnesses"
+    );
+}
+
+// F.2-P1 hand-Rust receipt (INVARIANTS.md §P5 Dispatch-Discipline mechanism (b),
+// same-path expansion): the two tests below reuse this file's existing
+// EXPECTED_HAND_AUTHORED_TEST census entry (+0 SG-0 paths) — same pattern PR #4265
+// used for the lens_effect roster and the witness_validity corpus already in this file.
+// These are bounded parse/structural ratchets, NOT permanent host-Rust. Dissolution
+// trigger: they retire when M2 cross-module name resolution / the T-22 runner evaluates
+// `lens_testgen/generator_provenance.dag`'s `EqualsClaim` end-to-end (real .dag TestClaim
+// coverage), at which point the string/field pins here are redundant and removed.
+#[test]
+fn v4_lens_testgen_generator_carries_provenance_and_profile_fields() {
+    // F.2-P1: Generator<C> gains a provenance bundle (GeneratorProvenance, authored in
+    // v4.std.artifact — no duplicated artifact law here) + testgen-local profile_metadata.
+    let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
+    let prov_ty =
+        generator_field_ty(&testgen, "provenance").expect("Generator should declare `provenance`");
+    assert!(
+        matches!(prov_ty, SurfaceType::Named { name: n, .. } if n == "GeneratorProvenance"),
+        "Generator.provenance must be GeneratorProvenance (bundle authored in v4.std.artifact); got {prov_ty:?}"
+    );
+    let profile_ty = generator_field_ty(&testgen, "profile_metadata")
+        .expect("Generator should declare `profile_metadata`");
+    assert!(
+        matches!(profile_ty, SurfaceType::Named { name: n, .. } if n == "GeneratorProfile"),
+        "Generator.profile_metadata must be GeneratorProfile (testgen-local concept); got {profile_ty:?}"
+    );
+    let artifact_imports = import_names_for_path(&testgen, &["v4", "std", "artifact"])
+        .expect("testgen must import provenance carriers from v4.std.artifact");
+    for sym in [
+        "GeneratorId",
+        "GeneratorProvenance",
+        "test_claim_generated_artifact",
+    ] {
+        assert!(
+            artifact_imports.iter().any(|n| n == sym),
+            "testgen must import `{sym}` from v4.std.artifact (single-authority cross-ref, no duplicated artifact law); got {artifact_imports:?}"
+        );
+    }
+    assert!(
+        TESTGEN_DAG.contains("fn scheduled_generators_carry_provenance()")
+            && TESTGEN_DAG.contains("fn generator_carries_provenance"),
+        "testgen must expose the provenance-integrity witness fns (close-criterion witness)"
+    );
+    // Identity must be DERIVED from the row's canonical ClaimAnchorKey (single authority,
+    // unique per row) — not a coarse static category symbol shared across distinct anchors.
+    assert!(
+        TESTGEN_DAG
+            .contains("fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId")
+            && TESTGEN_DAG
+                .contains("fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId"),
+        "testgen must derive GeneratorId from the canonical anchor (no per-row collision)"
+    );
+    assert!(
+        !TESTGEN_DAG.contains("testgen_gen_id_bootstrap_manual_anchor")
+            && !TESTGEN_DAG.contains("testgen_gen_id_algebra_law"),
+        "the shared static GeneratorIds (one id across distinct-anchor rows) must be gone — identity is anchor-derived"
+    );
+    // Provenance must not re-declare artifact law in the testgen lens.
+    assert!(
+        !TESTGEN_DAG.contains("type GeneratorProvenance")
+            && !TESTGEN_DAG.contains("type GeneratorId"),
+        "GeneratorProvenance/GeneratorId are authored in v4.std.artifact; testgen only consumes them"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_generator_provenance_claim_parses_and_pins_witness() {
+    let module = parse_module(
+        LENS_TESTGEN_GENERATOR_PROVENANCE_DAG,
+        LENS_TESTGEN_GENERATOR_PROVENANCE_PATH,
+    );
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "lens_testgen",
+            "generator_provenance"
+        ]],
+        "provenance claim module should stay under recursive T-22 discovery"
+    );
+    assert!(
+        LENS_TESTGEN_GENERATOR_PROVENANCE_DAG.contains(
+            "import v4.lens.testgen { scheduled_generators_carry_provenance }"
+        ) && LENS_TESTGEN_GENERATOR_PROVENANCE_DAG.contains(
+            "data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = EqualsClaim"
+        ) && LENS_TESTGEN_GENERATOR_PROVENANCE_DAG.contains(
+            "data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()"
+        ),
+        "{LENS_TESTGEN_GENERATOR_PROVENANCE_PATH}: must pin the testgen provenance witness via EqualsClaim + green Bool routed through the lens helper"
+    );
+}
+
+#[test]
+fn v4_lens_effect_depends_on_routes_through_testclaim_run() {
+    tokenize_for_test(LENS_EFFECT_DEPENDS_ON_DAG, LENS_EFFECT_DEPENDS_ON_PATH)
+        .unwrap_or_else(|e| panic!("{LENS_EFFECT_DEPENDS_ON_PATH}: tokenize: {e:?}"));
+    assert!(
+        LENS_EFFECT_DEPENDS_ON_DAG.matches("fn effect_depends_on_claim_holds").count() == 1
+            && LENS_EFFECT_DEPENDS_ON_DAG.matches("fn effect_context").count() == 1,
+        "{LENS_EFFECT_DEPENDS_ON_PATH}: lens_effect family receipt must keep its local predicate and runtime context"
+    );
+    assert!(
+        LENS_EFFECT_DEPENDS_ON_DAG.contains(
+            "data claim_lens_effect_depends_on_runtime_verdict: TestClaim = EqualsClaim"
+        ) && LENS_EFFECT_DEPENDS_ON_DAG.contains(
+            "data subject_lens_effect_depends_on_runtime_verdict: TestClaimEvalSubject<Node> = eval_test_claim_subject("
+        ) && LENS_EFFECT_DEPENDS_ON_DAG.contains(
+            "data run_lens_effect_depends_on_runtime_verdict: TestClaimRun<Node, RuntimeValue> = run_test_claim("
+        ) && LENS_EFFECT_DEPENDS_ON_DAG
+            .contains("value: RuntimeUnitValue { unit_type: effect_runtime_type_node() }"),
+        "{LENS_EFFECT_DEPENDS_ON_PATH}: missing T-38 subject roster/run_test_claim wiring"
     );
 }
 

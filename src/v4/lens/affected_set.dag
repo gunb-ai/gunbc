@@ -5,7 +5,7 @@
 module v4.lens.affected_set
 
 
-import v4.std.collection { List, Map }
+import v4.std.collection { Absent, List, Map, Present, map_get, map_insert }
 import v4.std.algebra { contains, list_append, list_snoc_item }
 import v4.compiler.infer { InferredTree }
 import v4.std.change {
@@ -502,6 +502,20 @@ fn affected_set_rerun_nodes(affected_set_value: AffectedSet) -> RerunNodeSet {
 }
 
 
+// Node-precise CI-consumer bridge: a closure `AffectedSetReading` (edit-locus +
+// dependency-closure frontier from `affected_set_reading`) is already the exact set of
+// Nodes whose rebuild/re-test the CI runner must rerun. Its `affected` list IS the rerun
+// frontier — no change-set re-derivation. This is the single authority converting a
+// node-precise reading into the `RerunNodeSet` consumed by `v4.workflow.ci`
+// `ci_select_from_affected_set_reading`. Always `Produced`; fail-closed for the reading
+// path lives upstream in `affected_set_reading_from_git_diff` (Witness Violates).
+fn affected_set_reading_rerun_nodes(reading: AffectedSetReading) -> RerunNodeSet {
+  RerunNodeSetProduced {
+    nodes: reading.affected
+  }
+}
+
+
 fn record_affected_exclusion(
   acc: AffectedSetFoldAcc,
   change: Change,
@@ -620,23 +634,28 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
   match frontier {
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
-      // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: mark_excluded decisions
+      // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
+      // dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate at v4.std.collection);
+      // site: mark_excluded decisions
       match map_get(decisions, key) {
-        Some { value: Rerun } =>
-          ChangedSubgraphFrontier {
-            boundary_exclusions: boundary_exclusions,
-            decisions: decisions
-          }
-        Some { value: Excluded { first: first, rest: rest } } =>
-          ChangedSubgraphFrontier {
-            boundary_exclusions: boundary_exclusions,
-            decisions: map_insert(decisions, key, Excluded { first: first, rest: list_snoc_item(xs: rest, item: proof) })
-          }
-        None =>
-          ChangedSubgraphFrontier {
-            boundary_exclusions: boundary_exclusions,
-            decisions: map_insert(decisions, key, Excluded { first: proof, rest: [] })
-          }
+        Accepted { value: opt, diagnostics: _ } => match opt {
+          Present { value: Rerun } =>
+            ChangedSubgraphFrontier {
+              boundary_exclusions: boundary_exclusions,
+              decisions: decisions
+            }
+          Present { value: Excluded { first: first, rest: rest } } =>
+            ChangedSubgraphFrontier {
+              boundary_exclusions: boundary_exclusions,
+              decisions: map_insert(decisions, key, Excluded { first: first, rest: list_snoc_item(xs: rest, item: proof) })
+            }
+          Absent =>
+            ChangedSubgraphFrontier {
+              boundary_exclusions: boundary_exclusions,
+              decisions: map_insert(decisions, key, Excluded { first: proof, rest: [] })
+            }
+        }
+        Rejected { diagnostics: d } => mark_whole_dag_diagnostics(diagnostics: d)
       }
   }
 }

@@ -8,7 +8,9 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::{env, fs, io};
 
-use ci_affected_components::git_read::{diff_range, read_changed_paths, GitDiffRead};
+use ci_affected_components::git_diff_transport::{
+    git_read_changed_paths_for_event, GitChangedPathsRead,
+};
 use ci_affected_components::{
     ci_component_affected_fail_closed, ci_component_affected_from_changed_paths,
     CiComponentAffected,
@@ -47,23 +49,24 @@ fn main() -> ExitCode {
         usage();
     }
 
-    let range = diff_range(event_name.as_str());
-    let flags = match read_changed_paths(range) {
-        GitDiffRead::Ok(changed) => {
+    // Single git-diff transport authority shared with the Wave 3 shadow receipt emitter
+    // (`git_diff_transport`) so the gate output and the receipt it shadows cannot drift.
+    let flags = match git_read_changed_paths_for_event(event_name.as_str()) {
+        GitChangedPathsRead::Ok { range, paths } => {
             eprintln!("Changed files in {range}:");
-            if changed.is_empty() {
+            if paths.is_empty() {
                 eprintln!("  (none detected)");
             } else {
-                for path in &changed {
+                for path in &paths {
                     eprintln!("  {path}");
                 }
             }
             eprintln!();
-            ci_component_affected_from_changed_paths(changed.iter().map(String::as_str))
+            ci_component_affected_from_changed_paths(paths.iter().map(String::as_str))
         }
-        GitDiffRead::FailClosed { reason } => {
-            eprintln!("error: {reason}");
+        GitChangedPathsRead::FailClosed { range, detail } => {
             eprintln!("Changed files in {range}: (read failed — fail-closed superset)");
+            eprintln!("  {detail}");
             eprintln!();
             ci_component_affected_fail_closed()
         }

@@ -22,6 +22,24 @@
 //! LanguageModel / lex/grammar surface on `python.dag`. **PR #3840 (+0 census paths):**
 //! adds T-11 grammar-inverse compile-inferred TestClaim parse/import receipts for
 //! python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`).
+//! **PR #4297 (Branch C.1–C.5).** P5 / V3-HAND-RUST-GATE receipt (INVARIANTS §P5 Mechanism (b);
+//! `_internal/INVARIANTS_OPS.md`): **same-path SG-0 deferral under ROADMAP row T-PB-B /
+//! `pb_rust_tests_outside_residual_zero`** (ROADMAP.md:43,63 — "keeping same-path SG-0 expansions
+//! at +0 new paths until the matching claim runner executes those facts directly"). This edit is
+//! **assertion-only on an already-census-listed harness**: **+0 new census paths** (the
+//! `EXPECTED_HAND_AUTHORED_TEST` row for this file is unchanged), **no new or deleted hand-Rust
+//! test file**, and net Rust-test line count flat-to-down. The assertions were *retargeted*, not
+//! added: `v4_dag_language_model_declares_surface_emit_rows` now requires `dag.dag` to import the
+//! shared carrier + `concrete_syntax_token_to_node` (no longer spelling the wire-form
+//! `concrete_syntax_token_kind_*` Symbols inline), and `assert_imports_shared_token_kinds` →
+//! `assert_imports_shared_token_serializer` now requires the shared-serializer import
+//! (rust/java/typescript/swift/wasm). Both track the T-11 single-author serialization morphism.
+//! **PR #4321 (+0 census paths):** same-path structural assertions for Go G.1.3
+//! `PerLanguageFactBundleEntry` rows and the B.2.2 `parse/go_wave2a.dag` corpus symmetry file;
+//! no new hand-Rust test path, and the `.dag` rows are the authored substrate.
+//! Dissolution trigger (= this file's existing trigger, unchanged): retires under T-PB-B when the
+//! `.dag` `TestClaim` / generated-runner replacement executes these facts directly (see the
+//! **Dissolution** note below).
 //! See INVARIANTS.md row `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt
 //! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
 //!
@@ -71,6 +89,8 @@ const MVP1_PYTHON_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_python_add_t
 const MVP1_GO_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_go_add_translate.dag");
 const MVP1_GO_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_go_add_translate.dag";
+const GO_WAVE2A_CLAIM_DAG: &str = include_str!("../../../../v4/test/claim/parse/go_wave2a.dag");
+const GO_WAVE2A_CLAIM_PATH: &str = "src/v4/test/claim/parse/go_wave2a.dag";
 const MVP1_CPP_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_cpp_add_translate.dag");
 const MVP1_CPP_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_cpp_add_translate.dag";
@@ -291,7 +311,7 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
         ),
         "{RUST_LANGUAGE_PATH}: Rust TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, RUST_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, RUST_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "RustGrammarRelationRow"),
         "{RUST_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -392,7 +412,7 @@ fn v4_java_language_model_declares_t11_translation_rules() {
         ),
         "{JAVA_LANGUAGE_PATH}: Java TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, JAVA_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, JAVA_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "JavaGrammarRelationRow"),
         "{JAVA_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -546,6 +566,120 @@ fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
             "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must not declare faithful algebra inhabitance for deferred complex/singleton facts via `{name}`"
         );
     }
+}
+
+#[test]
+fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
+    let module = parse_module(PYTHON_LANGUAGE_DAG, PYTHON_LANGUAGE_PATH);
+    for name in [
+        "PerLanguageFactBundleEntry",
+        "PerLanguageFactBundleKey",
+        "PerLanguageFactBundleRegistry",
+        "empty_per_language_fact_bundle_registry",
+        "insert_per_language_fact_bundle_entry",
+        "primitive_fact_bundle_for_subject",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "grounding"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must consume `{name}` from v4.std.grounding"
+        );
+    }
+    for name in [
+        "ModelCorePrimitiveFactAxis",
+        "ModelCoreFactAxisEncoding",
+        "ModelCoreFactAxisSurfaceSpelling",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "model_core"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must consume typed model_core axis `{name}`"
+        );
+    }
+    for name in ["Outcome", "Accepted", "Rejected", "outcome_accepted"] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "diagnostic"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle registry must consume diagnostic `{name}`"
+        );
+    }
+    for name in [
+        "python_g1_2_fact_bundle_key",
+        "python_g1_2_fact_bundle_entry",
+        "python_g1_2_integer_fact_bundle_entries",
+        "python_g1_2_float_fact_bundle_entries",
+        "python_g1_2_complex_fact_bundle_entries",
+        "python_g1_2_bool_fact_bundle_entries",
+        "python_g1_2_singleton_fact_bundle_entries",
+        "python_g1_2_fact_bundle_entries",
+        "python_g1_2_insert_fact_bundle_entry",
+        "python_g1_2_insert_entries",
+        "python_g1_2_fact_bundle_registry",
+        "python_g1_2_snoc_primitive_bundle",
+        "python_g1_2_integer_primitive_bundles_from_registry",
+        "python_g1_2_float_primitive_bundles_from_registry",
+        "python_g1_2_complex_primitive_bundles_from_registry",
+        "python_g1_2_bool_primitive_bundles_from_registry",
+        "python_g1_2_singleton_primitive_bundles_from_registry",
+        "python_g1_2_append_primitive_bundle_outcomes",
+        "python_g1_2_primitive_bundles_from_registry",
+        "python_g1_2_primitive_fact_bundles",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must declare `{name}`"
+        );
+    }
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains("core: ModelCore")
+            && PYTHON_LANGUAGE_DAG.contains("fn python_model_core_wave1() -> Outcome<ModelCore>")
+            && PYTHON_LANGUAGE_DAG
+                .contains("fn python_language_model_wave1() -> Outcome<PythonLanguageModel>")
+            && PYTHON_LANGUAGE_DAG.contains("match python_g1_2_primitive_fact_bundles()"),
+        "{PYTHON_LANGUAGE_PATH}: Python ModelCore primitive facts must propagate G.1.2 registry diagnostics"
+    );
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains(
+            "fn python_g1_2_primitive_bundles_from_registry(\n  registry: PerLanguageFactBundleRegistry\n) -> Outcome<List<PrimitiveFactBundle>>"
+        ) && PYTHON_LANGUAGE_DAG.contains("match primitive_fact_bundle_for_subject("),
+        "{PYTHON_LANGUAGE_PATH}: Python registry projection must propagate primitive bundle lookup diagnostics"
+    );
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains("match python_model_core_wave1()")
+            && PYTHON_LANGUAGE_DAG.contains("Rejected { diagnostics: d } =>\n      Rejected { diagnostics: d }"),
+        "{PYTHON_LANGUAGE_PATH}: Python LanguageModel construction must reject when ModelCore construction rejects"
+    );
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains("primitives: primitives")
+            && !PYTHON_LANGUAGE_DAG.contains("Rejected { diagnostics: _ } =>\n      []"),
+        "{PYTHON_LANGUAGE_PATH}: Python G.1.2 registry rejection must not be coerced to an empty primitive list"
+    );
+    for name in [
+        "python_integer_spec_facts",
+        "python_float_spec_facts",
+        "python_complex_spec_facts",
+        "python_bool_spec_facts",
+        "python_singleton_spec_facts",
+        "python_primitive_bundle_from_integer_facts",
+        "python_primitive_bundle_from_float_facts",
+        "python_primitive_bundle_from_complex_facts",
+        "python_primitive_bundle_from_bool_facts",
+        "python_primitive_bundle_from_singleton_facts",
+        "python_wave1_primitive_fact_bundles",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 must not retain legacy direct PrimitiveFactBundle builder `{name}`"
+        );
+    }
+    assert_eq!(
+        surface_fn_count(&module, "python_g1_2_concrete_syntax_token"),
+        0,
+        "{PYTHON_LANGUAGE_PATH}: Python G.1.2 must not revive target-local concrete syntax token helpers"
+    );
+    assert_eq!(
+        surface_declares_type(&module, "PythonConcreteSyntaxToken"),
+        false,
+        "{PYTHON_LANGUAGE_PATH}: Python G.1.2 must consume shared ConcreteSyntaxToken authority"
+    );
 }
 
 #[test]
@@ -758,7 +892,7 @@ fn v4_typescript_language_model_declares_t11_translation_rules() {
         ),
         "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, TYPESCRIPT_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, TYPESCRIPT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "TsGrammarRelationRow"),
         "{TYPESCRIPT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -780,7 +914,7 @@ fn v4_swift_language_model_declares_t11_translation_rules() {
         ),
         "{SWIFT_LANGUAGE_PATH}: Swift TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, SWIFT_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, SWIFT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "SwiftGrammarRelationRow"),
         "{SWIFT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -838,7 +972,7 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
         ),
         "{WASM_LANGUAGE_PATH}: Wasm TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, WASM_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, WASM_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "WasmGrammarRelationRow"),
         "{WASM_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -924,29 +1058,32 @@ fn v4_dag_language_model_declares_surface_emit_rows() {
         ),
         "{DAG_LANGUAGE_PATH}: emit rows must use the shared grammar-relation field symbols"
     );
+    // T-11: self-emission constructs the typed ConcreteSyntaxToken carrier and projects it
+    // through the single shared serializer, rather than re-spelling the wire-form field/kind
+    // Symbols inline. The carrier + serializer are the shared authority emit rows depend on.
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_field_kind"
+            "FixedToken"
         ),
-        "{DAG_LANGUAGE_PATH}: token rows must use the shared concrete-token field symbols"
+        "{DAG_LANGUAGE_PATH}: fixed-token rows must construct the shared ConcreteSyntaxToken carrier"
     );
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_fixed"
+            "BoundToken"
         ),
-        "{DAG_LANGUAGE_PATH}: fixed-token rows must use the shared token-kind identity"
+        "{DAG_LANGUAGE_PATH}: bound-token rows must construct the shared ConcreteSyntaxToken carrier"
     );
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_bound"
+            "concrete_syntax_token_to_node"
         ),
-        "{DAG_LANGUAGE_PATH}: bound-token rows must use the shared token-kind identity"
+        "{DAG_LANGUAGE_PATH}: token rows must serialize through the single shared token morphism"
     );
     assert!(
         surface_declares_fn(&module, "emit_fixed_token"),
@@ -1005,6 +1142,201 @@ fn v4_go_language_model_declares_wave1_carriers() {
     assert!(
         import_includes_name(&module, &["v4", "std", "model_core"], "ModelCore"),
         "{GO_LANGUAGE_PATH}: must import ModelCore from v4.std.model_core"
+    );
+}
+
+#[test]
+fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
+    let module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grounding"],
+            "PerLanguageFactBundleEntry"
+        ),
+        "{GO_LANGUAGE_PATH}: G.1.3 Go fact rows must consume the G.0 PerLanguageFactBundleEntry schema"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grounding"],
+            "PerLanguageFactBundleRegistry"
+        ),
+        "{GO_LANGUAGE_PATH}: G.1.3 Go fact rows must expose the keyed G.0 registry authority"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grounding"],
+            "insert_per_language_fact_bundle_entry"
+        ),
+        "{GO_LANGUAGE_PATH}: G.1.3 Go fact rows must populate through the fail-closed registry insert"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grounding"],
+            "PerLanguageFactBundleKey"
+        ),
+        "{GO_LANGUAGE_PATH}: G.1.3 Go fact rows must key by substrate carrier, TargetModel, and fact axis"
+    );
+    for name in [
+        "go_per_language_fact_bundle_entry",
+        "go_integer_per_language_fact_bundle_entries",
+        "go_float_per_language_fact_bundle_entries",
+        "go_complex_per_language_fact_bundle_entries",
+        "go_bool_per_language_fact_bundle_entries",
+        "go_string_per_language_fact_bundle_entries",
+        "go_g1_3_per_language_fact_bundle_entry_rows",
+        "go_g1_3_per_language_fact_bundle_registry_step",
+        "go_g1_3_per_language_fact_bundle_registry",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{GO_LANGUAGE_PATH}: must declare G.1.3 Go fact-bundle row builder `{name}`"
+        );
+    }
+    assert!(
+        surface_fn_param_type(&module, "go_per_language_fact_bundle_key", 1)
+            .as_deref()
+            == Some("ModelCorePrimitiveFactAxis")
+            && surface_fn_param_type(&module, "go_per_language_fact_bundle_entry", 1)
+                .as_deref()
+                == Some("ModelCorePrimitiveFactAxis")
+            && surface_fn_return_type(&module, "go_per_language_fact_bundle_key").as_deref()
+                == Some("PerLanguageFactBundleKey")
+            && surface_fn_return_type(&module, "go_per_language_fact_bundle_entry").as_deref()
+                == Some("PerLanguageFactBundleEntry"),
+        "{GO_LANGUAGE_PATH}: G.1.3 keys must type fact axes as the closed G.0 ModelCorePrimitiveFactAxis carrier"
+    );
+    assert!(
+        ["subject_carrier", "go_mvp1_target_model", "fact_axis"]
+            .iter()
+            .all(|needle| surface_fn_body_mentions_name(
+                &module,
+                GO_LANGUAGE_DAG,
+                "go_per_language_fact_bundle_key",
+                needle
+            )),
+        "{GO_LANGUAGE_PATH}: G.1.3 key builder must bind subject, Go target, and closed fact-axis fields in its body"
+    );
+    for (fn_name, axes) in [
+        (
+            "go_integer_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisWidth",
+                "ModelCoreFactAxisSignedness",
+                "ModelCoreFactAxisOverflowDisposition",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+        (
+            "go_float_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisWidth",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+        (
+            "go_complex_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisWidth",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+        (
+            "go_bool_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+        (
+            "go_string_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+    ] {
+        assert!(
+            axes.iter().all(|axis| surface_fn_body_mentions_name(
+                &module,
+                GO_LANGUAGE_DAG,
+                fn_name,
+                axis
+            )),
+            "{GO_LANGUAGE_PATH}: `{fn_name}` must key Go facts through the closed model_core axes"
+        );
+    }
+    assert!(
+        surface_fn_param_type(&module, "go_g1_3_per_language_fact_bundle_registry_step", 0)
+            .as_deref()
+            == Some("Outcome<PerLanguageFactBundleRegistry>")
+            && surface_fn_param_type(&module, "go_g1_3_per_language_fact_bundle_registry_step", 1)
+                .as_deref()
+                == Some("PerLanguageFactBundleEntry")
+            && surface_fn_return_type(&module, "go_g1_3_per_language_fact_bundle_registry_step")
+                .as_deref()
+                == Some("Outcome<PerLanguageFactBundleRegistry>")
+            && surface_fn_return_type(&module, "go_g1_3_per_language_fact_bundle_registry")
+                .as_deref()
+                == Some("Outcome<PerLanguageFactBundleRegistry>"),
+        "{GO_LANGUAGE_PATH}: G.1.3 registry builders must expose the fail-closed Outcome<PerLanguageFactBundleRegistry> surface"
+    );
+    assert!(
+        surface_fn_body_mentions_name(
+            &module,
+            GO_LANGUAGE_DAG,
+            "go_g1_3_per_language_fact_bundle_registry_step",
+            "insert_per_language_fact_bundle_entry"
+        ) && [
+            "go_g1_3_per_language_fact_bundle_entry_rows",
+            "outcome_accepted",
+            "empty_per_language_fact_bundle_registry",
+            "go_g1_3_per_language_fact_bundle_registry_step",
+        ]
+        .iter()
+        .all(|needle| surface_fn_body_mentions_name(
+            &module,
+            GO_LANGUAGE_DAG,
+            "go_g1_3_per_language_fact_bundle_registry",
+            needle
+        )),
+        "{GO_LANGUAGE_PATH}: canonical G.1.3 Go registry builder must fold rows through the fail-closed insert step"
+    );
+}
+
+#[test]
+fn v4_go_wave2a_parse_claim_tokenizes_and_parses() {
+    let _module = parse_module(GO_WAVE2A_CLAIM_DAG, GO_WAVE2A_CLAIM_PATH);
+}
+
+#[test]
+fn v4_go_wave2a_parse_claim_is_mvp_scoped_symmetry_row() {
+    let module = parse_module(GO_WAVE2A_CLAIM_DAG, GO_WAVE2A_CLAIM_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "extdeps", "languages", "go"],
+            "go_mvp1_source_text"
+        ) && import_includes_name(
+            &module,
+            &["v4", "extdeps", "languages", "go"],
+            "go_wave1_lex"
+        ) && import_includes_name(
+            &module,
+            &["v4", "extdeps", "languages", "go"],
+            "go_wave1_grammar"
+        ),
+        "{GO_WAVE2A_CLAIM_PATH}: B.2.2 Go parse row must use the current MVP Go source and wave1 lex/grammar authority"
+    );
+    assert!(
+        surface_declares_data(&module, "claim_go_wave2a_mvp_add_function_parses"),
+        "{GO_WAVE2A_CLAIM_PATH}: must declare the missing Go parse/ wave2a corpus TestClaim"
     );
 }
 
@@ -1224,25 +1556,20 @@ fn import_includes_name(
     })
 }
 
-fn assert_imports_shared_token_kinds(
+fn assert_imports_shared_token_serializer(
     module: &v3_compiler::parse_surface::SurfaceModule,
     path: &str,
 ) {
+    // T-11: per-language `*_concrete_token_node` serialize through the single shared morphism
+    // `concrete_syntax_token_to_node` rather than hand-spelling the wire-form kind/field Symbols
+    // inline — so the Conj wire shape has exactly one author (INVARIANTS P2).
     assert!(
         import_includes_name(
             module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_fixed"
+            "concrete_syntax_token_to_node"
         ),
-        "{path}: fixed-token rows must use the shared token-kind identity"
-    );
-    assert!(
-        import_includes_name(
-            module,
-            &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_bound"
-        ),
-        "{path}: bound-token rows must use the shared token-kind identity"
+        "{path}: token serialization must project through the shared concrete_syntax_token_to_node morphism"
     );
 }
 
@@ -1279,6 +1606,36 @@ fn surface_fn_first_param_named_type(
                 _ => None,
             })
         }
+        _ => None,
+    })
+}
+
+fn surface_fn_param_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    fn_name: &str,
+    index: usize,
+) -> Option<String> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Fn { name, params, .. } | SurfaceItem::FnExternalBody { name, params, .. }
+            if name == fn_name =>
+        {
+            params.get(index).map(|param| surface_type_name(&param.ty))
+        }
+        _ => None,
+    })
+}
+
+fn surface_fn_return_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    fn_name: &str,
+) -> Option<String> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Fn {
+            name, return_type, ..
+        }
+        | SurfaceItem::FnExternalBody {
+            name, return_type, ..
+        } if name == fn_name => Some(surface_type_name(return_type)),
         _ => None,
     })
 }
@@ -1413,6 +1770,111 @@ fn fn_external_body_contains(
         },
         _ => false,
     })
+}
+
+fn surface_fn_body_mentions_name(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    fn_name: &str,
+    needle: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Fn { name, body, .. } if name == fn_name => expr_mentions_name(body, needle),
+        SurfaceItem::FnExternalBody {
+            name, body_span, ..
+        } if name == fn_name => source_span_without_comments(source, body_span)
+            .split(|ch: char| !(ch == '_' || ch.is_ascii_alphanumeric()))
+            .any(|token| token == needle),
+        _ => false,
+    })
+}
+
+fn source_span_without_comments(source: &str, span: &v3_compiler::SourceSpan) -> String {
+    strip_dag_comments(source_span_text(source, span))
+}
+
+fn strip_dag_comments(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '/' {
+            match chars.peek().copied() {
+                Some('/') => {
+                    chars.next();
+                    for next in chars.by_ref() {
+                        if next == '\n' {
+                            out.push('\n');
+                            break;
+                        }
+                    }
+                }
+                Some('*') => {
+                    chars.next();
+                    let mut prev = '\0';
+                    for next in chars.by_ref() {
+                        if prev == '*' && next == '/' {
+                            break;
+                        }
+                        prev = next;
+                    }
+                }
+                _ => out.push(ch),
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn expr_mentions_name(expr: &SurfaceExpr, needle: &str) -> bool {
+    match expr {
+        SurfaceExpr::Literal { .. } => false,
+        SurfaceExpr::Var { name, .. } => name == needle,
+        SurfaceExpr::Path { segments, .. } => segments.iter().any(|segment| segment == needle),
+        SurfaceExpr::Call { target, args, .. } => {
+            target == needle || args.iter().any(|arg| expr_mentions_name(arg, needle))
+        }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            segments.iter().any(|segment| segment == needle)
+                || args.iter().any(|arg| expr_mentions_name(arg, needle))
+        }
+        SurfaceExpr::VariantRecord { target, fields, .. } => {
+            target == needle
+                || fields
+                    .iter()
+                    .any(|field| expr_mentions_name(&field.value, needle))
+        }
+        SurfaceExpr::Operator { args, .. } => {
+            args.iter().any(|arg| expr_mentions_name(arg, needle))
+        }
+        SurfaceExpr::Lambda { body, .. } => expr_mentions_name(body, needle),
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_mentions_name(cond, needle)
+                || expr_mentions_name(then_branch, needle)
+                || expr_mentions_name(else_branch, needle)
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_mentions_name(scrutinee, needle)
+                || arms.iter().any(|arm| expr_mentions_name(&arm.body, needle))
+        }
+        SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .any(|field| field.name == needle || expr_mentions_name(&field.value, needle)),
+        SurfaceExpr::List { elements, .. } => elements
+            .iter()
+            .any(|element| expr_mentions_name(element, needle)),
+        SurfaceExpr::Map { entries, .. } => entries
+            .iter()
+            .any(|entry| entry.key == needle || expr_mentions_name(&entry.value, needle)),
+    }
 }
 
 fn source_span_text<'a>(source: &'a str, span: &v3_compiler::SourceSpan) -> &'a str {
