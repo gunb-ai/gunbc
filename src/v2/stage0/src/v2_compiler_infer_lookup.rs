@@ -178,48 +178,17 @@ pub fn resolve_scrutinee_type_node_seen(
         {
             match normed.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
-                    resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen)
+                    resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone())
                 }
                 _ => normed.clone(),
             }
-        } else if ((normed.connective.clone() == Connective::NoConnective)
-            && ((normed.children.clone().len() as i64) == 0))
-        {
+        } else {
+            if ((normed.connective.clone() == Connective::NoConnective)
+                && ((normed.children.clone().len() as i64) == 0))
             {
-                let canonical = authored_name(env.clone(), normed.clone());
-                if (normed.inferred.clone() != None) {
-                    {
-                        let next_seen = if (canonical.clone().as_str() == "".to_string().as_str()) {
-                            seen.clone()
-                        } else {
-                            v2_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
-                        };
-                        match normed.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: target, .. }) => {
-                                if ((((authored_name(env.clone(), target.clone()).as_str()
-                                    == canonical.clone().as_str())
-                                    && (target.inferred.clone() == None))
-                                    && (target.connective.clone() == Connective::NoConnective))
-                                    && ((target.children.clone().len() as i64) == 0))
-                                {
-                                    normed.clone()
-                                } else {
-                                    resolve_scrutinee_type_node_seen(
-                                        env.clone(),
-                                        target.clone(),
-                                        next_seen,
-                                    )
-                                }
-                            }
-                            _ => normed.clone(),
-                        }
-                    }
-                } else {
-                    if ((canonical.clone().as_str() != "".to_string().as_str())
-                        && emit_map_has(seen.clone(), canonical.clone()))
-                    {
-                        nominal_type_ref(canonical.clone())
-                    } else {
+                {
+                    let canonical = authored_name(env.clone(), normed.clone());
+                    if (normed.inferred.clone() != None) {
                         {
                             let next_seen =
                                 if (canonical.clone().as_str() == "".to_string().as_str()) {
@@ -227,41 +196,77 @@ pub fn resolve_scrutinee_type_node_seen(
                                 } else {
                                     v2_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
                                 };
-                            match lookup_type_for(env.clone(), normed.clone()) {
-                                Some(resolved) => {
-                                    if ((((authored_name(env.clone(), resolved.clone()).as_str()
+                            match normed.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: target, .. }) => {
+                                    if ((((authored_name(env.clone(), target.clone()).as_str()
                                         == canonical.clone().as_str())
-                                        && (resolved.inferred.clone() == None))
-                                        && (resolved.connective.clone()
-                                            == Connective::NoConnective))
-                                        && ((resolved.children.clone().len() as i64) == 0))
+                                        && (target.inferred.clone() == None))
+                                        && (target.connective.clone() == Connective::NoConnective))
+                                        && ((target.children.clone().len() as i64) == 0))
                                     {
                                         normed.clone()
                                     } else {
+                                        resolve_scrutinee_type_node_seen(
+                                            env.clone(),
+                                            target.clone(),
+                                            next_seen,
+                                        )
+                                    }
+                                }
+                                _ => normed.clone(),
+                            }
+                        }
+                    } else {
+                        if ((canonical.clone().as_str() != "".to_string().as_str())
+                            && emit_map_has(seen.clone(), canonical.clone()))
+                        {
+                            nominal_type_ref(canonical.clone())
+                        } else {
+                            {
+                                let next_seen =
+                                    if (canonical.clone().as_str() == "".to_string().as_str()) {
+                                        seen.clone()
+                                    } else {
+                                        v2_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
+                                    };
+                                match lookup_type_for(env.clone(), normed.clone()) {
+                                    Some(resolved) => {
+                                        if ((((authored_name(env.clone(), resolved.clone())
+                                            .as_str()
+                                            == canonical.clone().as_str())
+                                            && (resolved.inferred.clone() == None))
+                                            && (resolved.connective.clone()
+                                                == Connective::NoConnective))
+                                            && ((resolved.children.clone().len() as i64) == 0))
                                         {
-                                            let result = resolve_scrutinee_type_node_seen(
-                                                env.clone(),
-                                                resolved.clone(),
-                                                next_seen,
-                                            );
-                                            let is_optional = (normed.return_cardinality.clone()
-                                                == Cardinality::CardOptional);
-                                            if is_optional {
-                                                with_optional_cardinality(result)
-                                            } else {
-                                                result
+                                            normed.clone()
+                                        } else {
+                                            {
+                                                let result = resolve_scrutinee_type_node_seen(
+                                                    env.clone(),
+                                                    resolved.clone(),
+                                                    next_seen,
+                                                );
+                                                let is_optional =
+                                                    (normed.return_cardinality.clone()
+                                                        == Cardinality::CardOptional);
+                                                if is_optional {
+                                                    with_optional_cardinality(result)
+                                                } else {
+                                                    result
+                                                }
                                             }
                                         }
                                     }
+                                    None => normed.clone(),
                                 }
-                                None => normed.clone(),
                             }
                         }
                     }
                 }
+            } else {
+                normed.clone()
             }
-        } else {
-            normed.clone()
         }
     })
 }
