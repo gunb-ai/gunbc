@@ -208,7 +208,9 @@ fn run_emit_host_rust(
   }
 }
 
-// Substrate row: body stays fail-closed; T-22 eval reifies host facts (see `emit_host_eval.rs`).
+// Substrate row: body stays fail-closed; T-22 eval intercept hand-reifies `v4.std.host_run`
+// in `emit_host_eval.rs` (rust/go route through substrate `emit_host_receipt_from_source`).
+// Asymmetry is tracked under T-PB-B until python receipt assembly moves into `.dag`.
 fn run_emit_host_python(
   target: TargetModel,
   source: TargetSource,

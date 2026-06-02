@@ -570,6 +570,10 @@ fn emit_host_transport_inputs(
 /// Bootstrap `Dag::new()` also embeds `src/v3/std/dimensions.dag` `Witness<Carrier>`
 /// (`Inhabits` / `Violates`). Host-run reification must use `v4.std.witness.Witness`
 /// (`Holds` / `Violates`) from the emit-host import graph.
+///
+/// When several declarations in the same authority file share `type_name` (alias re-lowers,
+/// specialization copies), pick the one with the **lowest** `DeclarationId::raw()` so lookup
+/// is deterministic and stable across hermetic stubs and `compile_to_dag_modules_in_order`.
 fn v4_carrier_decl_id(
     dag: &Dag,
     authority_file_suffix: &str,
@@ -1063,13 +1067,12 @@ fn emit_host_receipt_value(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compile_to_dag_modules_in_order;
     use crate::dag::{
-        ArrowBody, AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, TypeConnective,
+        ArrowBody, AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, Field, TypeConnective,
+        TemplateArgument,
     };
     use crate::diagnostics::SourceSpan;
     use crate::evaluator::{EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder};
-    use crate::CompileError;
     use emit_host_runner::HostSetupFailure;
 
     fn optional_variant(dag: &Dag, name: &str, payload: Value) -> Value {
