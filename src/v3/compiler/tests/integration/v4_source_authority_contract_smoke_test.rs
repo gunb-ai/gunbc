@@ -105,6 +105,19 @@ fn v4_source_authority_contract_uses_source_and_serializer_authorities() {
         "{SOURCE_AUTHORITY_PATH}: receipt type"
     );
     assert!(
+        SOURCE_AUTHORITY_DAG.contains("source_law: SourceAstEqual"),
+        "{SOURCE_AUTHORITY_PATH}: receipt must carry proven source equality payload, not Witness arm"
+    );
+    assert!(
+        SOURCE_AUTHORITY_DAG.contains("semantic_law: SemanticIrEqual"),
+        "{SOURCE_AUTHORITY_PATH}: receipt must carry proven semantic equality payload, not Witness arm"
+    );
+    assert!(
+        !SOURCE_AUTHORITY_DAG.contains("source_law: Witness<SourceAstEqual>")
+            && !SOURCE_AUTHORITY_DAG.contains("semantic_law: Witness<SemanticIrEqual>"),
+        "{SOURCE_AUTHORITY_PATH}: accepted receipt must not represent failing witness arms"
+    );
+    assert!(
         surface_declares_fn(&module, "source_authority_round_trip"),
         "{SOURCE_AUTHORITY_PATH}: round-trip entrypoint"
     );

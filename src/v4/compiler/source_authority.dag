@@ -57,13 +57,9 @@ type SemanticIrEqual {
 }
 
 type SourceAuthorityRoundTripReceipt {
-  original_ast: DagSourceAst
   canonical_source: DagSource
-  reparsed_ast: DagSourceAst
-  original_ir: DagSemanticIr
-  reparsed_ir: DagSemanticIr
-  source_law: Witness<SourceAstEqual>
-  semantic_law: Witness<SemanticIrEqual>
+  source_law: SourceAstEqual
+  semantic_law: SemanticIrEqual
 }
 
 
@@ -156,20 +152,16 @@ fn source_authority_receipt_from_parts(
   match source_law {
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
-    Holds { value: _ } =>
+    Holds { value: source_law_value } =>
       match semantic_law {
         Violates { diagnostic: d } =>
           Rejected { diagnostics: diagnostics_singleton(d: d) }
-        Holds { value: _ } =>
+        Holds { value: semantic_law_value } =>
           outcome_accepted(
             value: SourceAuthorityRoundTripReceipt {
-              original_ast: original_ast,
               canonical_source: canonical_source,
-              reparsed_ast: reparsed_ast,
-              original_ir: original_ir,
-              reparsed_ir: reparsed_ir,
-              source_law: source_law,
-              semantic_law: semantic_law
+              source_law: source_law_value,
+              semantic_law: semantic_law_value
             }
           )
       }
