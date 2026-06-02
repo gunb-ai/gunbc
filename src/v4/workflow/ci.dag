@@ -395,16 +395,15 @@ type CiShellExceptionRow {
   step_id: CiStepId
   shell_owner: ShellScriptPath
   protects_floor: CiSafetyFloorItem
-  // The shadow `CiUpsertStep` that retires this row once it becomes ci.yml runtime authority.
-  replacement_upsert: Symbol
+  // The existing shadow `CiUpsertStep` AUTHORITY that retires this row once it becomes ci.yml
+  // runtime authority. Binds to the canonical `CiUpsertStepSymbol` data (single-authority, P2) —
+  // NOT a parallel `Symbol` alias that could drift or name a non-existent upsert.
+  replacement_upsert: CiUpsertStepSymbol
   dissolution_target: DissolutionTarget
 }
 
-// `replacement_upsert` symbol atoms — name the existing shadow `CiUpsertStep` rows (above) that
-// each shell exception migrates onto. Dissolution `what` atoms — the runtime-authority emission
-// substrate whose arrival deletes the row.
-data ci_upsert_v2_bootstrap_smoke_execution_step: Symbol = ci_upsert_v2_bootstrap_smoke_execution_step
-data ci_upsert_m1_rust_emit_probe_execution_step: Symbol = ci_upsert_m1_rust_emit_probe_execution_step
+// Dissolution `what` atoms — the runtime-authority emission substrate whose arrival deletes the
+// row (does NOT yet exist; standard `ModelMissingSubstrate` naming, like `ci_gate_run_policy_*`).
 data ci_bootstrap_step_emitted_from_upsert_runtime_authority: Symbol = ci_bootstrap_step_emitted_from_upsert_runtime_authority
 data ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority: Symbol = ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority
 
@@ -413,7 +412,7 @@ data ci_class_a_shell_exceptions: List<CiShellExceptionRow> = [
     step_id: JobStep { job: v2_bootstrap_smoke_execution, step: v2_bootstrap_smoke_execution },
     shell_owner: ".github/ci-floor/v4-bootstrap-viability.sh",
     protects_floor: BootstrapMinimalViability,
-    replacement_upsert: ci_upsert_v2_bootstrap_smoke_execution_step,
+    replacement_upsert: ci_upsert_v2_bootstrap_smoke_execution,
     dissolution_target: ModelMissingSubstrate {
       what: ci_bootstrap_step_emitted_from_upsert_runtime_authority
     }
@@ -425,7 +424,7 @@ data ci_class_a_shell_exceptions: List<CiShellExceptionRow> = [
     },
     shell_owner: ".github/ci-floor/v4-m1-rust-emit-probe.sh",
     protects_floor: OneRustEmitProbe,
-    replacement_upsert: ci_upsert_m1_rust_emit_probe_execution_step,
+    replacement_upsert: ci_upsert_m1_rust_emit_probe_execution,
     dissolution_target: ModelMissingSubstrate {
       what: ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority
     }

@@ -1175,6 +1175,25 @@ fn v4_workflow_ci_class_a_shell_exception_table_first_slice() {
         );
     }
 
+    // P2 single-authority: `replacement_upsert` binds the canonical `CiUpsertStepSymbol` data
+    // declared elsewhere in this module — NOT a parallel `Symbol` alias that could drift or name
+    // a non-existent upsert. Assert both the table reference and the authority declaration exist.
+    for upsert in [
+        "ci_upsert_v2_bootstrap_smoke_execution",
+        "ci_upsert_m1_rust_emit_probe_execution",
+    ] {
+        assert!(
+            table.contains(&format!("replacement_upsert: {upsert}")),
+            "{CI_DAG_PATH}: shell exception must point `replacement_upsert` at the canonical \
+             upsert authority `{upsert}` (P2 single-authority — no parallel `_step` Symbol alias)"
+        );
+        assert!(
+            CI_DAG.contains(&format!("data {upsert}: CiUpsertStepSymbol")),
+            "{CI_DAG_PATH}: `replacement_upsert` authority `{upsert}` must be a declared \
+             `CiUpsertStepSymbol` (proves the named upsert exists)"
+        );
+    }
+
     // §11.7.5 cond 4 — every row names a structural dissolution path (no calendar/owner carrier).
     assert_eq!(
         table
