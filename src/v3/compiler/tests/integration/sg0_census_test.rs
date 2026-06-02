@@ -429,6 +429,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/test/claim/language_model/python_cross_runtime_drift.dag` directly, so the boundary
     // host-process bridge is no longer the only exerciser of the drift claim.
     "src/v3/compiler/tests/boundary/v4_leaf_model_python_cross_runtime_drift_test.rs",
+    // Python RCA release-minimum lane (#4137 section 11.8): L1 static structural mypy (Worksheet B);
+    // host runner v4-leaf-model-python-l1-mypy-static-verify.sh (pyright roster on main #4231).
+    //
+    // **P5 receipt (Mechanism (b), disposition (2)):** `EXPECTED_HAND_AUTHORED_TEST` 171 → 172;
+    // T-PB-B partition (module doc lines 9–10 + `tests/boundary/README.md`); lane
+    // `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet B (#4137 §11.8);
+    // host runner v4-leaf-model-python-l1-mypy-static-verify.sh. Dissolution: drop when
+    // modeled verification supersedes `src/v4/test/claim/language_model/python_l1_static.dag`.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_l1_static_receipts_test.rs",
     // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
     // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
     // `run_target_verification` owns target verdicts; interim host runner
@@ -960,6 +969,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
     // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
+    // **PR #4222 Python L1 fixture coverage (+0 paths):** same-path assertion-list expansion
+    // for `rung_l1_python_runtime.dag` coverage + six per-law runtime claim rows.
     // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
     // compiler-slice claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.

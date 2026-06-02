@@ -2,7 +2,8 @@
 # scripts/v4-phase1-nat-semiring-python-runtime-gate.sh
 #
 # L1 Python runtime receipt for fixture=phase1/nat_semiring: after py_compile (rung gate),
-# execute each emitted .py under the fixture emit tree and record typed host verdicts.
+# verify the emitted Python covers every ratified fixture law, execute each emitted .py
+# under the fixture emit tree, and record typed host verdicts.
 #
 # Authority: docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md Worksheet B
 # (PY-L1-L2-RUNTIME-FIXTURE-EXECUTION); complements scripts/v4-phase1-nat-semiring-rung-gate.sh
@@ -60,9 +61,18 @@ else
 fi
 
 declare -A verdict=(
+  [R-L1-python-runtime-fixture-coverage]=SKIP
   [R-L1-python-runtime-exec]=SKIP
 )
 blocking_receipt="none"
+expected_laws=(
+  nat_add_left_identity_input
+  nat_add_right_identity_input
+  nat_add_associativity_input
+  nat_mul_left_identity_input
+  nat_mul_annihilator_input
+  nat_mul_associativity_input
+)
 
 note_blocking() {
   local pred="$1"
@@ -77,9 +87,29 @@ while IFS= read -r -d '' f; do
 done < <(find "$py_tree" -name '*.py' -print0 2>/dev/null || true)
 
 if [[ "${#py_files[@]}" -eq 0 ]]; then
+  verdict[R-L1-python-runtime-fixture-coverage]=FAIL
   verdict[R-L1-python-runtime-exec]=SKIP
   note_blocking "phase1/nat_semiring/l1/python_emit_unavailable"
 else
+  coverage_log="$out/logs/python_runtime_fixture_coverage.log"
+  mkdir -p "$out/logs"
+  : >"$coverage_log"
+  coverage_ok=1
+  for law in "${expected_laws[@]}"; do
+    if grep -R --include='*.py' -q "$law" "$py_tree"; then
+      echo "PASS $law" >>"$coverage_log"
+    else
+      coverage_ok=0
+      echo "FAIL $law" >>"$coverage_log"
+    fi
+  done
+  if [[ "$coverage_ok" -eq 1 ]]; then
+    verdict[R-L1-python-runtime-fixture-coverage]=PASS
+  else
+    verdict[R-L1-python-runtime-fixture-coverage]=FAIL
+    note_blocking "phase1/nat_semiring/l1/python_runtime_fixture_coverage_missing"
+  fi
+
   mkdir -p "$out/logs"
   runtime_ok=1
   for py in "${py_files[@]}"; do
@@ -111,15 +141,16 @@ else
 fi
 
 row_pass="FAIL"
-if [[ "${verdict[R-L1-python-runtime-exec]}" == "PASS" ]]; then
+if [[ "${verdict[R-L1-python-runtime-fixture-coverage]}" == "PASS" && "${verdict[R-L1-python-runtime-exec]}" == "PASS" ]]; then
   row_pass="PASS"
 fi
 
 {
   echo "fixture=${fixture_id}"
-  echo "  l1_python_runtime: ${row_pass}  (python=${verdict[R-L1-python-runtime-exec]})"
+  echo "  l1_python_runtime: ${row_pass}  (coverage=${verdict[R-L1-python-runtime-fixture-coverage]} python=${verdict[R-L1-python-runtime-exec]})"
   echo "blocking_receipt: ${blocking_receipt}"
   echo ""
+  echo "covered_laws: ${#expected_laws[@]}"
   echo "emit_tree: ${py_tree}"
   echo "logs: ${out}/logs/"
 } | tee "$summary"

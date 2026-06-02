@@ -311,6 +311,28 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+pub struct CompilePipelineOptions {
+    pub analyze_complexity: bool,
+}
+
+pub fn default_compile_pipeline_options() -> CompilePipelineOptions {
+    CompilePipelineOptions {
+        analyze_complexity: false,
+    }
+}
+
+pub fn run_complexity_analysis(
+    typed: Rc<ResolvedGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ComplexityReport> {
+    {
+        let func_entries = extract_func_entries(typed.clone());
+        let recursion_ctx = build_recursion_context(typed.clone());
+        build_complexity_report(func_entries, recursion_ctx, source_indices)
+    }
+}
+
 pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -2670,7 +2692,15 @@ pub fn compile_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
-    emit_resolved_for_target(compile_to_resolved(sources), target)
+    compile_sources_with_options(sources, target, default_compile_pipeline_options())
+}
+
+pub fn compile_sources_with_options(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    target: RenderTarget,
+    options: CompilePipelineOptions,
+) -> Rc<PipelineResult> {
+    emit_resolved_for_target(compile_to_resolved_with_options(sources, options), target)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2684,6 +2714,13 @@ pub struct ResolvedPipelineResult {
 }
 
 pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {
+    compile_to_resolved_with_options(sources, default_compile_pipeline_options())
+}
+
+pub fn compile_to_resolved_with_options(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    options: CompilePipelineOptions,
+) -> Rc<ResolvedPipelineResult> {
     {
         let frontend = front_end_sources(sources);
         let newline_indices = frontend.newline_indices.clone();
@@ -2753,11 +2790,16 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                     frontend.intern_table.clone(),
                 );
                 let typed_diags = typed.diagnostics.clone();
-                let func_entries = extract_func_entries(typed.clone());
-                let recursion_ctx = build_recursion_context(typed.clone());
-                let complexity =
-                    build_complexity_report(func_entries, recursion_ctx, source_indices.clone());
-                let complexity_diags = complexity_diagnostics(complexity.clone());
+                let complexity = if options.analyze_complexity.clone() {
+                    run_complexity_analysis(typed.clone(), source_indices.clone())
+                } else {
+                    empty_complexity_report()
+                };
+                let complexity_diags = if options.analyze_complexity.clone() {
+                    complexity_diagnostics(complexity.clone())
+                } else {
+                    Rc::new(vec![])
+                };
                 let all_diags = v2_rt::concat(typed_diags.clone(), complexity_diags);
                 let type_errors = Rc::new({
                     let mut __result = Vec::new();
