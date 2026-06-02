@@ -33,6 +33,8 @@ const TESTGEN_DAG: &str = include_str!("../../../../v4/lens/testgen.dag");
 const TESTGEN_PATH: &str = "src/v4/lens/testgen.dag";
 const BOOTSTRAP_DAG: &str = include_str!("../../../../v4/workflow/bootstrap.dag");
 const BOOTSTRAP_PATH: &str = "src/v4/workflow/bootstrap.dag";
+const CLI_DAG: &str = include_str!("../../../../v4/workflow/cli.dag");
+const CLI_PATH: &str = "src/v4/workflow/cli.dag";
 const CONNECTIVE_ANCHORS_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/connective_anchors.dag");
 const CONNECTIVE_ANCHORS_PATH: &str = "src/v4/test/claim/manual/connective_anchors.dag";
@@ -934,6 +936,29 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             && BOOTSTRAP_DAG.contains("produces_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin")
             && BOOTSTRAP_DAG.contains("right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin"),
         "mismatch regression must wire stage-2 and fixpt.right through v4_stage2_hash (not an unrelated seed digest)"
+    );
+}
+
+#[test]
+fn rr_a_step2_bootstrap_evaluator_corpus_harness_entry() {
+    let _ = parse_module(BOOTSTRAP_DAG, BOOTSTRAP_PATH);
+    let _ = parse_module(CLI_DAG, CLI_PATH);
+
+    assert!(
+        BOOTSTRAP_DAG.contains("type BootstrapEvaluatorCorpusHarnessEntry")
+            && BOOTSTRAP_DAG.contains("fn bootstrap_evaluator_corpus_harness_entry()")
+            && BOOTSTRAP_DAG.contains("entry_fn: bootstrap_corpus_eval_entry_fn")
+            && BOOTSTRAP_DAG.contains("data bootstrap_corpus_eval_entry_fn: Symbol = run_manual_testclaim_corpus_eval")
+            && BOOTSTRAP_DAG.contains("runtime_model: v4_evaluator_runtime_wave1()")
+            && BOOTSTRAP_DAG.contains("stage0_binary: v4_stage0_binary")
+            && BOOTSTRAP_DAG.contains("data witness_bootstrap_evaluator_corpus_harness_well_formed: Bool"),
+        "RR-A §5.2: bootstrap must model stage0 corpus harness with wave1 runtime pin and run_manual_testclaim_corpus_eval entry"
+    );
+    assert!(
+        CLI_DAG.contains("data gunbc_test_manual_corpus_harness_route: GunbcTestRoute")
+            && CLI_DAG.contains("selection_fn: bootstrap_corpus_eval_entry_fn")
+            && CLI_DAG.contains("fn gunbc_test_manual_corpus_harness_route_well_formed()"),
+        "cli.dag must expose gunbc test route bound to bootstrap corpus harness entry"
     );
 }
 
