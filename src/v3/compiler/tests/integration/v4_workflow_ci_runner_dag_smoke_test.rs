@@ -726,6 +726,20 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     assert!(
         CI_DAG.contains(
+            "data m1_rust_emit_probe_shared_dag_out_env: String = \"V4_M1_DAG_EMIT_OUT\""
+        ) && CI_DAG.contains(
+            "data m1_rust_emit_probe_shared_dag_log_env: String = \"V4_M1_DAG_EMIT_LOG\""
+        ) && CI_DAG.contains(
+            "data m1_rust_dag_emit_parity_receipt_test: String = \"cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet\""
+        ) && CI_DAG.contains("data v4_bootstrap_reuse_log_env: String = \"V4_BOOTSTRAP_REUSE_LOG\""),
+        "{CI_DAG_PATH}: shared M1/bootstrap closure env names must be modeled"
+    );
+    assert!(
+        m1_step.contains("V4_M1_DAG_EMIT_OUT:") && m1_step.contains("V4_M1_DAG_EMIT_LOG:"),
+        "{CI_YML_PATH}: `{step_name}` must emit the DAG artifact from the shared rust+dag closure"
+    );
+    assert!(
+        CI_DAG.contains(
             "M1RustEmitProbeCommand =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true,\n        testclaim_corpus: true,\n        workflow_policy: true,\n        release_distribution: true\n      )"
         ),
         "{CI_DAG_PATH}: M1RustEmitProbeCommand mask must match ci.yml step if (I8 / T-22 upstream)"
@@ -808,6 +822,27 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
         "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
+    );
+    let bootstrap_step =
+        workflow_step_block(CI_YML, "v2 -> v4 bootstrap compile (fail-closed full)");
+    let parity_step = workflow_step_block(
+        CI_YML,
+        "v2 DAG emit parity receipt (required before bootstrap reuse)",
+    );
+    assert!(
+        parity_step.contains(
+            "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet"
+        ),
+        "{CI_YML_PATH}: bootstrap reuse must be preceded by the v2 DAG emit parity receipt"
+    );
+    assert!(
+        CI_YML.find("v2 DAG emit parity receipt (required before bootstrap reuse)")
+            < CI_YML.find("v2 -> v4 bootstrap compile (fail-closed full)"),
+        "{CI_YML_PATH}: parity receipt must run before bootstrap reuse"
+    );
+    assert!(
+        bootstrap_step.contains("V4_BOOTSTRAP_REUSE_LOG:"),
+        "{CI_YML_PATH}: bootstrap step must validate the shared M1 DAG artifact instead of recompiling src/v4"
     );
 }
 

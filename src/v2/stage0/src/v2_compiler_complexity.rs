@@ -147,7 +147,9 @@ pub enum CostExpr {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Certainty {
     Proven,
