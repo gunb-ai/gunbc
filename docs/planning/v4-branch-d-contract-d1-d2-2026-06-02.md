@@ -109,11 +109,22 @@ Current tree: **0 matches** (verified 2026-06-02). Contract PR may add a `test/c
 |--------|------|
 | `v4.extdeps.frameworks.react` | React 19.2 component/hook/element facts (T-4.7) |
 
+Live carriers on `main` (P1 — use these names in W5, not aliases):
+
+| Type | Role |
+|------|------|
+| `ReactFunctionComponent` | Function component + props + render root (`react.dag:118`) |
+| `ReactElement` | Host / Composite / Fragment coproduct (`:144`) |
+| `ReactHookSite` | Hook lattice (`:49`) |
+| `ReactHostElement` / `ReactCompositeElement` | Element arms inside `ReactElement` |
+
+There is **no** `ReactComponent` type in `extdeps`.
+
 ### Allowed consumer graph
 
 ```text
 InferredTree + cross-target Shape A modules (optional)
-  → user .dag: walk ReactComponent / ReactHookSite / ReactElement facts
+  → user .dag: walk ReactFunctionComponent / ReactHookSite / ReactElement facts
   → emit TSX/JSX string (Shape A target program that *prints* framework syntax)
   → OR downstream bundler (external)
 ```
