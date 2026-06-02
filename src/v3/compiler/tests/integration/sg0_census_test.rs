@@ -1034,7 +1034,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // G.0: parse ratchet on `src/v4/std/grounding.dag` — Branch G.0 schema carriers.
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_grounding_dag_smoke_test.rs` in EXPECTED_HAND_AUTHORED_TEST.
     // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
-    // (ROADMAP.md:63); dissolves when `.dag` TestClaim coverage asserts PerLanguageFactBundleRegistry
+    // (ROADMAP.md:62); dissolves when `.dag` TestClaim coverage asserts PerLanguageFactBundleRegistry
     // + GroundingEvidenceSchema directly.
     "src/v3/compiler/tests/integration/v4_std_grounding_dag_smoke_test.rs",
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.

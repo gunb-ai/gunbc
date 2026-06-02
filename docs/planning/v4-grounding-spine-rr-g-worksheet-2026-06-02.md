@@ -34,7 +34,7 @@ Deepest unsound boundary:
   Declaring `type LangFoo = Bar` without a PerLanguageFactBundleEntry trace — hollow alias
   passes shape checks until T-30 fires at compile time.
 Systemic fix:
-  G.0 registry keys (subject_carrier × language_model_identity; fact axes in spec_facts) + SG evidence schema variants
+  G.0 registry keys (subject_carrier × target × fact_axis; per-key fact_value only) + SG evidence schema variants
   (SG-1 / SG-1b / SG-2 / SG-5) keyed to target_model bundle edges; G.3 CompilesClaim/EqualsClaim rows per spine stage.
 Non-goals:
   - Populating full G.1 Rust/Python/Go/TS fact bundles (RCA mgr charters).
@@ -51,7 +51,7 @@ Metric allowed only as secondary:
 
 | Row | Deliverable | Authority |
 |-----|-------------|-----------|
-| G0.1 | `PerLanguageFactBundleKey` (`subject_carrier` + `language_model_identity`) + entry `spec_facts` (canonical fact-axis keys only) | `v4.std.grounding` → `primitive_fact_bundle_for_entry` → `model_core` |
+| G0.1 | `PerLanguageFactBundleKey` (`subject_carrier` + `target` + `fact_axis`) + entry `fact_value`; registry `by_key: Map<…, Node>` via fail-closed `insert_per_language_fact_bundle_entry` | `v4.std.grounding` → `primitive_fact_bundle_for_entry` → `model_core` |
 | G0.2 | `HollowAliasGovernanceBar` (governance; T-30 enforces) | `v4.std.grounding` → `v4.lens.fact_density` |
 | G0.3 | `GroundingEvidenceSchema` (Sg1/Sg1b/Sg2/Sg5 variants carry `source_carrier`) | `v4.std.grounding` → `v4.std.target_model` |
 | G0.4 | `PerTargetGroundingReceipt` (`EmitHostRunReceipt`; target via `host_run.target`) | `v4.std.grounding` → `v4.std.host_run` |
@@ -71,7 +71,7 @@ Metric allowed only as secondary:
 ## §3 Cross-branch consumers
 
 - **Branch C:** `PerTargetGroundingReceipt` for per-target host verification receipts.
-- **Branch G.1:** populate `PerLanguageFactBundleRegistry.entries` per RCA manager.
+- **Branch G.1:** populate `PerLanguageFactBundleRegistry.by_key` via `insert_per_language_fact_bundle_entry` per RCA manager (one `fact_value` per keyed `fact_axis`).
 - **Branch G.2:** SG-1/2/5 executable claims use `GroundingEvidenceSchema`.
 - **Branch A.2:** corpus folders `claim_pipeline_*` activate under T-38B when runner rows land.
 
