@@ -76,15 +76,12 @@ import v4.std.leaf_model_verification {
   LeafModelTypeScriptRuntimeFixture,
   LeafModelTypeScriptRuntimeFixturePair,
   LeafModelRustFixture,
-<<<<<<< HEAD
   LeafModelCrossRuntimeDriftProbe,
   leaf_model_claim_python_cross_runtime_drift_arbitrary_precision,
-=======
   leaf_model_claim_go_r1_int_surface_spelling,
   leaf_model_claim_go_r2a_int_algebra_operations,
   leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
   leaf_model_claim_go_r3_external_symbol_projection,
->>>>>>> origin/main
   leaf_model_claim_python_r1_int_surface_spelling,
   leaf_model_claim_python_r2a_int_algebra_operations,
   leaf_model_claim_python_r2b_int_arbitrary_precision_add,
