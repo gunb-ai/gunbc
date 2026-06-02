@@ -116,7 +116,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v3: false,
         v4: true,
         testclaim_corpus: false,
-        workflow_policy: false,
+        workflow_policy: true,
         release_distribution: false,
     },
     CiAffectedFixture {
