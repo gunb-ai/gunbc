@@ -124,14 +124,12 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_subsumption_reverifies
 }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
-<<<<<<< HEAD
 import v4.test.claim.lens_parallelism.data_dependency {
   claim_parallelism_data_dependency_run_test_claim_receipt
-=======
+}
 import v4.test.claim.lens_ownership.subject_roster {
   lens_ownership_family_claim_ids,
   lens_ownership_subject_rows
->>>>>>> origin/main
 }
 import v4.test.claim.lens_effect.effect_depends_on { claim_lens_effect_depends_on_runtime_verdict }
 import v4.test.claim.workflow.wave3_shadow_roster {
