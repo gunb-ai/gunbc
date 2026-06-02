@@ -150,7 +150,7 @@ type CiCommand
   | V4T15SelfHostFixedPointCommand
   | M1RustEmitProbeCommand
   | LeafModelGoVerifyCommand
-  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1); verdict_surface must name the T-22 manual CorpusEvalReport surface (`manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed`) using declaration-qualified authorities so per-row TestClaimRun verdict facts are projected, not replaced by host-owned strings. Forbidden: bypassing narrowing to run full corpus unconditionally or reporting corpus status outside the modeled TestClaimRun roster.
+  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1); verdict_surface must name the T-22 manual CorpusEvalReport surface (`manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed`) plus `manual_testclaim_subject_roster_family_receipt` using declaration-qualified authorities so per-row TestClaimEvalSubject -> run_test_claim -> TestClaimRun verdict facts are projected, not replaced by host-owned strings. Forbidden: bypassing narrowing to run full corpus unconditionally or reporting corpus status outside the modeled TestClaimRun roster.
   | TestClaimCorpusEvalCommand { selection_fn: Symbol, verdict_surface: TestClaimCorpusVerdictSurfaceAuthority }
   // 🟡 gated — feature:phase1-nat-semiring-rung-gate — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: delete scripts/v4-phase1-nat-semiring-rung-gate.sh and the paired CI step when TestClaimRun verdicts evaluate phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets) and emit PROVEN rung0/rung1/rung2 receipts; until then the host transport carries the §2.4 verdict matrix. Authority: Ladder/Fixture Manager (PR #3938 §11.1 lane 2). Forbidden: repurposing M1RustEmitProbeCommand for fixture-scoped gates (corpus-wide diagnostic, not fixture×rung) or repurposing TestClaimCorpusEvalCommand (full-corpus T-38, narrows by affected-set not by fixture roster).
   | Phase1NatSemiringRungGateCommand
@@ -176,6 +176,7 @@ type TestClaimCorpusVerdictSurfaceAuthority {
   eval_report: TestClaimCorpusDeclarationAuthority
   verdict_tally: TestClaimCorpusDeclarationAuthority
   gate_witness: TestClaimCorpusDeclarationAuthority
+  family_receipt: TestClaimCorpusDeclarationAuthority
 }
 
 type CiGate {
@@ -1027,6 +1028,7 @@ data manual_corpus_node_subject_rows: Symbol = manual_corpus_node_subject_rows
 data run_manual_testclaim_corpus_eval: Symbol = run_manual_testclaim_corpus_eval
 data corpus_report_tally: Symbol = corpus_report_tally
 data witness_manual_corpus_gate_closed: Symbol = witness_manual_corpus_gate_closed
+data manual_testclaim_subject_roster_family_receipt: Symbol = manual_testclaim_subject_roster_family_receipt
 data ci_testclaim_corpus_module_manual_roster_path: Symbol = v4_test_claim_manual_manual_corpus_roster
 data ci_testclaim_corpus_module_runner_path: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
 data ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval
@@ -1034,6 +1036,7 @@ data ci_testclaim_corpus_decl_manual_corpus_node_subject_rows_name: Symbol = man
 data ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: Symbol = run_manual_testclaim_corpus_eval
 data ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally
 data ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: Symbol = witness_manual_corpus_gate_closed
+data ci_testclaim_corpus_decl_manual_testclaim_subject_roster_family_receipt_name: Symbol = manual_testclaim_subject_roster_family_receipt
 
 fn ci_testclaim_corpus_declaration_authority(
   module_path: Symbol,
@@ -1059,6 +1062,10 @@ fn ci_testclaim_corpus_verdict_surface_authority() -> TestClaimCorpusVerdictSurf
     gate_witness: ci_testclaim_corpus_declaration_authority(
       module_path: ci_testclaim_corpus_module_eval_path,
       declaration_name: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name
+    ),
+    family_receipt: ci_testclaim_corpus_declaration_authority(
+      module_path: ci_testclaim_corpus_module_runner_path,
+      declaration_name: ci_testclaim_corpus_decl_manual_testclaim_subject_roster_family_receipt_name
     )
   }
 }
@@ -1764,6 +1771,7 @@ data ci_projection_corpus_surface_run_roster_edge: Symbol = ci_projection_corpus
 data ci_projection_corpus_surface_eval_report_edge: Symbol = ci_projection_corpus_surface_eval_report_edge
 data ci_projection_corpus_surface_verdict_tally_edge: Symbol = ci_projection_corpus_surface_verdict_tally_edge
 data ci_projection_corpus_surface_gate_witness_edge: Symbol = ci_projection_corpus_surface_gate_witness_edge
+data ci_projection_corpus_surface_family_receipt_edge: Symbol = ci_projection_corpus_surface_family_receipt_edge
 data ci_projection_declaration_module_edge: Symbol = ci_projection_declaration_module_edge
 data ci_projection_declaration_name_edge: Symbol = ci_projection_declaration_name_edge
 data ci_projection_gate_policy_job_edge: Symbol = ci_projection_gate_policy_job_edge
@@ -2230,6 +2238,10 @@ fn ci_testclaim_corpus_verdict_surface_projection_node(
       ci_named_edge(
         name: ci_projection_corpus_surface_gate_witness_edge,
         target: ci_declaration_authority_projection_node(a: surface.gate_witness)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_family_receipt_edge,
+        target: ci_declaration_authority_projection_node(a: surface.family_receipt)
       )
     ]
   }
