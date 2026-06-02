@@ -617,6 +617,32 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         ]),
         "BootstrapPlan must stay the seed/self0/self1/fixpt chain"
     );
+    assert_eq!(
+        record_field_type_map(type_record(&module, "DagRegenDesign")),
+        expected_field_type_map(&[
+            ("convergence", "ConvergenceLadder"),
+            ("design_only", "DagRegenDesignOnly"),
+        ]),
+        "RR-E DAG regeneration must be a design receipt over the convergence ladder, not a W2 execution plan"
+    );
+    assert_eq!(
+        record_field_type_map(type_record(&module, "DagRegenReadinessReview")),
+        expected_field_type_map(&[
+            ("design", "DagRegenDesign"),
+            ("bootstrap_plan", "BootstrapPlan"),
+            ("fixed_point", "FixptStage1Stage2"),
+        ]),
+        "RR-E readiness review must join the regen design to the bootstrap-as-data plan and fixed point"
+    );
+    assert!(
+        BOOTSTRAP_DAG.contains("data bootstrap_regen_design_not_w2_executable: Symbol = bootstrap_regen_design_not_w2_executable")
+            && BOOTSTRAP_DAG.contains("fn dag_regen_design_from_ladder(")
+            && BOOTSTRAP_DAG.contains("design_only.sentinel == bootstrap_regen_design_not_w2_executable")
+            && BOOTSTRAP_DAG.contains("data dag_regen_readiness_review_rr_e: Witness<DagRegenReadinessReview>")
+            && !BOOTSTRAP_DAG.contains("fn run_dag_regen")
+            && !BOOTSTRAP_DAG.contains("fn execute_dag_regen"),
+        "RR-E must stay data/design-only in W2 and must not add a regeneration executor"
+    );
 
     let plan = data_expr(&module, "bootstrap_plan");
     let call_args = match plan {

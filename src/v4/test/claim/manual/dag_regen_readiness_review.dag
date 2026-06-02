@@ -1,0 +1,87 @@
+// src/v4/test/claim/manual/dag_regen_readiness_review.dag
+// Scope: RR-E design receipt — DAG regeneration is wired to bootstrap-as-data and stays design-only in W2.
+// Status: manual Branch E acceptance receipt.
+
+module v4.test.claim.manual.dag_regen_readiness_review
+
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v4.std.witness { Holds, Violates }
+import v4.workflow.bootstrap {
+  DagRegenDesignOnly,
+  bootstrap_convergence_ladder_witness,
+  bootstrap_regen_design_mis_wired,
+  bootstrap_regen_design_not_w2_executable,
+  dag_regen_design_from_ladder,
+  dag_regen_readiness_review_rr_e
+}
+
+data dag_regen_rr_e_pass_symbol: Symbol = dag_regen_rr_e_pass_symbol
+data dag_regen_rr_e_fail_symbol: Symbol = dag_regen_rr_e_fail_symbol
+data dag_regen_rr_e_bad_sentinel: Symbol = dag_regen_rr_e_bad_sentinel
+
+fn dag_regen_rr_e_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: dag_regen_rr_e_pass_symbol } },
+    children: []
+  }
+}
+
+fn dag_regen_rr_e_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: dag_regen_rr_e_fail_symbol } },
+    children: []
+  }
+}
+
+fn dag_regen_rr_e_claim_input(ok: Bool) -> Node {
+  if ok {
+    dag_regen_rr_e_pass_node()
+  } else {
+    dag_regen_rr_e_fail_node()
+  }
+}
+
+fn dag_regen_readiness_review_holds() -> Bool {
+  match dag_regen_readiness_review_rr_e {
+    Holds { value: rr } =>
+      rr.design.design_only.sentinel == bootstrap_regen_design_not_w2_executable
+        && rr.bootstrap_plan == rr.design.convergence.plan
+        && rr.fixed_point == rr.design.convergence.fixed_point
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn dag_regen_bad_w2_executable_sentinel_violates() -> Bool {
+  match dag_regen_design_from_ladder(
+    ladder: bootstrap_convergence_ladder_witness,
+    design_only: DagRegenDesignOnly { sentinel: dag_regen_rr_e_bad_sentinel }
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: d } => d.reason == bootstrap_regen_design_mis_wired
+  }
+}
+
+data claim_dag_regen_readiness_review_holds: TestClaim = CompilesClaim {
+  label: "RR-E DAG regen design is wired to bootstrap-as-data and design-only in W2",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: dag_regen_rr_e_claim_input(ok: dag_regen_readiness_review_holds()),
+  expected_value: dag_regen_rr_e_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_dag_regen_bad_w2_executable_sentinel_violates: TestClaim = CompilesClaim {
+  label: "RR-E DAG regen rejects non-design-only W2 sentinel",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: dag_regen_rr_e_claim_input(ok: dag_regen_bad_w2_executable_sentinel_violates()),
+  expected_value: dag_regen_rr_e_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
