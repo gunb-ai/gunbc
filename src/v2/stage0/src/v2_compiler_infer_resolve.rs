@@ -4,13 +4,11 @@
 use self::AliasKind::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
-pub use crate::std_types::container_param_name;
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{container_param_name, SourceSpan};
 pub use crate::v2_compiler_infer_env::{
     authored_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for,
-    lookup_type, lookup_type_by_name, lookup_type_for,
+    lookup_type, lookup_type_by_name, lookup_type_for, TypeBinding, TypeEnv,
 };
-pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_types::{
     child_type_node, node_is_keyed_collection, resolved_type,
 };
@@ -39,11 +37,9 @@ pub use crate::v2_std_core::{
     make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
     param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
     resource_use_resource, string_type, transport_request_body, unit_type,
-    with_optional_cardinality, with_required_cardinality,
-};
-pub use crate::v2_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
-    MatchPattern, NewlineIndex, Node, StringPart,
+    with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
+    Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node,
+    StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2801,7 +2797,6 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                     inductive_fields: e.inductive_fields.clone(),
                     source_indices: e.source_indices.clone(),
                     intern_table: e.intern_table.clone(),
-                    lookup_cache: e.lookup_cache.clone(),
                 })
             },
         );

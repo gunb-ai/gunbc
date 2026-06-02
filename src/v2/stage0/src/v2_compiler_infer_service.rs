@@ -2,9 +2,8 @@
 // Source module: v2.compiler.infer_service
 
 pub use crate::std_types::SourceSpan;
-pub use crate::v2_compiler_infer_items::inferred_to_outputs;
 use crate::v2_compiler_infer_items::ItemKind::FuncItem;
-pub use crate::v2_compiler_infer_items::{ItemInfo, ItemKind, TypedModule};
+pub use crate::v2_compiler_infer_items::{inferred_to_outputs, ItemInfo, ItemKind, TypedModule};
 pub use crate::v2_compiler_infer_types::{emit_map_has, nominal_type_ref};
 use crate::v2_rt;
 use crate::v2_std_core::Cardinality::Required;
@@ -15,9 +14,9 @@ use crate::v2_std_core::ExprData::{
 use crate::v2_std_core::InferredNode::Resolved;
 pub use crate::v2_std_core::{
     authored_name_at, expr_call_func_at, expr_var_name_at, field_access_base,
-    field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type,
+    field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type, Cardinality,
+    Connective, ExprData, InferredNode, NewlineIndex, Node,
 };
-pub use crate::v2_std_core::{Cardinality, Connective, ExprData, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

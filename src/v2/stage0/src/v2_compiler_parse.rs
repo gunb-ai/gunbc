@@ -8,20 +8,17 @@ use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
-use crate::std_syntax::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
-use crate::std_syntax::BodyKind::{
+use crate::v2_compiler_languages::BodyKind::{
     BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
 };
-use crate::std_syntax::ItemFormKind::OtherForm;
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
-pub use crate::std_syntax::{BinOp, LiteralValue};
-pub use crate::std_syntax::{BinOp, LiteralValue};
-pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
-pub use crate::std_syntax::{BodyKind, ItemFormKind};
-pub use crate::std_types::SourceSpan;
+use crate::v2_compiler_languages::ItemFormKind::OtherForm;
+pub use crate::v2_compiler_languages::{
+    BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec,
+};
 use crate::v2_rt;
+use crate::v2_std_core::BinOp::{
+    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
+};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::ParseError;
 use crate::v2_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -32,6 +29,7 @@ use crate::v2_std_core::ExprData::{
 };
 use crate::v2_std_core::ExprErrorKind::ParseRecoveryError;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 use crate::v2_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 use crate::v2_std_core::OperationModifier::{Hermetic, Idempotent, Readonly};
 use crate::v2_std_core::StringPart::{Interpolation, Text};
@@ -56,12 +54,10 @@ pub use crate::v2_std_core::{
     rest_transport_node, service_config_properties, shell_transport_node, transport_body_key,
     transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
     transport_query_key, transport_response_format_key, transport_stdin_key, transport_url_key,
-    variant_node_fields, variant_node_name_at, with_required_cardinality,
-};
-pub use crate::v2_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
-    InternResult, InternTable, MatchPattern, NewlineIndex, Node, OperationModifier, StringPart,
-    Token, TokenShape, UnaryOpKind,
+    variant_node_fields, variant_node_name_at, with_required_cardinality, BinOp, Cardinality,
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternResult,
+    InternTable, LiteralValue, MatchPattern, NewlineIndex, Node, OperationModifier, SourceSpan,
+    StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
