@@ -86,6 +86,10 @@ pub fn source_char(source: Rc<SourceRef>, pos: i64) -> String {
     v2_rt::from_code_point(source.source_chars.clone()[(pos) as usize].clone())
 }
 
+pub fn source_code_point(source: Rc<SourceRef>, pos: i64) -> i64 {
+    source.source_chars.clone()[(pos) as usize].clone()
+}
+
 pub fn source_len(source: Rc<SourceRef>) -> i64 {
     (source.source_chars.clone().len() as i64)
 }
@@ -97,15 +101,13 @@ pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> String {
 pub fn source_scan_while(
     mut source: Rc<SourceRef>,
     mut start: i64,
-    mut pred: impl Fn(String) -> bool + Clone,
+    mut pred: impl Fn(i64) -> bool + Clone,
 ) -> i64 {
     loop {
         if (start.clone() >= source_len(source.clone())) {
             break source_len(source.clone());
         } else {
-            if pred(v2_rt::from_code_point(
-                source.source_chars.clone()[(start.clone()) as usize].clone(),
-            )) {
+            if pred(source.source_chars.clone()[(start.clone()) as usize].clone()) {
                 {
                     let __tco_0 = (start + 1);
                     start = __tco_0;
@@ -124,9 +126,7 @@ pub fn source_skip_ws(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
             break start.clone();
         } else {
             let ch = source.source_chars.clone()[(start.clone()) as usize].clone();
-            if ((ch.clone() == v2_rt::code_point(" ".to_string()))
-                || (ch.clone() == v2_rt::code_point("\t".to_string())))
-            {
+            if ((ch.clone() == 32) || (ch.clone() == 9)) {
                 {
                     let __tco_0 = (start + 1);
                     start = __tco_0;
@@ -144,9 +144,7 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
         if (start.clone() >= source_len(source.clone())) {
             break source_len(source.clone());
         } else {
-            if (source.source_chars.clone()[(start.clone()) as usize].clone()
-                == v2_rt::code_point("\n".to_string()))
-            {
+            if (source.source_chars.clone()[(start.clone()) as usize].clone() == 10) {
                 break start.clone();
             } else {
                 {
