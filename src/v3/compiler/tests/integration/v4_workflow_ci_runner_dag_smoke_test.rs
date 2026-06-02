@@ -1240,13 +1240,28 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
             continue;
         }
         if let Some(idx) = line.find(".github/ci-floor/") {
-            let leaf: String = line[idx..]
+            // Canonicalize the path token: read from the path start until whitespace OR a shell /
+            // YAML separator/quote (`"' ; & | ) ``), so quoted/punctuated spellings like
+            // `bash ".github/ci-floor/x.sh"` or `bash .github/ci-floor/x.sh; echo` canonicalize to
+            // the bare `.sh` path rather than being silently dropped.
+            let token: String = line[idx..]
                 .chars()
-                .take_while(|c| !c.is_whitespace())
+                .take_while(|&c| {
+                    !c.is_whitespace() && !matches!(c, '"' | '\'' | ';' | '&' | '|' | ')' | '`')
+                })
                 .collect();
-            if leaf.ends_with(".sh") {
-                ci_floor_scripts.push(leaf);
-            }
+            // Fail CLOSED on any ci-floor invocation we cannot canonicalize to a `*.sh` script:
+            // a non-comment `bash` line referencing `.github/ci-floor/` that does not yield a `.sh`
+            // path is treated as an unrecognized live shell the ratchet must not silently ignore
+            // (openai-pro #4284 — a new required shell in an unhandled spelling must trip the gate).
+            assert!(
+                token.ends_with(".sh"),
+                "{CI_YML_PATH}: ci-floor invocation `{}` did not canonicalize to a `*.sh` script — \
+                 the no-new-shell ratchet fails CLOSED on unrecognized live shell spellings; \
+                 normalize the invocation or extend the canonicalizer",
+                line.trim()
+            );
+            ci_floor_scripts.push(token);
         }
     }
     ci_floor_scripts.sort();
