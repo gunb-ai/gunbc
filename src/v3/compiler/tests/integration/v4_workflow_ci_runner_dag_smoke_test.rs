@@ -1219,25 +1219,23 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         "{CI_DAG_PATH}: each shell exception must name a structural dissolution_target"
     );
 
-    // §11.7.5 cond 1 — each row's shell_owner is a live REQUIRED ci.yml floor invocation
-    // (no phantom exception for a script that does not actually run on PRs).
-    for script in [
-        ".github/ci-floor/v4-bootstrap-viability.sh",
-        ".github/ci-floor/v4-m1-rust-emit-probe.sh",
-    ] {
-        assert!(
-            CI_YML.contains(&format!("bash {script}")),
-            "{CI_YML_PATH}: shell exception owner `{script}` must be a live floor invocation"
-        );
-    }
-
     // no-new-shell ratchet (§11.7.1 #5) — bidirectional bijection between the REQUIRED
     // `.github/ci-floor/*.sh` invocations in ci.yml and the table's rows.
     //
-    // Scan EVERY line (not just lines beginning `run: bash …`) so a block-scalar `run: |` body
-    // such as `        bash .github/ci-floor/foo.sh` cannot evade the gate by its YAML spelling.
+    // Build the live invocation set FIRST, comment-safe, and reuse it for BOTH the row-liveness
+    // (cond 1) and the bijection — never raw `CI_YML.contains(...)`, which a comment could satisfy.
+    // Scan EVERY non-comment line (not just lines beginning `run: bash …`) so a block-scalar
+    // `run: |` body such as `        bash .github/ci-floor/foo.sh` cannot evade the gate by its
+    // YAML spelling, while a commented-out `# bash .github/ci-floor/foo.sh` is NOT counted as live
+    // (openai-pro #4284: skip comment-only lines + strip inline ` # …` trailers).
     let mut ci_floor_scripts: Vec<String> = Vec::new();
-    for line in CI_YML.lines() {
+    for raw in CI_YML.lines() {
+        let line = raw.trim_start();
+        if line.starts_with('#') {
+            continue;
+        }
+        // Drop any inline YAML comment (a ` #` trailer) before looking for an invocation.
+        let line = line.split_once(" #").map_or(line, |(code, _)| code);
         if !line.contains("bash ") {
             continue;
         }
@@ -1257,6 +1255,19 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         !ci_floor_scripts.is_empty(),
         "{CI_YML_PATH}: expected at least one required ci-floor shell invocation to ratchet"
     );
+
+    // §11.7.5 cond 1 — each modeled shell_owner is a live REQUIRED ci.yml floor invocation,
+    // checked against the SAME comment-safe parsed live set (not raw `CI_YML.contains`, which a
+    // comment could satisfy). No phantom exception for a script that does not actually run on PRs.
+    for script in [
+        ".github/ci-floor/v4-bootstrap-viability.sh",
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh",
+    ] {
+        assert!(
+            ci_floor_scripts.iter().any(|s| s == script),
+            "{CI_YML_PATH}: shell exception owner `{script}` must be a live (non-comment) floor invocation"
+        );
+    }
 
     // Forward — every required ci-floor shell must have an exception row, matched at the
     // `shell_owner` FIELD (`shell_owner: "<path>"`), NOT bare path containment over the slice.
