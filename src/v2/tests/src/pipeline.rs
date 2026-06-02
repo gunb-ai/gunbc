@@ -2093,7 +2093,9 @@ fn complexity_self_analysis_subset() {
     }
     // Complexity analysis is opt-in (analyze_complexity: false by default).
     // This test validates the default pipeline compiles cleanly.
-    eprintln!("complexity self-analysis requires compile_sources_with_options(analyze_complexity: true)");
+    eprintln!(
+        "complexity self-analysis requires compile_sources_with_options(analyze_complexity: true)"
+    );
 }
 
 #[test]
