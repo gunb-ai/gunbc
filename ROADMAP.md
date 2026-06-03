@@ -46,6 +46,15 @@ v4 combines substrate depth (typed Node + Behavior kernel, algebra-grounded std 
 
 Design direction: **model local, derive global** — every target modeled once in shared vocabulary; translations are derived homomorphisms, not hand-written adapters ([docs/thesis/the-derived-homomorphism.md](docs/thesis/the-derived-homomorphism.md)).
 
+### Coercion as emission
+
+Emission **is** coercion — the derived homomorphism made concrete. A `.dag` type realizes to a target by a structure-preserving search over that target's *declared* inhabitants, performed by the compiler rather than any hand-written adapter ([`src/v4/std/coercion.dag`](src/v4/std/coercion.dag)). There is no separate coercion engine; this is the core emission semantics, and it is **total in both directions**:
+
+- **Realizable → emit, with a witness.** When a type structurally grounds to a target inhabitant — including a *faithful refinement* such as widening a fixed-width `i32` into an arbitrary-precision `int` — the compiler emits and carries a `HomomorphismWitness` proving the translation preserved structure.
+- **Not realizable → fail closed.** When no faithful realization exists, the compiler refuses to emit and reports a located diagnostic; the closed `CoercionMismatchKind` taxonomy classifies every refusal. This covers a *missing inhabitant* (`NoTargetCandidate`), a *lossy coercion* such as narrowing an unbounded `int` into `i32` (`WouldLoseInformation`), and — load-bearing — an **opaque atom with no per-target realization**. An opaque atom is a genuinely primitive carrier (a resource handle, a hash); it is honest only when each target declares how to realize it in [`extdeps/`](src/v4/extdeps/). Absent that declaration the homomorphism is undefined, so emission fails closed rather than synthesizing silent glue — there is no partial or implicit realization.
+
+Cross-target realization is exercised as `TestClaim` data under [`src/v4/test/claim/`](src/v4/test/claim/): the fail-closed refusals land first as the safety floor, the faithful realizations follow. The refinement-aware rule that distinguishes faithful widening from lossy narrowing is in-flight target-realization work.
+
 ## Milestone shape
 
 Work is organized around closing the bootstrap loop, not a calendar:
