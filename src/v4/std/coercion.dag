@@ -36,7 +36,8 @@ import v4.std.find_witness {
   find_witness_reason_invalid_witness,
   find_witness_reason_no_candidate,
   find_witness_reason_not_realized,
-  preservation_rule_exact_structural_equality_zip_fold
+  preservation_rule_exact_structural_equality_zip_fold,
+  preservation_rule_refinement_widening
 }
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
@@ -46,6 +47,7 @@ data coercion_homomorphism_evidence_source: Symbol = coercion_homomorphism_evide
 data coercion_homomorphism_evidence_candidate: Symbol = coercion_homomorphism_evidence_candidate
 data coercion_homomorphism_evidence_find_witness: Symbol = coercion_homomorphism_evidence_find_witness
 data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
+data homomorphism_rule_refinement_widening: Symbol = homomorphism_rule_refinement_widening
 data coercion_not_realized: Symbol = coercion_not_realized
 data coercion_mismatch_no_target: Symbol = coercion_mismatch_no_target
 data coercion_mismatch_ambiguous: Symbol = coercion_mismatch_ambiguous
@@ -63,6 +65,7 @@ type FindWitnessRejectionKind
 type CoercionQuality
   = Identity
   | Exact
+  | Widened
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type CoercionMismatchKind
   = NoTargetCandidate
@@ -244,7 +247,7 @@ fn coercion_homomorphism_evidence(
     ]
   }
 }
-fn coercion_fold(
+fn coercion_fold_exact_structural(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
   policy: TargetSelectionPolicy,
@@ -280,6 +283,51 @@ fn coercion_fold(
       }
   }
 }
+fn coercion_fold(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  policy: TargetSelectionPolicy,
+) -> Outcome<CoercionResult> {
+  coercion_fold_exact_structural(
+    source: source,
+    candidates: candidates,
+    policy: policy
+  )
+}
+fn coercion_fold_refinement_widening(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  policy: TargetSelectionPolicy,
+  predicate: PreservationPredicate,
+) -> Outcome<CoercionResult> {
+  match find_witness(
+    source_facts: source.node,
+    candidates: candidates.set,
+    predicate: predicate,
+    multiplicity_policy: TargetSelection { policy: policy }
+  ) {
+    Accepted { value: fw, diagnostics: fw_d } =>
+      Accepted {
+        value: CoercionResult {
+          target: fw.candidate,
+          quality: Widened,
+          witness: CoercionWitness {
+            homomorphism: HomomorphismWitness {
+              rule: homomorphism_rule_refinement_widening,
+              evidence: coercion_homomorphism_evidence(source: source, fw: fw)
+            }
+          }
+        },
+        diagnostics: fw_d
+      }
+    Rejected { diagnostics: r } =>
+      match coercion_wrap_find_witness_rejection(source: source, upstream: r) {
+        Accepted { value: wrapped, diagnostics: _ } =>
+          Rejected { diagnostics: wrapped }
+        Rejected { diagnostics: wrap_r } => Rejected { diagnostics: wrap_r }
+      }
+  }
+}
 fn coercion_fold_with_declared_priority(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
@@ -289,5 +337,18 @@ fn coercion_fold_with_declared_priority(
     source: source,
     candidates: candidates,
     policy: TargetDeclaredPriority { priority: priority }
+  )
+}
+fn coercion_fold_refinement_widening_with_declared_priority(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  priority: Node,
+  predicate: PreservationPredicate,
+) -> Outcome<CoercionResult> {
+  coercion_fold_refinement_widening(
+    source: source,
+    candidates: candidates,
+    policy: TargetDeclaredPriority { priority: priority },
+    predicate: predicate
   )
 }
