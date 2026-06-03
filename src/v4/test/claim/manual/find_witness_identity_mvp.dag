@@ -10,6 +10,7 @@ import v4.std.coercion {
   CoercionCandidateSet,
   Exact,
   Identity,
+  Widened,
   CoercionQuality,
   coercion_fold
 }
@@ -153,6 +154,7 @@ fn quality_is_identity(q: CoercionQuality) -> Bool {
   match q {
     Identity => true
     Exact => false
+    Widened => false
   }
 }
 data witness_find_witness_identity_accepts: Bool = match find_witness(
