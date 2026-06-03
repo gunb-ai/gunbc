@@ -35,7 +35,7 @@ const R3_PYTHON_SOURCE: &str =
 const R3_RUST_SOURCE: &str =
     "struct Symbol { value: String }\nfn project() -> String { Symbol { value: \"x\".to_string() }.value }\nfn main() {\n    println!(\"{}\", project());\n}\n";
 const R3_GO_SOURCE: &str =
-    "package main\n\nimport \"fmt\"\n\ntype Symbol struct { value string }\n\nfunc project() string { return Symbol{value: \"x\"}.value }\n\nfunc main() {\n\tfmt.Println(project())\n}\n";
+    "package main\n\nimport \"fmt\"\n\ntype Symbol struct { value string }\n\nfunc project() string { return Symbol{ value: \"x\" }.value }\n\nfunc main() {\n\tfmt.Println(project())\n}\n";
 const R3_VALUE: &str = "x";
 
 fn unescape_dag_string_literal(body: &str) -> String {
