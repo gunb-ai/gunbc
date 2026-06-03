@@ -16,14 +16,12 @@ import v4.compiler.eval {
   run_test_claim
 }
 import v4.lens.effect {
-  EffectClassification,
   EffectFact,
   effect_fact,
   effect_fact_eq,
   effect_witness
 }
 import v4.std.dependency {
-  ClassifiedDependencyView,
   DependencyView,
   EffectDependsOn
 }
@@ -115,14 +113,7 @@ type LensEffectClaim {
 
 data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
   input: effect_claim_tree(),
-  expected: EffectFact {
-    dependencies: [
-      ClassifiedDependencyView {
-        dependency: effect_dependency,
-        classification: EffectClassification {}
-      }
-    ]
-  },
+  expected: effect_fact(tree: effect_claim_tree(), dependencies: [effect_dependency]),
   actual: effect_witness(tree: effect_claim_tree(), dependencies: [effect_dependency])
 }
 
