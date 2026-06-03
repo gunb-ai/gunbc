@@ -93,12 +93,19 @@ const SHARED_CLOSURE_WORKSHEET: &str = include_str!(
 );
 const SHARED_CLOSURE_WORKSHEET_PATH: &str =
     "docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md";
+const CI_MANAGER_CLOSEOUT: &str = include_str!(
+    "../../../../../docs/planning/ci-manager-waves-2-4-four-compile-closeout-2026-06-02.md"
+);
+const CI_MANAGER_CLOSEOUT_PATH: &str =
+    "docs/planning/ci-manager-waves-2-4-four-compile-closeout-2026-06-02.md";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
     include_str!("../../../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_";
+const CI_MANAGER_CLOSEOUT_BINDING_TEST_FILTER: &str =
+    "v4_workflow_ci_manager_waves_2_4_and_four_compile_closeout_receipt";
 const CI_MODEL_YAML_BINDING_STEP_NAME: &str = "M1 v4 workflow CI model/YAML binding smoke";
 const T15_SELF_HOST_STEP_NAME: &str = "T-15 self-host fixed-point harness (stage1==stage2)";
 const CLAIM_DAG: &str =
