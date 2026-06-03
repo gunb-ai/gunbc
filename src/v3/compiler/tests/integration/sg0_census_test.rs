@@ -1069,6 +1069,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // v4 `compile_to_dag` import merge lands (peer `v4_lens_edit_locus_dag_smoke_test`
     // posture). Lane: T-38B TestClaimRun structural receipts; dissolves when substrate
     // eval executes the roster without this hand-Rust parse smoke.
+    "src/v3/compiler/tests/integration/v4_lens_effect_claim_dag_smoke_test.rs",
     "src/v3/compiler/tests/integration/v4_lens_idempotency_claim_dag_smoke_test.rs",
     // L1.4 IdenticalVariantPayload sub-signature (`src/v4/lens/identical_variant_payload.dag`);
     // shared `coverage_defect_carrier_clone`; SG-0 + INVARIANTS §P5(b).

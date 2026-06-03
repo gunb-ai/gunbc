@@ -329,6 +329,8 @@ mod v4_lens_affected_set_dag_smoke_test;
 mod v4_lens_application_dag_smoke_test;
 #[path = "integration/v4_lens_edit_locus_dag_smoke_test.rs"]
 mod v4_lens_edit_locus_dag_smoke_test;
+#[path = "integration/v4_lens_effect_claim_dag_smoke_test.rs"]
+mod v4_lens_effect_claim_dag_smoke_test;
 #[path = "integration/v4_lens_idempotency_claim_dag_smoke_test.rs"]
 mod v4_lens_idempotency_claim_dag_smoke_test;
 #[path = "integration/v4_lens_identical_variant_payload_dag_smoke_test.rs"]

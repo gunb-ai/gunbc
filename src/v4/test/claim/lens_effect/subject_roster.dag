@@ -1,0 +1,18 @@
+// src/v4/test/claim/lens_effect/subject_roster.dag
+// Scope: T-38B lens_effect TestClaim subject roster (RuntimeValue wedge).
+// Status: single-leaf family — expand when additional lens_effect claims land.
+
+module v4.test.claim.lens_effect.subject_roster
+
+
+import v4.compiler.eval { TestClaimEvalSubject }
+import v4.std.collection { List }
+import v4.std.node { Node }
+import v4.test.claim.lens_effect.effect_depends_on {
+  subject_lens_effect_depends_on_runtime_verdict
+}
+
+
+data lens_effect_subject_rows: List<TestClaimEvalSubject<Node>> = [
+  subject_lens_effect_depends_on_runtime_verdict
+]
