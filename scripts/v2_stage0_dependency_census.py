@@ -22,6 +22,7 @@ DEFAULT_STAGE0_SRC = ROOT / "src/v2/stage0/src"
 
 PUB_MOD_RE = re.compile(r"^\s*pub\s+mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;", re.MULTILINE)
 CRATE_REF_RE = re.compile(r"\bcrate::([A-Za-z_][A-Za-z0-9_]*)\b")
+RUST_IDENT_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,17 @@ def strip_rust_non_code(text: str) -> str:
     def blank(ch: str) -> str:
         return "\n" if ch == "\n" else " "
 
+    def looks_like_lifetime_or_label(pos: int) -> bool:
+        if pos + 1 >= n or text[pos] != "'":
+            return False
+        first = text[pos + 1]
+        if first != "_" and not first.isalpha():
+            return False
+        j = pos + 2
+        while j < n and text[j] in RUST_IDENT_CHARS:
+            j += 1
+        return j >= n or text[j] != "'"
+
     while i < n:
         ch = text[i]
         nxt = text[i + 1] if i + 1 < n else ""
@@ -98,7 +110,7 @@ def strip_rust_non_code(text: str) -> str:
                 out.append(" ")
                 i += 1
                 state = "string"
-            elif ch == "'":
+            elif ch == "'" and not looks_like_lifetime_or_label(i):
                 out.append(" ")
                 i += 1
                 state = "char"

@@ -29,6 +29,7 @@ def main() -> None:
                     "pub mod alpha;",
                     "pub mod beta;",
                     "pub mod gamma;",
+                    "pub mod lifetime_dep;",
                     "pub mod isolated;",
                 )
             ),
@@ -39,6 +40,17 @@ def main() -> None:
         )
         write(stage0 / "beta.rs", "pub fn b() { crate::alpha::a(); crate::gamma::g(); }\n")
         write(stage0 / "gamma.rs", "pub fn g() { /* crate::alpha::a() */ }\n")
+        write(
+            stage0 / "lifetime_dep.rs",
+            "\n".join(
+                (
+                    "pub fn format(f: &mut std::fmt::Formatter<'_>) {",
+                    "    crate::gamma::g();",
+                    "    let _c = 'x';",
+                    "}",
+                )
+            ),
+        )
         write(stage0 / "isolated.rs", "pub fn i() {}\n")
 
         result = subprocess.run(
@@ -61,10 +73,10 @@ def main() -> None:
 
         data = json.loads(result.stdout)
         summary = data["summary"]
-        if summary["module_count"] != 4:
-            raise SystemExit(f"expected 4 modules, got {summary['module_count']}")
-        if summary["edge_count"] != 3:
-            raise SystemExit(f"expected 3 edges, got {summary['edge_count']}")
+        if summary["module_count"] != 5:
+            raise SystemExit(f"expected 5 modules, got {summary['module_count']}")
+        if summary["edge_count"] != 4:
+            raise SystemExit(f"expected 4 edges, got {summary['edge_count']}")
         if summary["cyclic_component_count"] != 1:
             raise SystemExit(
                 f"expected 1 cyclic component, got {summary['cyclic_component_count']}"
