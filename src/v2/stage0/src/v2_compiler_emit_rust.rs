@@ -2293,6 +2293,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let test_projections = extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
         let module_index = build_module_index(typed.modules.clone());
+        let resource_module_index = build_resource_module_index(typed.modules.clone());
         let module_files = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
@@ -2374,6 +2375,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             has_services.clone(),
             crate_name.clone(),
             svc_module_map.clone(),
+            resource_module_index,
         );
         let rt_file = emit_v2_rt_module();
         let compiler_tests_file = if has_pipeline.clone() {
@@ -20203,40 +20205,48 @@ if resolved.clone() {
     })
 }
 
-pub fn find_resource_module(resource_name: String, modules: Rc<Vec<Rc<TypedModule>>>) -> String {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResourceModuleIndex {
+    pub by_item_name: Rc<HashMap<String, String>>,
+}
+
+pub fn build_resource_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ResourceModuleIndex> {
     {
-        let matching = Rc::new({
-            let mut __result = Vec::new();
-            for m in modules.iter().cloned() {
-                if {
-                    let mut __found = false;
-                    for item in m.items.clone().iter().cloned() {
-                        if (authored_name_at(
-                            m.type_env.clone().source_indices.clone(),
+        let by_item_name = modules.iter().cloned().fold(
+            v2_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
+                let fname = module_to_filename(authored_name_at(
+                    tm.type_env.clone().source_indices.clone(),
+                    tm.module.clone(),
+                ));
+                tm.items.clone().iter().cloned().fold(
+                    acc,
+                    |a: Rc<HashMap<String, String>>, item: Rc<Node>| {
+                        let iname = authored_name_at(
+                            tm.type_env.clone().source_indices.clone(),
                             item.clone(),
-                        )
-                        .as_str()
-                            == resource_name.clone().as_str())
-                        {
-                            __found = true;
-                            break;
+                        );
+                        match v2_rt::map_get(&a, iname.clone()) {
+                            Some(_) => a.clone(),
+                            None => v2_rt::rc_map_insert(a.clone(), iname.clone(), fname.clone()),
                         }
-                    }
-                    __found
-                } {
-                    __result.push(m);
-                }
-            }
-            __result
-        });
-        let result = match matching.first().cloned() {
-            Some(tm) => module_to_filename(authored_name_at(
-                tm.type_env.clone().source_indices.clone(),
-                tm.module.clone(),
-            )),
-            None => "".to_string(),
-        };
-        result
+                    },
+                )
+            },
+        );
+        Rc::new(ResourceModuleIndex {
+            by_item_name: by_item_name,
+        })
+    }
+}
+
+pub fn resource_module_for_name(
+    resource_name: String,
+    resource_module_index: Rc<ResourceModuleIndex>,
+) -> String {
+    match v2_rt::map_get(&resource_module_index.by_item_name.clone(), resource_name) {
+        Some(fname) => fname.clone(),
+        None => "".to_string(),
     }
 }
 
@@ -20246,11 +20256,12 @@ pub fn emit_main_rs(
     has_services: bool,
     crate_name: String,
     svc_module_map: Rc<HashMap<String, String>>,
+    resource_module_index: Rc<ResourceModuleIndex>,
 ) -> Rc<TextFile> {
     {
         let has_pipeline = {
             let mut __found = false;
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 if (authored_name_at(m.type_env.clone().source_indices.clone(), m.module.clone())
                     .as_str()
                     == "v2.compiler.compile".to_string().as_str())
@@ -20287,7 +20298,8 @@ pub fn emit_main_rs(
             for rname in unique_resource_types.iter().cloned() {
                 __result.extend(
                     (*{
-                        let mod_name = find_resource_module(rname.clone(), modules.clone());
+                        let mod_name =
+                            resource_module_for_name(rname.clone(), resource_module_index.clone());
                         if (mod_name.clone().as_str() != "".to_string().as_str()) {
                             Rc::new(vec![v2_rt::concat(
                                 v2_rt::concat(
