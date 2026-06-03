@@ -20,8 +20,7 @@ import v4.compiler.normalize { normalize }
 import v4.compiler.parse { parse }
 import v4.compiler.resolve { resolve }
 import v4.compiler.tokenize { tokenize }
-import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
+import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
 import v4.std.algebra { FreeMonoid, list_append, list_snoc_item }
