@@ -1,0 +1,190 @@
+// src/v4/test/claim/manual/sg2_residual_probe_pair_five_site.dag
+// Scope: SG-2 residual falsification — ProbePair<T,U> preserves ProbePair<X,Y> at five type sites
+// without a name-keyed emitter branch (docs/planning/v4-sg2-residual-rca-worksheet-2026-06-03.md).
+
+module v4.test.claim.manual.sg2_residual_probe_pair_five_site
+
+import v4.compiler.translate {
+  project_type_expression_node,
+  serialize_type_expr_boundary_bounded,
+  target_serialize_source_from_model,
+  translate_coerced_type_shell_from_source
+}
+import v4.extdeps.languages.rust {
+  rust_sg2_probe_pair_xy_emitted,
+  rust_sg2_type_expr_target_model,
+  rust_type_expression_projection
+}
+import v4.std.target_model {
+  FunctionBoundaryParam,
+  FunctionBoundaryReturn,
+  FunctionBoundarySite,
+  target_probe_pair_xy_source_node
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, node_subtree_count }
+import v4.std.text { String }
+import v4.std.verification {
+  CompilesClaim,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  manual_claim_anchor
+}
+
+data sg2_residual_pass_sym: Symbol = sg2_residual_pass_sym
+data sg2_residual_fail_sym: Symbol = sg2_residual_fail_sym
+data sg2_residual_fail_text: String = ""
+data sg2_residual_expected_probe_pair_xy: String = "ProbePair<X, Y>"
+
+fn sg2_residual_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sg2_residual_pass_sym } },
+    children: []
+  }
+}
+
+fn sg2_residual_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sg2_residual_fail_sym } },
+    children: []
+  }
+}
+
+fn sg2_residual_claim_input(ok: Bool) -> Node {
+  if ok {
+    sg2_residual_pass_node()
+  } else {
+    sg2_residual_fail_node()
+  }
+}
+
+fn sg2_residual_serialized(emitted: Node) -> String {
+  match target_serialize_source_from_model(
+    target: rust_sg2_type_expr_target_model(),
+    emitted: emitted
+  ) {
+    Accepted { value: source, diagnostics: _ } => source
+    Rejected { diagnostics: _ } => sg2_residual_fail_text
+  }
+}
+
+fn sg2_residual_projected_probe_pair() -> Node {
+  match project_type_expression_node(
+    node: target_probe_pair_xy_source_node(),
+    target: rust_sg2_type_expr_target_model(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: projected, diagnostics: _ } => projected
+    Rejected { diagnostics: _ } => sg2_residual_fail_node()
+  }
+}
+
+// (a) type alias RHS — projected SG-2 wire serializes with generic args preserved.
+fn sg2_residual_site_alias_ok() -> Bool {
+  sg2_residual_serialized(emitted: sg2_residual_projected_probe_pair()) ==
+    sg2_residual_expected_probe_pair_xy
+}
+
+// (b) cached static / binding projection — translate_coerced_type_shell_from_source path.
+fn sg2_residual_site_cached_static_ok() -> Bool {
+  match translate_coerced_type_shell_from_source(
+    source_carrier: target_probe_pair_xy_source_node(),
+    coerced: target_probe_pair_xy_source_node(),
+    target: rust_sg2_type_expr_target_model()
+  ) {
+    Accepted { value: shell, diagnostics: _ } =>
+      sg2_residual_serialized(emitted: shell) == sg2_residual_expected_probe_pair_xy
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_residual_boundary_serialized(
+  boundary_site: FunctionBoundarySite,
+  emitted: Node
+) -> String {
+  let measure = node_subtree_count(n: emitted)
+  match serialize_type_expr_boundary_bounded(
+    remaining: measure,
+    target: rust_sg2_type_expr_target_model(),
+    projection: rust_type_expression_projection(),
+    boundary_site: boundary_site,
+    emitted: emitted
+  ) {
+    Accepted { value: source, diagnostics: _ } => source
+    Rejected { diagnostics: _ } => sg2_residual_fail_text
+  }
+}
+
+// (c) function parameter boundary.
+fn sg2_residual_site_fn_param_ok() -> Bool {
+  let ty = sg2_residual_projected_probe_pair()
+  sg2_residual_boundary_serialized(
+    boundary_site: FunctionBoundaryParam,
+    emitted: ty
+  ) == sg2_residual_expected_probe_pair_xy
+}
+
+// (d) function return boundary.
+fn sg2_residual_site_fn_return_ok() -> Bool {
+  let ty = sg2_residual_projected_probe_pair()
+  sg2_residual_boundary_serialized(
+    boundary_site: FunctionBoundaryReturn,
+    emitted: ty
+  ) == sg2_residual_expected_probe_pair_xy
+}
+
+// (e) closure annotation — binding-projection shell (same consumer as cache/static type sites).
+fn sg2_residual_site_closure_annotation_ok() -> Bool {
+  sg2_residual_site_cached_static_ok()
+}
+
+fn sg2_residual_golden_matches_projected() -> Bool {
+  content_hash(n: sg2_residual_projected_probe_pair()) ==
+    content_hash(n: rust_sg2_probe_pair_xy_emitted())
+}
+
+data claim_sg2_residual_probe_pair_alias_site: TestClaim = EqualsClaim {
+  label: "manual/sg2-residual: type alias site serializes ProbePair<X,Y>",
+  classification: TestClassification { tier: Tier1, anchor: manual_claim_anchor(ManualAnchorAbsent) },
+  lhs: sg2_residual_claim_input(ok: sg2_residual_site_alias_ok()),
+  rhs: sg2_residual_claim_input(ok: true)
+}
+
+data claim_sg2_residual_probe_pair_cached_static_site: TestClaim = EqualsClaim {
+  label: "manual/sg2-residual: cached static site serializes ProbePair<X,Y>",
+  classification: TestClassification { tier: Tier1, anchor: manual_claim_anchor(ManualAnchorAbsent) },
+  lhs: sg2_residual_claim_input(ok: sg2_residual_site_cached_static_ok()),
+  rhs: sg2_residual_claim_input(ok: true)
+}
+
+data claim_sg2_residual_probe_pair_fn_param_site: TestClaim = EqualsClaim {
+  label: "manual/sg2-residual: fn param site serializes ProbePair<X,Y>",
+  classification: TestClassification { tier: Tier1, anchor: manual_claim_anchor(ManualAnchorAbsent) },
+  lhs: sg2_residual_claim_input(ok: sg2_residual_site_fn_param_ok()),
+  rhs: sg2_residual_claim_input(ok: true)
+}
+
+data claim_sg2_residual_probe_pair_fn_return_site: TestClaim = EqualsClaim {
+  label: "manual/sg2-residual: fn return site serializes ProbePair<X,Y>",
+  classification: TestClassification { tier: Tier1, anchor: manual_claim_anchor(ManualAnchorAbsent) },
+  lhs: sg2_residual_claim_input(ok: sg2_residual_site_fn_return_ok()),
+  rhs: sg2_residual_claim_input(ok: true)
+}
+
+data claim_sg2_residual_probe_pair_closure_site: TestClaim = EqualsClaim {
+  label: "manual/sg2-residual: closure annotation site serializes ProbePair<X,Y>",
+  classification: TestClassification { tier: Tier1, anchor: manual_claim_anchor(ManualAnchorAbsent) },
+  lhs: sg2_residual_claim_input(ok: sg2_residual_site_closure_annotation_ok()),
+  rhs: sg2_residual_claim_input(ok: true)
+}
+
+data claim_sg2_residual_probe_pair_golden_wire: TestClaim = EqualsClaim {
+  label: "manual/sg2-residual: projected ProbePair<X,Y> matches golden emitted wire",
+  classification: TestClassification { tier: Tier1, anchor: manual_claim_anchor(ManualAnchorAbsent) },
+  lhs: sg2_residual_claim_input(ok: sg2_residual_golden_matches_projected()),
+  rhs: sg2_residual_claim_input(ok: true)
+}

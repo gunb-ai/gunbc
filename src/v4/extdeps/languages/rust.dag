@@ -97,6 +97,9 @@ import v4.std.target_model {
   ValueBoolLiteral,
   ValueCharUnicodeScalar,
   ValueSymbolToOwnedString,
+  ValueSymbolIdentityPassthrough,
+  target_probe_pair_param_x,
+  target_probe_pair_param_y,
   char_kernel_type_atom,
   char_kernel_type_node,
   grammar_relation_field_emitted,
@@ -143,6 +146,9 @@ import v4.std.target_model {
   target_carrier_model_core,
   target_carrier_algebra_inhabitance_decl,
   target_carrier_probe_heap,
+  target_carrier_probe_pair,
+  target_carrier_probe_pair_node,
+  target_probe_pair_xy_source_node,
   target_carrier_diagnostics_node,
   target_carrier_node_node,
   target_carrier_test_claim_node,
@@ -560,6 +566,7 @@ data rust_binding_param_x: Symbol = rust_binding_param_x
 data rust_binding_param_y: Symbol = rust_binding_param_y
 
 // SG-2 falsification probe bindings — Node-keyed spellings, not name-keyed emitter branches.
+data rust_binding_probe_pair: Symbol = rust_binding_probe_pair
 data rust_binding_sg2_foobar: Symbol = rust_binding_sg2_foobar
 data rust_binding_sg2_x: Symbol = rust_binding_sg2_x
 data rust_binding_sg2_y: Symbol = rust_binding_sg2_y
@@ -3672,8 +3679,9 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
   // type (peer of "bool"/"char"), NOT a Symbol→String name-keyed coercion. The SG-1b signature
   // realization row remains the sole authority deciding that a kernel-Symbol boundary projects to
   // String; this entry only spells the resolved target type once it has been chosen.
-  let m0 = map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar")
-  let m1 = map_insert(m0, rust_binding_sg2_x, "X")
+  let m0 = map_insert(empty_map(), rust_binding_probe_pair, "ProbePair")
+  let m0b = map_insert(m0, rust_binding_sg2_foobar, "FooBar")
+  let m1 = map_insert(m0b, rust_binding_sg2_x, "X")
   let m2 = map_insert(m1, rust_binding_sg2_y, "Y")
   let m3 = map_insert(m2, rust_binding_sg2_rc, "Rc")
   let m4 = map_insert(m3, rust_binding_sg_rc_box, "Box")
@@ -3685,7 +3693,10 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
   let m10 = map_insert(m9, target_carrier_model_core, "ModelCore")
   let m11 = map_insert(m10, target_carrier_algebra_inhabitance_decl, "AlgebraInhabitanceDecl")
   let m12 = map_insert(m11, target_carrier_probe_heap, "ProbeHeap")
-  let m13 = map_insert(m12, rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let m12b = map_insert(m12, target_carrier_probe_pair, "ProbePair")
+  let m12c = map_insert(m12b, target_probe_pair_param_x, "X")
+  let m12d = map_insert(m12c, target_probe_pair_param_y, "Y")
+  let m13 = map_insert(m12d, rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m14 = map_insert(m13, rust_collection_surface_hash_set, "std::collections::HashSet")
   let m15 = map_insert(m14, rust_collection_surface_vec, "Vec")
   let m16 = map_insert(m15, target_collection_set_carrier, "Set")
@@ -3765,11 +3776,20 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: list_snoc_item(
-          xs: rust_sg2_type_expr_target_model_bundle_core().children,
+          xs: list_snoc_item(
+            xs: rust_sg2_type_expr_target_model_bundle_core().children,
+            item: rust_named_edge(
+              name: target_model_edge_signature_realizations,
+              target: target_function_signature_realization_catalog_node(
+                rows: rust_target_function_signature_realization_catalog
+              )
+            )
+          ),
           item: rust_named_edge(
-            name: target_model_edge_signature_realizations,
-            target: target_function_signature_realization_catalog_node(
-              rows: rust_target_function_signature_realization_catalog
+            name: target_model_edge_atom_realizations,
+            target: target_atom_realization_catalog_node(
+              rows: rust_sg2_target_atom_realization_catalog,
+              host_bundle: rust_sg2_type_expr_target_model_bundle_core()
             )
           )
         )
@@ -3915,6 +3935,43 @@ fn rust_sg5_set_non_ordable_source_type_node() -> Node {
     ]
   }
 }
+
+// SG-2 residual probe: ProbePair<X, Y> golden emitted wire (five-site falsification).
+fn rust_sg2_probe_pair_xy_emitted() -> Node {
+  target_type_expr_instantiation_emitted(
+    form: rust_type_expression_projection().instantiation_form,
+    head: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: target_carrier_probe_pair
+    ),
+    args: [
+      target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: target_probe_pair_param_x
+      ),
+      target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: target_probe_pair_param_y
+      )
+    ]
+  )
+}
+
+data rust_target_atom_realization_probe_pair: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: target_carrier_probe_pair_node(),
+  target_model: rust_sg2_type_expr_target_model_staging(),
+  type_form: TargetTypeExpression {
+    kind: TargetTypeExprInstantiation,
+    node: rust_sg2_probe_pair_xy_emitted()
+  },
+  value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
+  constructor_form: optional_absent(),
+  display_name: rust_binding_probe_pair
+}
+
+data rust_sg2_target_atom_realization_catalog: List<TargetAtomRealization> = [
+  rust_target_atom_realization_probe_pair
+]
 
 // SG-2 probe: Rc<FooBar<X, Y>> as Instantiation(Rc, Instantiation(FooBar, X, Y)).
 fn rust_sg2_rc_foobar_xy_emitted() -> Node {

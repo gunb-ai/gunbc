@@ -3231,7 +3231,11 @@ fn serialize_type_expr_emitted_wire_bounded(
 ) -> Outcome<TargetSource> {
   match wire.kind {
     TargetTypeExprAtom =>
-      type_expr_spelling_for_atom(target: target, node: wire.node)
+      type_expr_spelling_for_atom(
+        remaining: remaining,
+        target: target,
+        node: wire.node
+      )
     TargetTypeExprInstantiation =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
