@@ -810,9 +810,7 @@ fn patch_bootstrap_dag_collect_text(text: &str) -> Result<DagCollectPatch, Strin
     }
     patched = patched.replace(
         insert_before,
-        &format!(
-            "{BOOTSTRAP_DAG_COLLECT_SUPPORT_USE}{BOOTSTRAP_DAG_COLLECT_USE}{insert_before}"
-        ),
+        &format!("{BOOTSTRAP_DAG_COLLECT_SUPPORT_USE}{BOOTSTRAP_DAG_COLLECT_USE}{insert_before}"),
     );
     assert_no_local_delegated_fns(&patched)?;
     Ok(DagCollectPatch {
@@ -1364,7 +1362,9 @@ pub fn cardinality_name(value: ()) -> String {
 "#;
         let patched = patch_bootstrap_dag_collect_text(emitted).expect("patch emitted compile.rs");
         assert!(
-            !patched.compile_text.contains("pub struct DagCollectPending"),
+            !patched
+                .compile_text
+                .contains("pub struct DagCollectPending"),
             "DagCollectPending helper struct must be stripped from generated compile.rs"
         );
         for symbol in DELEGATED_DAG_COLLECT_SYMBOLS {

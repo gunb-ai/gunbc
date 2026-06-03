@@ -20608,43 +20608,42 @@ pub fn emit_subcommand_enum(
         } else {
             "".to_string()
         };
+        let run_variant_lines = Rc::new(vec![
+            "/// Execute a .dag program directly (interpreter)\n".to_string(),
+            make_indent((depth.clone() + 1)),
+            "Run {\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "/// Source root directories (searched recursively for .dag files)\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "#[arg(long = \"source-root\")]\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "source_roots: Vec<String>,\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "/// Entry function to execute (default: \"main\")\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "#[arg(long, default_value = \"main\")]\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "function: String,\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "/// Entry `.dag` file: load only this module and its transitive imports\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "/// (not every file under --source-root). Required for scoped TestClaim runs.\n"
+                .to_string(),
+            make_indent((depth.clone() + 2)),
+            "#[arg(long)]\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "entry: Option<String>,\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "/// TestClaim / witness run: Bool false → exit 1; requires --entry\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "#[arg(long)]\n".to_string(),
+            make_indent((depth.clone() + 2)),
+            "claim_run: bool,\n".to_string(),
+            make_indent((depth.clone() + 1)),
+            "},".to_string(),
+        ]);
         let run_variant = if has_pipeline.clone() {
-            [
-                "/// Execute a .dag program directly (interpreter)\n".to_string(),
-                make_indent((depth.clone() + 1)),
-                "Run {\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "/// Source root directories (searched recursively for .dag files)\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "#[arg(long = \"source-root\")]\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "source_roots: Vec<String>,\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "/// Entry function to execute (default: \"main\")\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "#[arg(long, default_value = \"main\")]\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "function: String,\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "/// Entry `.dag` file: load only this module and its transitive imports\n"
-                    .to_string(),
-                make_indent((depth.clone() + 2)),
-                "/// (not every file under --source-root). Required for scoped TestClaim runs.\n"
-                    .to_string(),
-                make_indent((depth.clone() + 2)),
-                "#[arg(long)]\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "entry: Option<String>,\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "/// TestClaim / witness run: Bool false → exit 1; requires --entry\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "#[arg(long)]\n".to_string(),
-                make_indent((depth.clone() + 2)),
-                "claim_run: bool,\n".to_string(),
-                make_indent((depth.clone() + 1)),
-                "},".to_string(),
-            ]
-            .join("")
+            run_variant_lines.join(&"".to_string())
         } else {
             "".to_string()
         };

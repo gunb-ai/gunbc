@@ -1,8 +1,9 @@
 // Bootstrap hand-maintained: O(N) DAG node collection + provisional identity keys.
-// Semantic source: src/v2/compile.dag (dag_node_*, dag_collect_*). Stage0 codegen does
-// not yet emit owned-fold for DagCollectAcc; regen_stage0 delegates here via pub use.
+// Semantic source: src/v2/compile.dag (dag_node_*, dag_collect_*). Stage0 codegen
+// extracts shared support into v2_compiler_dag_collect_support; regen_stage0
+// delegates the owned-fold collector here via pub use.
 
-use crate::v2_compiler_compile::{
+use crate::v2_compiler_dag_collect_support::{
     dag_node_key_collision_error, dag_node_surface_fingerprint, DagCollectAcc,
 };
 use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule};
