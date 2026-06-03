@@ -5,19 +5,19 @@ use crate::std_algebra::AlgebraTypeTemplate::{ContainerOf, ReceiverSelf};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 use crate::std_algebra::CostShape::*;
+pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
 pub use crate::std_algebra::{
-    algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate,
-    AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
+    AlgebraFieldTemplate, AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
 };
 pub use crate::v2_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
 pub use crate::v2_compiler_infer_env::{
-    authored_name, is_recursive_type, lookup_type, lookup_type_for, TypeBinding, TypeEnv,
+    authored_name, is_recursive_type, lookup_type, lookup_type_for,
 };
-pub use crate::v2_compiler_infer_service::{
-    check_service_method_call_node, OpEntry, ServiceMethodResult,
-};
+pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v2_compiler_infer_service::check_service_method_call_node;
+pub use crate::v2_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, method_receiver_element_node,
@@ -34,9 +34,11 @@ use crate::v2_std_core::MethodSemantics::{
 };
 pub use crate::v2_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_type_expr,
-    with_optional_cardinality, with_required_cardinality, Cardinality, Connective, ErrorNode,
-    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MethodSemantics, NewlineIndex,
-    Node,
+    with_optional_cardinality, with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, MethodSemantics, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

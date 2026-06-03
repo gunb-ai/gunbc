@@ -13,8 +13,11 @@ use crate::v2_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v2_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_name_at,
-    with_required_cardinality, Cardinality, Connective, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, NewlineIndex, Node,
+    with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
