@@ -26,6 +26,7 @@ import v4.std.constraints {
   constraint_property_candidate_set_closedness
 }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
   NonEmptyDiagnostics,

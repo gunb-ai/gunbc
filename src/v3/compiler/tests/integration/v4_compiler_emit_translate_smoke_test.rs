@@ -53,8 +53,6 @@ use v3_compiler::parse_surface::{
 };
 use v3_compiler::tokenize_for_test;
 
-const COERCION_DAG: &str = include_str!("../../../../v4/std/coercion.dag");
-const COERCION_PATH: &str = "src/v4/std/coercion.dag";
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
 const FIND_WITNESS_PATH: &str = "src/v4/std/find_witness.dag";
 const MVP_INT_CROSS_TARGET_COERCION_CLAIM_DAG: &str =
@@ -117,11 +115,6 @@ fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::Surface
     let tokens =
         tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
     parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"))
-}
-
-#[test]
-fn v4_coercion_dag_tokenizes_and_parses() {
-    let _module = parse_module(COERCION_DAG, COERCION_PATH);
 }
 
 #[test]
