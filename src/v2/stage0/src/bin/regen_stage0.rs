@@ -787,11 +787,17 @@ fn patch_bootstrap_dag_collect_text(text: &str) -> Result<DagCollectPatch, Strin
     let build_key_start = "pub fn build_dag_key_to_id";
     let connective_start = "pub fn connective_name";
     let cardinality_start = "pub fn cardinality_name";
+    let fingerprint_helpers_start = "pub fn inferred_fingerprint";
+    let acc_end = if text.contains(pending_start) {
+        pending_start
+    } else {
+        fingerprint_helpers_start
+    };
 
     let support_text = render_dag_collect_support(
         extract_between(text, json_quote_start, json_list_start)?,
-        extract_between(text, acc_start, pending_start)?,
-        extract_between(text, "pub fn inferred_fingerprint", fingerprint_start)?,
+        extract_between(text, acc_start, acc_end)?,
+        extract_between(text, fingerprint_helpers_start, fingerprint_start)?,
         extract_between(text, collision_start, missing_ref_start)?,
         extract_between(text, connective_start, cardinality_start)?,
     );
@@ -1297,6 +1303,7 @@ pub fn json_list(items: ()) -> String {
     "[]".to_string()
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectAcc {
     pub seen: (),
 }
@@ -1322,6 +1329,10 @@ pub fn dag_node_collection_anchor(node: ()) -> () {
 
 pub fn inferred_fingerprint(value: Option<()>) -> String {
     "none".to_string()
+}
+
+pub fn expr_data_variant(data: ()) -> String {
+    "NoExprData".to_string()
 }
 
 pub fn dag_node_surface_fingerprint(node: ()) -> String {
@@ -1388,6 +1399,63 @@ pub fn cardinality_name(value: ()) -> String {
         assert!(patched
             .compile_text
             .contains("pub use crate::v2_compiler_dag_collect"));
+        assert!(patched
+            .compile_text
+            .contains("pub use crate::v2_compiler_dag_collect_support"));
+    }
+
+    #[test]
+    fn patch_bootstrap_dag_collect_support_does_not_require_pending() {
+        let emitted = r#"
+pub fn json_quote(s: String) -> String {
+    s
+}
+
+pub fn json_list(items: ()) -> String {
+    "[]".to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DagCollectAcc {
+    pub seen: (),
+}
+
+pub fn inferred_fingerprint(value: Option<()>) -> String {
+    "none".to_string()
+}
+
+pub fn dag_node_fingerprint(node: ()) -> String {
+    "fp".to_string()
+}
+
+pub fn dag_node_key_collision_error(key: String, span: ()) -> () {
+    ()
+}
+
+pub fn dag_node_missing_ref_error(node: ()) -> () {
+    ()
+}
+
+pub fn dag_collect_nodes_list(nodes: (), acc: ()) -> () {
+    acc
+}
+
+pub fn build_dag_key_to_id(order: ()) -> () {
+    ()
+}
+
+pub fn connective_name(value: ()) -> String {
+    "NoConnective".to_string()
+}
+
+pub fn cardinality_name(value: ()) -> String {
+    "Required".to_string()
+}
+"#;
+        let patched = patch_bootstrap_dag_collect_text(emitted).expect("patch emitted compile.rs");
+        assert!(patched.support_text.contains("pub struct DagCollectAcc"));
+        assert!(patched.support_text.contains("pub fn inferred_fingerprint"));
+        assert!(!patched.compile_text.contains("pub struct DagCollectAcc"));
         assert!(patched
             .compile_text
             .contains("pub use crate::v2_compiler_dag_collect_support"));
