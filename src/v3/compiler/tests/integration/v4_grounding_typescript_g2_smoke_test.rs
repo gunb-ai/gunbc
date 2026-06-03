@@ -90,8 +90,7 @@ fn v4_grounding_typescript_g2_declares_executable_claim_stack() {
         surface_declares_data(&sg, "run_ts_g2_sg5_collection_absence"),
         "G.2 must wire SG-5 absence run_test_claim row"
     );
-    let sg2_hold =
-        extract_fn_body(SG_CLAIMS_DAG, "ts_g2_sg2_type_expression_projection_holds");
+    let sg2_hold = extract_fn_body(SG_CLAIMS_DAG, "ts_g2_sg2_type_expression_projection_holds");
     assert!(
         sg2_hold.contains("Accepted { value: ProjectionPresent, diagnostics: _ }"),
         "SG-2 hold predicate must match ProjectionPresent (not import-only occurrence)"
