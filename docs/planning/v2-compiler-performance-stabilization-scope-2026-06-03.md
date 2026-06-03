@@ -191,6 +191,27 @@ Feasibility exit criterion:
 - freshness verification compares the multi-crate seed to a fresh self-compile;
 - the plan names which `.dag` stage model justifies each crate boundary.
 
+Prototype census tool:
+
+```sh
+python3 scripts/v2_stage0_dependency_census.py --top 12
+python3 scripts/v2_stage0_dependency_census.py --format json
+```
+
+The first run on this head found 64 stage0 modules, 309 direct module-reference edges, and one
+multi-module SCC. That SCC is the first split blocker to study:
+
+```text
+v2_compiler_compile
+v2_compiler_compiler_tests_rust
+v2_compiler_dag_collect
+v2_compiler_emit_rust
+```
+
+This does not prove that `emit_rust` cannot become its own crate. It proves that a direct split is
+blocked until the cycle is understood and either kept together as an emit/compile component or
+broken by a modeled API change.
+
 ## 8. What Not To Do
 
 Do not:
