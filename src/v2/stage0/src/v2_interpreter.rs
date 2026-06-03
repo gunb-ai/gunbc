@@ -679,6 +679,8 @@ fn eval_var(
             }
         }
         // Module-level fn/func items used as first-class values (higher-order refs).
+        // Precedence: eval_call resolves the callee via ctx.lookup_fn before env-bound
+        // Value::Fn, so a local `let f = …` does not shadow a same-named module fn at call sites.
         if matches!(info.kind, ItemKind::FuncItem | ItemKind::FnItem) {
             if let Some(fn_node) = ctx.lookup_fn(&name) {
                 return Ok(Value::Fn {
@@ -1005,7 +1007,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
 
-    // Look up user-defined function (global item or env-bound fn value).
+    // Look up user-defined function: module item wins over env-bound Value::Fn (see eval_var).
     let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
         node.clone()
     } else if let Some(Value::Fn { node }) = env.lookup(&func_name) {

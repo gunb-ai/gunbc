@@ -7547,6 +7547,9 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
       make_indent(level: depth + 2), "/// (not every file under --source-root). Required for scoped TestClaim runs.\n",
       make_indent(level: depth + 2), "#[arg(long)]\n",
       make_indent(level: depth + 2), "entry: Option<String>,\n",
+      make_indent(level: depth + 2), "/// TestClaim / witness run: Bool false → exit 1; requires --entry\n",
+      make_indent(level: depth + 2), "#[arg(long)]\n",
+      make_indent(level: depth + 2), "claim_run: bool,\n",
       make_indent(level: depth + 1), "},")
   } else { "" }
   let all_variants = if has_pipeline { concat(variants, [compile_variant, run_variant]) } else { variants }
@@ -7753,8 +7756,8 @@ fn emit_compile_match_arm(crate_name: String) -> String {
 
 fn emit_run_match_arm(crate_name: String) -> String {
   concat(
-    "\n        Commands::Run { source_roots, function, entry } => {\n",
-    "            cli_run::handle_run(source_roots, function, entry);\n",
+    "\n        Commands::Run { source_roots, function, entry, claim_run } => {\n",
+    "            cli_run::handle_run(source_roots, function, entry, claim_run);\n",
     "        },")
 }
 

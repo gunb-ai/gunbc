@@ -37,6 +37,7 @@ mod pb_method_template_projection_consumability;
 mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;
+#[cfg(test)]
 mod render_repeat_test;
 #[cfg(test)]
 mod source_audit;
