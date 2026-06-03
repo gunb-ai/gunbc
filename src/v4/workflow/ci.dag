@@ -108,8 +108,7 @@ import v4.std.diagnostic {
   Accepted,
   Rejected,
   None,
-  diagnostics_singleton,
-  diagnostics_merge
+  diagnostics_singleton
 }
 import v4.std.algebra {
   any,
