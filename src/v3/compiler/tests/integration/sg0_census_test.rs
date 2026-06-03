@@ -998,6 +998,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Explicit P5 deferral: ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero` plus
     // TASKS.md T-22; dissolves when these anchors are asserted by `.dag` TestClaim execution or
     // generated harness coverage instead of host parse-surface traversal.
+    // **PR #4348 (+0 paths):** adds `v4_mvp_int_cross_target_coercion_claim_tokenizes_and_parses`
+    // only (Leg A cross-target coercion claim parse smoke); no new hand-Rust test file.
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
