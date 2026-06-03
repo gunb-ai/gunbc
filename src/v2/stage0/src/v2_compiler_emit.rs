@@ -10,9 +10,12 @@ pub use crate::generated_method_template_projection::{
 };
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+<<<<<<< HEAD
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
+=======
+>>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
@@ -20,16 +23,18 @@ pub use crate::v2_compiler_coercion::{
     can_cast, coerce_container_template, coerce_primitive_type, literal_suffix, render_cast,
     target_callable, target_optional_template,
 };
-pub use crate::v2_compiler_infer::InferScope;
-pub use crate::v2_compiler_infer::{build_params_scope, extend_scope};
+pub use crate::v2_compiler_infer::{build_params_scope, extend_scope, InferScope};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
+<<<<<<< HEAD
 pub use crate::v2_compiler_infer_env::authored_name;
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
+=======
+pub use crate::v2_compiler_infer_env::{authored_name, TypeBinding, TypeEnv};
+>>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
-    extract_typed_service_name, is_typed_service_call_receiver,
+    extract_typed_service_name, is_typed_service_call_receiver, OpEntry, UniqueAccum,
 };
-pub use crate::v2_compiler_infer_service::{OpEntry, UniqueAccum};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node, is_unit_like, node_is_collection,
@@ -50,16 +55,15 @@ use crate::v2_compiler_languages::VisibilitySpec::{CaseVisibility, KeywordVisibi
 pub use crate::v2_compiler_languages::{
     binop_symbol, is_string_like, language_spec_for_target, service_method_depth,
     service_methods_inside_class, service_receiver_str, service_return_str, service_self_param,
-    target_keyword, test_conventions_for_target, wrap_shared_type,
-};
-pub use crate::v2_compiler_languages::{
-    BlockSyntax, EscapePair, ExpressionSemantics, IfValueForm, ImportRule, ImportTrigger,
-    InterpStyle, LanguageSpec, MatchValueForm, NamingCase, RecordLitSyntax, ReservedWordStrategy,
-    ServiceFieldTemplates, StringInterpSyntax, TcoSyntax, TestConventions, TestNameStyle,
-    VariantPatternSyntax, VisibilitySpec,
+    target_keyword, test_conventions_for_target, wrap_shared_type, BlockSyntax, EscapePair,
+    ExpressionSemantics, IfValueForm, ImportRule, ImportTrigger, InterpStyle, LanguageSpec,
+    MatchValueForm, NamingCase, RecordLitSyntax, ReservedWordStrategy, ServiceFieldTemplates,
+    StringInterpSyntax, TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax,
+    VisibilitySpec,
 };
 use crate::v2_rt;
 use crate::v2_std_core::AlgebraFieldKind::*;
+use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v2_std_core::ExprData::{
@@ -91,12 +95,10 @@ pub use crate::v2_std_core::{
     method_receiver, module_imports, module_items, operation_modifier_name,
     param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
     return_value, slice_base, slice_end, slice_start, transport_has_auth, tuple_type_name,
-    unaryop_operand, with_required_cardinality,
-};
-pub use crate::v2_std_core::{
-    Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
-    UnaryOpKind, VarBindingKind,
+    unaryop_operand, with_required_cardinality, AlgebraFieldKind, BinOp, Cardinality, Connective,
+    DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode,
+    LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
+    TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

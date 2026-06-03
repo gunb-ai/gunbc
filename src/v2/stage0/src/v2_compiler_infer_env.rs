@@ -7,9 +7,12 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 use crate::v2_rt;
 pub use crate::v2_std_core::{
     authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
+<<<<<<< HEAD
     source_text_at,
+=======
+    source_text_at, InternTable, NewlineIndex, Node,
+>>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 };
-pub use crate::v2_std_core::{InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

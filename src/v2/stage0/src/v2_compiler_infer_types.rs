@@ -11,35 +11,41 @@ use crate::std_algebra::AlgebraTypeTemplate::{
     ReceiverSelf, ReceiverValue, TupleOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
-pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
 pub use crate::std_algebra::{
-    AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
+    algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile,
+    AlgebraTypeTemplate, ContainerSource,
 };
-use crate::std_syntax::AlgebraFieldKind::{
+pub use crate::std_types::{
+    container_expected_arity, container_param_name, is_container_type, SourceSpan,
+};
+use crate::v2_rt;
+use crate::v2_std_core::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
+<<<<<<< HEAD
 use crate::std_syntax::BinOp::{And, Eq, Ge, Gt, Le, Lt, Ne, NullCoalesce, Or};
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_expected_arity, container_param_name, is_container_type};
 use crate::v2_rt;
+=======
+use crate::v2_std_core::BinOp::{And, Eq, Ge, Gt, Le, Lt, Ne, NullCoalesce, Or};
+>>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::ExprData::{ExprError, ExprLiteral, NoExprData};
 use crate::v2_std_core::ExprErrorKind::{InternalExprError, SemanticExprError};
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 pub use crate::v2_std_core::{
     authored_name_at, bool_type, default_ident_span, error_type, find_child_named, float_type,
     has_inferred, int_type, is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span,
     make_error_node, make_expr_error_node, make_expr_node, make_param_node, make_span, no_span,
     none_type, param_node_type_expr, string_type, unit_type, with_optional_cardinality,
-    with_required_cardinality,
-};
-pub use crate::v2_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
-    NewlineIndex, Node,
+    with_required_cardinality, AlgebraFieldKind, BinOp, Cardinality, CompilerDiagnostic,
+    Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, LiteralValue, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
