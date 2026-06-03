@@ -51,11 +51,7 @@ fn use_via_binding() -> Int {
         .as_ref()
         .expect("graph after successful resolve");
 
-    match v2_interpreter::run(
-        graph,
-        resolved.source_indices.clone(),
-        "use_via_binding",
-    ) {
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_via_binding") {
         Ok(Value::Int(5)) => {}
         other => panic!("expected Int(5), got {other:?}"),
     }

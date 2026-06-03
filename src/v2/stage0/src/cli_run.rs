@@ -135,11 +135,7 @@ pub fn load_sources_for_entry(
             }),
         );
     }
-    let mut sources = resolve_transitively(
-        vec![(rel_path.clone(), content.clone())],
-        &index,
-        seen,
-    );
+    let mut sources = resolve_transitively(vec![(rel_path.clone(), content.clone())], &index, seen);
     if !sources.iter().any(|s| s.path == rel_path) {
         sources.push(Rc::new(v2_compiler_compile::SourceFile {
             path: rel_path,
@@ -189,13 +185,8 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v2_compiler_compile::SourceFi
 }
 
 /// Entry point for `dag run`. Called from the generated main.rs.
-pub fn handle_run(
-    source_roots: Vec<String>,
-    function: String,
-    entry_file: Option<String>,
-) {
-    let claim_run = std::env::var_os("GUNBC_CLAIM_RUN")
-        .is_some_and(|v| v != "0" && v != "false");
+pub fn handle_run(source_roots: Vec<String>, function: String, entry_file: Option<String>) {
+    let claim_run = std::env::var_os("GUNBC_CLAIM_RUN").is_some_and(|v| v != "0" && v != "false");
     handle_run_with_options(source_roots, function, entry_file, false, claim_run);
 }
 
@@ -278,8 +269,7 @@ pub fn handle_run_with_options(
         &function,
         dry_run,
         !claim_run,
-    )
-    {
+    ) {
         Ok(val) => {
             println!("{}", val);
             if claim_run {
