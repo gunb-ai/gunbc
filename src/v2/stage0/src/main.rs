@@ -52,6 +52,10 @@ enum Commands {
         /// Entry function to execute (default: "main")
         #[arg(long, default_value = "main")]
         function: String,
+        /// Entry `.dag` file: load only this module and its transitive imports
+        /// (not every file under --source-root). Required for scoped TestClaim runs.
+        #[arg(long)]
+        entry: Option<String>,
     },
 }
 
@@ -380,8 +384,9 @@ fn main() {
         Commands::Run {
             source_roots,
             function,
+            entry,
         } => {
-            cli_run::handle_run(source_roots, function);
+            cli_run::handle_run(source_roots, function, entry);
         }
     };
 }

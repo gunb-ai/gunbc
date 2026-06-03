@@ -111,7 +111,45 @@ fn resolve_transitively(
     result
 }
 
-/// Load and resolve sources from source roots.
+/// Load one entry `.dag` file plus its transitive import closure (not the whole tree).
+pub fn load_sources_for_entry(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Vec<Rc<v2_compiler_compile::SourceFile>> {
+    let index = build_module_index(source_roots);
+    let path = std::path::Path::new(entry_path);
+    if !path.is_file() {
+        panic!("entry file does not exist or is not a file: {}", entry_path);
+    }
+    let content = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("failed to read entry {:?}: {}", path, e));
+    let rel_path = path.to_string_lossy().to_string();
+
+    let mut seen: HashMap<String, Rc<v2_compiler_compile::SourceFile>> = HashMap::new();
+    if let Some(mod_path) = extract_module_path(&content) {
+        seen.insert(
+            mod_path,
+            Rc::new(v2_compiler_compile::SourceFile {
+                path: rel_path.clone(),
+                content: content.clone(),
+            }),
+        );
+    }
+    let mut sources = resolve_transitively(
+        vec![(rel_path.clone(), content.clone())],
+        &index,
+        seen,
+    );
+    if !sources.iter().any(|s| s.path == rel_path) {
+        sources.push(Rc::new(v2_compiler_compile::SourceFile {
+            path: rel_path,
+            content,
+        }));
+    }
+    sources
+}
+
+/// Load and resolve sources from source roots (every `.dag` under the first root).
 fn load_sources(source_roots: &[String]) -> Vec<Rc<v2_compiler_compile::SourceFile>> {
     let index = build_module_index(source_roots);
     let first_root = std::path::Path::new(&source_roots[0]);
@@ -151,16 +189,21 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v2_compiler_compile::SourceFi
 }
 
 /// Entry point for `dag run`. Called from the generated main.rs.
-pub fn handle_run(source_roots: Vec<String>, function: String) {
+pub fn handle_run(
+    source_roots: Vec<String>,
+    function: String,
+    entry_file: Option<String>,
+) {
     let claim_run = std::env::var_os("GUNBC_CLAIM_RUN")
         .is_some_and(|v| v != "0" && v != "false");
-    handle_run_with_options(source_roots, function, false, claim_run);
+    handle_run_with_options(source_roots, function, entry_file, false, claim_run);
 }
 
 /// Entry point with options for dry-run mode.
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
+    entry_file: Option<String>,
     dry_run: bool,
     claim_run: bool,
 ) {
@@ -169,7 +212,18 @@ pub fn handle_run_with_options(
         std::process::exit(1);
     }
 
-    let sources = load_sources(&source_roots);
+    if claim_run && entry_file.is_none() {
+        eprintln!(
+            "error: GUNBC_CLAIM_RUN=1 requires --entry <file.dag> (scoped import closure; \
+             loading the whole --source-root tree is too large for witness runs)"
+        );
+        std::process::exit(1);
+    }
+
+    let sources = match entry_file.as_deref() {
+        Some(path) => load_sources_for_entry(&source_roots, path),
+        None => load_sources(&source_roots),
+    };
     eprintln!("resolved {} sources", sources.len());
 
     // Compile through validation (no emission)
