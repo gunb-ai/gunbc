@@ -152,11 +152,18 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v2_compiler_compile::SourceFi
 
 /// Entry point for `dag run`. Called from the generated main.rs.
 pub fn handle_run(source_roots: Vec<String>, function: String) {
-    handle_run_with_options(source_roots, function, false);
+    let claim_run = std::env::var_os("GUNBC_CLAIM_RUN")
+        .is_some_and(|v| v != "0" && v != "false");
+    handle_run_with_options(source_roots, function, false, claim_run);
 }
 
 /// Entry point with options for dry-run mode.
-pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_run: bool) {
+pub fn handle_run_with_options(
+    source_roots: Vec<String>,
+    function: String,
+    dry_run: bool,
+    claim_run: bool,
+) {
     if source_roots.is_empty() {
         eprintln!("error: provide at least one --source-root");
         std::process::exit(1);
@@ -215,6 +222,15 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
     {
         Ok(val) => {
             println!("{}", val);
+            if claim_run {
+                // TestClaim / witness entry points under src/v4 return Bool (or other
+                // rich types) and cannot import std.process without a dsl source root.
+                // Set GUNBC_CLAIM_RUN=1 to map false → exit 1; any other value → exit 0.
+                if matches!(&val, v2_interpreter::Value::Bool(false)) {
+                    std::process::exit(1);
+                }
+                return;
+            }
             // FAIL-CLOSED EXIT CODE CONTRACT
             //
             // Functions invoked via `dag run` MUST return std/process.dag's
@@ -236,7 +252,8 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
                         "error: function `{}` returned `{}`, not `ProcessExit`. \
                          Functions invoked via `dag run` must return std/process.dag's \
                          ProcessExit so the host can map success/failure to an exit code. \
-                         Wrap your rich result type in ExitSuccess / ExitFailure.",
+                         Wrap your rich result type in ExitSuccess / ExitFailure, or set \
+                         GUNBC_CLAIM_RUN=1 for Bool witness entry points under src/v4.",
                         function, type_name
                     );
                     std::process::exit(2);
