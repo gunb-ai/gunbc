@@ -5,18 +5,26 @@
 //! exist and remain joined; T-22 rows are parse/substrate ratchets only (not execution).
 //! This hand-Rust ratchet retires when T-22 generated harness coverage
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
-//! **P5 receipt for same-path expansion:** explicit deferral to `ROADMAP.md`
-//! § "Nine lanes" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; this
-//! file remains inside the SG-0 T-PB-B test subset and dissolves when these
-//! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated
-//! harness coverage.
+//! **P5 receipt for same-path expansion (INVARIANTS.md §P5 Mechanism (b)):** explicit
+//! deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:43,63); this file remains inside
+//! the SG-0 T-PB-B test subset (`sg0_census_test.rs:1065`) and dissolves when these
+//! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated harness
+//! coverage.
 //!
 //! **PR #4295 P5 receipt (+0 SG-0 paths):** same-path expansion in this file for
 //! `check_t19_testgen_activation` — structural migration of the activation gate
 //! formerly enforced by `scripts/check_t19_testgen_activation.py` (deleted on main
 //! in #4252, operator 2026-06-01 CI hygiene; not re-deleted in this PR). No new
-//! `EXPECTED_HAND_AUTHORED_TEST` census row; dissolves under the T-PB-B row above
-//! when T-22 generated harness or `.dag` TestClaim rows own these substrate checks.
+//! `EXPECTED_HAND_AUTHORED_TEST` census row (ROADMAP.md:43,63; `sg0_census_test.rs:1065`);
+//! dissolves when T-22 generated harness or `.dag` TestClaim rows own these substrate checks.
+//!
+//! **PR #4335 P5 receipt (INVARIANTS.md §P5 Mechanism (b) — +0 SG-0 paths):**
+//! disposition (3) explicit deferral — **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:43,63); same-path expansion for
+//! `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` under existing census row
+//! `sg0_census_test.rs:1065` (no new `EXPECTED_HAND_AUTHORED_TEST` entry). Dissolves when
+//! modeled `.dag` `TestClaim` rows or generated harness coverage own these substrate checks.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -33,6 +41,8 @@ const TESTGEN_DAG: &str = include_str!("../../../../v4/lens/testgen.dag");
 const TESTGEN_PATH: &str = "src/v4/lens/testgen.dag";
 const BOOTSTRAP_DAG: &str = include_str!("../../../../v4/workflow/bootstrap.dag");
 const BOOTSTRAP_PATH: &str = "src/v4/workflow/bootstrap.dag";
+const CLI_DAG: &str = include_str!("../../../../v4/workflow/cli.dag");
+const CLI_PATH: &str = "src/v4/workflow/cli.dag";
 const CONNECTIVE_ANCHORS_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/connective_anchors.dag");
 const CONNECTIVE_ANCHORS_PATH: &str = "src/v4/test/claim/manual/connective_anchors.dag";
@@ -466,7 +476,7 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "CompilesClaim must compare actual against declared accepted Node (P2/P3 fail-closed)"
     );
     assert!(
-        EVAL_DAG.contains("eval_round_trip_claim_input_for_verdict(input: subject.input.evaluator_input)")
+        EVAL_DAG.contains("eval_round_trip_claim_input_for_verdict(input: input)")
             && EVAL_DAG.contains("run_test_claim_round_trip_verdict_runtime(")
             && EVAL_DAG.contains("dag_round_trip_wave1_authorities_ready()"),
         "RoundTripClaim must admit witness input structurally (IRT-3), not runtime-eval TypeNode, and re-derive wave-1 readiness from dag.dag authorities (P2; not Deferred)"
@@ -936,6 +946,34 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             && BOOTSTRAP_DAG.contains("produces_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin")
             && BOOTSTRAP_DAG.contains("right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin"),
         "mismatch regression must wire stage-2 and fixpt.right through v4_stage2_hash (not an unrelated seed digest)"
+    );
+}
+
+#[test]
+fn rr_a_step2_bootstrap_evaluator_corpus_harness_entry() {
+    let _ = parse_module(BOOTSTRAP_DAG, BOOTSTRAP_PATH);
+    let _ = parse_module(CLI_DAG, CLI_PATH);
+
+    assert!(
+        BOOTSTRAP_DAG.contains("type BootstrapEvaluatorCorpusHarnessEntry")
+            && BOOTSTRAP_DAG.contains("fn bootstrap_evaluator_corpus_harness_entry()")
+            && BOOTSTRAP_DAG.contains("entry_fn: run_manual_testclaim_corpus_eval")
+            && BOOTSTRAP_DAG.contains("data run_manual_testclaim_corpus_eval: Symbol = run_manual_testclaim_corpus_eval")
+            && BOOTSTRAP_DAG.contains("entry_module: v4_test_claim_workflow_testclaim_corpus_runner")
+            && BOOTSTRAP_DAG.contains("runtime_model: v4_evaluator_runtime_wave1()")
+            && BOOTSTRAP_DAG.contains("stage0_binary: v4_stage0_binary")
+            && BOOTSTRAP_DAG.contains("data witness_bootstrap_evaluator_corpus_harness_well_formed: Bool"),
+        "RR-A §5.2: bootstrap must model stage0 corpus harness with wave1 runtime pin and run_manual_testclaim_corpus_eval entry"
+    );
+    assert!(
+        CLI_DAG.contains("type GunbcTestCorpusHarnessRoute")
+            && CLI_DAG.contains(
+                "data gunbc_test_manual_corpus_harness_route: GunbcTestCorpusHarnessRoute"
+            )
+            && CLI_DAG.contains("harness: bootstrap_manual_corpus_harness")
+            && CLI_DAG.contains(".harness.entry_fn == run_manual_testclaim_corpus_eval")
+            && CLI_DAG.contains("fn gunbc_test_manual_corpus_harness_route_well_formed()"),
+        "cli.dag must expose harness route typed separately from GunbcTestRoute.selection_fn (P2)"
     );
 }
 
