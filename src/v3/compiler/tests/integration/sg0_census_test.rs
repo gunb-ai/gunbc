@@ -1018,6 +1018,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
     // (ROADMAP.md:62); dissolves when `.dag` TestClaim coverage asserts G.1.4 registry rows directly.
     "src/v3/compiler/tests/integration/v4_extdeps_typescript_g14_grounding_smoke_test.rs",
+    // G.2: parse-surface ratchet on `grounding_typescript/*` T-38B claim family
+    // (SG-1 / G.1.4 / SG-2 / SG-5 executable claim stack).
+    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_grounding_typescript_g2_smoke_test.rs`.
+    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+    // (ROADMAP.md:62); dissolves when substrate `run_test_claim` executes the grounding_typescript roster.
+    "src/v3/compiler/tests/integration/v4_grounding_typescript_g2_smoke_test.rs",
     // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
     // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
@@ -1086,6 +1092,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
     // PR #4295 (+0 paths): `check_t19_testgen_activation` same-path expansion —
     // Rust migration of `scripts/check_t19_testgen_activation.py` (deleted #4252).
+    // PR #4335 (+0 paths): `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` RR-A §5.2
+    // bootstrap harness parse-surface ratchet (ROADMAP.md:43,63 T-PB-B deferral).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
     // TestClaims or generated harness coverage (ROADMAP.md T-PB-B row).
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",

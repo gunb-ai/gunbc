@@ -299,6 +299,8 @@ mod v4_extdeps_formatters_black_dag_smoke_test;
 mod v4_extdeps_react_dag_smoke_test;
 #[path = "integration/v4_extdeps_typescript_g14_grounding_smoke_test.rs"]
 mod v4_extdeps_typescript_g14_grounding_smoke_test;
+#[path = "integration/v4_grounding_typescript_g2_smoke_test.rs"]
+mod v4_grounding_typescript_g2_smoke_test;
 #[path = "boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"]
 mod v4_leaf_model_go_r1_r2_r3_external_test;
 #[path = "boundary/v4_leaf_model_python_cross_runtime_drift_test.rs"]
