@@ -2562,6 +2562,10 @@ pub fn emit_module_full(
     module_index: Rc<ModuleIndex>,
 ) -> Rc<TextFile> {
     {
+        static __EMITPROF_IDX: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+        let __emitprof_idx = __EMITPROF_IDX.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let __emitprof_t0 = std::time::Instant::now();
         let m = typed_module.module.clone();
         let scope = module_emit_scope(typed_module.clone());
         let scoped_data_items = build_scoped_data_item_index(typed_module.clone(), data_items);
@@ -2593,6 +2597,7 @@ pub fn emit_module_full(
             }
             __result
         });
+        let __emitprof_t_imp = std::time::Instant::now();
         let imports_str = emit_imports(
             module_imports(m.clone()),
             emit_info.clone(),
@@ -2603,6 +2608,7 @@ pub fn emit_module_full(
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
         );
+        let __emitprof_us_imp = __emitprof_t_imp.elapsed().as_micros();
         let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str()) {
             "".to_string()
         } else {
@@ -2757,6 +2763,7 @@ pub fn emit_module_full(
         })
         .first()
         .cloned();
+        let __emitprof_t_items = std::time::Instant::now();
         let items_str = Rc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
