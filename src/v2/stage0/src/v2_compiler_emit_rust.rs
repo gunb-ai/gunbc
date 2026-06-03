@@ -20609,7 +20609,7 @@ pub fn emit_subcommand_enum(
             "".to_string()
         };
         let run_variant = if has_pipeline.clone() {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("/// Execute a .dag program directly (interpreter)\n".to_string(), make_indent((depth.clone() + 1))), "Run {\n".to_string()), make_indent((depth.clone() + 2))), "/// Source root directories (searched recursively for .dag files)\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-root\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_roots: Vec<String>,\n".to_string()), make_indent((depth.clone() + 2))), "/// Entry function to execute (default: \"main\")\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long, default_value = \"main\")]\n".to_string()), make_indent((depth.clone() + 2))), "function: String,\n".to_string()), make_indent((depth.clone() + 1))), "},".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("/// Execute a .dag program directly (interpreter)\n".to_string(), make_indent((depth.clone() + 1))), "Run {\n".to_string()), make_indent((depth.clone() + 2))), "/// Source root directories (searched recursively for .dag files)\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-root\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_roots: Vec<String>,\n".to_string()), make_indent((depth.clone() + 2))), "/// Entry function to execute (default: \"main\")\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long, default_value = \"main\")]\n".to_string()), make_indent((depth.clone() + 2))), "function: String,\n".to_string()), make_indent((depth.clone() + 2))), "/// Entry `.dag` file: load only this module and its transitive imports\n".to_string()), make_indent((depth.clone() + 2))), "/// (not every file under --source-root). Required for scoped TestClaim runs.\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long)]\n".to_string()), make_indent((depth.clone() + 2))), "entry: Option<String>,\n".to_string()), make_indent((depth.clone() + 1))), "},".to_string())
         } else {
             "".to_string()
         };
@@ -20867,8 +20867,8 @@ pub fn emit_compile_match_arm(crate_name: String) -> String {
 pub fn emit_run_match_arm(crate_name: String) -> String {
     v2_rt::concat(
         v2_rt::concat(
-            "\n        Commands::Run { source_roots, function } => {\n".to_string(),
-            "            cli_run::handle_run(source_roots, function);\n".to_string(),
+            "\n        Commands::Run { source_roots, function, entry } => {\n".to_string(),
+            "            cli_run::handle_run(source_roots, function, entry);\n".to_string(),
         ),
         "        },".to_string(),
     )
