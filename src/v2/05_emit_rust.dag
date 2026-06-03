@@ -1178,6 +1178,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let test_projections = extract_test_projections(typed: typed)
   let export_sets = build_module_export_sets(modules: typed.modules)
   let module_index = build_module_index(modules: typed.modules)
+  let resource_module_index = build_resource_module_index(modules: typed.modules)
   let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index))
   let test_files = typed.modules
     |> map(tm => emit_test_file(
@@ -1188,7 +1189,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let has_pipeline = typed.modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v2.compiler.compile")
   let crate_name = if has_pipeline { "v2_compiler" } else { "v2_compiled" }
   let cargo = emit_cargo_toml(crate_name: crate_name, has_services: has_services)
-  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map)
+  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map, resource_module_index: resource_module_index)
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
   let dry_run_file = if has_services {
@@ -7401,24 +7402,49 @@ fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<
 }
 
 // =========================================================================
+// ResourceModuleIndex: O(1) item-name -> defining module filename lookup,
+// precomputed once per emit for emit_main_rs resource import generation.
+// Hoists the former O(modules*items) scan in find_resource_module that ran
+// per unique resource type — residual O(n^2) after ModuleIndex (#4350).
+//
+// Built in typed_modules list order with insert-if-absent so first-module-wins
+// matches the old `|> filter |> first` semantics exactly.
+// =========================================================================
+type ResourceModuleIndex {
+  by_item_name: Map<String, String>
+}
+
+fn build_resource_module_index(modules: List<TypedModule>) -> ResourceModuleIndex {
+  let by_item_name = modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let fname = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
+    tm.items |> fold(init: acc, f: (a, item) =>
+      let iname = authored_name_at(source_indices: tm.type_env.source_indices, node: item)
+      match map_get(a, iname) {
+        Some { value: _ } => a
+        None => map_insert(a, iname, fname)
+      }
+    )
+  )
+  ResourceModuleIndex { by_item_name: by_item_name }
+}
+
+fn resource_module_for_name(resource_name: String, resource_module_index: ResourceModuleIndex) -> String {
+  match map_get(resource_module_index.by_item_name, resource_name) {
+    Some { value: fname } => fname
+    None => ""
+  }
+}
+
+// =========================================================================
 // Generates a CLI entry point using clap with one subcommand per workflow
 // =========================================================================
 
-fn find_resource_module(resource_name: String, modules: List<TypedModule>) -> String {
-  let matching = modules |> filter(m => m.items |> any(item => authored_name_at(source_indices: m.type_env.source_indices, node: item) == resource_name))
-  let result = match matching |> first {
-    Some { value: tm } => module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
-    None => ""
-  }
-  result
-}
-
-fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>) -> TextFile {
+fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>, resource_module_index: ResourceModuleIndex) -> TextFile {
   let has_pipeline = modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v2.compiler.compile")
   let resource_type_names = workflow_funcs |> flat_map(wf => wf.uses |> map(u => authored_name_at(source_indices: wf.source_indices, node: resource_use_resource(n: u))))
   let unique_resource_types = unique_strings(items: resource_type_names)
   let resource_imports = unique_resource_types |> flat_map(rname =>
-    let mod_name = find_resource_module(resource_name: rname, modules: modules)
+    let mod_name = resource_module_for_name(resource_name: rname, resource_module_index: resource_module_index)
     if mod_name != "" { [concat("use ", crate_name, "::", mod_name, "::", rname, ";")] }
     else { [] }
   )
