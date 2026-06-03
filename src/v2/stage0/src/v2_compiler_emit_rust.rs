@@ -2295,7 +2295,9 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let module_index = build_module_index(typed.modules.clone());
         let module_files = Rc::new({
             let mut __result = Vec::new();
+            let mut __emit_probe_idx: usize = 0;
             for tm in typed.modules.clone().iter().cloned() {
+                let __emit_probe_t0 = std::time::Instant::now();
                 __result.push(emit_module_full(
                     tm.clone(),
                     registry.clone(),
@@ -2307,6 +2309,13 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                     typed.modules.clone(),
                     module_index.clone(),
                 ));
+                let __emit_probe_us = __emit_probe_t0.elapsed().as_micros();
+                let __emit_probe_items = tm.items.clone().iter().cloned().count();
+                eprintln!(
+                    "EMITPROBE idx={} us={} items={}",
+                    __emit_probe_idx, __emit_probe_us, __emit_probe_items
+                );
+                __emit_probe_idx += 1;
             }
             __result
         });
