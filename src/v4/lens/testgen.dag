@@ -17,7 +17,8 @@ import v4.std.algebra {
   length,
   list_append,
   non_empty,
-  list_snoc_item
+  list_snoc_item,
+  zip_eq
 }
 import v4.std.diagnostic {
   Outcome,
@@ -2080,36 +2081,19 @@ fn generator_id_eq(left: Generator<TestgenConcept>, right: Generator<TestgenConc
 }
 
 
-fn generator_in_list_by_id(g: Generator<TestgenConcept>, xs: List<Generator<TestgenConcept>>) -> Bool {
-  count_where(
-    xs: xs,
-    predicate: fn(candidate) {
-      generator_id_eq(left: candidate, right: g)
-    }
-  ) != 0
-}
-
-
-// Canonical roster equality for F.2-P2 receipts: same cardinality is insufficient (P3 / facts-flow-forward).
+// Canonical roster equality for F.2-P2 receipts: FreeMonoid/List order is a carried fact
+// (facts-flow-forward). Authority: v4.std.algebra.zip_eq + generator_id_eq per position.
 fn testgen_generators_roster_equal_by_id(
   left: List<Generator<TestgenConcept>>,
   right: List<Generator<TestgenConcept>>
 ) -> Bool {
-  length(xs: left) == length(xs: right)
-    && fold_list(
-      xs: left,
-      empty: true,
-      cons: fn(acc, g) {
-        acc && generator_in_list_by_id(g: g, xs: right)
-      }
-    )
-    && fold_list(
-      xs: right,
-      empty: true,
-      cons: fn(acc, g) {
-        acc && generator_in_list_by_id(g: g, xs: left)
-      }
-    )
+  zip_eq(
+    a: left,
+    b: right,
+    eq: fn(l, r) {
+      generator_id_eq(left: l, right: r)
+    }
+  )
 }
 
 
