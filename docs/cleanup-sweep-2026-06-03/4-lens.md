@@ -1,6 +1,6 @@
 # cleanup-sweep #4: lens + workflow concerning-patterns catalog
 
-**Slice:** `src/v4/lens/` (21 `.dag` files) + `src/v4/workflow/` (4 `.dag` files) + **ci.dag locate** (3 paths; authority is v4 workflow).
+**Slice:** `src/v4/lens/` (22 `.dag` files) + `src/v4/workflow/` (4 `.dag` files) + **ci.dag locate** (3 paths; authority is v4 workflow).
 
 **Session:** royal-lynx-356 · **Read-only audit** (hard freeze — no code changes).
 
