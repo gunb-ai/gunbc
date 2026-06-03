@@ -1,0 +1,22 @@
+// dsl/gunbc/gunbc_test_manual_corpus_harness.dag
+// Stage0 `gunbc test` ProcessExit entry (RR-A §5.2 Rung-1).
+// Lives under dsl/ so M1 v4-only rust emit never resolves `std.process` from src/v4.
+// Run via: gunbc test (cli_test.rs passes --source-root src/v4 --source-root dsl).
+
+module gunbc.gunbc_test_manual_corpus_harness
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v4.test.claim.workflow.manual_corpus_eval { manual_corpus_gate }
+import v4.test.claim.workflow.testclaim_corpus_runner {
+  run_manual_testclaim_corpus_eval
+}
+
+// gunbc test → cli_run → this entry → run_manual_testclaim_corpus_eval → run_test_claim
+// verdicts → manual_corpus_gate → ProcessExit (not emit_host).
+fn gunbc_test_manual_corpus_harness_exit() -> ProcessExit {
+  if manual_corpus_gate(report: run_manual_testclaim_corpus_eval()) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "manual_testclaim_corpus_eval gate not closed")
+  }
+}

@@ -25,16 +25,8 @@ import v4.std.verdict {
   verdict_tally_total
 }
 import v4.std.verification { test_claim_label }
-import std.process {
-  ProcessExit,
-  ExitSuccess,
-  exit_failure
-}
 import v4.test.claim.manual.manual_corpus_roster {
   manual_corpus_node_subject_rows
-}
-import v4.test.claim.workflow.manual_corpus_eval {
-  manual_corpus_gate
 }
 
 
@@ -146,24 +138,10 @@ fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
 
 
 // Stage0 / `gunbc test` acceptance path (RR-A Rung-1; NOT emit_host):
-//   gunbc test → cli_run → gunbc_test_manual_corpus_harness_exit → run_manual_testclaim_corpus_eval
-//   → run_node_runtime_value_subjects → run_test_claim → TestClaimRun verdict per row
-//   → corpus_report_tally / test_claim_run_verdict → manual_corpus_gate → ProcessExit.
-// At least one real Verdict fact flows through run_test_claim on the manual roster (F5 gate:
-// zero Fail + zero Deferred). Forbidden: emit_host transport as terminal pass authority.
-// Wraps the corpus report in `ProcessExit` so `cli_run` maps pass/fail to a host exit code.
-// Authority: v4.workflow.bootstrap `bootstrap_manual_corpus_harness` is invoked via this
-// symbol from `cli_test.rs`, not via `run_manual_testclaim_corpus_eval` (CorpusEvalReport).
-data gunbc_test_manual_corpus_harness_exit: Symbol = gunbc_test_manual_corpus_harness_exit
-
-fn gunbc_test_manual_corpus_harness_exit() -> ProcessExit {
-  if manual_corpus_gate(report: run_manual_testclaim_corpus_eval()) {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "manual_testclaim_corpus_eval gate not closed")
-  }
-}
-
+//   gunbc test → cli_run → gunbc.gunbc_test_manual_corpus_harness.gunbc_test_manual_corpus_harness_exit
+//   → run_manual_testclaim_corpus_eval → run_test_claim → test_claim_run_verdict per row
+//   → manual_corpus_gate (manual_corpus_eval.dag). ProcessExit wrapper lives in dsl/gunbc/
+//   (std.process is not in the v4-only M1 emit closure). Forbidden: emit_host as pass authority.
 
 fn manual_testclaim_subject_roster_family_receipt() -> TestClaimSubjectRosterFamilyReceipt {
   let runs = run_node_runtime_value_subjects(subjects: manual_corpus_node_subject_rows)

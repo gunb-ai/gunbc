@@ -981,6 +981,8 @@ fn rr_a_step2_bootstrap_evaluator_corpus_harness_entry() {
 
 const TESTCLAIM_CORPUS_RUNNER_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/testclaim_corpus_runner.dag");
+const GUNBC_TEST_MANUAL_CORPUS_HARNESS_DAG: &str =
+    include_str!("../../../../../dsl/gunbc/gunbc_test_manual_corpus_harness.dag");
 const CORPUS_EVAL_SCRIPT: &str = "scripts/v4-testclaim-corpus-eval.sh";
 
 /// Rung 1: stage0 `gunbc test` handler + thin CI host script (execution-runnable transport).
@@ -1007,13 +1009,14 @@ fn rung1_gunbc_test_stage0_handler_and_corpus_eval_host_script() {
     let cli_test = repo_root.join("src/v2/stage0/src/cli_test.rs");
     let cli_test_body = std::fs::read_to_string(&cli_test).expect("read cli_test.rs");
     assert!(
-        cli_test_body.contains("gunbc_test_manual_corpus_harness_exit"),
-        "cli_test.rs must target the ProcessExit harness entry (not CorpusEvalReport-returning run_manual_testclaim_corpus_eval)"
+        cli_test_body.contains("gunbc_test_manual_corpus_harness_exit")
+            && cli_test_body.contains("\"dsl\""),
+        "cli_test.rs must target the ProcessExit harness entry with dsl+src/v4 source roots"
     );
     assert!(
-        TESTCLAIM_CORPUS_RUNNER_DAG
+        GUNBC_TEST_MANUAL_CORPUS_HARNESS_DAG
             .contains("fn gunbc_test_manual_corpus_harness_exit() -> ProcessExit"),
-        "testclaim_corpus_runner.dag must expose ProcessExit harness entry for stage0 dag run"
+        "dsl/gunbc/gunbc_test_manual_corpus_harness.dag must expose ProcessExit harness for stage0 dag run"
     );
     assert!(
         CI_DAG.contains("data ci_testclaim_corpus_eval_host_script: String = \"scripts/v4-testclaim-corpus-eval.sh\"")
@@ -1024,10 +1027,13 @@ fn rung1_gunbc_test_stage0_handler_and_corpus_eval_host_script() {
     assert!(
         TESTCLAIM_CORPUS_RUNNER_DAG
             .contains("map(subjects, fn(subject) { run_test_claim(subject: subject) })")
-            && TESTCLAIM_CORPUS_RUNNER_DAG.contains("test_claim_run_verdict(run: e.run)")
-            && TESTCLAIM_CORPUS_RUNNER_DAG
-                .contains("manual_corpus_gate(report: run_manual_testclaim_corpus_eval())"),
+            && TESTCLAIM_CORPUS_RUNNER_DAG.contains("test_claim_run_verdict(run: e.run)"),
         "acceptance path must fold per-row TestClaimRun verdicts from run_test_claim (T-38)"
+    );
+    assert!(
+        GUNBC_TEST_MANUAL_CORPUS_HARNESS_DAG
+            .contains("manual_corpus_gate(report: run_manual_testclaim_corpus_eval())"),
+        "ProcessExit harness must gate the runtime corpus report (not emit_host)"
     );
     assert!(
         !TESTCLAIM_CORPUS_RUNNER_DAG.lines().any(|line| {

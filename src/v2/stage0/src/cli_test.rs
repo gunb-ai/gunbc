@@ -4,10 +4,10 @@
 
 use crate::cli_run;
 
-/// Mirrors `bootstrap_manual_corpus_harness.source_root` (v4_dag_source convention).
-const HARNESS_SOURCE_ROOT: &str = "src/v4";
+/// v4 corpus + dsl std.process harness (see `dsl/gunbc/gunbc_test_manual_corpus_harness.dag`).
+const HARNESS_SOURCE_ROOTS: &[&str] = &["src/v4", "dsl"];
 
-/// ProcessExit entry in `v4.test.claim.workflow.testclaim_corpus_runner` — not
+/// ProcessExit entry in `gunbc.gunbc_test_manual_corpus_harness` — not
 /// `run_manual_testclaim_corpus_eval` (returns `CorpusEvalReport`, not `ProcessExit`).
 const HARNESS_ENTRY_FN: &str = "gunbc_test_manual_corpus_harness_exit";
 
@@ -15,10 +15,14 @@ const HARNESS_ENTRY_FN: &str = "gunbc_test_manual_corpus_harness_exit";
 pub fn handle_test_with_options(dry_run: bool) {
     eprintln!(
         "gunbc test: manual corpus harness (--source-root {} --function {})",
-        HARNESS_SOURCE_ROOT, HARNESS_ENTRY_FN
+        HARNESS_SOURCE_ROOTS.join(" "),
+        HARNESS_ENTRY_FN
     );
     cli_run::handle_run_with_options(
-        vec![HARNESS_SOURCE_ROOT.to_string()],
+        HARNESS_SOURCE_ROOTS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
         HARNESS_ENTRY_FN.to_string(),
         dry_run,
     );
