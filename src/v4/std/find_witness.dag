@@ -25,6 +25,7 @@ import v4.std.constraint_satisfaction_predicate {
 import v4.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold_preservation_holds
 }
+import v4.extdeps.coercion_widening { refinement_widening_preservation_holds }
 import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
@@ -33,6 +34,7 @@ data find_witness_reason_not_realized: Symbol = find_witness_reason_not_realized
 data find_witness_reason_invalid_witness: Symbol = find_witness_reason_invalid_witness
 data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_constraint_satisfaction
 data preservation_rule_exact_structural_equality_zip_fold: Symbol = preservation_rule_exact_structural_equality_zip_fold
+data preservation_rule_refinement_widening: Symbol = preservation_rule_refinement_widening
 type CandidateSet {
   candidates: List<Node>
   closedness: StructuralPropertyWitness
@@ -110,6 +112,12 @@ fn preservation_predicate_holds(
       )
     preservation_rule_exact_structural_equality_zip_fold =>
       exact_structural_equality_zip_fold_preservation_holds(
+        source_facts: source_facts,
+        candidate: candidate,
+        algebra: predicate.algebra
+      )
+    preservation_rule_refinement_widening =>
+      refinement_widening_preservation_holds(
         source_facts: source_facts,
         candidate: candidate,
         algebra: predicate.algebra
@@ -240,6 +248,13 @@ fn find_witness(
         predicate: predicate,
         multiplicity_policy: multiplicity_policy
       )
+    preservation_rule_refinement_widening =>
+      find_witness_realized(
+        source_facts: source_facts,
+        candidates: candidates,
+        predicate: predicate,
+        multiplicity_policy: multiplicity_policy
+      )
     _ => outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
   }
 }
@@ -250,7 +265,8 @@ fn find_witness_realized(
   multiplicity_policy: MultiplicityPolicy
 ) -> Outcome<FindWitnessResult> {
   if (predicate.preservation_rule != preservation_rule_constraint_satisfaction)
-    && (predicate.preservation_rule != preservation_rule_exact_structural_equality_zip_fold) {
+    && (predicate.preservation_rule != preservation_rule_exact_structural_equality_zip_fold)
+    && (predicate.preservation_rule != preservation_rule_refinement_widening) {
     outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
   } else {
   let passing_count = passing_candidate_count(
@@ -310,6 +326,13 @@ fn verify_witness(
         witness: witness
       )
     preservation_rule_exact_structural_equality_zip_fold =>
+      verify_witness_realized(
+        source_facts: source_facts,
+        candidate: candidate,
+        predicate: predicate,
+        witness: witness
+      )
+    preservation_rule_refinement_widening =>
       verify_witness_realized(
         source_facts: source_facts,
         candidate: candidate,

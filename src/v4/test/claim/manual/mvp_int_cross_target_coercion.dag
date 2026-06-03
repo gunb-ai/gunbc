@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag
-// Scope: W3 Leg A — cross-target coercion_fold fail-closed safety receipt (python unbounded int → rust i32).
-// Status: exact-structural preservation only; no silent width truncation until W3.2 widening rule lands.
+// Scope: W3 cross-target int coercion receipts — Leg A fail-closed (python int → rust i32 exact rule);
+//   Leg B faithful widening (rust i32 → python int via preservation_rule_refinement_widening).
 
 
 module v4.test.claim.manual.mvp_int_cross_target_coercion

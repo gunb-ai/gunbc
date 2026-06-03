@@ -1,0 +1,30 @@
+// src/v4/extdeps/coercion_widening.dag
+// Scope: cross-target faithful refinement widening pairs for preservation_rule_refinement_widening.
+// Anchor: ROADMAP.md coercion (i32 → arbitrary-precision int); W3.2 Leg B.
+// Status: MVP pair registry — rust i32 inhabitant → python int inhabitant; axis-general registry is forward work.
+
+
+module v4.extdeps.coercion_widening
+
+
+import v4.extdeps.languages.python { python_int_inhabitant_node }
+import v4.extdeps.languages.rust { rust_inhabitant_i32_node }
+import v4.std.node { Node, well_formed }
+
+
+fn coercion_widening_mvp_rust_i32_to_python_int(source: Node, candidate: Node) -> Bool {
+  (source == rust_inhabitant_i32_node()) && (candidate == python_int_inhabitant_node())
+}
+
+
+fn refinement_widening_preservation_holds(
+  source_facts: Node,
+  candidate: Node,
+  algebra: Node,
+) -> Bool {
+  well_formed(n: source_facts)
+    && well_formed(n: algebra)
+    && well_formed(n: candidate)
+    && (algebra == source_facts)
+    && coercion_widening_mvp_rust_i32_to_python_int(source: source_facts, candidate: candidate)
+}
