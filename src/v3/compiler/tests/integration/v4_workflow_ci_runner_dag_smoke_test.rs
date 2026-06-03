@@ -2445,6 +2445,35 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
             "{CI_DAG_PATH}: F.11c must declare `{name}`"
         );
     }
+    for (path, name) in [
+        (&["v4", "std", "change"][..], "ArtifactChanged"),
+        (&["v4", "std", "change"][..], "DependencyDependent"),
+        (&["v4", "std", "change"][..], "DependencySource"),
+        (&["v4", "std", "change"][..], "NodeAdded"),
+        (&["v4", "std", "change"][..], "NodeChanged"),
+        (&["v4", "std", "change"][..], "NodeRemoved"),
+        (&["v4", "std", "change"][..], "ProjectionChanged"),
+        (&["v4", "std", "dependency"][..], "BarrierBefore"),
+        (&["v4", "std", "dependency"][..], "BindsTo"),
+        (&["v4", "std", "dependency"][..], "BootstrapDependsOn"),
+        (&["v4", "std", "dependency"][..], "Contains"),
+        (&["v4", "std", "dependency"][..], "DataDependsOn"),
+        (&["v4", "std", "dependency"][..], "EffectDependsOn"),
+        (&["v4", "std", "dependency"][..], "GeneratedFrom"),
+        (&["v4", "std", "dependency"][..], "ModelDependsOn"),
+        (&["v4", "std", "dependency"][..], "ModuleDependsOn"),
+        (&["v4", "std", "dependency"][..], "PlacementDependsOn"),
+        (&["v4", "std", "dependency"][..], "ProjectionDependsOn"),
+        (&["v4", "std", "dependency"][..], "PromotedBy"),
+        (&["v4", "std", "dependency"][..], "ResourceDependsOn"),
+        (&["v4", "std", "dependency"][..], "TypeDependsOn"),
+        (&["v4", "std", "dependency"][..], "VerifiedBy"),
+    ] {
+        assert!(
+            import_includes_name(&module, path, name),
+            "{CI_DAG_PATH}: F.11c digest matches `{name}`, so the constructor must be explicitly imported"
+        );
+    }
     for needle in [
         "type CiSelectionReceiptStoreRow",
         "receipt: CiSelectionReceipt",

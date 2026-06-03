@@ -73,8 +73,13 @@ import v4.std.change {
   ChangeKind,
   ChangeSet,
   DependencyEndpoint,
+  DependencyDependent,
   DependencySource,
-  NodeChanged
+  ArtifactChanged,
+  NodeAdded,
+  NodeRemoved,
+  NodeChanged,
+  ProjectionChanged
 }
 import v4.std.artifact {
   Artifact,
@@ -88,7 +93,25 @@ import v4.std.artifact {
   TestClaimArtifact,
   WitnessBundle
 }
-import v4.std.dependency { Contains, DependencyKind, DependencyView }
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  Contains,
+  DataDependsOn,
+  DependencyKind,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy
+}
 // Phase 1.4 canonical authority: `dsl/std/patterns.dag` (#3981). v4 compile uses `v4.std.patterns` /
 // `v4.std.types` mirrors (shapes aligned; see module headers) until compile roots include dsl/std.
 import v4.std.patterns { CreateAction, ResolveExpr, Upsert, VerifyCheck }
