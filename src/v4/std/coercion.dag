@@ -14,6 +14,8 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   None,
+  NonEmptyDiagnostics,
+  diagnostics_singleton,
   node_locus,
   Outcome,
   Rejected,
@@ -28,6 +30,10 @@ import v4.std.find_witness {
   TargetSelection,
   TargetSelectionPolicy,
   find_witness,
+  find_witness_reason_ambiguous_candidate,
+  find_witness_reason_invalid_witness,
+  find_witness_reason_no_candidate,
+  find_witness_reason_not_realized,
   preservation_rule_exact_structural_equality_zip_fold
 }
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
@@ -150,6 +156,28 @@ fn coercion_quality_for_witness(
     Exact
   }
 }
+fn coercion_mismatch_kind_for_find_witness_reason(reason: Symbol) -> CoercionMismatchKind {
+  match reason {
+    find_witness_reason_no_candidate => NoTargetCandidate
+    find_witness_reason_ambiguous_candidate => AmbiguousTargetCandidate
+    find_witness_reason_not_realized => StructuralMismatch
+    find_witness_reason_invalid_witness => StructuralMismatch
+    _ => NoTargetCandidate
+  }
+}
+fn coercion_lift_find_witness_rejection(
+  source: CanonicalGrounding,
+  diagnostics: NonEmptyDiagnostics,
+) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: coercion_not_realized_diagnostic(
+      source: source,
+      kind: coercion_mismatch_kind_for_find_witness_reason(
+        reason: diagnostics.head.reason
+      )
+    )
+  )
+}
 fn coercion_homomorphism_evidence(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
@@ -191,7 +219,10 @@ fn coercion_fold(
         },
         diagnostics: fw_d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } =>
+      Rejected {
+        diagnostics: coercion_lift_find_witness_rejection(source: source, diagnostics: r)
+      }
   }
 }
 fn coercion_fold_with_declared_priority(
