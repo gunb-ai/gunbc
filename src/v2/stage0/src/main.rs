@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::cli_run;
+use v2_compiler::cli_test;
 use v2_compiler::v2_compiler_compile;
 use v2_compiler::v2_compiler_compile::PipelineResult;
 use v2_compiler::v2_std_core::{
@@ -53,6 +54,8 @@ enum Commands {
         #[arg(long, default_value = "main")]
         function: String,
     },
+    /// Execute the T-38 manual TestClaim corpus harness (RR-A §5.2; `gunbc test`)
+    Test,
 }
 
 /// Recursively find all .dag files under a directory.
@@ -382,6 +385,10 @@ fn main() {
             function,
         } => {
             cli_run::handle_run(source_roots, function);
+        }
+
+        Commands::Test => {
+            cli_test::handle_test_with_options(cli.dry_run);
         }
     };
 }

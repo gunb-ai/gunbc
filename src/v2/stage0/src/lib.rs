@@ -13,6 +13,7 @@
 )]
 
 pub mod cli_run;
+pub mod cli_test;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;
 pub mod extdeps_languages_dag_types;

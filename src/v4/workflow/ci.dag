@@ -1396,6 +1396,16 @@ fn ci_testclaim_corpus_eval_command() -> CiCommand {
   }
 }
 
+// RR-A §5.2 / A.3b step-3 — host transport for `testclaim_corpus_eval_execution` when scheduled.
+// Invokes stage0 `gunbc test` (scripts/v4-testclaim-corpus-eval.sh); demoted from Wave-1 required path.
+data ci_testclaim_corpus_eval_host_script: String = "scripts/v4-testclaim-corpus-eval.sh"
+
+fn ci_testclaim_corpus_eval_host_transport_well_formed() -> Bool {
+  ci_testclaim_corpus_eval_host_script == "scripts/v4-testclaim-corpus-eval.sh"
+}
+
+data witness_ci_testclaim_corpus_eval_host_transport: Bool = ci_testclaim_corpus_eval_host_transport_well_formed()
+
 data ci_upsert_testclaim_corpus_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/manual/**"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"),

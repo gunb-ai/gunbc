@@ -1230,7 +1230,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   // rest_transport_facts.rs and INVARIANTS bounded substrate seed).
   // These are not generated — they survive regen as non-generated files.
   let hand_maintained_mods = if has_compiler_tests {
-    "\npub mod v2_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;"
+    "\npub mod v2_interpreter;\npub mod cli_run;\npub mod cli_test;\npub mod rest_transport_facts;"
   } else {
     ""
   }
@@ -7330,7 +7330,8 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
       "    byte_to_line_col, source_line_at, NewlineIndex,\n",
       "    CompilerDiagnostic,\n",
       "}", ";\n",
-      "use ", crate_name, "::cli_run;\n")
+      "use ", crate_name, "::cli_run;\n",
+      "use ", crate_name, "::cli_test;\n")
   } else {
     base
   }
@@ -7384,7 +7385,16 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
       make_indent(level: depth + 2), "function: String,\n",
       make_indent(level: depth + 1), "},")
   } else { "" }
-  let all_variants = if has_pipeline { concat(variants, [compile_variant, run_variant]) } else { variants }
+  let test_variant = if has_pipeline {
+    concat(
+      "/// Execute the T-38 manual TestClaim corpus harness (RR-A §5.2; `gunbc test`)\n",
+      make_indent(level: depth + 1), "Test,")
+  } else { "" }
+  let all_variants = if has_pipeline {
+    concat(variants, [compile_variant, run_variant, test_variant])
+  } else {
+    variants
+  }
   let variants_str = all_variants |> join(separator: "\n")
   concat(
     "#[derive(Subcommand)]\n",
@@ -7455,7 +7465,12 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipe
   let match_arms = workflow_funcs |> map(wf => emit_main_match_arm(wf: wf, has_services: has_services))
   let compile_arm = if has_pipeline { emit_compile_match_arm(crate_name: crate_name) } else { "" }
   let run_arm = if has_pipeline { emit_run_match_arm(crate_name: crate_name) } else { "" }
-  let all_arms = if has_pipeline { concat(match_arms, [compile_arm, run_arm]) } else { match_arms }
+  let test_arm = if has_pipeline { emit_test_match_arm(has_services: has_services) } else { "" }
+  let all_arms = if has_pipeline {
+    concat(match_arms, [compile_arm, run_arm, test_arm])
+  } else {
+    match_arms
+  }
   let arms_str = all_arms |> join(separator: "\n")
   let match_block = concat("match cli.command {\n", make_indent(level: depth + 2),arms_str, "\n    }")
   let result_handling = if has_services {
@@ -7591,6 +7606,20 @@ fn emit_run_match_arm(crate_name: String) -> String {
     "\n        Commands::Run { source_roots, function } => {\n",
     "            cli_run::handle_run(source_roots, function);\n",
     "        },")
+}
+
+fn emit_test_match_arm(has_services: Bool) -> String {
+  if has_services {
+    concat(
+      "\n        Commands::Test => {\n",
+      "            cli_test::handle_test_with_options(dry_run.0);\n",
+      "        },")
+  } else {
+    concat(
+      "\n        Commands::Test => {\n",
+      "            cli_test::handle_test_with_options(cli.dry_run);\n",
+      "        },")
+  }
 }
 
 // =========================================================================

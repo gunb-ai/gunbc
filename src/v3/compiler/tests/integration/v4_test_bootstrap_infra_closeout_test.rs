@@ -43,6 +43,8 @@ const BOOTSTRAP_DAG: &str = include_str!("../../../../v4/workflow/bootstrap.dag"
 const BOOTSTRAP_PATH: &str = "src/v4/workflow/bootstrap.dag";
 const CLI_DAG: &str = include_str!("../../../../v4/workflow/cli.dag");
 const CLI_PATH: &str = "src/v4/workflow/cli.dag";
+const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
+const CI_PATH: &str = "src/v4/workflow/ci.dag";
 const CONNECTIVE_ANCHORS_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/connective_anchors.dag");
 const CONNECTIVE_ANCHORS_PATH: &str = "src/v4/test/claim/manual/connective_anchors.dag";
@@ -974,6 +976,49 @@ fn rr_a_step2_bootstrap_evaluator_corpus_harness_entry() {
             && CLI_DAG.contains(".harness.entry_fn == run_manual_testclaim_corpus_eval")
             && CLI_DAG.contains("fn gunbc_test_manual_corpus_harness_route_well_formed()"),
         "cli.dag must expose harness route typed separately from GunbcTestRoute.selection_fn (P2)"
+    );
+}
+
+const TESTCLAIM_CORPUS_RUNNER_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/testclaim_corpus_runner.dag");
+const CORPUS_EVAL_SCRIPT: &str = "scripts/v4-testclaim-corpus-eval.sh";
+
+/// Rung 1: stage0 `gunbc test` handler + thin CI host script (execution-runnable transport).
+#[test]
+fn rung1_gunbc_test_stage0_handler_and_corpus_eval_host_script() {
+    let repo_root = workspace_root();
+    let script = repo_root.join(CORPUS_EVAL_SCRIPT);
+    assert!(
+        script.is_file(),
+        "missing {CORPUS_EVAL_SCRIPT} — RR-A §5.2 host transport must be re-landed"
+    );
+    let script_body = std::fs::read_to_string(&script).expect("read corpus eval script");
+    assert!(
+        script_body.contains("\"$bin\" test") || script_body.contains("$bin test"),
+        "{CORPUS_EVAL_SCRIPT}: must invoke `gunbc test`, not a host-owned compile loop"
+    );
+    assert!(
+        !script_body.lines().any(|line| {
+            let t = line.trim();
+            !t.starts_with('#') && t.contains("gunbc") && t.contains("compile")
+        }),
+        "{CORPUS_EVAL_SCRIPT}: executable lines must not invoke host-owned gunbc compile (#4091 §1.2)"
+    );
+    let cli_test = repo_root.join("src/v2/stage0/src/cli_test.rs");
+    let cli_test_body = std::fs::read_to_string(&cli_test).expect("read cli_test.rs");
+    assert!(
+        cli_test_body.contains("gunbc_test_manual_corpus_harness_exit"),
+        "cli_test.rs must target the ProcessExit harness entry (not CorpusEvalReport-returning run_manual_testclaim_corpus_eval)"
+    );
+    assert!(
+        TESTCLAIM_CORPUS_RUNNER_DAG
+            .contains("fn gunbc_test_manual_corpus_harness_exit() -> ProcessExit"),
+        "testclaim_corpus_runner.dag must expose ProcessExit harness entry for stage0 dag run"
+    );
+    assert!(
+        CI_DAG.contains("data ci_testclaim_corpus_eval_host_script: String = \"scripts/v4-testclaim-corpus-eval.sh\"")
+            && CI_DAG.contains("witness_ci_testclaim_corpus_eval_host_transport"),
+        "ci.dag must model corpus-eval host script path for execution-runnable transport"
     );
 }
 
