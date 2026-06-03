@@ -84,7 +84,8 @@ modeled surface exists yet to absorb it. Ordered by blast radius.
    as strings/labels and parsed by the harness — a closed-vocab table standing in for data.
 
 **Honest-interim qualifier:** the volume of `🟡 dissolve-on` / `T-22 runner bridge` markers
-(120/253 files mention a bridge keyword; ~49 carry explicit dissolve triggers) means most of
+(122/253 files reference `T-22` and 41 mention `dissolve`, of which 33 carry an explicit
+`dissolve-on:` trigger) means most of
 this is *self-aware* debt with a named exit. The exceptions that lack a clear trigger
 (`irt1_*`, some `lens_coverage`) and the self-forbidding cases (`generated/`, mvp1 family) are
 the genuine 🔴.
