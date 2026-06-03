@@ -1,5 +1,11 @@
 # v4 Rust RCA Manager Worksheets — 2026-06-03
 
+**Live state (P1):** M1 CI gate = `.github/ci-floor/v4-m1-rust-emit-probe.sh` (v2 emit +
+receipt only; authority `src/v4/workflow/ci.dag:562`). The 7,724 rustc histogram is PR
+#4140 audit only — recover via `git show 65e8db2ac0:docs/audit/…` §5 (extended probe with
+`cargo check`, not the ci-floor script). There is no `scripts/v4-m1-rust-emit-probe.sh` on
+`origin/main`.
+
 Scope: #4137 Section 11.8 Rust release-minimum / M1 rustc residual lane. These
 worksheets cluster the live ratchet meter (PR #4140: **7,724** `error[E####]`
 lines at post-Jun1-cascade) into routed subfamilies. Each subfamily names a

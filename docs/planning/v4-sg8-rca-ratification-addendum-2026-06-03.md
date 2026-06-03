@@ -37,7 +37,18 @@ carrier homes are emitted without a single export/import authority.
 | §8 ratification | **Closed** 2026-06-01 via #4143 (`proud-fox-405`) |
 | New #4140 evidence changes dispatch? | No; raises priority only |
 | Spot-fix forbidden | Hand-added `pub use` rows, CarrierKind/List/Char shim duplication, per-error unresolved import patches |
-| Acceptance | F1–F4 in recovered SG-8 worksheet (`git show 8c26800586:…` above), not SG-8 count reduction |
+| Acceptance | F1–F4 table below (full #4127 worksheet: `git show 8c26800586:…` above), not SG-8 count reduction |
+
+---
+
+## F1–F4 falsification (inlined from #4127 §4)
+
+| Probe | Intent | Receipt |
+| --- | --- | --- |
+| F1 | String type import cannot pull Go enum parent | `rg 'GoScalarKind' <emitted_fixture.rs>` empty |
+| F2 | TargetSource import does not re-export CarrierKind from wrong module | `rg 'v4_compiler_target_carriers.*CarrierKind' <emitted_fixture.rs>` empty; `CarrierKind` from `v4_std_pipeline` allowed |
+| F3 | List alias emitted in collection module | `rg 'pub type List' v4_std_collection.rs` present |
+| F4 | New generic alias via generic path (no name-keyed branch) | Hermetic `.dag` fixture + structural `TestClaim` or `src/v2/tests`; `rg 'pub type Pair' <emitted_fixture.rs>` |
 
 ---
 
@@ -50,8 +61,8 @@ MUST:
   - Fix v2 emit_imports so graph type names do not trigger enum-variant parent expansion.
   - Resolve pub-use and variant paths from defining ItemInfo.module_name, not import-site module.
   - Emit parametric type aliases (pub type Foo<T> = ...) through the generic alias path.
-  - Prove F1–F4 with forbidden-pattern greps; rustc residual remeasure per #4140 §5 repro
-    (extended probe), not the live ci-floor M1 gate alone.
+  - Prove F1–F4 per table above; rustc residual remeasure per #4140 §5 repro (extended
+    probe in recovered audit catalog), not the live ci-floor M1 gate alone.
 
 MUST NOT:
   - Add name-keyed import patch tables.
