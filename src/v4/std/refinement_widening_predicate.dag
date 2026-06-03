@@ -1,0 +1,81 @@
+// src/v4/std/refinement_widening_predicate.dag
+// Scope: mechanical refinement-widening preservation check (leaf — no extdeps import).
+// Anchor: ROADMAP.md coercion faithful widening; design-v4-compiler-homomorphism.md Pass B.
+// Status: bundle-encoded pair evidence on PreservationPredicate.algebra; axis-general registry is forward work.
+
+
+module v4.std.refinement_widening_predicate
+
+
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.node_query { find_named_child }
+
+
+data refinement_widening_field_source: Symbol = refinement_widening_field_source
+data refinement_widening_field_candidate: Symbol = refinement_widening_field_candidate
+data refinement_widening_field_source_facts: Symbol = refinement_widening_field_source_facts
+
+
+fn refinement_widening_predicate_algebra(
+  source: Node,
+  candidate: Node,
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: refinement_widening_field_source },
+        target: source
+      },
+      Edge {
+        label: Named { name: refinement_widening_field_candidate },
+        target: candidate
+      },
+      Edge {
+        label: Named { name: refinement_widening_field_source_facts },
+        target: source
+      }
+    ]
+  }
+}
+
+
+fn refinement_widening_bundle_holds(
+  source_facts: Node,
+  candidate: Node,
+  algebra: Node,
+) -> Bool {
+  match find_named_child(root: algebra, name: refinement_widening_field_source) {
+    Accepted { value: bundled_source, diagnostics: None } =>
+      match find_named_child(root: algebra, name: refinement_widening_field_candidate) {
+        Accepted { value: bundled_candidate, diagnostics: None } =>
+          match find_named_child(root: algebra, name: refinement_widening_field_source_facts) {
+            Accepted { value: bundled_source_facts, diagnostics: None } =>
+              (bundled_source == source_facts)
+                && (bundled_candidate == candidate)
+                && (bundled_source_facts == source_facts)
+                && (source_facts != candidate)
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn refinement_widening_preservation_holds(
+  source_facts: Node,
+  candidate: Node,
+  algebra: Node,
+) -> Bool {
+  well_formed(n: source_facts)
+    && well_formed(n: algebra)
+    && well_formed(n: candidate)
+    && refinement_widening_bundle_holds(
+      source_facts: source_facts,
+      candidate: candidate,
+      algebra: algebra
+    )
+}
