@@ -298,14 +298,12 @@ fn coercion_fold_refinement_widening(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
   policy: TargetSelectionPolicy,
+  predicate: PreservationPredicate,
 ) -> Outcome<CoercionResult> {
   match find_witness(
     source_facts: source.node,
     candidates: candidates.set,
-    predicate: PreservationPredicate {
-      algebra: source.node,
-      preservation_rule: preservation_rule_refinement_widening
-    },
+    predicate: predicate,
     multiplicity_policy: TargetSelection { policy: policy }
   ) {
     Accepted { value: fw, diagnostics: fw_d } =>
@@ -345,10 +343,12 @@ fn coercion_fold_refinement_widening_with_declared_priority(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
   priority: Node,
+  predicate: PreservationPredicate,
 ) -> Outcome<CoercionResult> {
   coercion_fold_refinement_widening(
     source: source,
     candidates: candidates,
-    policy: TargetDeclaredPriority { priority: priority }
+    policy: TargetDeclaredPriority { priority: priority },
+    predicate: predicate
   )
 }

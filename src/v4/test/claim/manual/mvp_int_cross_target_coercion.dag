@@ -15,6 +15,7 @@ import v4.extdeps.languages.rust {
   rust_declared_inhabitants_root,
   rust_inhabitant_i32_node
 }
+import v4.extdeps.coercion_widening { coercion_fold_mvp_rust_i32_to_python_int_widening }
 import v4.std.coercion {
   CoercionQuality,
   CoercionResult,
@@ -24,7 +25,6 @@ import v4.std.coercion {
   Widened,
   coercion_candidate_set_from_declared_inhabitants,
   coercion_fold,
-  coercion_fold_refinement_widening,
   coercion_not_realized_diagnostic
 }
 import v4.std.constraints {
@@ -198,10 +198,10 @@ fn cross_target_rust_i32_to_python_int_coercion_fold() -> Outcome<CoercionResult
       closedness_property: target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
-      coercion_fold_refinement_widening(
+      coercion_fold_mvp_rust_i32_to_python_int_widening(
         source: rust_i32_grounding(),
         candidates: candidates,
-        policy: TargetDeclaredPriority { priority: python_int_inhabitant_node() }
+        priority: python_int_inhabitant_node()
       )
     }
   )
