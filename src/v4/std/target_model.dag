@@ -2738,6 +2738,16 @@ data target_carrier_outcome: Symbol = target_carrier_outcome
 data target_carrier_model_core: Symbol = target_carrier_model_core
 data target_carrier_algebra_inhabitance_decl: Symbol = target_carrier_algebra_inhabitance_decl
 data target_carrier_probe_heap: Symbol = target_carrier_probe_heap
+data target_carrier_probe_pair: Symbol = target_carrier_probe_pair
+
+// SG-2 residual falsification — arity-2 generic carrier (ProbePair five-site worksheet).
+type ProbePair<T, U> {
+  first: T
+  second: U
+}
+
+data target_probe_pair_param_x: Symbol = target_probe_pair_param_x
+data target_probe_pair_param_y: Symbol = target_probe_pair_param_y
 
 fn target_carrier_type_node(identity: Symbol) -> Node {
   Node {
@@ -2776,6 +2786,36 @@ fn target_carrier_algebra_inhabitance_decl_node() -> Node {
 
 fn target_carrier_probe_heap_node() -> Node {
   target_carrier_type_node(identity: target_carrier_probe_heap)
+}
+
+fn target_carrier_probe_pair_node() -> Node {
+  target_carrier_type_node(identity: target_carrier_probe_pair)
+}
+
+fn target_probe_pair_param_x_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: target_probe_pair_param_x } },
+    children: []
+  }
+}
+
+fn target_probe_pair_param_y_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: target_probe_pair_param_y } },
+    children: []
+  }
+}
+
+// Substrate Instantiation(ProbePair, X, Y) — Node-keyed; SG-2 projects to ProbePair<X, Y>.
+fn target_probe_pair_xy_source_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: target_carrier_probe_pair_node() },
+      Edge { label: Positional, target: target_probe_pair_param_x_node() },
+      Edge { label: Positional, target: target_probe_pair_param_y_node() }
+    ]
+  }
 }
 
 fn target_ownership_use_site_atom(use_site: TargetOwnershipUseSite) -> Symbol {

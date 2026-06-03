@@ -2362,27 +2362,64 @@ fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
     node: node
   )
 }
-fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: type_expr_atom_binding(node: node),
-    f: fn(binding) {
-      match map_get(target.binding_spellings, binding) {
-        Accepted { value: opt, diagnostics: pending } => match opt {
-          Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-          Absent =>
-            Rejected {
-              diagnostics: rejected_with_pending(
-                pending: pending,
-                rejected: diagnostics_singleton(
-                  d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+fn type_expr_spelling_for_atom(
+  remaining: Int,
+  target: TargetModel,
+  node: Node
+) -> Outcome<TargetSource> {
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: node)
+    )
+  } else {
+    bind_outcome(
+      o: type_expr_atom_binding(node: node),
+      f: fn(binding) {
+        let source_carrier = translate_boundary_source_carrier_node(binding: binding)
+        match translate_target_atom_realization_for_carrier(
+          target: target,
+          source_carrier: source_carrier
+        ) {
+          Accepted { value: row, diagnostics: d } =>
+            bind_outcome(
+              o: type_expression_projection_from_target(target: target),
+              f: fn(projection) {
+                bind_outcome(
+                  o: serialize_type_expr_emitted_bounded(
+                    remaining: remaining - 1,
+                    target: target,
+                    projection: projection,
+                    emitted: row.type_form.node
+                  ),
+                  f: fn(source) { Accepted { value: source, diagnostics: d } }
                 )
-              )
+              }
+            )
+          Rejected { diagnostics: r } =>
+            if translate_outcome_is_catalog_lookup_miss(diagnostics: r) {
+              match map_get(target.binding_spellings, binding) {
+                Accepted { value: opt, diagnostics: pending } => match opt {
+                  Present { value: spelling } =>
+                    Accepted { value: spelling, diagnostics: pending }
+                  Absent =>
+                    Rejected {
+                      diagnostics: rejected_with_pending(
+                        pending: pending,
+                        rejected: diagnostics_singleton(
+                          d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+                        )
+                      )
+                    }
+                }
+                Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+              }
+            } else {
+              Rejected { diagnostics: r }
             }
         }
-        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
-    }
-  )
+    )
+  }
 }
 fn serialize_type_expr_emitted_positional_head_tail(node: Node) -> Outcome<TypeExprHeadTail> {
   list_head_and_tail(
