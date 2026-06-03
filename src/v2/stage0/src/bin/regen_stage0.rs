@@ -781,7 +781,6 @@ fn patch_bootstrap_dag_collect_text(text: &str) -> Result<DagCollectPatch, Strin
     let missing_ref_start = "pub fn dag_node_missing_ref_error";
     let pending_start =
         "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct DagCollectPending";
-    let key_start = "pub fn dag_node_key";
     let fingerprint_start = "pub fn dag_node_fingerprint";
     let collision_start = "pub fn dag_node_key_collision_error";
     let collect_start = "pub fn dag_collect_nodes_list";
@@ -1086,8 +1085,14 @@ fn changed_registered_outputs(
         let committed = committed_src.join(file_name);
         let fresh_text = fs::read_to_string(&fresh)
             .map_err(|e| format!("read fresh {}: {e}", fresh.display()))?;
-        let committed_text = fs::read_to_string(&committed)
-            .map_err(|e| format!("read committed {}: {e}", committed.display()))?;
+        let committed_text = match fs::read_to_string(&committed) {
+            Ok(text) => text,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                changed.push((*file_name).to_string());
+                continue;
+            }
+            Err(e) => return Err(format!("read committed {}: {e}", committed.display())),
+        };
         if fresh_text != committed_text {
             changed.push((*file_name).to_string());
         }
