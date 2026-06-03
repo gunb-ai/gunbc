@@ -8,9 +8,9 @@ use crate::v2_std_core::CompilerDiagnostic::ArityMismatch;
 use crate::v2_std_core::Connective::NoConnective;
 use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
+pub use crate::v2_std_core::{authored_name_at, make_error_node, module_items};
 pub use crate::v2_std_core::{
-    authored_name_at, make_error_node, module_items, CompilerDiagnostic, Connective, ErrorNode,
-    ExprData, InferredNode, NewlineIndex, Node,
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

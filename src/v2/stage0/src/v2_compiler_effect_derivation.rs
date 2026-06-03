@@ -11,17 +11,17 @@ use crate::std_effects::KeySource::{CompositeKey, InputField, PathParam};
 use crate::std_effects::ModifierAgreement::{Agrees, DerivationUnknown, Disagrees};
 pub use crate::std_effects::{
     check_modifier_vs_derivation, compose_effects, derive_effect_shape, derive_op_effect,
-    generate_idempotency_obligations, is_idempotent_effect, CompositionVerdict,
-    DeriveOpEffectResult, DerivedOpEffect, EffectShape, IdempotencyEvidence,
+    generate_idempotency_obligations, is_idempotent_effect,
+};
+pub use crate::std_effects::{
+    CompositionVerdict, DeriveOpEffectResult, DerivedOpEffect, EffectShape, IdempotencyEvidence,
     IdempotencyTestObligation, KeySource, ModifierAgreement, ModifierCheck, OperationEffect,
     WorkflowEffectConcern,
 };
 use crate::std_http_path::PathTemplateParseResult::{MalformedPathTemplate, ParsedPathTemplate};
 use crate::std_http_path::UrlPathToken::{LiteralToken, ParamToken};
-pub use crate::std_http_path::{
-    has_path_params, last_path_param, parse_path_template, PathTemplate, PathTemplateParseResult,
-    UrlPathToken,
-};
+pub use crate::std_http_path::{has_path_params, last_path_param, parse_path_template};
+pub use crate::std_http_path::{PathTemplate, PathTemplateParseResult, UrlPathToken};
 pub use crate::std_types::HttpMethod;
 use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
 use crate::v2_rt;
