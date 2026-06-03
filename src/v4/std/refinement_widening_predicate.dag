@@ -7,8 +7,9 @@
 module v4.std.refinement_widening_predicate
 
 
-import v4.std.collection { Absent, Optional, Present, list_at_optional }
-import v4.std.node { Edge, Named, Node, Positional, Symbol, well_formed }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.node_query { find_named_child }
 
 
 data refinement_widening_relation_field_source: Symbol = refinement_widening_relation_field_source
@@ -16,67 +17,30 @@ data refinement_widening_relation_field_target: Symbol = refinement_widening_rel
 data refinement_widening_relation_field_evidence: Symbol = refinement_widening_relation_field_evidence
 
 
-type RefinementWideningRelationProjection
-  = RefinementWideningRelationFound { source: Node, target: Node, evidence: Node }
-  | RefinementWideningRelationMissing
-
-
-fn refinement_widening_named_edge_target(
-  edge: Edge,
-  expected_name: Symbol,
-) -> Optional<Node> {
-  match edge.label {
-    Named { name } =>
-      if name == expected_name {
-        Present { value: edge.target }
-      } else {
-        Absent
-      }
-    Positional => Absent
-  }
+type RefinementWideningRelation {
+  source: Node
+  target: Node
+  evidence: Node
 }
 
 
-fn refinement_widening_relation_projection(
-  relation: Node,
-) -> RefinementWideningRelationProjection {
-  match list_at_optional(xs: relation.children, index: 0) {
-    Present { value: source_edge } =>
-      match refinement_widening_named_edge_target(
-        edge: source_edge,
-        expected_name: refinement_widening_relation_field_source
-      ) {
-        Present { value: source } =>
-          match list_at_optional(xs: relation.children, index: 1) {
-            Present { value: target_edge } =>
-              match refinement_widening_named_edge_target(
-                edge: target_edge,
-                expected_name: refinement_widening_relation_field_target
-              ) {
-                Present { value: target } =>
-                  match list_at_optional(xs: relation.children, index: 2) {
-                    Present { value: evidence_edge } =>
-                      match refinement_widening_named_edge_target(
-                        edge: evidence_edge,
-                        expected_name: refinement_widening_relation_field_evidence
-                      ) {
-                        Present { value: evidence } =>
-                          RefinementWideningRelationFound {
-                            source: source,
-                            target: target,
-                            evidence: evidence
-                          }
-                        Absent => RefinementWideningRelationMissing
-                      }
-                    Absent => RefinementWideningRelationMissing
-                  }
-                Absent => RefinementWideningRelationMissing
-              }
-            Absent => RefinementWideningRelationMissing
-          }
-        Absent => RefinementWideningRelationMissing
+fn refinement_widening_relation_node(relation: RefinementWideningRelation) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: refinement_widening_relation_field_source },
+        target: relation.source
+      },
+      Edge {
+        label: Named { name: refinement_widening_relation_field_target },
+        target: relation.target
+      },
+      Edge {
+        label: Named { name: refinement_widening_relation_field_evidence },
+        target: relation.evidence
       }
-    Absent => RefinementWideningRelationMissing
+    ]
   }
 }
 
@@ -89,14 +53,22 @@ fn refinement_widening_preservation_holds(
   well_formed(n: source_facts)
     && well_formed(n: candidate)
     && well_formed(n: algebra)
-    && match refinement_widening_relation_projection(relation: algebra) {
-      RefinementWideningRelationFound { source, target, evidence } =>
-        (source == source_facts)
-          && (target == candidate)
-          && well_formed(n: evidence)
-          && (evidence != source_facts)
-          && (evidence != candidate)
-          && (source_facts != candidate)
-      RefinementWideningRelationMissing => false
+    && match find_named_child(root: algebra, name: refinement_widening_relation_field_source) {
+      Accepted { value: source, diagnostics: _ } =>
+        match find_named_child(root: algebra, name: refinement_widening_relation_field_target) {
+          Accepted { value: target, diagnostics: _ } =>
+            match find_named_child(root: algebra, name: refinement_widening_relation_field_evidence) {
+              Accepted { value: evidence, diagnostics: _ } =>
+                (source == source_facts)
+                  && (target == candidate)
+                  && well_formed(n: evidence)
+                  && (evidence != source_facts)
+                  && (evidence != candidate)
+                  && (source_facts != candidate)
+              Rejected { diagnostics: _ } => false
+            }
+          Rejected { diagnostics: _ } => false
+        }
+      Rejected { diagnostics: _ } => false
     }
 }

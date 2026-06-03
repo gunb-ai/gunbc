@@ -47,11 +47,9 @@ import v4.std.find_witness {
   TargetDeclaredPriority,
   find_witness_reason_no_candidate
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.refinement_widening_predicate {
-  refinement_widening_relation_field_evidence,
-  refinement_widening_relation_field_source,
-  refinement_widening_relation_field_target
+  RefinementWideningRelation
 }
 import v4.std.target_model { target_model_edge_declared_inhabitants }
 import v4.std.verdict { Fail, Pass, Deferred }
@@ -79,23 +77,11 @@ fn rust_i32_python_int_widening_evidence_node() -> Node {
 }
 
 
-fn rust_i32_to_python_int_declared_widening_relation() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: refinement_widening_relation_field_source },
-        target: rust_inhabitant_i32_node()
-      },
-      Edge {
-        label: Named { name: refinement_widening_relation_field_target },
-        target: python_int_inhabitant_node()
-      },
-      Edge {
-        label: Named { name: refinement_widening_relation_field_evidence },
-        target: rust_i32_python_int_widening_evidence_node()
-      }
-    ]
+fn rust_i32_to_python_int_declared_widening_relation() -> RefinementWideningRelation {
+  RefinementWideningRelation {
+    source: rust_inhabitant_i32_node(),
+    target: python_int_inhabitant_node(),
+    evidence: rust_i32_python_int_widening_evidence_node()
   }
 }
 

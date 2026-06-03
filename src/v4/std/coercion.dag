@@ -40,6 +40,10 @@ import v4.std.find_witness {
   preservation_rule_refinement_widening
 }
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.refinement_widening_predicate {
+  RefinementWideningRelation,
+  refinement_widening_relation_node
+}
 import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
 data coercion_property_candidate_set_closedness: Symbol = coercion_property_candidate_set_closedness
@@ -47,6 +51,7 @@ data coercion_homomorphism_evidence_source: Symbol = coercion_homomorphism_evide
 data coercion_homomorphism_evidence_candidate: Symbol = coercion_homomorphism_evidence_candidate
 data coercion_homomorphism_evidence_find_witness: Symbol = coercion_homomorphism_evidence_find_witness
 data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
+data homomorphism_rule_refinement_widening: Symbol = homomorphism_rule_refinement_widening
 data coercion_not_realized: Symbol = coercion_not_realized
 data coercion_mismatch_no_target: Symbol = coercion_mismatch_no_target
 data coercion_mismatch_ambiguous: Symbol = coercion_mismatch_ambiguous
@@ -161,11 +166,11 @@ fn coercion_quality_for_witness(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
 ) -> CoercionQuality {
-  if fw.witness.property == preservation_rule_refinement_widening {
-    Widened
+  if fw.candidate == source.node {
+    Identity
   } else {
-    if fw.candidate == source.node {
-      Identity
+    if fw.witness.property == preservation_rule_refinement_widening {
+      Widened
     } else {
       Exact
     }
@@ -250,6 +255,13 @@ fn coercion_homomorphism_evidence(
     ]
   }
 }
+fn coercion_homomorphism_rule(fw: FindWitnessResult) -> Symbol {
+  if fw.witness.property == preservation_rule_refinement_widening {
+    homomorphism_rule_refinement_widening
+  } else {
+    homomorphism_rule_exact_structural_equality
+  }
+}
 fn coercion_fold(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
@@ -271,7 +283,7 @@ fn coercion_fold(
           quality: coercion_quality_for_witness(source: source, fw: fw),
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
-              rule: homomorphism_rule_exact_structural_equality,
+              rule: coercion_homomorphism_rule(fw: fw),
               evidence: coercion_homomorphism_evidence(source: source, fw: fw)
             }
           }
@@ -290,13 +302,13 @@ fn coercion_fold_with_refinement_widening(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
   policy: TargetSelectionPolicy,
-  widening_relation: Node,
+  widening_relation: RefinementWideningRelation,
 ) -> Outcome<CoercionResult> {
   match find_witness(
     source_facts: source.node,
     candidates: candidates.set,
     predicate: PreservationPredicate {
-      algebra: widening_relation,
+      algebra: refinement_widening_relation_node(relation: widening_relation),
       preservation_rule: preservation_rule_refinement_widening
     },
     multiplicity_policy: TargetSelection { policy: policy }
@@ -308,7 +320,7 @@ fn coercion_fold_with_refinement_widening(
           quality: coercion_quality_for_witness(source: source, fw: fw),
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
-              rule: homomorphism_rule_exact_structural_equality,
+              rule: coercion_homomorphism_rule(fw: fw),
               evidence: coercion_homomorphism_evidence(source: source, fw: fw)
             }
           }
