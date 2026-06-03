@@ -1,8 +1,12 @@
 # v4 SG-8 RCA Ratification Addendum — 2026-06-03
 
 > **Status:** ADDENDUM — implementation dispatch **authorized** (Modeling DFS Arbiter §8 sign-off #4143).
-> **Authority:** PR #4140 Jun1 M1 rustc catalog; SG-8 worksheet #4127 on main.
-> **Does not supersede:** `v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md` (git: #4127).
+> **Authority:** PR #4140 Jun1 M1 rustc catalog (recover:
+> `git show 65e8db2ac0:docs/audit/v4-rustc-error-catalog-2026-06-01-post-jun1-cascade.md`).
+> **SG-8 worksheet:** landed #4127; planning path removed in #4192 — recover F1–F4 and full
+> packet via
+> `git show 8c26800586:docs/planning/v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md`.
+> **Does not supersede** that recovered worksheet; this addendum only raises priority post-#4140.
 
 ---
 
@@ -33,20 +37,21 @@ carrier homes are emitted without a single export/import authority.
 | §8 ratification | **Closed** 2026-06-01 via #4143 (`proud-fox-405`) |
 | New #4140 evidence changes dispatch? | No; raises priority only |
 | Spot-fix forbidden | Hand-added `pub use` rows, CarrierKind/List/Char shim duplication, per-error unresolved import patches |
-| Acceptance | F1–F4 in the SG-8 worksheet, not SG-8 count reduction |
+| Acceptance | F1–F4 in recovered SG-8 worksheet (`git show 8c26800586:…` above), not SG-8 count reduction |
 
 ---
 
 ## Implementation Dispatch Packet
 
 ```text
-Implement SG-8 per v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md (#4127).
+Implement SG-8 per git show 8c26800586:docs/planning/v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md (#4127).
 
 MUST:
   - Fix v2 emit_imports so graph type names do not trigger enum-variant parent expansion.
   - Resolve pub-use and variant paths from defining ItemInfo.module_name, not import-site module.
   - Emit parametric type aliases (pub type Foo<T> = ...) through the generic alias path.
-  - Prove F1–F4 with forbidden-pattern greps and a fresh M1 probe receipt.
+  - Prove F1–F4 with forbidden-pattern greps; rustc residual remeasure per #4140 §5 repro
+    (extended probe), not the live ci-floor M1 gate alone.
 
 MUST NOT:
   - Add name-keyed import patch tables.

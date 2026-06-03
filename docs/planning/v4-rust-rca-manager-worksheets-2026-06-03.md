@@ -6,8 +6,14 @@ lines at post-Jun1-cascade) into routed subfamilies. Each subfamily names a
 single-authority fact and a falsification probe before implementation dispatch.
 
 **Live ratchet authority:** PR #4140 (`docs(audit): refresh Jun1 M1 rustc
-residual catalog`). The committed audit tree was removed in #4192; reproduce via
-`scripts/v4-m1-rust-emit-probe.sh` or `git show 65e8db2ac0:docs/audit/v4-rustc-error-catalog-2026-06-01-post-jun1-cascade.md`.
+residual catalog`). The committed audit tree was removed in #4192; recover the
+7,724-error histogram via
+`git show 65e8db2ac0:docs/audit/v4-rustc-error-catalog-2026-06-01-post-jun1-cascade.md`
+(see that file's §5 repro — extended emit + `cargo check`, not the live CI gate).
+
+**Live M1 CI gate:** `.github/ci-floor/v4-m1-rust-emit-probe.sh` (authority:
+`src/v4/workflow/ci.dag`) — v2 `--target rust` emit with a
+`compiled: N files emitted, 0 diagnostics` receipt only; **no `cargo check`**.
 
 **Manager session:** `bright-crane-734` (`node://adhoc-65299e42-409`).
 
@@ -61,7 +67,7 @@ The Rust lane advances by **routed subfamily**, not by error code:
 
 ## Related Artifacts
 
-- `scripts/v4-m1-rust-emit-probe.sh` — M1 full-tree emit + `cargo check` receipt
+- `.github/ci-floor/v4-m1-rust-emit-probe.sh` — M1 full-tree v2 rust emit + compile-log receipt (no `cargo check`)
 - `src/v4/test/claim/manual/sg_rc_layering.dag` — SG-RC falsification F1–F6
 - `src/v4/test/claim/manual/sg_collection_projection.dag` — SG-COLLECTION receipt
 - `src/v4/std/target_model.dag` — SG-RC / collection / type-expression authority
