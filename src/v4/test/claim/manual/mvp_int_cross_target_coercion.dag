@@ -47,7 +47,12 @@ import v4.std.find_witness {
   TargetDeclaredPriority,
   find_witness_reason_no_candidate
 }
-import v4.std.node { Node }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.refinement_widening_predicate {
+  refinement_widening_relation_field_evidence,
+  refinement_widening_relation_field_source,
+  refinement_widening_relation_field_target
+}
 import v4.std.target_model { target_model_edge_declared_inhabitants }
 import v4.std.verdict { Fail, Pass, Deferred }
 import v4.std.verification {
@@ -61,6 +66,38 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { StructuralPropertyWitness }
+
+
+data rust_i32_python_int_widening_evidence: Symbol = rust_i32_python_int_widening_evidence
+
+
+fn rust_i32_python_int_widening_evidence_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: rust_i32_python_int_widening_evidence } },
+    children: []
+  }
+}
+
+
+fn rust_i32_to_python_int_declared_widening_relation() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: refinement_widening_relation_field_source },
+        target: rust_inhabitant_i32_node()
+      },
+      Edge {
+        label: Named { name: refinement_widening_relation_field_target },
+        target: python_int_inhabitant_node()
+      },
+      Edge {
+        label: Named { name: refinement_widening_relation_field_evidence },
+        target: rust_i32_python_int_widening_evidence_node()
+      }
+    ]
+  }
+}
 
 
 fn python_unbounded_int_grounding() -> CanonicalGrounding {
@@ -127,7 +164,7 @@ fn cross_target_rust_i32_to_python_int_widening_fold() -> Outcome<CoercionResult
         source: rust_i32_grounding(),
         candidates: candidates,
         policy: TargetDeclaredPriority { priority: python_int_inhabitant_node() },
-        target: python_int_inhabitant_node()
+        widening_relation: rust_i32_to_python_int_declared_widening_relation()
       )
     }
   )
