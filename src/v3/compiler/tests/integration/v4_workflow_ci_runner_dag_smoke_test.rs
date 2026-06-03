@@ -69,6 +69,8 @@
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
+use std::process::Command;
+
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceLiteral, SurfaceRecordField};
 use v3_compiler::tokenize_for_test;
@@ -2028,7 +2030,7 @@ fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
     // `ci_selection_receipt_shadow_from_git_diff` stays deferred until the bootstrap eval
     // (`node://adhoc-331899f9-19a`) — the receipt's claim/testgen partitions remain queued.
     assert!(
-        CI_YML.contains("\"source\": \"bootstrap-stage0-run\""),
+        CI_YML.contains("source: \"bootstrap-stage0-run\""),
         "{CI_YML_PATH}: Phase 2 — stage0 host shadow emit step must be wired into ci.yml"
     );
     assert!(
@@ -2045,9 +2047,61 @@ fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
         "{CI_YML_PATH}: Wave 3 host shadow emit must be Class C (continue-on-error: true)"
     );
     assert!(
+        emit_block.contains("jq -n"),
+        "{CI_YML_PATH}: Wave 3 host shadow emit must serialize JSON through jq, not a raw heredoc"
+    );
+    assert!(
+        emit_block.contains("--arg git_diff_read_detail \"$GIT_DIFF_READ_DETAIL\""),
+        "{CI_YML_PATH}: git_diff_read_detail must cross the shell/JSON boundary as typed jq data"
+    );
+    assert!(
+        emit_block.contains("git_diff_read_detail: $git_diff_read_detail"),
+        "{CI_YML_PATH}: receipt must preserve the jq-escaped git_diff_read_detail field"
+    );
+    assert!(
+        !emit_block.contains("\"git_diff_read_detail\": \"${{ steps.detect.outputs.git_diff_read_detail }}\""),
+        "{CI_YML_PATH}: git_diff_read_detail must not be embedded directly in a heredoc JSON string"
+    );
+    assert!(
         !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff"),
         "{CI_YML_PATH}: modeled live entry (ci_selection_receipt_shadow_from_git_diff) not wired until eval harness lands (adhoc-331899f9-19a)"
     );
+}
+
+#[test]
+fn v4_workflow_ci_wave3_host_emit_serializes_fail_closed_detail_as_json_data() {
+    let detail = "git diff failed: quote \" backslash \\ newline\nliteral $(echo not-run)";
+    let output = Command::new("jq")
+        .arg("-n")
+        .arg("--arg")
+        .arg("git_diff_read_detail")
+        .arg(detail)
+        .arg(
+            r#"{
+              git_diff_read_failed: true,
+              git_diff_read_detail: $git_diff_read_detail,
+              component_affected: {
+                v2: (env.COMPONENT_V2 == "true"),
+                v3: (env.COMPONENT_V3 == "true")
+              }
+            }"#,
+        )
+        .env("COMPONENT_V2", "true")
+        .env("COMPONENT_V3", "false")
+        .output()
+        .expect("jq must be available for the CI Wave 3 host receipt step");
+    assert!(
+        output.status.success(),
+        "jq receipt serialization failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("jq output must be parseable JSON");
+    assert_eq!(receipt["git_diff_read_failed"], true);
+    assert_eq!(receipt["git_diff_read_detail"], detail);
+    assert_eq!(receipt["component_affected"]["v2"], true);
+    assert_eq!(receipt["component_affected"]["v3"], false);
 }
 
 #[test]
