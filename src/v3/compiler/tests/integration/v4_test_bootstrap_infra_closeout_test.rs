@@ -715,8 +715,10 @@ fn testgen_concept_surface_stays_closed_and_classified() {
             ("classification", "TestClassification"),
             ("anchor", "ClaimAnchorKey"),
             ("slot", "C"),
+            ("provenance", "GeneratorProvenance"),
+            ("profile_metadata", "GeneratorProfile"),
         ]),
-        "Generator<C> must carry claim kind, anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
+        "Generator<C> must carry claim kind, anchor, classification, slot, provenance bundle, and profile metadata (F.2-P1 #4316)"
     );
 }
 
