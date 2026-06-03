@@ -2729,7 +2729,9 @@ fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindin
 // match_value_form requires statement arms (Python match / Go switch), not expression arms (Rust).
 fn emit_match_arm_body_stmt(target: RenderTarget, body_str: String) -> String {
   match language_spec(target: target).expression_semantics.match_value_form {
-    MatchStatementArmReturn => concat("return ", body_str)
+    MatchStatementArmReturn =>
+      if substring(s: body_str, start: 0, end: 7) == "return " { body_str }
+      else { concat("return ", body_str) }
     MatchExpression => body_str
   }
 }
