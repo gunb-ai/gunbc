@@ -1423,11 +1423,10 @@ fn build_module_index(modules: List<TypedModule>) -> ModuleIndex {
   )
   let by_filename = modules |> fold(init: empty_map(), f: (acc, tm) =>
     let fname = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
-    let prior = match map_get(acc, fname) {
-      Some { value: lst } => lst
-      None => []
+    match map_get(acc, fname) {
+      Some { value: prior } => map_insert(acc, fname, list_push(prior, tm))
+      None => map_insert(acc, fname, [tm])
     }
-    map_insert(acc, fname, list_push(prior, tm))
   )
   ModuleIndex { by_name: by_name, by_filename: by_filename }
 }

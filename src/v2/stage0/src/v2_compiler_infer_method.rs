@@ -10,8 +10,8 @@ use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v2_std_core::{
     bool_type, hash_type, int_type, make_span, string_type, unit_type, with_optional_cardinality,
-    Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node,
 };
+pub use crate::v2_std_core::{Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
