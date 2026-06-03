@@ -36,6 +36,7 @@ mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;
 #[cfg(test)]
+mod fn_as_value_test;
 mod render_repeat_test;
 #[cfg(test)]
 mod source_audit;

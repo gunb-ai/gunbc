@@ -218,7 +218,13 @@ pub fn handle_run_with_options(
 
     // Run the interpreter
     eprintln!("running {}()...", function);
-    match v2_interpreter::run_with_options(graph, result.source_indices.clone(), &function, dry_run)
+    match v2_interpreter::run_with_options(
+        graph,
+        result.source_indices.clone(),
+        &function,
+        dry_run,
+        !claim_run,
+    )
     {
         Ok(val) => {
             println!("{}", val);

@@ -426,7 +426,7 @@ pub fn run(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
 ) -> InterpResult<Value> {
-    run_with_options(graph, source_indices, entry_fn, false)
+    run_with_options(graph, source_indices, entry_fn, false, true)
 }
 
 pub fn run_with_options(
@@ -434,6 +434,7 @@ pub fn run_with_options(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
     dry_run: bool,
+    eager_data_env: bool,
 ) -> InterpResult<Value> {
     let ctx = InterpContext::new(graph, source_indices, dry_run);
 
@@ -443,8 +444,14 @@ pub fn run_with_options(
         .ok_or_else(|| InterpError::NoMainFunction)?
         .clone();
 
-    // Build initial environment with data items
-    let env = build_initial_env(&ctx)?;
+    // Default: evaluate all `data` items up front (legacy `dag run` behavior).
+    // Claim-run mode skips this — src/v4 has hundreds of TestClaim data graphs;
+    // witnesses pull only what they need via lazy data-item resolution in eval_var.
+    let env = if eager_data_env {
+        build_initial_env(&ctx)?
+    } else {
+        Env::empty()
+    };
 
     // Call the entry function with no arguments
     call_function(&ctx, &item_node, &[], &env)
