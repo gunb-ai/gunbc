@@ -151,7 +151,35 @@ jobs:
       run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
     - name: Emit Wave 3 shadow selection receipt (Class C, non-blocking)
       continue-on-error: true
-      run: cargo run -p ci_affected_components --bin emit-ci-wave3-shadow-receipt -- "${{ github.event_name }}"
+      env:
+        GIT_DIFF_READ_DETAIL_JSON: ${{ toJSON(steps.detect.outputs.git_diff_read_detail) }}
+      run: |
+        set -euo pipefail
+        receipt_path="${RUNNER_TEMP:-.}/wave3-shadow-receipt.json"
+        cat > "$receipt_path" <<EOF
+        {
+          "transport_envelope": "gunbc/ci-wave3-shadow-emit/v1",
+          "ci_selection_receipt_status": "queued",
+          "modeled_receipt_authority": "v4.workflow.ci.CiSelectionReceipt",
+          "live_eval_debt": "node://adhoc-331899f9-19a",
+          "event_name": "${{ github.event_name }}",
+          "source": "bootstrap-stage0-run",
+          "git_diff_read_failed": ${{ steps.detect.outputs.git_diff_read_failed }},
+          "git_diff_read_detail": $GIT_DIFF_READ_DETAIL_JSON,
+          "note": "Host transport STATUS only - NOT a CiSelectionReceipt serialization. The modeled receipt is constructed under the live eval debt; this stage0 Run mirrors the already-detected CiComponentAffected frontier.",
+          "component_affected": {
+            "v2": ${{ steps.detect.outputs.v2 }},
+            "v3": ${{ steps.detect.outputs.v3 }},
+            "v4": ${{ steps.detect.outputs.v4 }},
+            "testclaim_corpus": ${{ steps.detect.outputs.testclaim_corpus }},
+            "workflow_policy": ${{ steps.detect.outputs.workflow_policy }},
+            "release_distribution": ${{ steps.detect.outputs.release_distribution }},
+            "release_distribution_only": ${{ steps.detect.outputs.release_distribution_only }}
+          }
+        }
+        EOF
+        echo "wrote $receipt_path"
+        echo "::notice title=Wave 3 shadow receipt (Class C)::ci_selection_receipt_status=queued source=bootstrap-stage0-run git_read_failed=${{ steps.detect.outputs.git_diff_read_failed }} debt=node://adhoc-331899f9-19a transport status only; modeled CiSelectionReceipt constructed by queued live eval"
     # Wave-1 §11.7 kill-criterion instrumentation (work-item adhoc-0ae3efe5-52b). Measurement only:
     # emits a per-PR JSON receipt (affected-set partition + bootstrap_required prediction) that the
     # operator aggregates to decide whether to affected-set-gate ci_floor. Does NOT gate any job.

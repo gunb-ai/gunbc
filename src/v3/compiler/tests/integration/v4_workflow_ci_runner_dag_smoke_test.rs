@@ -2023,13 +2023,17 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
 
 #[test]
 fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
-    // Phase 2: the host shadow emit step IS now wired into ci.yml (component_affected_comparison
-    // is live-populated), as a non-blocking Class C step. The modeled live entry
+    // Phase 2: the stage0 host shadow emit step IS now wired into ci.yml
+    // (component_affected_comparison is live-populated), as a non-blocking Class C step. The modeled live entry
     // `ci_selection_receipt_shadow_from_git_diff` stays deferred until the bootstrap eval
     // (`node://adhoc-331899f9-19a`) — the receipt's claim/testgen partitions remain queued.
     assert!(
-        CI_YML.contains("emit-ci-wave3-shadow-receipt"),
-        "{CI_YML_PATH}: Phase 2 — host shadow emit step must be wired into ci.yml"
+        CI_YML.contains("\"source\": \"bootstrap-stage0-run\""),
+        "{CI_YML_PATH}: Phase 2 — stage0 host shadow emit step must be wired into ci.yml"
+    );
+    assert!(
+        !CI_YML.contains("--bin emit-ci-wave3-shadow-receipt"),
+        "{CI_YML_PATH}: Wave 3 shadow emit must not route through the deleted interim Rust bin"
     );
     let emit_block = CI_YML
         .split("- name: Emit Wave 3 shadow selection receipt")
@@ -2062,15 +2066,15 @@ fn v4_workflow_ci_wave3_node_selection_still_shadow_while_component_receipt_live
         !ci_floor_block.contains("needs: [affected]"),
         "{CI_YML_PATH}: `ci_floor` must not need `affected`"
     );
-    // Phase 2: the host emit step is wired (component receipt live), but the node-frontier
+    // Phase 2: the stage0 host emit step is wired (component receipt live), but the node-frontier
     // modeled live entry stays deferred — claim/testgen selection remains shadow until eval.
     assert!(
         !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff"),
         "{CI_YML_PATH}: Wave 3 node-frontier modeled live entry (ci_selection_receipt_shadow_from_git_diff) remains deferred until adhoc-331899f9-19a"
     );
     assert!(
-        CI_YML.contains("emit-ci-wave3-shadow-receipt"),
-        "{CI_YML_PATH}: Phase 2 host emit (Class C) is wired; component_affected_comparison live, node-frontier claim/testgen still queued"
+        CI_YML.contains("source=bootstrap-stage0-run"),
+        "{CI_YML_PATH}: Phase 2 stage0 host emit (Class C) is wired; component_affected_comparison live, node-frontier claim/testgen still queued"
     );
 }
 
