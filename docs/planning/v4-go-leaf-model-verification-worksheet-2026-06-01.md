@@ -5,6 +5,9 @@
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` Section 11.8.1 Go row target "L0 complete + L1 fixture-scale".
 > **Prerequisites:** #4076 landed; `src/v4/extdeps/languages/go.dag` carries Go integer fact-bundles and atom realization rows touched by this worksheet.
 
+> **Manager closeout:** split R1/R2/L1/L2 sequencing is recorded in
+> `docs/planning/v4-go-rca-manager-worksheets-2026-06-03.md`.
+
 ---
 
 ## Mechanical dispatch rule
@@ -92,3 +95,4 @@ R2b is a runtime exercise because Go typed integer overflow behavior is observed
 - `src/v4/test/claim/language_model/go_r2b.dag` - R2b claim row
 - `src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs` - temporary host bridge
 - `docs/planning/v4-go-l1-compiler-slice-compile-worksheet-2026-06-01.md` - downstream L1 fixture-scale worksheet
+- `docs/planning/v4-go-rca-manager-worksheets-2026-06-03.md` - Go RCA R1/R2/L1/L2 sequencing worksheet
