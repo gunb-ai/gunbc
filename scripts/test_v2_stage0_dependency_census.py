@@ -33,9 +33,12 @@ def main() -> None:
                 )
             ),
         )
-        write(stage0 / "alpha.rs", "pub fn a() { crate::beta::b(); }\n")
+        write(
+            stage0 / "alpha.rs",
+            'pub fn a() { crate::beta::b(); let _s = "crate::gamma::g()"; }\n',
+        )
         write(stage0 / "beta.rs", "pub fn b() { crate::alpha::a(); crate::gamma::g(); }\n")
-        write(stage0 / "gamma.rs", "pub fn g() {}\n")
+        write(stage0 / "gamma.rs", "pub fn g() { /* crate::alpha::a() */ }\n")
         write(stage0 / "isolated.rs", "pub fn i() {}\n")
 
         result = subprocess.run(

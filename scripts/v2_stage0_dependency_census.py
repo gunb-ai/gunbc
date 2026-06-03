@@ -48,6 +48,123 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def strip_rust_non_code(text: str) -> str:
+    """Replace comments and string/char literal contents with spaces.
+
+    The generated stage0 emitter contains large Rust source templates as string
+    literals. A raw `crate::foo` regex over those strings reports dependencies
+    that rustc never resolves for the stage0 crate. This scanner is deliberately
+    conservative: it preserves byte count/newlines enough for regex scanning,
+    but erases normal strings, raw strings, chars, and comments.
+    """
+
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    state = "code"
+    block_depth = 0
+    raw_hashes = 0
+
+    def blank(ch: str) -> str:
+        return "\n" if ch == "\n" else " "
+
+    while i < n:
+        ch = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+
+        if state == "code":
+            if ch == "/" and nxt == "/":
+                out.extend("  ")
+                i += 2
+                state = "line_comment"
+            elif ch == "/" and nxt == "*":
+                out.extend("  ")
+                i += 2
+                state = "block_comment"
+                block_depth = 1
+            elif ch == "r":
+                j = i + 1
+                while j < n and text[j] == "#":
+                    j += 1
+                if j < n and text[j] == '"':
+                    raw_hashes = j - i - 1
+                    out.extend(" " * (raw_hashes + 2))
+                    i = j + 1
+                    state = "raw_string"
+                else:
+                    out.append(ch)
+                    i += 1
+            elif ch == '"':
+                out.append(" ")
+                i += 1
+                state = "string"
+            elif ch == "'":
+                out.append(" ")
+                i += 1
+                state = "char"
+            else:
+                out.append(ch)
+                i += 1
+        elif state == "line_comment":
+            out.append(blank(ch))
+            i += 1
+            if ch == "\n":
+                state = "code"
+        elif state == "block_comment":
+            if ch == "/" and nxt == "*":
+                out.extend("  ")
+                i += 2
+                block_depth += 1
+            elif ch == "*" and nxt == "/":
+                out.extend("  ")
+                i += 2
+                block_depth -= 1
+                if block_depth == 0:
+                    state = "code"
+            else:
+                out.append(blank(ch))
+                i += 1
+        elif state == "string":
+            if ch == "\\" and nxt:
+                out.extend(blank(ch) + blank(nxt))
+                i += 2
+            elif ch == '"':
+                out.append(" ")
+                i += 1
+                state = "code"
+            else:
+                out.append(blank(ch))
+                i += 1
+        elif state == "char":
+            if ch == "\\" and nxt:
+                out.extend(blank(ch) + blank(nxt))
+                i += 2
+            elif ch == "'":
+                out.append(" ")
+                i += 1
+                state = "code"
+            else:
+                out.append(blank(ch))
+                i += 1
+        elif state == "raw_string":
+            if ch == '"':
+                hashes = text[i + 1 : i + 1 + raw_hashes]
+                if hashes == "#" * raw_hashes:
+                    out.extend(" " * (1 + raw_hashes))
+                    i += 1 + raw_hashes
+                    state = "code"
+                else:
+                    out.append(" ")
+                    i += 1
+            else:
+                out.append(blank(ch))
+                i += 1
+        else:
+            raise AssertionError(f"unknown scanner state: {state}")
+
+    return "".join(out)
+
+
 def stage0_modules(stage0_src: Path) -> list[str]:
     lib_rs = stage0_src / "lib.rs"
     modules = PUB_MOD_RE.findall(_read(lib_rs))
@@ -62,9 +179,10 @@ def module_info(stage0_src: Path, modules: Iterable[str]) -> dict[str, ModuleInf
     for module in sorted(module_set):
         path = stage0_src / f"{module}.rs"
         text = _read(path)
+        code_text = strip_rust_non_code(text)
         deps = sorted(
             dep
-            for dep in set(CRATE_REF_RE.findall(text))
+            for dep in set(CRATE_REF_RE.findall(code_text))
             if dep in module_set and dep != module
         )
         infos[module] = ModuleInfo(

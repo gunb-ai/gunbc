@@ -180,7 +180,7 @@ Likely first candidate boundaries:
 | `v2_stage0_resolve` | module/import graph | type dependencies into infer/emit |
 | `v2_stage0_infer` | large, pipeline-local stage | shared type graph and lookup APIs |
 | `v2_stage0_emit_core` | artifact/import planning | avoid Rust-backend-specific facts |
-| `v2_stage0_emit_rust` | largest generated file and measured hot backend | helper/type cycles with emit core and compiler tests |
+| `v2_stage0_emit_rust` | largest generated file and measured hot backend | many downstream type/helper dependencies; direct cycle not present in the string-template-aware census |
 | `gunbc` | CLI orchestration only | should not own compiler semantics |
 
 Feasibility exit criterion:
@@ -198,19 +198,31 @@ python3 scripts/v2_stage0_dependency_census.py --top 12
 python3 scripts/v2_stage0_dependency_census.py --format json
 ```
 
-The first run on this head found 64 stage0 modules, 309 direct module-reference edges, and one
-multi-module SCC. That SCC is the first split blocker to study:
+The string-template-aware run on this head found 64 stage0 modules, 299 direct module-reference
+edges, and one multi-module SCC. The scanner strips generated Rust string templates before looking
+for `crate::module` references, so test-source strings do not count as compile-time dependencies.
+The only direct cycle found is:
 
 ```text
 v2_compiler_compile
-v2_compiler_compiler_tests_rust
 v2_compiler_dag_collect
-v2_compiler_emit_rust
 ```
 
-This does not prove that `emit_rust` cannot become its own crate. It proves that a direct split is
-blocked until the cycle is understood and either kept together as an emit/compile component or
-broken by a modeled API change.
+That means direct `emit_rust` extraction is not blocked by an SCC in the generated Rust module
+graph. The first structural blocker is smaller: `dag_collect` imports `DagCollectAcc` and
+fingerprint/error helpers from `compile`, while `compile` re-exports/uses `dag_collect`.
+
+Cycle-break scope:
+
+- The mechanical Rust change is small: the shared surface is `DagCollectAcc`,
+  `dag_node_surface_fingerprint`, and `dag_node_key_collision_error`.
+- The correct change is not to hand-edit generated `v2_compiler_compile.rs`; the semantic source is
+  still `src/v2/compile.dag`.
+- The clean boundary is a tiny generated or explicitly modeled DAG-collect support module that both
+  `compile` and the hand-maintained collector depend on.
+- That unlocks a one-way module graph for this cycle, but it is only the first crate-splitting
+  prerequisite. Extracting `emit_rust` still needs an API/registry plan because it has 22 direct
+  outgoing dependencies.
 
 ## 8. What Not To Do
 
