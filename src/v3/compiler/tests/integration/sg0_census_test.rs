@@ -974,6 +974,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
     "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
+    // G3.1–G3.4: parse ratchet on `src/v4/test/claim/claim_pipeline/{normalize,resolve,infer,translate}.dag`.
+    // SG-0 + INVARIANTS §P5(b) receipt — RR-G §2 spine closure (G3.3–3.4 follow-on).
+    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
+    // dissolves when T-38B runner executes spine EqualsClaim rows without host parse harness.
+    "src/v3/compiler/tests/integration/v4_claim_pipeline_spine_smoke_test.rs",
     // Wave-5-A / P3 commitment 6: validate_then_compile public terminal on 00_compile.dag.
     "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
     // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
