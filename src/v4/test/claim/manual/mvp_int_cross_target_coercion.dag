@@ -13,7 +13,6 @@ import v4.extdeps.languages.rust {
   rust_inhabitant_i32_node
 }
 import v4.std.coercion {
-  CoercionCandidateSet,
   CoercionResult,
   NoTargetCandidate,
   coercion_candidate_set_from_declared_inhabitants,
@@ -27,13 +26,19 @@ import v4.std.constraints {
   constraint_property_candidate_set_closedness
 }
 import v4.std.diagnostic {
-  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
   NonEmptyDiagnostics,
   Outcome,
   Rejected,
-  diagnostics_singleton
+  Unavailable,
+  bind_outcome,
+  node_locus
 }
-import v4.std.find_witness { CandidateSet, TargetDeclaredPriority }
+import v4.std.find_witness {
+  TargetDeclaredPriority,
+  find_witness_reason_no_candidate
+}
 import v4.std.node { Node }
 import v4.std.target_model { target_model_edge_declared_inhabitants }
 import v4.std.verdict { Fail, Pass, Deferred }
@@ -68,29 +73,19 @@ fn python_unbounded_int_grounding() -> CanonicalGrounding {
 }
 
 
-data rust_declared_inhabitant_candidates: CoercionCandidateSet = match coercion_candidate_set_from_declared_inhabitants(
-  inhabitants_root: rust_declared_inhabitants_root(),
-  closedness_property: target_model_edge_declared_inhabitants
-) {
-  Accepted { value: candidates, diagnostics: _ } => candidates
-  Rejected { diagnostics: _ } =>
-    CoercionCandidateSet {
-      set: CandidateSet {
-        candidates: [rust_inhabitant_i32_node()],
-        closedness: StructuralPropertyWitness {
-          property: target_model_edge_declared_inhabitants,
-          evidence: rust_declared_inhabitants_root()
-        }
-      }
-    }
-}
-
-
 fn cross_target_python_to_rust_i32_coercion_fold() -> Outcome<CoercionResult> {
-  coercion_fold(
-    source: python_unbounded_int_grounding(),
-    candidates: rust_declared_inhabitant_candidates,
-    policy: TargetDeclaredPriority { priority: rust_inhabitant_i32_node() }
+  bind_outcome(
+    o: coercion_candidate_set_from_declared_inhabitants(
+      inhabitants_root: rust_declared_inhabitants_root(),
+      closedness_property: target_model_edge_declared_inhabitants
+    ),
+    f: fn(candidates) {
+      coercion_fold(
+        source: python_unbounded_int_grounding(),
+        candidates: candidates,
+        policy: TargetDeclaredPriority { priority: rust_inhabitant_i32_node() }
+      )
+    }
   )
 }
 
@@ -104,12 +99,20 @@ fn coercion_outcome_node_projection(actual: Outcome<CoercionResult>) -> Outcome<
 }
 
 
-data cross_target_coercion_expected_rejection: NonEmptyDiagnostics = diagnostics_singleton(
-  d: coercion_not_realized_diagnostic(
+data cross_target_upstream_find_witness_rejection: Diagnostic = Diagnostic {
+  reason: find_witness_reason_no_candidate,
+  at: node_locus(node: python_int_inhabitant_node()),
+  correction: Unavailable { reason: ExternalContractUnknown }
+}
+
+
+data cross_target_coercion_expected_rejection: NonEmptyDiagnostics = NonEmptyDiagnostics {
+  head: coercion_not_realized_diagnostic(
     source: python_unbounded_int_grounding(),
     kind: NoTargetCandidate
-  )
-)
+  ),
+  tail: [cross_target_upstream_find_witness_rejection]
+}
 
 
 data claim_cross_target_python_to_rust_i32_rejects: TestClaim = DiagnosticClaim {
