@@ -2347,8 +2347,38 @@ fn rust_pub_use_braced_subset_covered(line: String, lines: List<String>) -> Bool
       other != line
         && rust_pub_use_module_name(line: other) == mod_name
         && contains(other, "::{")
+        && (rust_pub_use_braced_names(line: other) |> count) > (names |> count)
         && names |> all(name => rust_pub_use_braced_line_has_name(line: other, mod_name: mod_name, name: name))
     )
+  }
+}
+
+type BracedImportCoverAccum {
+  found_current: Bool
+  covered: Bool
+}
+
+fn rust_pub_use_braced_equal_prior_covered(line: String, lines: List<String>) -> Bool {
+  let mod_name = rust_pub_use_module_name(line: line)
+  let names = rust_pub_use_braced_names(line: line)
+  if mod_name == "" || names |> count == 0 {
+    false
+  } else {
+    let acc = lines |> fold(init: BracedImportCoverAccum { found_current: false, covered: false }, f: (inner, other) =>
+      if inner.found_current || inner.covered {
+        inner
+      } else if other == line {
+        BracedImportCoverAccum { found_current: true, covered: inner.covered }
+      } else {
+        let other_names = rust_pub_use_braced_names(line: other)
+        let is_equal_cover = rust_pub_use_module_name(line: other) == mod_name
+          && contains(other, "::{")
+          && (other_names |> count) == (names |> count)
+          && names |> all(name => rust_pub_use_braced_line_has_name(line: other, mod_name: mod_name, name: name))
+        BracedImportCoverAccum { found_current: false, covered: is_equal_cover }
+      }
+    )
+    acc.covered
   }
 }
 
@@ -2357,6 +2387,7 @@ fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
   exact |> filter(line =>
     rust_pub_use_singleton_covered(line: line, lines: exact) == false
       && rust_pub_use_braced_subset_covered(line: line, lines: exact) == false
+      && rust_pub_use_braced_equal_prior_covered(line: line, lines: exact) == false
   )
 }
 
