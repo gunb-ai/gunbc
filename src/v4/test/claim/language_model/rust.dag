@@ -19,6 +19,7 @@ import v4.extdeps.languages.rust {
   rust_leaf_model_fact_id_node_rust_facts_i32
 }
 import v4.std.collection { List }
+import v4.std.diagnostic { Outcome }
 import v4.std.leaf_model_verification {
   FalsificationCase,
   LeafModelClaim,
@@ -57,7 +58,7 @@ data rust_leaf_arithmetic_overflow_panic: Symbol = rust_leaf_arithmetic_overflow
 data rust_leaf_falsify_atom_type_string_alias: Symbol = rust_leaf_falsify_atom_type_string_alias
 data rust_leaf_falsify_atom_value_constructor_on_atom: Symbol = rust_leaf_falsify_atom_value_constructor_on_atom
 
-type RustLeafModelClaim = LeafModelClaim<RustLanguageModel, RustClaimSubject, RustClaimExpectation>
+type RustLeafModelClaim = LeafModelClaim<Outcome<RustLanguageModel>, RustClaimSubject, RustClaimExpectation>
 
 fn rust_leaf_rustc_invocation() -> TargetInvocation {
   TargetInvocation {

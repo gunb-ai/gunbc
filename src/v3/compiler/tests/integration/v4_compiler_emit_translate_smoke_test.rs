@@ -37,6 +37,15 @@
 //! **PR #4321 (+0 census paths):** same-path structural assertions for Go G.1.3
 //! `PerLanguageFactBundleEntry` rows and the B.2.2 `parse/go_wave2a.dag` corpus symmetry file;
 //! no new hand-Rust test path, and the `.dag` rows are the authored substrate.
+//! **PR #4360 (+0 census paths):** same-path G.1.1 Rust fact-bundle registry expansion in
+//! `v4_rust_language_model_declares_g1_fact_bundle_registry`; the Rust registry consumes the
+//! landed G.0 grounding API (`primitive_fact_bundle_for_subject(target: TargetModel) -> Outcome`)
+//! and re-authors `rust_model_core_wave1` / `rust_language_model_wave1` as fail-closed
+//! `Outcome<..>` projections, mirroring the merged Python G.1.2 pattern. Defers to **ROADMAP.md**
+//! § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`; the ratchet stays in
+//! this already-census-listed harness until `.dag` `TestClaim` / generated coverage executes the
+//! Rust `PerLanguageFactBundleRegistry` construction and `ModelCore.primitives` projection
+//! directly. It adds no new hand-Rust test path.
 //! **PR #4341 (+0 census paths):** same-path helper fix — `data_body_source` reads call/scalar
 //! data RHS via parser `body_span` (unblocks `v4_kotlin_language_model_declares_wave2b_algebra_inhabitance`
 //! on fn-wrapper kotlin empty-type markers). **P5 Mechanism (b) disposition (3):** explicit deferral
@@ -332,6 +341,135 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+// P5 receipt for PR #4360: same-path G.1.1 Rust fact-bundle registry ratchet in an
+// already-census-listed harness (+0 new hand-Rust paths). Defers to ROADMAP.md T-PB-B /
+// `pb_rust_tests_outside_residual_zero`; dissolve when `.dag` TestClaim/generated coverage
+// executes Rust `PerLanguageFactBundleRegistry` construction and `ModelCore.primitives`
+// projection directly.
+fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    for name in [
+        "PerLanguageFactBundleEntry",
+        "PerLanguageFactBundleKey",
+        "PerLanguageFactBundleRegistry",
+        "empty_per_language_fact_bundle_registry",
+        "insert_per_language_fact_bundle_entry",
+        "primitive_fact_bundle_for_subject",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "grounding"], name),
+            "{RUST_LANGUAGE_PATH}: Rust G.1.1 fact bundle must consume v4.std.grounding::{name}"
+        );
+    }
+    for name in [
+        "ModelCoreFactAxisEncoding",
+        "ModelCoreFactAxisOverflowDisposition",
+        "ModelCoreFactAxisRange",
+        "ModelCoreFactAxisSignedness",
+        "ModelCoreFactAxisSurfaceSpelling",
+        "ModelCoreFactAxisWidth",
+        "ModelCorePrimitiveFactAxis",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "model_core"], name),
+            "{RUST_LANGUAGE_PATH}: Rust G.1.1 registry keys must consume model_core::{name}"
+        );
+    }
+    for name in [
+        "rust_per_language_fact_bundle_key",
+        "rust_per_language_fact_bundle_entry",
+        "rust_integer_per_language_fact_bundle_entries",
+        "rust_float_per_language_fact_bundle_entries",
+        "rust_noninteger_per_language_fact_bundle_entries",
+        "rust_per_language_fact_bundle_entries",
+        "rust_per_language_fact_bundle_registry",
+        "rust_wave1_primitive_fact_bundles_from_registry",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{RUST_LANGUAGE_PATH}: Rust G.1.1 fact bundle must declare {name}"
+        );
+    }
+    assert_eq!(
+        surface_fn_param_type(&module, "rust_per_language_fact_bundle_key", 1).as_deref(),
+        Some("ModelCorePrimitiveFactAxis"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 registry key axis must be the closed model_core coproduct, not Symbol"
+    );
+    assert_eq!(
+        surface_fn_param_type(&module, "rust_per_language_fact_bundle_entry", 1).as_deref(),
+        Some("ModelCorePrimitiveFactAxis"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 registry entry axis must be the closed model_core coproduct, not Symbol"
+    );
+    assert_eq!(
+        surface_fn_return_type(&module, "rust_per_language_fact_bundle_registry").as_deref(),
+        Some("Outcome<PerLanguageFactBundleRegistry>"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 registry construction must be fail-closed Outcome<PerLanguageFactBundleRegistry>"
+    );
+    assert_eq!(
+        surface_fn_return_type(&module, "rust_model_core_wave1").as_deref(),
+        Some("Outcome<ModelCore>"),
+        "{RUST_LANGUAGE_PATH}: Rust ModelCore construction must preserve registry rejection as Outcome<ModelCore>"
+    );
+    assert_eq!(
+        type_record_field_type(&module, "RustLanguageModel", "core"),
+        Some("ModelCore".to_string()),
+        "{RUST_LANGUAGE_PATH}: RustLanguageModel.core must be plain ModelCore; registry failure rejects the whole model"
+    );
+    assert_eq!(
+        surface_fn_return_type(&module, "rust_language_model_wave1").as_deref(),
+        Some("Outcome<RustLanguageModel>"),
+        "{RUST_LANGUAGE_PATH}: Rust language model construction must fail closed as Outcome<RustLanguageModel>"
+    );
+    assert!(
+        fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_language_model_wave1",
+            "Rejected { diagnostics: d } => Rejected { diagnostics: d }"
+        ) && fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_language_model_wave1",
+            "core: core"
+        ),
+        "{RUST_LANGUAGE_PATH}: RustLanguageModel must be constructed only after accepted ModelCore"
+    );
+    assert!(
+        fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_model_core_wave1",
+            "rust_per_language_fact_bundle_registry()"
+        ) && fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_model_core_wave1",
+            "rust_wave1_primitive_fact_bundles_from_registry(registry: registry)"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust ModelCore.primitives must consume the G.1.1 Outcome registry projection"
+    );
+    assert!(
+        fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_model_core_wave1",
+            "Rejected { diagnostics: d } => Rejected { diagnostics: d }"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 rejected registry construction must fail closed at ModelCore construction"
+    );
+    assert!(
+        !surface_declares_fn(&module, "rust_checked_per_language_fact_bundle_registry")
+            && !RUST_LANGUAGE_DAG.contains("rust_per_language_fact_bundle_registry_value"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 must not collapse rejected registry construction into a plain value registry"
+    );
+    assert!(
+        !RUST_LANGUAGE_DAG
+            .contains("Rejected { diagnostics: _ } => empty_per_language_fact_bundle_registry()"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 rejected registry construction must not fail open to an empty registry"
+    );
+}
+
+#[test]
 fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
     let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
     assert_eq!(
@@ -388,17 +526,17 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
         import_includes_name(
             &module,
             &["v4", "std", "model_core"],
-            "primitive_fact_axis_overflow_disposition"
+            "ModelCoreFactAxisOverflowDisposition"
         ),
-        "{RUST_LANGUAGE_PATH}: Rust must import the shared overflow-disposition primitive fact axis"
+        "{RUST_LANGUAGE_PATH}: Rust must import the closed overflow-disposition primitive fact axis"
     );
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "model_core"],
-            "primitive_fact_axis_range"
+            "ModelCoreFactAxisRange"
         ),
-        "{RUST_LANGUAGE_PATH}: Rust must import the shared range primitive fact axis"
+        "{RUST_LANGUAGE_PATH}: Rust must import the closed range primitive fact axis"
     );
     assert!(
         surface_declares_fn(&module, "rust_integer_overflow_disposition"),
