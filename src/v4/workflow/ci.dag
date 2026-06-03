@@ -532,7 +532,7 @@ type TestgenSlotSelection {
   reason: CiClaimSelectionReason
 }
 
-// F.2.6 — shadow CI selection partition (profile-gated; NOT fail-closed on affected-set).
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind F.2.6 — profile-gated shadow CI selection partition (NOT fail-closed on affected-set) — dissolve-on-arrival: `SelectedTestgenReceipt` folds into `CiSelectionReceipt.testgen_slots` when Wave 4 Active scheduling lands; forbidden: parallel shadow-only receipt genus beside `CiSelectionReceipt`.
 type SelectedTestgenReceipt {
   profile_ref: Symbol
   affected: AffectedSet
