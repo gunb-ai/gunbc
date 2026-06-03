@@ -1125,6 +1125,71 @@ fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure()
 }
 
 #[test]
+fn v4_workflow_ci_manager_waves_2_4_and_four_compile_closeout_receipt() {
+    assert!(
+        CI_MANAGER_CLOSEOUT.contains("node://adhoc-f627c7f4-731")
+            && CI_MANAGER_CLOSEOUT.contains("CI Manager Waves 2-4")
+            && CI_MANAGER_CLOSEOUT.contains("#4091 §1.2 four-compile collapse"),
+        "{CI_MANAGER_CLOSEOUT_PATH}: closeout must bind the assigned dashboard node and collapse scope"
+    );
+    assert!(
+        CI_DAG.contains("data ci_upsert_steps_slice_bijection_ok")
+            && CI_DAG.contains("ci_upsert_steps_full_in_scope_step_ids")
+            && CI_DAG.contains("ci_upsert_steps_slice_bijection_for_pipeline"),
+        "{CI_DAG_PATH}: Wave 2 closeout must keep CiUpsertStep rows bijected with the pipeline shadow universe"
+    );
+    assert!(
+        CI_DAG.contains("type CiTestClaimSelection")
+            && CI_DAG.contains("type TestgenSlotSelection")
+            && CI_DAG.contains("data ci_wave3_shadow_fixture_receipt_ok"),
+        "{CI_DAG_PATH}: Wave 3 closeout must preserve the CiSelectionReceipt TestClaim/testgen partition"
+    );
+    assert!(
+        CI_DAG.contains("Active { skip_evidence: CiActiveFloorSkipEvidence }")
+            && CI_DAG.contains("fn ci_floor_held")
+            && !CI_DAG.contains("floor_skip:"),
+        "{CI_DAG_PATH}: Wave 4 closeout must keep active floor skip modeled through CiSelectionMode evidence"
+    );
+    let block_for = |symbol: &str| -> &str {
+        let start = CI_DAG
+            .find(&format!("data {symbol}"))
+            .unwrap_or_else(|| panic!("{CI_DAG_PATH}: missing `data {symbol}`"));
+        let rest = &CI_DAG[start..];
+        let end = rest[1..]
+            .find("\ndata ")
+            .map(|i| i + 1)
+            .unwrap_or(rest.len());
+        &rest[..end]
+    };
+    let v2_upstream = "ci_upsert_upstream_job_input(job: v2_compile_src_v4)";
+    for inputs_symbol in [
+        "ci_upsert_m1_rust_emit_probe_execution_inputs",
+        "ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs",
+        "ci_upsert_lens_ci_registry_execution_inputs",
+        "ci_upsert_v4_t15_self_host_fixed_point_execution_inputs",
+    ] {
+        assert!(
+            block_for(inputs_symbol).contains(v2_upstream),
+            "{CI_DAG_PATH}: closeout must preserve v2_compile_src_v4 upstream edge on `{inputs_symbol}`"
+        );
+    }
+    assert!(
+        block_for("ci_upsert_testclaim_corpus_eval_upstream_inputs")
+            .contains("ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)"),
+        "{CI_DAG_PATH}: closeout must preserve T-38 corpus eval consuming M1 rust emit receipt"
+    );
+    assert!(
+        CI_MANAGER_CLOSEOUT.contains("No new compiler stage, substrate type, or target semantics")
+            && CI_MANAGER_CLOSEOUT.contains("same-path P5(b) receipt")
+            && CI_MANAGER_CLOSEOUT.contains("dissolves with")
+            && CI_MANAGER_CLOSEOUT.contains(
+                "harness when generated workflow/TestClaim execution covers these facts directly"
+            ),
+        "{CI_MANAGER_CLOSEOUT_PATH}: closeout must state non-goals and dissolution path"
+    );
+}
+
+#[test]
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let _module = parse_module(CI_DAG, CI_DAG_PATH);
     const DEMOTED_CORPUS_EVAL_STEP: &str =
@@ -1783,6 +1848,12 @@ fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step()
     assert!(
         binding_step.contains("v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_"),
         "{CI_YML_PATH}: binding step must run Wave 1 floor prefix filter"
+    );
+    assert!(
+        binding_step.contains(&format!(
+            "cargo test -p v3-compiler --test integration {CI_MANAGER_CLOSEOUT_BINDING_TEST_FILTER} -- --exact --quiet"
+        )),
+        "{CI_YML_PATH}: binding step must run Waves 2-4 + four-compile closeout receipt"
     );
 }
 
