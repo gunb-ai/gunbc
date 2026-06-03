@@ -19,10 +19,7 @@ pub fn handle_test_with_options(dry_run: bool) {
         HARNESS_ENTRY_FN
     );
     cli_run::handle_run_with_options(
-        HARNESS_SOURCE_ROOTS
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
+        HARNESS_SOURCE_ROOTS.iter().map(|s| s.to_string()).collect(),
         HARNESS_ENTRY_FN.to_string(),
         dry_run,
     );
