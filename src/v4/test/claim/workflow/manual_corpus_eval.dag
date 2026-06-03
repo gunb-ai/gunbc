@@ -20,6 +20,12 @@ import v4.test.claim.workflow.testclaim_corpus_runner {
   corpus_report_tally,
   run_manual_testclaim_corpus_eval
 }
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  ExitFailure,
+  exit_code_general_error
+}
 
 
 // F5 acceptance: non-empty roster AND every row Pass (zero Fail, zero Deferred).
@@ -41,3 +47,17 @@ fn manual_corpus_all_pass(report: CorpusEvalReport) -> Bool {
 
 
 data witness_manual_corpus_gate_closed: Bool = manual_corpus_gate(report: run_manual_testclaim_corpus_eval())
+
+
+// Stage0 `gunbc test` host entry — evaluates the corpus at interpreter runtime and maps the
+// modeled gate to `ProcessExit` (cli_test.rs / cli_run fail-closed exit contract).
+fn run_manual_testclaim_corpus_eval_host_exit() -> ProcessExit {
+  if manual_corpus_gate(report: run_manual_testclaim_corpus_eval()) {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: exit_code_general_error,
+      reason: "manual TestClaim corpus gate failed (non-empty roster required; zero Fail and zero Deferred)"
+    }
+  }
+}

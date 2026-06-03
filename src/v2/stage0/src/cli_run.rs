@@ -30,7 +30,7 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
 }
 
 /// Extract the `module x.y.z` declaration from a .dag file.
-fn extract_module_path(content: &str) -> Option<String> {
+pub(crate) fn extract_module_path(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("module ") {
@@ -44,7 +44,7 @@ fn extract_module_path(content: &str) -> Option<String> {
 }
 
 /// Extract import module paths from a .dag file.
-fn extract_import_paths(content: &str) -> Vec<String> {
+pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim();
@@ -60,7 +60,7 @@ fn extract_import_paths(content: &str) -> Vec<String> {
 }
 
 /// Build module index: module_path → file_path.
-fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::PathBuf> {
+pub(crate) fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::PathBuf> {
     let mut index = HashMap::new();
     for root in source_roots {
         let root_path = std::path::Path::new(root);
@@ -81,7 +81,7 @@ fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::Pat
 }
 
 /// Resolve imports transitively. Returns sorted sources.
-fn resolve_transitively(
+pub(crate) fn resolve_transitively(
     entry_sources: Vec<(String, String)>,
     index: &HashMap<String, std::path::PathBuf>,
     mut seen: HashMap<String, Rc<v2_compiler_compile::SourceFile>>,
