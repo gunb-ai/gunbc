@@ -1150,18 +1150,34 @@ fn v4_workflow_ci_manager_waves_2_4_and_four_compile_closeout_receipt() {
             && !CI_DAG.contains("floor_skip:"),
         "{CI_DAG_PATH}: Wave 4 closeout must keep active floor skip modeled through CiSelectionMode evidence"
     );
-    for upstream_edge in [
-        "data ci_upsert_v4_t15_self_host_fixed_point_execution_inputs: List<UpsertInputRef> = [\n  ci_upsert_file_set_input(segment: \"src/v4/**\"),\n  ci_upsert_upstream_job_input(job: v2_compile_src_v4)",
-        "data ci_upsert_m1_rust_emit_probe_execution_inputs: List<UpsertInputRef>",
-        "data ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs: List<UpsertInputRef>",
-        "data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = list_snoc_item",
-        "data ci_upsert_testclaim_corpus_eval_upstream_inputs: List<UpsertInputRef> = [\n  ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)",
+    let block_for = |symbol: &str| -> &str {
+        let start = CI_DAG
+            .find(&format!("data {symbol}"))
+            .unwrap_or_else(|| panic!("{CI_DAG_PATH}: missing `data {symbol}`"));
+        let rest = &CI_DAG[start..];
+        let end = rest[1..]
+            .find("\ndata ")
+            .map(|i| i + 1)
+            .unwrap_or(rest.len());
+        &rest[..end]
+    };
+    let v2_upstream = "ci_upsert_upstream_job_input(job: v2_compile_src_v4)";
+    for inputs_symbol in [
+        "ci_upsert_m1_rust_emit_probe_execution_inputs",
+        "ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs",
+        "ci_upsert_lens_ci_registry_execution_inputs",
+        "ci_upsert_v4_t15_self_host_fixed_point_execution_inputs",
     ] {
         assert!(
-            CI_DAG.contains(upstream_edge),
-            "{CI_DAG_PATH}: closeout must preserve upstream compile-consumption edge `{upstream_edge}`"
+            block_for(inputs_symbol).contains(v2_upstream),
+            "{CI_DAG_PATH}: closeout must preserve v2_compile_src_v4 upstream edge on `{inputs_symbol}`"
         );
     }
+    assert!(
+        block_for("ci_upsert_testclaim_corpus_eval_upstream_inputs")
+            .contains("ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)"),
+        "{CI_DAG_PATH}: closeout must preserve T-38 corpus eval consuming M1 rust emit receipt"
+    );
     assert!(
         CI_MANAGER_CLOSEOUT.contains("No new compiler stage, substrate type, or target semantics")
             && CI_MANAGER_CLOSEOUT.contains("same-path P5(b) receipt")
