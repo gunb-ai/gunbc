@@ -324,7 +324,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: Some { value: 35 }
         }, RunStep {
-          name: Some { value: "v2 DAG emit parity receipt (required before bootstrap reuse)" },
+          name: Some { value: "v2 DAG emit parity receipt (shared closure)" },
           id: none,
           run: "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet",
           shell: Bash,

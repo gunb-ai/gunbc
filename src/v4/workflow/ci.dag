@@ -515,7 +515,6 @@ data ci_always_run_carveouts: List<CiCarveout> = [
 // 🟡 coproduct dissolution — feature:wave2-class-a-shell-exception-table — bind #4137 §11.7.1 — dissolve-on-arrival: this closed enumeration mirrors the §11.7.1 bare-minimum floor; it is DELETED when the dynamic affected-set + testgen safety net (§11.7.7 end state) replaces the static floor list and `protects_floor` no longer needs a fixed-arm carrier; forbidden: an open `Symbol`/`String` floor key, or an arm with no §11.7.1 row.
 type CiSafetyFloorItem
   = FmtCheck
-  | BootstrapMinimalViability
   | OneRustEmitProbe
   | CiDagStructuralReceipt
   | NoNewShellRatchet
@@ -536,24 +535,9 @@ type CiShellExceptionRow {
 
 // Dissolution `what` atoms — the runtime-authority emission substrate whose arrival deletes the
 // row (does NOT yet exist; standard `ModelMissingSubstrate` naming, like `ci_gate_run_policy_*`).
-data ci_bootstrap_step_emitted_from_upsert_runtime_authority: Symbol = ci_bootstrap_step_emitted_from_upsert_runtime_authority
 data ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority: Symbol = ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority
 
 data ci_class_a_shell_exceptions: List<CiShellExceptionRow> = [
-  CiShellExceptionRow {
-    // `.github/ci-floor/v4-bootstrap-viability.sh` is the v2→v4 FULL COMPILE over src/v4 (script
-    // header: "v2-compiler full compile over src/v4"; ci.yml step "v2 -> v4 bootstrap compile"),
-    // so the live step + its retiring authority are `v2_compile_src_v4` / `ci_upsert_v2_compile_src_v4`
-    // (verify `BootstrapStageCompile { produces: v4_stage0_binary }`) — NOT the lighter
-    // `v2_bootstrap_smoke_execution`. Bound by what the script DOES, not by name resemblance (P1/P2).
-    step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
-    shell_owner: ".github/ci-floor/v4-bootstrap-viability.sh",
-    protects_floor: BootstrapMinimalViability,
-    replacement_upsert: ci_upsert_v2_compile_src_v4,
-    dissolution_target: ModelMissingSubstrate {
-      what: ci_bootstrap_step_emitted_from_upsert_runtime_authority
-    }
-  },
   CiShellExceptionRow {
     step_id: JobStep {
       job: m1_rust_emit_probe_execution,
@@ -728,7 +712,6 @@ type CiWorkflowHostScript
 
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind ROADMAP.md T-PB-B + src/v4/test/claim/workflow/runner_pool_m1_probe.dag — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
 type CiLiveWorkflowStepSignal {
-  binding_smoke_step_name: String
   step_name: String
   host_script: CiWorkflowHostScript
   // GitHub Actions step transport policy. `false` means the script step itself
@@ -918,7 +901,6 @@ data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
 
 data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   step: CiLiveWorkflowStepSignal {
-    binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
     step_name: "M1 v4 full-tree rust emit probe (v2 emit)"
     host_script: ShellScript { path: ".github/ci-floor/v4-m1-rust-emit-probe.sh" }
     non_blocking: false
@@ -934,7 +916,6 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
 data m1_rust_emit_probe_shared_dag_out_env: String = "V4_M1_DAG_EMIT_OUT"
 data m1_rust_emit_probe_shared_dag_log_env: String = "V4_M1_DAG_EMIT_LOG"
 data m1_rust_dag_emit_parity_receipt_test: String = "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet"
-data v4_bootstrap_reuse_log_env: String = "V4_BOOTSTRAP_REUSE_LOG"
 
 data ci_v3_determinism_profile: CiBuildProfile = Release
 data ci_v3_self_host_fixed_point_profile: CiBuildProfile = Release
