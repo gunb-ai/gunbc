@@ -42,6 +42,11 @@
 //! on fn-wrapper kotlin empty-type markers). **P5 Mechanism (b) disposition (3):** explicit deferral
 //! **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
 //! (`ROADMAP.md:43-51`); +0 `EXPECTED_HAND_AUTHORED_TEST` paths (census row unchanged).
+//! **PR #4348 (+0 census paths):** adds `v4_mvp_int_cross_target_coercion_claim_tokenizes_and_parses`
+//! for W3 Leg A manual claim (`mvp_int_cross_target_coercion.dag`) parse receipt only.
+//! **P5 Mechanism (b) disposition (3):** same-path deferral under ROADMAP **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero`; no new `EXPECTED_HAND_AUTHORED_TEST` row (this harness
+//! file is already SG-0 listed — see `sg0_census_test.rs`).
 //! Dissolution trigger (= this file's existing trigger, unchanged): retires under T-PB-B when the
 //! `.dag` `TestClaim` / generated-runner replacement executes these facts directly (see the
 //! **Dissolution** note below).
