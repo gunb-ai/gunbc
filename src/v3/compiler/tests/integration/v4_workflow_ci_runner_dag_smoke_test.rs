@@ -113,6 +113,21 @@ const MANUAL_CORPUS_ROSTER_PATH: &str = "src/v4/test/claim/manual/manual_corpus_
 const INPROCESS_EQUIVALENCE_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/inprocess_equivalence.dag");
 const INPROCESS_EQUIVALENCE_PATH: &str = "src/v4/test/claim/workflow/inprocess_equivalence.dag";
+// F.12a recursive-flex THIN: a T-38 inspection receipt over `v4.workflow.ci` +
+// `v4.workflow.bootstrap`, scoped to the A.1.5a slice (#4313) ONLY — it imports/
+// inspects both workflow authorities (no edits) and conjoins (1) inprocess
+// equivalence holds, (2a, fail-closed) every A.1.5a slice subject is in the live
+// corpus subject roster `manual_corpus_node_subject_rows` that ci.dag's
+// `TestClaimCorpusEvalCommand` evaluates, (2b, ci.dag structural consistency only)
+// ci.dag's claim-id frontier has one id per rostered subject (cardinality — NOT
+// per-id membership; the `TestClaim`->`Symbol` projection is intentionally absent in
+// F.12a), and (3) the bootstrap fixed-point hash-pin projection holds. NOT the full
+// self-host loop (F.12b). SG-0 delta 0 — same-path expansion in this v4 CI smoke
+// harness; `pb_rust_tests_outside_residual_zero`.
+const RECURSIVE_FLEX_INSPECTION_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/recursive_flex_inspection.dag");
+const RECURSIVE_FLEX_INSPECTION_PATH: &str =
+    "src/v4/test/claim/workflow/recursive_flex_inspection.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
 const ROADMAP: &str = include_str!("../../../../../ROADMAP.md");
@@ -2317,6 +2332,137 @@ fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
         INPROCESS_EQUIVALENCE_DAG.contains("DEFERRAL")
             && INPROCESS_EQUIVALENCE_DAG.contains("A.1 harness lane"),
         "{INPROCESS_EQUIVALENCE_PATH}: must carry the explicit harness-execution deferral note"
+    );
+}
+
+/// F.12a recursive-flex THIN (inspection receipt): the receipt must (a) tokenize/parse,
+/// (b) prove the FAIL-CLOSED load-bearing fact — every A.1.5a slice subject is in the live
+/// corpus subject roster `manual_corpus_node_subject_rows` that ci.dag's TestClaimCorpusEval
+/// job evaluates (well-typed `TestClaimEvalSubject` membership, single authority via the same
+/// `subject_eval_mvp2_test_claim_route` binding) — and (c) conjoin it with the A.1.5a
+/// `inprocess_equivalence_holds` law, a ci.dag frontier↔roster CARDINALITY consistency check
+/// (NOT per-id membership; the `TestClaim`->`Symbol` projection is intentionally absent in
+/// F.12a, so the receipt advertises only what it proves — P2/P3), and the bootstrap
+/// fixed-point hash-pin witness, into a single `witness_recursive_flex_inspection` Bool.
+/// It is import/inspect only: it must NOT declare a `data : TestClaimRun` co-authority row
+/// (RR-A §6) and is the THIN slice — the full self-host loop is F.12b, named as deferred.
+/// SG-0 delta 0 (same-path expansion of this census-listed v4 CI smoke harness — see #4313
+/// A.1.5a, same shape; `pb_rust_tests_outside_residual_zero`; ROADMAP T-PB-B).
+#[test]
+fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
+    let module = parse_module(
+        RECURSIVE_FLEX_INSPECTION_DAG,
+        RECURSIVE_FLEX_INSPECTION_PATH,
+    );
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "workflow",
+            "recursive_flex_inspection"
+        ]],
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: module authority path"
+    );
+    // (1) A.1.5a equivalence law — consumed from the #4313 module, no re-derivation.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "workflow", "inprocess_equivalence"],
+            "inprocess_equivalence_holds"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must consume A.1.5a `inprocess_equivalence_holds` (no re-derivation)"
+    );
+    // Single authority (P2 / facts-flow-forward): the rostering check consumes the SAME
+    // `inprocess_equivalence_slice` the A.1.5a law proves over — not a re-minted id — so the
+    // equivalence law and the rostering check cannot drift onto different subjects.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "workflow", "inprocess_equivalence"],
+            "inprocess_equivalence_slice"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: rostering must key off the A.1.5a `inprocess_equivalence_slice` authority, not a re-minted id"
+    );
+    // (2a) Well-typed subject membership over the live corpus subject roster ci.dag evaluates
+    // — `TestClaimEvalSubject<Node>` both sides, not a `TestClaim`-vs-`Symbol` cross-type compare.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "manual", "manual_corpus_roster"],
+            "manual_corpus_node_subject_rows"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must roster the slice against `manual_corpus_node_subject_rows` (well-typed subject membership)"
+    );
+    // (2b) Inspection over ci.dag — the live corpus claim-id frontier authority (cardinality cover).
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "workflow", "ci"],
+            "ci_testclaim_corpus_eval_claim_ids"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must inspect ci.dag `ci_testclaim_corpus_eval_claim_ids` frontier"
+    );
+    // (3) Inspection over bootstrap.dag — the fixed-point hash-pin projection witness.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "workflow", "bootstrap"],
+            "bootstrap_plan_accepted_hash_pins_projectable_witness"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must inspect bootstrap.dag fixed-point hash-pin witness"
+    );
+    for fn_name in &[
+        "recursive_flex_slice_rostered",
+        "recursive_flex_ci_frontier_cardinality_matches_roster",
+        "recursive_flex_inspection_holds",
+    ] {
+        assert!(
+            surface_declares_fn(&module, fn_name),
+            "{RECURSIVE_FLEX_INSPECTION_PATH}: must declare {fn_name}"
+        );
+    }
+    for needle in &[
+        // Rostering keys off the A.1.5a slice authority via for_all, probing the subject itself
+        // (well-typed `TestClaimEvalSubject` membership — no `TestClaim`-vs-`Symbol` compare).
+        "xs: inprocess_equivalence_slice",
+        "item: subject",
+        "xs: manual_corpus_node_subject_rows",
+        // ci.dag touch: frontier↔roster CARDINALITY consistency only (well-typed Int equality);
+        // NOT per-id membership — that fail-closed fact is the roster check above.
+        "length(xs: ci_testclaim_corpus_eval_claim_ids) == length(xs: manual_corpus_node_subject_rows)",
+        // The receipt conjoins the facts.
+        "inprocess_equivalence_holds()",
+        "&& recursive_flex_slice_rostered()",
+        "&& recursive_flex_ci_frontier_cardinality_matches_roster()",
+        "&& bootstrap_plan_accepted_hash_pins_projectable_witness",
+        "data witness_recursive_flex_inspection: Bool = recursive_flex_inspection_holds()",
+    ] {
+        assert!(
+            RECURSIVE_FLEX_INSPECTION_DAG.contains(needle),
+            "{RECURSIVE_FLEX_INSPECTION_PATH}: F.12a inspection receipt must carry `{needle}`"
+        );
+    }
+    // Import/inspect only — the receipt must NOT declare a `data : TestClaimRun` co-authority
+    // row (RR-A §6 authoring-time co-authority forbidden); runtime execution is F.12b.
+    let declares_test_claim_run_data = module.items.iter().any(|item| {
+        use v3_compiler::parse_surface::SurfaceType;
+        matches!(
+            item,
+            SurfaceItem::Data {
+                ty: SurfaceType::Named { name, .. },
+                ..
+            } if name == "TestClaimRun"
+        )
+    });
+    assert!(
+        !declares_test_claim_run_data,
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must not declare a `data : TestClaimRun` row (RR-A §6 co-authority); runtime loop is F.12b"
+    );
+    assert!(
+        RECURSIVE_FLEX_INSPECTION_DAG.contains("F.12b"),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must name the deferred full self-host loop (F.12b) as out of scope"
     );
 }
 
