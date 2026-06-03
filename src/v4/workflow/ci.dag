@@ -20,7 +20,20 @@ import v4.lens.registry {
   UnusedParameters,
   lens_registry_ids_resolve
 }
-import v4.lens.testgen { Generator, TestgenConcept }
+import v4.lens.testgen {
+  Generator,
+  TestgenConcept,
+  TestgenRunReceipt,
+  generator_id_eq,
+  generator_id_for_claim_anchor,
+  generator_matches_profile,
+  testgen_default_profile_ref,
+  testgen_run_receipt_outcome,
+  testgen_run_receipt_carries_profile_roster,
+  testgen_scheduled_generators_matching_profile,
+  testgen_scheduled_generators_outcome,
+  testgen_scheduled_generators_roster_holds
+}
 import v4.lens.affected_set {
   AffectedSetReading,
   RerunNodeSet,
@@ -109,6 +122,7 @@ import v4.std.algebra {
 }
 import v4.std.verification {
   TestClaim,
+  test_claim_anchor,
   test_claim_ci_selection_fail_closed,
   test_claim_evaluation_touches_rerun_frontier
 }
@@ -516,6 +530,13 @@ type TestgenSlotSelection {
   emits_claim_anchor: ClaimAnchorKey
   selected: Bool
   reason: CiClaimSelectionReason
+}
+
+// F.2.6 — shadow CI selection partition (profile-gated; NOT fail-closed on affected-set).
+type SelectedTestgenReceipt {
+  profile_ref: Symbol
+  affected: AffectedSet
+  slots: List<TestgenSlotSelection>
 }
 
 // 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — amend W1.5 `CiSelectionReceipt` — dissolve-on-arrival: receipt partition drives GHA scheduling + TestClaimRun verdict surface (Wave 4); forbidden: parallel shadow receipt genus.
@@ -3686,6 +3707,169 @@ fn ci_wave3_shadow_testclaim_selection_rows(affected: AffectedSet) -> List<CiTes
 }
 
 
+// F.2-P2 / F.2.6 — testgen shadow selection (profile-gated; NOT fail-closed on affected-set).
+// Scheduler `Rejected` must propagate as `Outcome::Rejected` (P3) — never `Empty` slots.
+fn ci_test_claim_emits_generator(claim: TestClaim, generator: Generator<TestgenConcept>) -> Bool {
+  generator_id_for_claim_anchor(anchor: test_claim_anchor(c: claim)) == generator.provenance.generator_id
+}
+
+
+fn ci_wave3_shadow_testgen_generator_matches_selected_claim(
+  g: Generator<TestgenConcept>,
+  selected_claims: List<TestClaim>
+) -> Bool {
+  count_where(
+    xs: selected_claims,
+    predicate: fn(claim) {
+      ci_test_claim_emits_generator(claim: claim, generator: g)
+    }
+  ) != 0
+}
+
+
+fn ci_wave3_shadow_testgen_slots_selected_from_roster(
+  affected: AffectedSet,
+  profile_ref: Symbol,
+  roster: List<Generator<TestgenConcept>>
+) -> List<Generator<TestgenConcept>> {
+  if ci_affected_set_is_fail_closed(affected: affected) {
+    Empty
+  } else {
+    let selected_claims = ci_wave3_shadow_testclaims_selected(affected: affected)
+    filter(
+      xs: roster,
+      predicate: fn(g) {
+        generator_matches_profile(g: g, profile_ref: profile_ref)
+          && ci_wave3_shadow_testgen_generator_matches_selected_claim(
+            g: g,
+            selected_claims: selected_claims
+          )
+      }
+    )
+  }
+}
+
+
+fn ci_wave3_shadow_testgen_selection_reason(
+  g: Generator<TestgenConcept>,
+  affected: AffectedSet,
+  profile_ref: Symbol,
+  selected: Bool
+) -> CiClaimSelectionReason {
+  if generator_matches_profile(g: g, profile_ref: profile_ref) {
+    if ci_affected_set_is_fail_closed(affected: affected) {
+      ShadowObserveOnly
+    } else if selected {
+      TestgenSlotMapped
+    } else {
+      ShadowObserveOnly
+    }
+  } else {
+    ShadowObserveOnly
+  }
+}
+
+
+fn ci_wave3_shadow_testgen_selection_row(
+  g: Generator<TestgenConcept>,
+  affected: AffectedSet,
+  profile_ref: Symbol,
+  selected_generators: List<Generator<TestgenConcept>>
+) -> TestgenSlotSelection {
+  let selected = count_where(
+    xs: selected_generators,
+    predicate: fn(candidate) {
+      generator_id_eq(left: candidate, right: g)
+    }
+  ) != 0
+  TestgenSlotSelection {
+    generator: g,
+    emits_claim_anchor: g.anchor,
+    selected: selected,
+    reason: ci_wave3_shadow_testgen_selection_reason(
+      g: g,
+      affected: affected,
+      profile_ref: profile_ref,
+      selected: selected
+    )
+  }
+}
+
+
+fn ci_wave3_shadow_testgen_selection_rows_for_roster(
+  affected: AffectedSet,
+  profile_ref: Symbol,
+  roster: List<Generator<TestgenConcept>>
+) -> List<TestgenSlotSelection> {
+  let selected_generators = ci_wave3_shadow_testgen_slots_selected_from_roster(
+    affected: affected,
+    profile_ref: profile_ref,
+    roster: roster
+  )
+  fold_list(
+    xs: filter(
+      xs: roster,
+      predicate: fn(g) {
+        generator_matches_profile(g: g, profile_ref: profile_ref)
+      }
+    ),
+    empty: Empty,
+    cons: fn(acc, g) {
+      list_snoc_item(
+        xs: acc,
+        item: ci_wave3_shadow_testgen_selection_row(
+          g: g,
+          affected: affected,
+          profile_ref: profile_ref,
+          selected_generators: selected_generators
+        )
+      )
+    }
+  )
+}
+
+
+fn ci_wave3_shadow_testgen_selection_rows_outcome(
+  affected: AffectedSet,
+  profile_ref: Symbol
+) -> Outcome<List<TestgenSlotSelection>> {
+  match testgen_run_receipt_outcome(profile_ref: profile_ref) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: receipt, diagnostics: d } =>
+      Accepted {
+        value: ci_wave3_shadow_testgen_selection_rows_for_roster(
+          affected: affected,
+          profile_ref: profile_ref,
+          roster: receipt.generators
+        ),
+        diagnostics: d
+      }
+  }
+}
+
+
+fn ci_testgen_selected_receipt_outcome(
+  affected: AffectedSet,
+  profile_ref: Symbol
+) -> Outcome<SelectedTestgenReceipt> {
+  match ci_wave3_shadow_testgen_selection_rows_outcome(
+    affected: affected,
+    profile_ref: profile_ref
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: slots, diagnostics: d } =>
+      Accepted {
+        value: SelectedTestgenReceipt {
+          profile_ref: profile_ref,
+          affected: affected,
+          slots: slots
+        },
+        diagnostics: d
+      }
+  }
+}
+
+
 // W1.5 step-only shadow — `git_diff` is host transport for ChangeSet paths until T-21 wires RepoPath edits.
 // Phase 1: provenance is always `FixtureReceipt` (empty claim/testgen rows). `LivePrGitDiff` is forbidden here;
 // live PR receipts use `ci_selection_receipt_shadow_from_git_diff` (adhoc-331899f9-19a) with populated partitions.
@@ -4063,18 +4247,88 @@ data ci_selection_receipt_shadow_fixture_well_formed_ok: Bool = match ci_pipelin
 // ── Wave 3 §11.7.4 — fixture shadow receipt (modeled selection; NOT live PR / NOT component-flag frontier) ──
 data ci_wave3_shadow_fixture_empty_pr: ChangeSet = ChangeSet { changes: [] }
 
-data ci_wave3_shadow_fixture_fail_closed_receipt: CiSelectionReceipt = ci_selection_receipt_mk(
-  pr: ci_wave3_shadow_fixture_empty_pr,
+fn ci_wave3_shadow_fixture_fail_closed_receipt_mk(
+  testgen_slots: List<TestgenSlotSelection>
+) -> CiSelectionReceipt {
+  ci_selection_receipt_mk(
+    pr: ci_wave3_shadow_fixture_empty_pr,
+    affected: ci_wave3_shadow_fail_closed_affected,
+    mode: Shadow,
+    provenance: FixtureReceipt,
+    decisions: Empty,
+    testclaim_decisions: ci_wave3_shadow_testclaim_selection_rows(
+      affected: ci_wave3_shadow_fail_closed_affected
+    ),
+    testgen_slots: testgen_slots,
+    component_affected_comparison: ci_component_affected_fail_closed()
+  )
+}
+
+data ci_wave3_shadow_fixture_fail_closed_receipt: Outcome<CiSelectionReceipt> = match ci_wave3_shadow_testgen_selection_rows_outcome(
   affected: ci_wave3_shadow_fail_closed_affected,
-  mode: Shadow,
-  provenance: FixtureReceipt,
-  decisions: Empty,
-  testclaim_decisions: ci_wave3_shadow_testclaim_selection_rows(
-    affected: ci_wave3_shadow_fail_closed_affected
-  ),
-  testgen_slots: Empty,
-  component_affected_comparison: ci_component_affected_fail_closed()
+  profile_ref: testgen_default_profile_ref
+) {
+  Accepted { value: testgen_slots, diagnostics: d } =>
+    Accepted {
+      value: ci_wave3_shadow_fixture_fail_closed_receipt_mk(testgen_slots: testgen_slots),
+      diagnostics: d
+    }
+  Rejected { diagnostics: d } => Rejected { diagnostics: d }
+}
+
+data ci_wave3_shadow_selected_testgen_receipt: Outcome<SelectedTestgenReceipt> = ci_testgen_selected_receipt_outcome(
+  affected: ci_wave3_shadow_fail_closed_affected,
+  profile_ref: testgen_default_profile_ref
 )
+
+data ci_wave3_shadow_testgen_run_receipt: Outcome<TestgenRunReceipt> = testgen_run_receipt_outcome(profile_ref: testgen_default_profile_ref)
+
+fn ci_wave3_shadow_testgen_slot_unselected(slot: TestgenSlotSelection) -> Bool {
+  if slot.selected {
+    false
+  } else {
+    true
+  }
+}
+
+
+fn ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() -> Bool {
+  match ci_wave3_shadow_fixture_fail_closed_receipt {
+    Accepted { value: receipt, diagnostics: _ } =>
+      for_all(
+        xs: receipt.testgen_slots,
+        predicate: ci_wave3_shadow_testgen_slot_unselected
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ci_wave3_shadow_fixture_testgen_slots_populated_holds() -> Bool {
+  match ci_wave3_shadow_fixture_fail_closed_receipt {
+    Accepted { value: receipt, diagnostics: _ } =>
+      testgen_scheduled_generators_roster_holds()
+        && length(xs: receipt.testgen_slots) > 0
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ci_wave3_shadow_testgen_run_receipt_holds() -> Bool {
+  match testgen_run_receipt_outcome(profile_ref: testgen_default_profile_ref) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      testgen_run_receipt_carries_profile_roster(receipt: receipt)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ci_testgen_selected_receipt_holds(
+  affected: AffectedSet,
+  profile_ref: Symbol
+) -> Bool {
+  match ci_testgen_selected_receipt_outcome(affected: affected, profile_ref: profile_ref) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 fn ci_wave3_shadow_fixture_fail_closed_superset_holds() -> Bool {
   let selected = ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected)
@@ -4082,14 +4336,21 @@ fn ci_wave3_shadow_fixture_fail_closed_superset_holds() -> Bool {
 }
 
 fn ci_wave3_shadow_fixture_floor_held_holds() -> Bool {
-  ci_floor_held(receipt: ci_wave3_shadow_fixture_fail_closed_receipt)
+  match ci_wave3_shadow_fixture_fail_closed_receipt {
+    Accepted { value: receipt, diagnostics: _ } => ci_floor_held(receipt: receipt)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // 🟡 gated — predicate-dissolution interim (Practice 10) — feature:wave3-shadow-selection-receipt — consumer:ci_wave3_shadow_fixture_provenance_is_fixture_holds — bind node://adhoc-331899f9-19a live emit — dissolve-on-arrival: fixture witnesses carry `FixtureReceipt` at construction site (delete provenance match helper when live path exists); forbidden: `LivePrGitDiff` on synthetic/heartbeat constructors before real PR git_diff routing.
 fn ci_wave3_shadow_fixture_provenance_is_fixture_holds() -> Bool {
-  match ci_wave3_shadow_fixture_fail_closed_receipt.provenance {
-    FixtureReceipt => true
-    LivePrGitDiff => false
+  match ci_wave3_shadow_fixture_fail_closed_receipt {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.provenance {
+        FixtureReceipt => true
+        LivePrGitDiff => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -4104,7 +4365,9 @@ fn ci_wave3_shadow_fixture_manual_subset_selected_holds() -> Bool {
   )
 }
 
-data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_closed_superset_holds() && ci_wave3_shadow_fixture_floor_held_holds() && ci_wave3_shadow_fixture_provenance_is_fixture_holds() && ci_wave3_shadow_fixture_manual_subset_selected_holds()
+data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_closed_superset_holds() && ci_wave3_shadow_fixture_floor_held_holds() && ci_wave3_shadow_fixture_provenance_is_fixture_holds() && ci_wave3_shadow_fixture_manual_subset_selected_holds() && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
+
+data witness_ci_wave3_shadow_testgen_receipts_ok: Bool = ci_wave3_shadow_testgen_run_receipt_holds() && ci_testgen_selected_receipt_holds(affected: ci_wave3_shadow_fail_closed_affected, profile_ref: testgen_default_profile_ref) && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
 
 data ci_selection_receipt_shadow_generatable_ok: Bool = ci_selection_receipt_shadow_fixture_well_formed_ok && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 

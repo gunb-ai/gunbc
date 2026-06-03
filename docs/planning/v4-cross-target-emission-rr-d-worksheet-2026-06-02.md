@@ -3,6 +3,7 @@
 > **Status:** RATIFIED FOR W2 DISPATCH — Branch D contract closure (ctrl#1425 §6.8, 2026-06-02).
 > **Work item:** `node://adhoc-b4e8b554-bae` — Cross-target Emission Mgr (`silent-bear-54`).
 > **Gate:** D.1–D.2 land in W4.6 after Branch C.1 + Branch G.1; Shape B **GUARDED** in compiler.
+> **Contract (W4.6 design):** `v4-branch-d-contract-d1-d2-2026-06-02.md` (PM dispatch 2026-06-02).
 
 ## §10.0-adapted worksheet
 

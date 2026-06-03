@@ -295,7 +295,12 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
             diagnostics: pending
           }
         } else {
-          Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n)) }
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+            )
+          }
         }
     }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
