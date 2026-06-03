@@ -1008,6 +1008,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     }
 
     // Look up user-defined function: module item wins over env-bound Value::Fn (see eval_var).
+    // Value::Closure is not dispatched here — lambda-as-value calls use a separate path.
     let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
         node.clone()
     } else if let Some(Value::Fn { node }) = env.lookup(&func_name) {

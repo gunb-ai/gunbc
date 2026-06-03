@@ -115,14 +115,17 @@ fn resolve_transitively(
 pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
-) -> Vec<Rc<v2_compiler_compile::SourceFile>> {
+) -> Result<Vec<Rc<v2_compiler_compile::SourceFile>>, String> {
     let index = build_module_index(source_roots);
     let path = std::path::Path::new(entry_path);
     if !path.is_file() {
-        panic!("entry file does not exist or is not a file: {}", entry_path);
+        return Err(format!(
+            "entry file does not exist or is not a file: {}",
+            entry_path
+        ));
     }
     let content = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("failed to read entry {:?}: {}", path, e));
+        .map_err(|e| format!("failed to read entry {:?}: {}", path, e))?;
     let rel_path = path.to_string_lossy().to_string();
 
     let mut seen: HashMap<String, Rc<v2_compiler_compile::SourceFile>> = HashMap::new();
@@ -144,7 +147,7 @@ pub fn load_sources_for_entry(
             content,
         }));
     }
-    sources
+    Ok(sources)
 }
 
 /// Load and resolve sources from source roots (every `.dag` under the first root).
@@ -218,7 +221,13 @@ pub fn handle_run_with_options(
     }
 
     let sources = match entry_file.as_deref() {
-        Some(path) => load_sources_for_entry(&source_roots, path),
+        Some(path) => match load_sources_for_entry(&source_roots, path) {
+            Ok(sources) => sources,
+            Err(msg) => {
+                eprintln!("error: {}", msg);
+                std::process::exit(1);
+            }
+        },
         None => load_sources(&source_roots),
     };
     eprintln!("resolved {} sources", sources.len());
@@ -279,13 +288,19 @@ pub fn handle_run_with_options(
         Ok(val) => {
             println!("{}", val);
             if claim_run {
-                // TestClaim / witness entry points under src/v4 return Bool (or other
-                // rich types) and cannot import std.process without a dsl source root.
-                // --claim-run maps false → exit 1; any other value → exit 0.
-                if matches!(&val, v2_interpreter::Value::Bool(false)) {
-                    std::process::exit(1);
+                // Witness entry points return Bool; fail-closed like ProcessExit below.
+                match &val {
+                    v2_interpreter::Value::Bool(false) => std::process::exit(1),
+                    v2_interpreter::Value::Bool(true) => return,
+                    other => {
+                        eprintln!(
+                            "error: function `{}` returned `{}`, not `Bool`. \
+                             With --claim-run the entry must return Bool (false → exit 1).",
+                            function, other
+                        );
+                        std::process::exit(2);
+                    }
                 }
-                return;
             }
             // FAIL-CLOSED EXIT CODE CONTRACT
             //
