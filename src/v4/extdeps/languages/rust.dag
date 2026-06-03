@@ -49,6 +49,15 @@ import v4.std.lexing {
   lex_rule_set_token_class_member
 }
 import v4.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, optional_absent, optional_present }
+import v4.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v4.std.grounding {
+  PerLanguageFactBundleEntry,
+  PerLanguageFactBundleKey,
+  PerLanguageFactBundleRegistry,
+  empty_per_language_fact_bundle_registry,
+  insert_per_language_fact_bundle_entry,
+  primitive_fact_bundle_for_subject
+}
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -56,20 +65,20 @@ import v4.std.model_core {
   EffectSignature,
   FailClosedAtBoundary,
   ModelCore,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisRange,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth,
+  ModelCorePrimitiveFactAxis,
   model_core_wave1_law_field_algebra,
   model_core_wave1_law_field_kind,
   model_core_wave1_law_field_subject,
   PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  PrimitiveOperationRef,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_range,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
-  primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  PrimitiveOperationRef
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
@@ -2123,129 +2132,6 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_integer_spec_facts(facts: RustIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
-          Holds { value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width) }
-        primitive_fact_axis_signedness =>
-          Holds { value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind) }
-        primitive_fact_axis_encoding =>
-          Holds { value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement) }
-        primitive_fact_axis_range =>
-          Holds { value: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier) }
-        primitive_fact_axis_overflow_disposition =>
-          Holds { value: rust_overflow_disposition_node(disposition: facts.overflow_disposition) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn rust_float_spec_facts(facts: RustFloatPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
-          Holds { value: rust_float_width_node(width: facts.width) }
-        primitive_fact_axis_encoding =>
-          Holds { value: rust_inhabitant_atom(id: facts.ieee754_binary) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn rust_noninteger_spec_facts(facts: RustNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
-          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
-          Holds { value: rust_inhabitant_atom(id: facts.representation) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
-}
-
-fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: rust_integer_facts_node(facts: facts),
-    spec_facts: rust_integer_spec_facts(facts: facts)
-  }
-}
-
-fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: rust_float_facts_node(facts: facts),
-    spec_facts: rust_float_spec_facts(facts: facts)
-  }
-}
-
-fn rust_primitive_bundle_from_noninteger_facts(
-  facts: RustNonIntegerPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: rust_noninteger_facts_node(facts: facts),
-    spec_facts: rust_noninteger_spec_facts(facts: facts)
-  }
-}
-
-fn rust_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: rust_integer_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_primitive_bundle_from_integer_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn rust_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: rust_float_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_primitive_bundle_from_float_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn rust_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: rust_noninteger_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_primitive_bundle_from_noninteger_facts(facts: facts)
-      )
-    }
-  )
-}
-
 fn rust_symbol_node(id: Symbol) -> Node {
   rust_inhabitant_atom(id: id)
 }
@@ -2611,33 +2497,321 @@ fn rust_partiality_semantics_wave2() -> PartialitySemanticsDecl {
   }
 }
 
-fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  list_append(
-    left: list_append(
-      left: rust_primitive_bundles_from_integer_catalog(),
-      right: rust_primitive_bundles_from_float_catalog()
-    ),
-    right: rust_primitive_bundles_from_noninteger_catalog()
-  )
-}
+// --- G.1.1: Rust per-language fact bundle registry (subject_carrier x target x fact_axis) ---
+// Keyed by the closed G.0 ModelCorePrimitiveFactAxis coproduct (no parallel Symbol taxonomy).
+// Construction is fail-closed: duplicate subject x target x axis rows reject the whole registry,
+// and the ModelCore.primitives projection re-derives PrimitiveFactBundles via the G.0
+// `primitive_fact_bundle_for_subject` lookup, propagating any ungrounded-subject rejection.
 
-fn rust_model_core_wave1() -> ModelCore {
-  ModelCore {
-    primitives: rust_wave1_primitive_fact_bundles(),
-    inhabitance: rust_model_core_inhabitance_decls(),
-    laws: rust_model_core_law_obligations(),
-    effects: rust_effect_semantics_wave2(),
-    partiality: rust_partiality_semantics_wave2()
+fn rust_per_language_fact_bundle_key(
+  subject_carrier: Node,
+  fact_axis: ModelCorePrimitiveFactAxis
+) -> PerLanguageFactBundleKey {
+  PerLanguageFactBundleKey {
+    subject_carrier: subject_carrier,
+    target: rust_mvp1_target_model(),
+    fact_axis: fact_axis
   }
 }
 
-fn rust_language_model_wave1() -> RustLanguageModel {
-  RustLanguageModel {
-    lex: rust_wave1_lex(),
-    grammar: rust_wave1_grammar(),
-    language_identity: rust_language_model_surface_id,
-    canonical_symbols: rust_language_model_canonical_symbols(),
-    core: rust_model_core_wave1()
+fn rust_per_language_fact_bundle_entry(
+  subject_carrier: Node,
+  fact_axis: ModelCorePrimitiveFactAxis,
+  fact_value: Node
+) -> PerLanguageFactBundleEntry {
+  PerLanguageFactBundleEntry {
+    key: rust_per_language_fact_bundle_key(
+      subject_carrier: subject_carrier,
+      fact_axis: fact_axis
+    ),
+    fact_value: fact_value
+  }
+}
+
+fn rust_integer_per_language_fact_bundle_entries(
+  facts: RustIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let subject_carrier = rust_integer_facts_node(facts: facts)
+  [
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisWidth {},
+      fact_value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisSignedness {},
+      fact_value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisEncoding {},
+      fact_value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisRange {},
+      fact_value: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisOverflowDisposition {},
+      fact_value: rust_overflow_disposition_node(disposition: facts.overflow_disposition)
+    )
+  ]
+}
+
+fn rust_float_per_language_fact_bundle_entries(
+  facts: RustFloatPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let subject_carrier = rust_float_facts_node(facts: facts)
+  [
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisWidth {},
+      fact_value: rust_float_width_node(width: facts.width)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisEncoding {},
+      fact_value: rust_inhabitant_atom(id: facts.ieee754_binary)
+    )
+  ]
+}
+
+fn rust_noninteger_per_language_fact_bundle_entries(
+  facts: RustNonIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let subject_carrier = rust_noninteger_facts_node(facts: facts)
+  [
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: ModelCoreFactAxisEncoding {},
+      fact_value: rust_inhabitant_atom(id: facts.representation)
+    )
+  ]
+}
+
+fn rust_per_language_fact_bundle_entries_from_integer_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: rust_integer_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_per_language_fact_bundle_entries_from_float_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: rust_float_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_per_language_fact_bundle_entries_from_noninteger_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: rust_noninteger_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: rust_noninteger_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_per_language_fact_bundle_entries() -> List<PerLanguageFactBundleEntry> {
+  list_append(
+    left: list_append(
+      left: rust_per_language_fact_bundle_entries_from_integer_catalog(),
+      right: rust_per_language_fact_bundle_entries_from_float_catalog()
+    ),
+    right: rust_per_language_fact_bundle_entries_from_noninteger_catalog()
+  )
+}
+
+fn rust_insert_per_language_fact_bundle_entry_outcome(
+  acc: Outcome<PerLanguageFactBundleRegistry>,
+  entry: PerLanguageFactBundleEntry
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  match acc {
+    Accepted { value: registry, diagnostics: _ } =>
+      insert_per_language_fact_bundle_entry(
+        registry: registry,
+        key: entry.key,
+        fact_value: entry.fact_value
+      )
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn rust_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  fold_list(
+    xs: rust_per_language_fact_bundle_entries(),
+    empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
+    cons: fn(acc, entry) {
+      rust_insert_per_language_fact_bundle_entry_outcome(acc: acc, entry: entry)
+    }
+  )
+}
+
+fn rust_snoc_primitive_bundle(
+  acc: Outcome<List<PrimitiveFactBundle>>,
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node
+) -> Outcome<List<PrimitiveFactBundle>> {
+  match acc {
+    Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
+      registry: registry,
+      subject_carrier: subject_carrier,
+      target: rust_mvp1_target_model()
+    ) {
+      Accepted { value: bundle, diagnostics: d } =>
+        Accepted {
+          value: list_snoc_item(xs: bundles, item: bundle),
+          diagnostics: d
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn rust_primitive_bundles_from_integer_catalog_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> Outcome<List<PrimitiveFactBundle>> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, facts) {
+      rust_snoc_primitive_bundle(
+        acc: acc,
+        registry: registry,
+        subject_carrier: rust_integer_facts_node(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_primitive_bundles_from_float_catalog_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> Outcome<List<PrimitiveFactBundle>> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, facts) {
+      rust_snoc_primitive_bundle(
+        acc: acc,
+        registry: registry,
+        subject_carrier: rust_float_facts_node(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_primitive_bundles_from_noninteger_catalog_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> Outcome<List<PrimitiveFactBundle>> {
+  fold_list(
+    xs: rust_noninteger_facts_catalog,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, facts) {
+      rust_snoc_primitive_bundle(
+        acc: acc,
+        registry: registry,
+        subject_carrier: rust_noninteger_facts_node(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_append_primitive_bundle_outcomes(
+  left: Outcome<List<PrimitiveFactBundle>>,
+  right: Outcome<List<PrimitiveFactBundle>>
+) -> Outcome<List<PrimitiveFactBundle>> {
+  match left {
+    Accepted { value: l, diagnostics: _ } => match right {
+      Accepted { value: r, diagnostics: d } =>
+        Accepted { value: list_append(left: l, right: r), diagnostics: d }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn rust_wave1_primitive_fact_bundles_from_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> Outcome<List<PrimitiveFactBundle>> {
+  rust_append_primitive_bundle_outcomes(
+    left: rust_append_primitive_bundle_outcomes(
+      left: rust_primitive_bundles_from_integer_catalog_registry(registry: registry),
+      right: rust_primitive_bundles_from_float_catalog_registry(registry: registry)
+    ),
+    right: rust_primitive_bundles_from_noninteger_catalog_registry(registry: registry)
+  )
+}
+
+fn rust_model_core_wave1() -> Outcome<ModelCore> {
+  match rust_per_language_fact_bundle_registry() {
+    Accepted { value: registry, diagnostics: _ } =>
+      match rust_wave1_primitive_fact_bundles_from_registry(registry: registry) {
+        Accepted { value: primitives, diagnostics: d } =>
+          Accepted {
+            value: ModelCore {
+              primitives: primitives,
+              inhabitance: rust_model_core_inhabitance_decls(),
+              laws: rust_model_core_law_obligations(),
+              effects: rust_effect_semantics_wave2(),
+              partiality: rust_partiality_semantics_wave2()
+            },
+            diagnostics: d
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn rust_language_model_wave1() -> Outcome<RustLanguageModel> {
+  match rust_model_core_wave1() {
+    Accepted { value: core, diagnostics: d } =>
+      Accepted {
+        value: RustLanguageModel {
+          lex: rust_wave1_lex(),
+          grammar: rust_wave1_grammar(),
+          language_identity: rust_language_model_surface_id,
+          canonical_symbols: rust_language_model_canonical_symbols(),
+          core: core
+        },
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -3280,13 +3454,20 @@ fn rust_language_model_wave2_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_language_model_wave2() -> RustLanguageModel {
-  RustLanguageModel {
-    lex: rust_wave2_lex(),
-    grammar: rust_wave2_grammar(),
-    language_identity: rust_language_model_surface_id,
-    canonical_symbols: rust_language_model_wave2_canonical_symbols(),
-    core: rust_model_core_wave1()
+fn rust_language_model_wave2() -> Outcome<RustLanguageModel> {
+  match rust_model_core_wave1() {
+    Accepted { value: core, diagnostics: d } =>
+      Accepted {
+        value: RustLanguageModel {
+          lex: rust_wave2_lex(),
+          grammar: rust_wave2_grammar(),
+          language_identity: rust_language_model_surface_id,
+          canonical_symbols: rust_language_model_wave2_canonical_symbols(),
+          core: core
+        },
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 

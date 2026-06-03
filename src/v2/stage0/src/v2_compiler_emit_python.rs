@@ -3,6 +3,9 @@
 
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+use crate::std_syntax::BinOp::NullCoalesce;
+pub use crate::std_syntax::{BinOp, LiteralValue};
+pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Python;
 pub use crate::v2_compiler_emit::{
@@ -29,11 +32,15 @@ pub use crate::v2_compiler_emit::{
     sanitize_service_name, scope_after_expr, seed_bindings, service_fallback_transport,
     service_field_ctors, service_field_decls, service_var_name, test_file_path, test_function_name,
     to_lower_char, to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    typed_named_arg_matches, unique_strings, BlockEmitState, EmitResult, InterpPart,
-    ServiceFieldSet, TestProjection,
+    typed_named_arg_matches, unique_strings,
 };
-pub use crate::v2_compiler_infer::{build_params_scope, expr_span, extend_scope, InferScope};
-pub use crate::v2_compiler_infer_env::{authored_name, TypeBinding, TypeEnv};
+pub use crate::v2_compiler_emit::{
+    BlockEmitState, EmitResult, InterpPart, ServiceFieldSet, TestProjection,
+};
+pub use crate::v2_compiler_infer::InferScope;
+pub use crate::v2_compiler_infer::{build_params_scope, expr_span, extend_scope};
+pub use crate::v2_compiler_infer_env::authored_name;
+pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -44,10 +51,9 @@ pub use crate::v2_compiler_infer_types::{
 };
 pub use crate::v2_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, test_conventions_for_target,
-    ItemKeywords, TestConventions,
 };
+pub use crate::v2_compiler_languages::{ItemKeywords, TestConventions};
 use crate::v2_rt;
-use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{
@@ -76,10 +82,12 @@ pub use crate::v2_std_core::{
     method_arg_nodes, method_receiver, module_imports, module_items, param_node_name_at,
     param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
     return_value, slice_base, slice_end, slice_start, transport_auth_header_name, transport_env,
-    transport_has_auth, transport_headers, with_required_cardinality, BinOp, Cardinality,
-    Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary, InferredNode,
-    LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
-    TextFile, UnaryOpKind, VarBindingKind,
+    transport_has_auth, transport_headers, with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

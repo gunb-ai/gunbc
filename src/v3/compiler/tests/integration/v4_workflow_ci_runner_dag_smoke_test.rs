@@ -66,6 +66,14 @@
 //! Dissolve-on: `.dag` TestClaim execution proves `content_hash(ci_upsert_step_projection_node)`
 //! sensitivity and `v4.std.patterns.Upsert<T>` field alignment without this hand-Rust ratchet.
 //!
+//! **INVARIANTS P5 — checkable receipt for node://adhoc-87c3a213-099 (F.11c receipt persistence + lookup):**
+//! feature `f11c-ci-selection-receipt-persistence`; consumer
+//! `v4_workflow_ci_selection_receipt_persistence_lookup_modeled`. SAME-PATH SG-0 expansion:
+//! stays inside this existing v4 CI smoke harness (+0 new hand-Rust test paths) and defers to
+//! ROADMAP.md § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+//! Dissolve-on: runtime TestClaimRun/cache receipt storage persists and looks up
+//! `CiSelectionReceipt` values from canonical receipt projection hashes without this string ratchet.
+//!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
@@ -2567,4 +2575,160 @@ fn v4_workflow_ci_upsert_node_projection_substrate() {
             "{CI_DAG_PATH}: F.11a Upsert<T> Node projection substrate must carry `{needle}`"
         );
     }
+}
+
+#[test]
+fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    for name in [
+        "ci_selection_receipt_persist",
+        "ci_selection_receipt_lookup",
+        "ci_selection_receipt_storage_key",
+        "ci_selection_receipt_shadow_fixture_persistence_lookup_holds",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{CI_DAG_PATH}: F.11c must declare `{name}`"
+        );
+    }
+    for (path, name) in [
+        (&["v4", "std", "change"][..], "ArtifactChanged"),
+        (&["v4", "std", "change"][..], "DependencyDependent"),
+        (&["v4", "std", "change"][..], "DependencySource"),
+        (&["v4", "std", "change"][..], "NodeAdded"),
+        (&["v4", "std", "change"][..], "NodeChanged"),
+        (&["v4", "std", "change"][..], "NodeRemoved"),
+        (&["v4", "std", "change"][..], "ProjectionChanged"),
+        (&["v4", "std", "dependency"][..], "BarrierBefore"),
+        (&["v4", "std", "dependency"][..], "BindsTo"),
+        (&["v4", "std", "dependency"][..], "BootstrapDependsOn"),
+        (&["v4", "std", "dependency"][..], "Contains"),
+        (&["v4", "std", "dependency"][..], "DataDependsOn"),
+        (&["v4", "std", "dependency"][..], "EffectDependsOn"),
+        (&["v4", "std", "dependency"][..], "GeneratedFrom"),
+        (&["v4", "std", "dependency"][..], "ModelDependsOn"),
+        (&["v4", "std", "dependency"][..], "ModuleDependsOn"),
+        (&["v4", "std", "dependency"][..], "PlacementDependsOn"),
+        (&["v4", "std", "dependency"][..], "ProjectionDependsOn"),
+        (&["v4", "std", "dependency"][..], "PromotedBy"),
+        (&["v4", "std", "dependency"][..], "ResourceDependsOn"),
+        (&["v4", "std", "dependency"][..], "TypeDependsOn"),
+        (&["v4", "std", "dependency"][..], "VerifiedBy"),
+    ] {
+        assert!(
+            import_includes_name(&module, path, name),
+            "{CI_DAG_PATH}: F.11c digest matches `{name}`, so the constructor must be explicitly imported"
+        );
+    }
+    for needle in [
+        "type CiSelectionReceiptStoreRow",
+        "receipt: CiSelectionReceipt",
+        "type CiSelectionReceiptLookup",
+        "= CiSelectionReceiptFound { receipt: CiSelectionReceipt }",
+        "| CiSelectionReceiptMissing { key: Hash }",
+        "data ci_selection_receipt_shadow_fixture_storage_key: Hash",
+        "ci_selection_receipt_storage_key(receipt: ci_selection_receipt_shadow_fixture_receipt)",
+        "data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow>",
+        "ci_selection_receipt_persist(",
+        "ci_change_set_digest(changes: receipt.pr)",
+        "ci_affected_set_digest(affected: receipt.affected)",
+        "ci_component_affected_digest(component: receipt.component_affected_comparison)",
+        "ci_digest_empty_change_set_tag",
+        "ci_digest_empty_affected_dependency_list_tag",
+        "ci_digest_empty_diagnostics_list_tag",
+        "ci_digest_empty_affected_exclusion_list_tag",
+        "ci_digest_empty_dependency_kind_list_tag",
+        "ci_digest_empty_step_selection_list_tag",
+        "ci_digest_empty_testclaim_selection_list_tag",
+        "ci_digest_empty_testgen_slot_selection_list_tag",
+        "ci_digest_empty_node_list_tag",
+        "ci_extent_whole_file_tag",
+        "ci_extent_byte_range_tag",
+        "ci_locus_textual_tag",
+        "ci_locus_node_tag",
+        "ci_locus_port_tag",
+        "byte_offset_cache_key_projection_node(i: start)",
+        "byte_offset_cache_key_projection_node(i: end)",
+        "bag_hash_digest(",
+        "xs: map(xs, diagnostic => ci_diagnostic_digest(diagnostic: diagnostic))",
+        "canonical_hash_of_connective(c: connective)",
+        "canonical_hash_of_behavior(b: behavior)",
+        "ci_no_correction_user_input_boundary_tag",
+        "ci_no_correction_ambiguous_intent_tag",
+        "ci_no_correction_external_contract_unknown_tag",
+        "ci_upsert_input_ref_list_projection_node(refs: row.inputs_consulted)",
+        "ci_affected_dependency_list_digest(xs: row.affected_intersection)",
+        "ci_symbol_digest(sym: row.reason)",
+        "ci_claim_anchor_digest(anchor: row.anchor)",
+        "ci_string_digest(s: row.label)",
+        "ci_testclaim_variant_digest(variant: row.coproduct_variant)",
+        "ci_bool_digest(value: row.selected)",
+        "ci_test_classification_digest(classification: row.generator.classification)",
+        "ci_claim_anchor_digest(anchor: row.generator.anchor)",
+        "ci_testgen_concept_digest(concept: row.generator.slot)",
+        "ci_symbol_digest(sym: row.generator.provenance.generator_id)",
+        "ci_generated_artifact_digest(artifact: row.generator.provenance.artifact)",
+        "ci_symbol_digest(sym: row.generator.profile_metadata.profile_ref)",
+        "ci_claim_anchor_digest(anchor: row.emits_claim_anchor)",
+        "receipt: ci_selection_receipt_shadow_fixture_receipt",
+        "data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup",
+        "ci_selection_receipt_lookup(",
+        "init: CiSelectionReceiptMissing { key: key }",
+        "if ci_selection_receipt_storage_key(receipt: row.receipt) == missing_key",
+        "CiSelectionReceiptFound { receipt: row.receipt }",
+        "ci_selection_receipt_storage_key(receipt: receipt) == ci_selection_receipt_shadow_fixture_storage_key",
+        "CiSelectionReceiptMissing { key: _ } => false",
+        "data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool",
+        "feature:f11c-ci-selection-receipt-persistence",
+        "caller-chosen symbols as lookup authority",
+        "Forbidden: treating transient fixture construction as persisted receipt evidence",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: F.11c receipt persistence + lookup must carry `{needle}`"
+        );
+    }
+    assert!(
+        !CI_DAG.contains("fallback: ci_wave3_shadow_fixture_fail_closed_receipt")
+            && !CI_DAG.contains("data ci_selection_receipt_shadow_fixture_storage_key: Symbol"),
+        "{CI_DAG_PATH}: F.11c lookup misses must not expose fallback receipts or caller-authored Symbol keys"
+    );
+    assert!(
+        !CI_DAG.contains("type CiSelectionReceiptStoreRow {\n  key: Hash")
+            && !CI_DAG.contains("key: ci_selection_receipt_storage_key(receipt: receipt)"),
+        "{CI_DAG_PATH}: F.11c store rows must not carry a driftable key beside the receipt"
+    );
+    assert!(
+        !CI_DAG.contains("if row.key == missing_key"),
+        "{CI_DAG_PATH}: F.11c lookup must recompute receipt keys instead of trusting store row keys"
+    );
+    for overloaded_seed in [
+        "empty: ci_symbol_digest(sym: ci_change_kind_node_changed_tag)",
+        "empty: ci_symbol_digest(sym: ci_affected_set_produced_tag)",
+        "empty: ci_symbol_digest(sym: ci_affected_set_diagnostics_tag)",
+        "empty: ci_symbol_digest(sym: ci_dependency_kind_contains_tag)",
+        "empty: ci_symbol_digest(sym: ci_selection_decision_run_tag)",
+        "empty: ci_symbol_digest(sym: ci_projection_command_claim_ids_edge)",
+        "empty: ci_symbol_digest(sym: ci_selection_testgen_slot_tag)",
+        "UserInputBoundary => ci_symbol_digest(sym: ci_receipt_inputs_fail_closed_reason)",
+        "AmbiguousIntent => ci_symbol_digest(sym: ci_workflow_receipt_unexpected_verdict)",
+        "ExternalContractUnknown => ci_symbol_digest(sym: ci_selection_shadow_reason)",
+        "WholeFile => ci_symbol_digest(sym: ci_projection_char_offset_authority_edge)",
+        "content_hash(n: ci_char_projection_node(c: start))",
+        "content_hash(n: ci_char_projection_node(c: end))",
+        "NodeLocus { anchor } => content_hash(n: anchor.at)",
+        "PortLocus { anchor } => ci_symbol_digest(sym: anchor.at)",
+        "fn ci_diagnostics_list_digest(xs: List<Diagnostic>) -> Hash {\n  fold_list(",
+    ] {
+        assert!(
+            !CI_DAG.contains(overloaded_seed),
+            "{CI_DAG_PATH}: F.11c receipt digest must not overload `{overloaded_seed}`"
+        );
+    }
+    assert!(
+        !CI_DAG.contains("let decisions_match = length(xs: receipt.decisions)")
+            && !CI_DAG.contains("let testclaims_match = length(xs: receipt.testclaim_decisions)")
+            && !CI_DAG.contains("let testgen_match = length(xs: receipt.testgen_slots)"),
+        "{CI_DAG_PATH}: F.11c persistence witness must compare canonical receipt keys, not partition lengths"
+    );
 }

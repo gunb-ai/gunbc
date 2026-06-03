@@ -169,6 +169,8 @@ data leaf_model_claim_go_r2a_int_algebra_operations: LeafModelClaimId = leaf_mod
 data leaf_model_claim_go_r2b_int64_silent_overflow_truncates: LeafModelClaimId = leaf_model_claim_go_r2b_int64_silent_overflow_truncates
 data leaf_model_claim_go_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_go_r3_external_symbol_projection
 data leaf_model_claim_python_cross_runtime_drift_arbitrary_precision: LeafModelClaimId = leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
+data leaf_model_claim_python_l2_cross_target_parity_r2a_add: LeafModelClaimId = leaf_model_claim_python_l2_cross_target_parity_r2a_add
+data leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection: LeafModelClaimId = leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection
 
 // --- PY-L2-CROSS-RUNTIME-DRIFT: positive cross-runtime divergence receipt ---
 // Complement of the L2 cross-target PARITY lane (PR #4154,
@@ -208,6 +210,41 @@ type LeafModelCrossRuntimeDriftProbe {
   fixed_width_rust_source: String
   fixed_width_go_source: String
   expected_divergence: ValueDiff<String>
+}
+
+// --- PY-L2-CROSS-TARGET-PARITY: positive cross-target behavioral PARITY receipt ---
+// The exact COMPLEMENT of LeafModelCrossRuntimeDriftProbe. Drift proves the same modeled program
+// DIVERGES at the fixed-width boundary; this proves the same modeled program AGREES on the common
+// domain — the subset where arbitrary-precision and two's-complement realizations coincide (small
+// integer add) and where external Symbol projection displays the same nominal payload (R3). This is
+// the L2 release-minimum parity receipt named in the Python RCA Worksheet C: it asserts runtime-value
+// EQUALITY across Python, Rust, and Go, so the verification system demonstrably DISTINGUISHES parity
+// (common domain) from drift (boundary) rather than collapsing them.
+//
+// FACTS FLOW FORWARD (INVARIANTS P1/P2): parity is not a bare value equality — the MODELED CAUSE
+// travels with it. The three `*_fact` fields anchor the agreement to the extdeps facts that JUSTIFY
+// it: for R2a the integer representation facts (arbitrary-precision == two's-complement ON THE COMMON
+// SUBDOMAIN), for R3 the atom-realization facts (same nominal Symbol payload). `expected_parity`
+// reuses ValueDiff<String> as the host_run value pair (expected = Python payload, actual = Rust/Go
+// payload); PARITY is the positive property that the two sides are EQUAL — the structural mirror of
+// the drift probe's `expected != actual`. R2b arbitrary precision is intentionally NOT a parity row
+// (it is the drift complement); order's boolean surface-formatting differs per language and is
+// likewise excluded from the numeric parity payload.
+//
+// 🟡 gated — feature:leaf-model-cross-target-parity — dissolve-on: the modeled `TestClaim` runner
+// executes the three target sources directly and binds the observed stdout to `expected_parity.actual`
+// (today host execution is harness-blocked, same as the drift probe and the cross-runtime-drift
+// runner); forbidden: a parallel parity vocabulary outside this carrier — extend it, don't fork it.
+type LeafModelCrossTargetParityProbe {
+  claim_id: LeafModelClaimId
+  // Modeled cause of the agreement (extdeps facts) — Facts Flow Forward.
+  python_fact: Symbol
+  rust_fact: Symbol
+  go_fact: Symbol
+  python_source: String
+  rust_source: String
+  go_source: String
+  expected_parity: ValueDiff<String>
 }
 
 type LeafModelRustCrateType = Symbol

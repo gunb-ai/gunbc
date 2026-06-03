@@ -2031,7 +2031,7 @@ fn testgen_scheduled_generators_roster_holds() -> Bool {
 }
 
 
-// F.2.6 — profile-selected scheduled generators for T-38 / shadow CI (profile authority).
+// 🟡 coproduct dissolution — feature:lens-testgen-shadow-ci-receipt — bind F.2-P2 / F.2.6 — dissolve-on-arrival: T-22 `TestClaimRun` evaluates `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses; delete `TestgenRunReceipt` when substrate eval owns roster facts; forbidden: permanent hand-Rust roster ratchet beside modeled witnesses.
 type TestgenRunReceipt {
   profile_ref: Symbol
   generators: List<Generator<TestgenConcept>>
