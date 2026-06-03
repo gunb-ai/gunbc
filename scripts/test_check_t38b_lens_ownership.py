@@ -22,7 +22,7 @@ def main() -> None:
     )
     if result.returncode != 0:
         raise SystemExit(result.stderr or result.stdout)
-    if "OK: T-38B lens_ownership" not in result.stdout:
+    if "OK: T-38B lens_ownership subject roster + family_receipt" not in result.stdout:
         raise SystemExit("checker did not print the expected OK receipt")
 
 

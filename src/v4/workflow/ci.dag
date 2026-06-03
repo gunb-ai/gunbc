@@ -1378,6 +1378,7 @@ data ci_upsert_source_authority_receipt_eval_inputs: List<UpsertInputRef> = ci_u
 
 data ci_upsert_lens_ownership_family_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/lens_ownership/resource_dependency.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/lens_ownership/family_receipt.dag"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/lens_ownership/subject_roster.dag"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/lens_ownership_family_eval.dag")
 ]

@@ -1070,6 +1070,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // posture). Lane: T-38B TestClaimRun structural receipts; dissolves when substrate
     // eval executes the roster without this hand-Rust parse smoke.
     "src/v3/compiler/tests/integration/v4_lens_idempotency_claim_dag_smoke_test.rs",
+    // T-38B lens_ownership family receipt (subject_roster + run_test_claim rows).
+    "src/v3/compiler/tests/integration/v4_lens_ownership_claim_dag_smoke_test.rs",
     // L1.4 IdenticalVariantPayload sub-signature (`src/v4/lens/identical_variant_payload.dag`);
     // shared `coverage_defect_carrier_clone`; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_identical_variant_payload_dag_smoke_test.rs",

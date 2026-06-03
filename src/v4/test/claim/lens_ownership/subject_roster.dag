@@ -7,9 +7,12 @@ module v4.test.claim.lens_ownership.subject_roster
 
 import v4.compiler.eval {
   TestClaimEvalSubject,
+  TestClaimRun,
   eval_context_v4_evaluator_wave1,
-  eval_test_claim_subject
+  eval_test_claim_subject,
+  run_test_claim
 }
+import v4.std.runtime { RuntimeValue }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
@@ -73,6 +76,11 @@ data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = ev
   context: eval_context_v4_evaluator_wave1(),
   tree: ownership_claim_tree(),
   evaluator_pin: lens_ownership_resource_dependency_pin
+)
+
+
+data run_lens_ownership_resource_dependency_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_lens_ownership_resource_dependency
 )
 
 

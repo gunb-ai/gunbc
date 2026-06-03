@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 OWNERSHIP_CLAIM = ROOT / "src/v4/test/claim/lens_ownership/resource_dependency.dag"
 SUBJECT_ROSTER = ROOT / "src/v4/test/claim/lens_ownership/subject_roster.dag"
+FAMILY_RECEIPT = ROOT / "src/v4/test/claim/lens_ownership/family_receipt.dag"
 FAMILY_EVAL = ROOT / "src/v4/test/claim/workflow/lens_ownership_family_eval.dag"
 CI = ROOT / "src/v4/workflow/ci.dag"
 
@@ -28,6 +29,7 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
 def main() -> None:
     ownership_claim = _read(OWNERSHIP_CLAIM)
     subject_roster = _read(SUBJECT_ROSTER)
+    family_receipt = _read(FAMILY_RECEIPT)
     family_eval = _read(FAMILY_EVAL)
     ci = _read(CI)
 
@@ -53,6 +55,8 @@ def main() -> None:
             "rhs: ownership_claim_pass_node()",
             "data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node>",
             "eval_test_claim_subject(",
+            "data run_lens_ownership_resource_dependency_receipt: TestClaimRun<Node, RuntimeValue>",
+            "run_test_claim(",
             "data lens_ownership_subject_rows: List<TestClaimEvalSubject<Node>>",
             "subject_lens_ownership_resource_dependency",
             "data lens_ownership_family_claim_ids: List<Symbol>",
@@ -63,6 +67,15 @@ def main() -> None:
 
     if "type LensOwnershipSubject" in subject_roster:
         raise SystemExit("subject_roster.dag: LensOwnershipSubject parallel-authority wrapper is forbidden")
+
+    _require_substrings(
+        "family_receipt.dag",
+        family_receipt,
+        (
+            "lens_ownership_runtime_value_rows",
+            "run_lens_ownership_resource_dependency_receipt",
+        ),
+    )
 
     _require_substrings(
         "lens_ownership_family_eval.dag",
@@ -101,6 +114,7 @@ def main() -> None:
             "ci_upsert_lens_ownership_family_eval_execution",
             "ci_upsert_lens_ownership_family_eval_signal",
             "ci_upsert_steps_full_in_scope_step_ids",
+            "src/v4/test/claim/lens_ownership/family_receipt.dag",
             "src/v4/test/claim/lens_ownership/subject_roster.dag",
             "src/v4/test/claim/workflow/lens_ownership_family_eval.dag",
             "lens_ownership_family_claim_ids",
@@ -110,7 +124,9 @@ def main() -> None:
         ),
     )
 
-    print("OK: T-38B lens_ownership subject roster + run_test_claim family CI receipt.")
+    print(
+        "OK: T-38B lens_ownership subject roster + family_receipt + run_test_claim family CI receipt."
+    )
 
 
 if __name__ == "__main__":
