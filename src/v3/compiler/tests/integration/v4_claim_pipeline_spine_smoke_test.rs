@@ -8,13 +8,15 @@
 use v3_compiler::parse_for_test;
 use v3_compiler::tokenize_for_test;
 
-const NORMALIZE_CLAIM: &str = include_str!("../../../../v4/test/claim/claim_pipeline/normalize.dag");
+const NORMALIZE_CLAIM: &str =
+    include_str!("../../../../v4/test/claim/claim_pipeline/normalize.dag");
 const NORMALIZE_PATH: &str = "src/v4/test/claim/claim_pipeline/normalize.dag";
 const RESOLVE_CLAIM: &str = include_str!("../../../../v4/test/claim/claim_pipeline/resolve.dag");
 const RESOLVE_PATH: &str = "src/v4/test/claim/claim_pipeline/resolve.dag";
 const INFER_CLAIM: &str = include_str!("../../../../v4/test/claim/claim_pipeline/infer.dag");
 const INFER_PATH: &str = "src/v4/test/claim/claim_pipeline/infer.dag";
-const TRANSLATE_CLAIM: &str = include_str!("../../../../v4/test/claim/claim_pipeline/translate.dag");
+const TRANSLATE_CLAIM: &str =
+    include_str!("../../../../v4/test/claim/claim_pipeline/translate.dag");
 const TRANSLATE_PATH: &str = "src/v4/test/claim/claim_pipeline/translate.dag";
 
 fn assert_parses(source: &str, path: &str) {

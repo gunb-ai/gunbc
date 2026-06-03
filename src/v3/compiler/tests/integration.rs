@@ -279,10 +279,10 @@ mod timing_lens_substrate_carrier_test;
 mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/v4_bin_main_dag_smoke_test.rs"]
 mod v4_bin_main_dag_smoke_test;
-#[path = "integration/v4_compiler_compile_public_terminal_smoke_test.rs"]
-mod v4_compiler_compile_public_terminal_smoke_test;
 #[path = "integration/v4_claim_pipeline_spine_smoke_test.rs"]
 mod v4_claim_pipeline_spine_smoke_test;
+#[path = "integration/v4_compiler_compile_public_terminal_smoke_test.rs"]
+mod v4_compiler_compile_public_terminal_smoke_test;
 #[path = "integration/v4_compiler_emit_translate_smoke_test.rs"]
 mod v4_compiler_emit_translate_smoke_test;
 #[path = "integration/v4_compiler_parse_table_dag_smoke_test.rs"]
