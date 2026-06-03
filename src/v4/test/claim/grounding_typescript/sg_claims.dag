@@ -86,6 +86,10 @@ fn ts_g2_source_carrier_eq(a: Node, b: Node) -> Bool {
 }
 
 
+// 🟡 predicate dissolution — feature:G-2-grounding-evidence-bool-bridge — bind ROADMAP.md T-PB-B /
+// T-38B grounding_typescript roster — dissolve-on: std/grounding exports canonical
+// grounding-evidence variant/source_carrier queries; local GroundingEvidenceSchema Bool
+// match projections delete.
 fn ts_g2_sg1_symbol_evidence() -> GroundingEvidenceSchema {
   Sg1Evidence { source_carrier: symbol_kernel_type_node() }
 }
@@ -179,6 +183,9 @@ fn ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier() -> Bool {
 }
 
 
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 /
+// G.2 grounding_typescript run_test_claim roster — dissolve-on: T-22 claim runner evaluates
+// Outcome and lookup results directly without Accepted=>true / Rejected=>false Bool projection.
 fn ts_g2_sg1_atom_lookup_accepts(source_carrier: Node) -> Bool {
   match target_atom_realization_lookup_in_catalog(
     catalog: ts_target_atom_realization_catalog,

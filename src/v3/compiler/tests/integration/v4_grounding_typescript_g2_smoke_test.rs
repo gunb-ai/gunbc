@@ -24,6 +24,19 @@ const FAMILY_RECEIPT_DAG: &str =
     include_str!("../../../../v4/test/claim/grounding_typescript/family_receipt.dag");
 const FAMILY_RECEIPT_PATH: &str = "src/v4/test/claim/grounding_typescript/family_receipt.dag";
 
+fn extract_fn_body<'a>(source: &'a str, fn_name: &str) -> &'a str {
+    let marker = format!("fn {fn_name}(");
+    let start = source
+        .find(&marker)
+        .unwrap_or_else(|| panic!("{SG_CLAIMS_PATH}: missing `{marker}`"));
+    let rest = &source[start + marker.len()..];
+    let end = rest
+        .find("\nfn ")
+        .or_else(|| rest.find("\ndata "))
+        .unwrap_or(rest.len());
+    &source[start..start + marker.len() + end]
+}
+
 fn parse_surface(path: &str, source: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
         tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
@@ -77,8 +90,15 @@ fn v4_grounding_typescript_g2_declares_executable_claim_stack() {
         surface_declares_data(&sg, "run_ts_g2_sg5_collection_absence"),
         "G.2 must wire SG-5 absence run_test_claim row"
     );
+    let sg2_hold =
+        extract_fn_body(SG_CLAIMS_DAG, "ts_g2_sg2_type_expression_projection_holds");
     assert!(
-        SG_CLAIMS_DAG.contains("ProjectionPresent"),
-        "SG-2 row must assert ProjectionPresent (TypeScript has landed projection edge)"
+        sg2_hold.contains("Accepted { value: ProjectionPresent, diagnostics: _ }"),
+        "SG-2 hold predicate must match ProjectionPresent (not import-only occurrence)"
+    );
+    assert!(
+        SG_CLAIMS_DAG.contains("feature:G-2-grounding-evidence-bool-bridge")
+            && SG_CLAIMS_DAG.contains("feature:T-22-outcome-to-bool-claim-bridge"),
+        "G.2 claim predicates must carry predicate-dissolution disposition receipts"
     );
 }
