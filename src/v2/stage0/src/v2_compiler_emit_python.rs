@@ -3,12 +3,6 @@
 
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
-<<<<<<< HEAD
-use crate::std_syntax::BinOp::NullCoalesce;
-pub use crate::std_syntax::{BinOp, LiteralValue};
-pub use crate::std_types::SourceSpan;
-=======
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Python;
 pub use crate::v2_compiler_emit::{

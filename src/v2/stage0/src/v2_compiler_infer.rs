@@ -5,11 +5,6 @@ use self::SizeExpr::*;
 pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
-<<<<<<< HEAD
-pub use crate::std_computation::ShrinkFactor;
-use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-=======
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -23,15 +18,6 @@ pub use crate::std_induction::{
     sub_value_to_evidence, InductiveField, RecursionShape, ShrinkFactor, SubValueRelation,
 };
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-<<<<<<< HEAD
-use crate::std_syntax::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
-pub use crate::std_syntax::{BinOp, LiteralValue};
-pub use crate::std_termination::PositiveDescentAmount;
-=======
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
@@ -51,11 +37,7 @@ pub use crate::v2_compiler_infer_emit_info::{
 pub use crate::v2_compiler_infer_env::{
     inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
     is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
-<<<<<<< HEAD
-    merge_inductive_fields, put_inductive_field, put_inductive_field_cross,
-=======
     merge_inductive_fields, put_inductive_field, put_inductive_field_cross, TypeBinding, TypeEnv,
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 };
 use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,

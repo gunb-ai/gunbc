@@ -2271,7 +2271,6 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   }
 }
 
-<<<<<<< HEAD
 fn rust_pub_use_module_name(line: String) -> String {
   let prefix_parts = line |> split(delimiter: "pub use crate::")
   match prefix_parts |> skip(1) |> first {
@@ -2362,10 +2361,7 @@ fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
   )
 }
 
-fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> String {
-=======
 fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
   if imports |> count == 0 {
     ""
   } else {

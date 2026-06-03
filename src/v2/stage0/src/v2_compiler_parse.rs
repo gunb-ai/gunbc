@@ -11,18 +11,10 @@ pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_
 use crate::v2_compiler_languages::BodyKind::{
     BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
 };
-<<<<<<< HEAD
-use crate::std_syntax::ItemFormKind::OtherForm;
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
-pub use crate::std_syntax::{BinOp, LiteralValue};
-pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
-pub use crate::std_types::SourceSpan;
-=======
 use crate::v2_compiler_languages::ItemFormKind::OtherForm;
 pub use crate::v2_compiler_languages::{
     BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec,
 };
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 use crate::v2_rt;
 use crate::v2_std_core::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,

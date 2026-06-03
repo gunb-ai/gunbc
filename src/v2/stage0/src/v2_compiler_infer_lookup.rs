@@ -13,14 +13,10 @@ pub use crate::v2_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
 pub use crate::v2_compiler_infer_env::{
-<<<<<<< HEAD
-    authored_name, is_recursive_type, lookup_type, lookup_type_for,
-=======
     authored_name, is_recursive_type, lookup_type, lookup_type_for, TypeBinding, TypeEnv,
 };
 pub use crate::v2_compiler_infer_service::{
     check_service_method_call_node, OpEntry, ServiceMethodResult,
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 };
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::{

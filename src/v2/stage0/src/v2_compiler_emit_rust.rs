@@ -4507,33 +4507,8 @@ pub fn emit_specific_import_block(
                 });
                 let remote_parent_list = Rc::new({
                     let mut __result = Vec::new();
-<<<<<<< HEAD
-                    for p in Rc::new({
-                        let mut __result = Vec::new();
-                        for p in parent_list.clone().iter().cloned() {
-                            if {
-                                let mut __all = true;
-                                for n in direct_names.clone().iter().cloned() {
-                                    if !(n.clone().as_str() != p.clone().as_str()) {
-                                        __all = false;
-                                        break;
-                                    }
-                                }
-                                __all
-                            } {
-                                __result.push(p);
-                            }
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    {
-                        if ({
-=======
                     for p in parent_list.clone().iter().cloned() {
                         if {
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
                             let mut __found = false;
                             for n in deduped_names.clone().iter().cloned() {
                                 if match find_variant_parent_in_module(
@@ -4558,7 +4533,7 @@ pub fn emit_specific_import_block(
                     __result
                 });
                 let merged_direct_names =
-                    unique_strings(v2_rt::concat(direct_names.clone(), local_parent_names));
+                    unique_strings(v2_rt::concat(direct_names, local_parent_names));
                 let type_direct_names = Rc::new({
                     let mut __result = Vec::new();
                     for n in merged_direct_names.clone().iter().cloned() {
@@ -4987,237 +4962,6 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visib
     }
 }
 
-pub fn rust_pub_use_module_name(line: String) -> String {
-    {
-        let prefix_parts = Rc::new(
-            line.split(&"pub use crate::".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        );
-        match prefix_parts.get(1 as usize).cloned() {
-            Some(rest) => match Rc::new(
-                rest.clone()
-                    .split(&"::".to_string())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            )
-            .first()
-            .cloned()
-            {
-                Some(mod_name) => mod_name.clone(),
-                None => "".to_string(),
-            },
-            None => "".to_string(),
-        }
-    }
-}
-
-pub fn rust_pub_use_singleton_name(line: String) -> String {
-    if ((v2_rt::contains(line.clone(), "pub use crate::".to_string())
-        && !v2_rt::contains(line.clone(), "::{".to_string()))
-        && !v2_rt::contains(line.clone(), "::*;".to_string()))
-    {
-        {
-            let prefix_parts = Rc::new(
-                line.clone()
-                    .split(&"pub use crate::".to_string())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            );
-            match prefix_parts.get(1 as usize).cloned() {
-                Some(rest) => match Rc::new(
-                    rest.clone()
-                        .split(&"::".to_string())
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>(),
-                )
-                .get(1 as usize)
-                .cloned()
-                {
-                    Some(name_part) => match Rc::new(
-                        name_part
-                            .clone()
-                            .split(&";".to_string())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>(),
-                    )
-                    .first()
-                    .cloned()
-                    {
-                        Some(name) => name.clone(),
-                        None => "".to_string(),
-                    },
-                    None => "".to_string(),
-                },
-                None => "".to_string(),
-            }
-        }
-    } else {
-        "".to_string()
-    }
-}
-
-pub fn rust_pub_use_braced_names(line: String) -> Rc<Vec<String>> {
-    if (v2_rt::contains(line.clone(), "pub use crate::".to_string())
-        && v2_rt::contains(line.clone(), "::{".to_string()))
-    {
-        {
-            let prefix_parts = Rc::new(
-                line.clone()
-                    .split(&"::{".to_string())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            );
-            match prefix_parts.get(1 as usize).cloned() {
-                Some(rest) => match Rc::new(
-                    rest.clone()
-                        .split(&"}".to_string())
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>(),
-                )
-                .first()
-                .cloned()
-                {
-                    Some(names) => Rc::new(
-                        names
-                            .clone()
-                            .split(&", ".to_string())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>(),
-                    ),
-                    None => Rc::new(vec![]),
-                },
-                None => Rc::new(vec![]),
-            }
-        }
-    } else {
-        Rc::new(vec![])
-    }
-}
-
-pub fn rust_pub_use_braced_line_has_name(line: String, mod_name: String, name: String) -> bool {
-    (((rust_pub_use_module_name(line.clone()).as_str() == mod_name.as_str())
-        && v2_rt::contains(line.clone(), "::{".to_string()))
-        && (((v2_rt::contains(
-            line.clone(),
-            v2_rt::concat(
-                v2_rt::concat("{".to_string(), name.clone()),
-                ",".to_string(),
-            ),
-        ) || v2_rt::contains(
-            line.clone(),
-            v2_rt::concat(
-                v2_rt::concat(", ".to_string(), name.clone()),
-                ",".to_string(),
-            ),
-        )) || v2_rt::contains(
-            line.clone(),
-            v2_rt::concat(
-                v2_rt::concat(", ".to_string(), name.clone()),
-                "}".to_string(),
-            ),
-        )) || v2_rt::contains(
-            line.clone(),
-            v2_rt::concat(
-                v2_rt::concat("{".to_string(), name.clone()),
-                "}".to_string(),
-            ),
-        )))
-}
-
-pub fn rust_pub_use_singleton_covered(line: String, lines: Rc<Vec<String>>) -> bool {
-    {
-        let mod_name = rust_pub_use_module_name(line.clone());
-        let name = rust_pub_use_singleton_name(line.clone());
-        if ((mod_name.clone().as_str() == "".to_string().as_str())
-            || (name.clone().as_str() == "".to_string().as_str()))
-        {
-            false
-        } else {
-            {
-                let mut __found = false;
-                for other in lines.iter().cloned() {
-                    if rust_pub_use_braced_line_has_name(
-                        other.clone(),
-                        mod_name.clone(),
-                        name.clone(),
-                    ) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            }
-        }
-    }
-}
-
-pub fn rust_pub_use_braced_subset_covered(line: String, lines: Rc<Vec<String>>) -> bool {
-    {
-        let mod_name = rust_pub_use_module_name(line.clone());
-        let names = rust_pub_use_braced_names(line.clone());
-        if ((mod_name.clone().as_str() == "".to_string().as_str())
-            || ((names.clone().len() as i64) == 0))
-        {
-            false
-        } else {
-            {
-                let mut __found = false;
-                for other in lines.iter().cloned() {
-                    if ((((other.clone().as_str() != line.clone().as_str())
-                        && (rust_pub_use_module_name(other.clone()).as_str()
-                            == mod_name.clone().as_str()))
-                        && v2_rt::contains(other.clone(), "::{".to_string()))
-                        && {
-                            let mut __all = true;
-                            for name in names.clone().iter().cloned() {
-                                if !(rust_pub_use_braced_line_has_name(
-                                    other.clone(),
-                                    mod_name.clone(),
-                                    name.clone(),
-                                )) {
-                                    __all = false;
-                                    break;
-                                }
-                            }
-                            __all
-                        })
-                    {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            }
-        }
-    }
-}
-
-pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    {
-        let exact = unique_strings(Rc::new({
-            let mut __result = Vec::new();
-            for line in lines.iter().cloned() {
-                if (line.clone().as_str() != "".to_string().as_str()) {
-                    __result.push(line);
-                }
-            }
-            __result
-        }));
-        Rc::new({
-            let mut __result = Vec::new();
-            for line in exact.clone().iter().cloned() {
-                if ((rust_pub_use_singleton_covered(line.clone(), exact.clone()) == false)
-                    && (rust_pub_use_braced_subset_covered(line.clone(), exact.clone()) == false))
-                {
-                    __result.push(line);
-                }
-            }
-            __result
-        })
-    }
-}
-
 pub fn emit_imports(
     imports: Rc<Vec<Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -5241,96 +4985,55 @@ pub fn emit_imports(
             let import_lines = Rc::new({
                 let mut __result = Vec::new();
                 for import_module in import_modules.iter().cloned() {
-                    __result.extend(
-                        (*{
-                            let mod_imports = Rc::new({
-                                let mut __result = Vec::new();
-                                for imp in imports.clone().iter().cloned() {
-                                    if (authored_name_at(source_indices.clone(), imp.clone())
-                                        .as_str()
-                                        == import_module.clone().as_str())
-                                    {
-                                        __result.push(imp);
-                                    }
-                                }
-                                __result
-                            });
-                            let mod_name = module_to_filename(import_module.clone());
-                            let block = if {
-                                let mut __found = false;
-                                for imp in mod_imports.clone().iter().cloned() {
-                                    if import_is_all(imp.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            } {
+                    __result.push({
+                        let mod_imports = Rc::new({
+                            let mut __result = Vec::new();
+                            for imp in imports.clone().iter().cloned() {
+                                if (authored_name_at(source_indices.clone(), imp.clone()).as_str()
+                                    == import_module.clone().as_str())
                                 {
-                                    let wildcard_line = v2_rt::concat(
-                                        v2_rt::concat("use crate::".to_string(), mod_name.clone()),
-                                        "::*;".to_string(),
-                                    );
-                                    let reexport_surface = wildcard_reexport_surface_names(
-                                        import_module.clone(),
-                                        export_sets.clone(),
-                                        typed_modules.clone(),
-                                        source_indices.clone(),
-                                    );
-                                    let merged_specific = unique_strings(v2_rt::concat(
-                                        Rc::new({
+                                    __result.push(imp);
+                                }
+                            }
+                            __result
+                        });
+                        let mod_name = module_to_filename(import_module.clone());
+                        if {
+                            let mut __found = false;
+                            for imp in mod_imports.clone().iter().cloned() {
+                                if import_is_all(imp.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
+                            {
+                                let wildcard_line = v2_rt::concat(
+                                    v2_rt::concat("use crate::".to_string(), mod_name.clone()),
+                                    "::*;".to_string(),
+                                );
+                                let reexport_surface = wildcard_reexport_surface_names(
+                                    import_module.clone(),
+                                    export_sets.clone(),
+                                    typed_modules.clone(),
+                                    source_indices.clone(),
+                                );
+                                let merged_specific = unique_strings(v2_rt::concat(
+                                    Rc::new({
+                                        let mut __result = Vec::new();
+                                        for imp in Rc::new({
                                             let mut __result = Vec::new();
-                                            for imp in Rc::new({
-                                                let mut __result = Vec::new();
-                                                for imp in mod_imports.clone().iter().cloned() {
-                                                    if (import_is_all(imp.clone()) == false) {
-                                                        __result.push(imp);
-                                                    }
+                                            for imp in mod_imports.clone().iter().cloned() {
+                                                if (import_is_all(imp.clone()) == false) {
+                                                    __result.push(imp);
                                                 }
-                                                __result
-                                            })
-                                            .iter()
-                                            .cloned()
-                                            {
-                                                __result.extend(
-                                                    (*import_specific_names_at(
-                                                        imp.clone(),
-                                                        source_indices.clone(),
-                                                    ))
-                                                    .iter()
-                                                    .cloned(),
-                                                );
                                             }
                                             __result
-                                        }),
-                                        reexport_surface.clone(),
-                                    ));
-                                    let specific_block = emit_specific_import_block(
-                                        import_module.clone(),
-                                        mod_name.clone(),
-                                        merged_specific.clone(),
-                                        emit_info.clone(),
-                                        registry.clone(),
-                                        local_names.clone(),
-                                        export_sets.clone(),
-                                        typed_modules.clone(),
-                                        source_indices.clone(),
-                                    );
-                                    if (specific_block.clone().as_str() != "".to_string().as_str())
-                                    {
-                                        v2_rt::concat(
-                                            v2_rt::concat(wildcard_line.clone(), "\n".to_string()),
-                                            specific_block.clone(),
-                                        )
-                                    } else {
-                                        wildcard_line.clone()
-                                    }
-                                }
-                            } else {
-                                {
-                                    let specific_names = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for imp in mod_imports.clone().iter().cloned() {
+                                        })
+                                        .iter()
+                                        .cloned()
+                                        {
                                             __result.extend(
                                                 (*import_specific_names_at(
                                                     imp.clone(),
@@ -5341,20 +5044,6 @@ pub fn emit_imports(
                                             );
                                         }
                                         __result
-<<<<<<< HEAD
-                                    });
-                                    let merged_specific = unique_strings(specific_names.clone());
-                                    emit_specific_import_block(
-                                        import_module.clone(),
-                                        mod_name.clone(),
-                                        merged_specific.clone(),
-                                        emit_info.clone(),
-                                        registry.clone(),
-                                        local_names.clone(),
-                                        export_sets.clone(),
-                                        typed_modules.clone(),
-                                        source_indices.clone(),
-=======
                                     }),
                                     reexport_surface,
                                 ));
@@ -5373,25 +5062,54 @@ pub fn emit_imports(
                                     v2_rt::concat(
                                         v2_rt::concat(wildcard_line.clone(), "\n".to_string()),
                                         specific_block.clone(),
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
                                     )
+                                } else {
+                                    wildcard_line.clone()
                                 }
-                            };
-                            Rc::new(
-                                block
-                                    .clone()
-                                    .split(&"\n".to_string())
-                                    .map(|s| s.to_string())
-                                    .collect::<Vec<_>>(),
-                            )
-                        })
-                        .iter()
-                        .cloned(),
-                    );
+                            }
+                        } else {
+                            {
+                                let merged_specific = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for imp in mod_imports.clone().iter().cloned() {
+                                        __result.extend(
+                                            (*import_specific_names_at(
+                                                imp.clone(),
+                                                source_indices.clone(),
+                                            ))
+                                            .iter()
+                                            .cloned(),
+                                        );
+                                    }
+                                    __result
+                                });
+                                emit_specific_import_block(
+                                    import_module.clone(),
+                                    mod_name.clone(),
+                                    merged_specific.clone(),
+                                    emit_info.clone(),
+                                    registry.clone(),
+                                    local_names.clone(),
+                                    export_sets.clone(),
+                                    typed_modules.clone(),
+                                    source_indices.clone(),
+                                )
+                            }
+                        }
+                    });
                 }
                 __result
             });
-            dedupe_rust_import_lines(import_lines).join(&"\n".to_string())
+            unique_strings(Rc::new({
+                let mut __result = Vec::new();
+                for line in import_lines.iter().cloned() {
+                    if (line.clone().as_str() != "".to_string().as_str()) {
+                        __result.push(line);
+                    }
+                }
+                __result
+            }))
+            .join(&"\n".to_string())
         }
     }
 }

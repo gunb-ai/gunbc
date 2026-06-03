@@ -3,16 +3,8 @@
 
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
-<<<<<<< HEAD
-pub use crate::std_syntax::LiteralValue;
-use crate::std_syntax::LiteralValue::LitBool;
-pub use crate::std_types::SourceSpan;
-pub use crate::v2_compiler_infer_env::TypeEnv;
-pub use crate::v2_compiler_infer_env::{lookup_type, lookup_type_by_name};
-=======
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_infer_env::{lookup_type, lookup_type_by_name, TypeEnv};
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
 };

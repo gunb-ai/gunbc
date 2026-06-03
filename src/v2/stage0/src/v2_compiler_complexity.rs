@@ -15,17 +15,10 @@ use crate::std_computation::CallPattern::{
     ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
 };
 use crate::std_computation::IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
-<<<<<<< HEAD
-pub use crate::std_computation::ShrinkFactor;
-use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-pub use crate::std_computation::{lower_call_pattern, size_bound_param, type_iteration_dimension};
-pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget};
-=======
 pub use crate::std_computation::{
     lower_call_pattern, size_bound_param, type_iteration_dimension, CallPattern,
     IterationDimension, LoweringTarget,
 };
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 pub use crate::std_graph::{
     build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order, forward_adjacency,
     graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, reverse_adjacency,
@@ -43,13 +36,6 @@ pub use crate::std_induction::{
     sub_value_to_lowering_target, AtomicCost, CostBound, PolynomialExponent, ShrinkFactor,
     SubValueRelation,
 };
-<<<<<<< HEAD
-pub use crate::std_induction::{AtomicCost, CostBound, PolynomialExponent, SubValueRelation};
-use crate::std_syntax::BinOp::{Div, Sub};
-use crate::std_syntax::LiteralValue::{LitInt, LitNull};
-pub use crate::std_syntax::{BinOp, LiteralValue};
-=======
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::DescentSource::{
     ArithmeticDivideDescent, ArithmeticSubtractDescent, ChildAccessor, FoldIteration, ListShrink,

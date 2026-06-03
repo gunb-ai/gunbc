@@ -10,12 +10,6 @@ pub use crate::generated_method_template_projection::{
 };
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-<<<<<<< HEAD
-use crate::std_syntax::BinOp::NullCoalesce;
-pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
-pub use crate::std_types::SourceSpan;
-=======
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
@@ -25,12 +19,7 @@ pub use crate::v2_compiler_coercion::{
 };
 pub use crate::v2_compiler_infer::{build_params_scope, extend_scope, InferScope};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
-<<<<<<< HEAD
-pub use crate::v2_compiler_infer_env::authored_name;
-pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
-=======
 pub use crate::v2_compiler_infer_env::{authored_name, TypeBinding, TypeEnv};
->>>>>>> 76fb7d8574 (v2 emit perf: ModuleIndex hoist in 05_emit_rust.dag; reset stage0 to clean (regen blocked by pre-existing dup-import bug))
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver, OpEntry, UniqueAccum,
