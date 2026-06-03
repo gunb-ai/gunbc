@@ -20626,9 +20626,11 @@ pub fn emit_subcommand_enum(
                 make_indent((depth.clone() + 2)),
                 "function: String,\n".to_string(),
                 make_indent((depth.clone() + 2)),
-                "/// Entry `.dag` file: load only this module and its transitive imports\n".to_string(),
+                "/// Entry `.dag` file: load only this module and its transitive imports\n"
+                    .to_string(),
                 make_indent((depth.clone() + 2)),
-                "/// (not every file under --source-root). Required for scoped TestClaim runs.\n".to_string(),
+                "/// (not every file under --source-root). Required for scoped TestClaim runs.\n"
+                    .to_string(),
                 make_indent((depth.clone() + 2)),
                 "#[arg(long)]\n".to_string(),
                 make_indent((depth.clone() + 2)),
@@ -20900,8 +20902,10 @@ pub fn emit_compile_match_arm(crate_name: String) -> String {
 pub fn emit_run_match_arm(crate_name: String) -> String {
     v2_rt::concat(
         v2_rt::concat(
-            "\n        Commands::Run { source_roots, function, entry, claim_run } => {\n".to_string(),
-            "            cli_run::handle_run(source_roots, function, entry, claim_run);\n".to_string(),
+            "\n        Commands::Run { source_roots, function, entry, claim_run } => {\n"
+                .to_string(),
+            "            cli_run::handle_run(source_roots, function, entry, claim_run);\n"
+                .to_string(),
         ),
         "        },".to_string(),
     )
