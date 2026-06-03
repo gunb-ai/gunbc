@@ -21,6 +21,23 @@ import v4.lens.registry {
   lens_registry_ids_resolve
 }
 import v4.lens.testgen {
+  AlgebraLaw,
+  AlgebraLawSubject,
+  BehaviorValueSubject,
+  BidirectionalRoundtrip,
+  BidirectionalRoundtripSubject,
+  ConnectiveKernel,
+  DiagnosticExhaustiveness,
+  FrozenLanguageBehaviorSnapshot,
+  LanguageBehaviorEquivalence,
+  LanguageBehaviorEquivalenceSubject,
+  LanguageBehaviorIoMock,
+  LensApplicability,
+  LensApplicabilitySubject,
+  RefinementPreservation,
+  RefinementPreservationSubject,
+  TypeConstruction,
+  TypeConstructionSubject,
   Generator,
   TestgenConcept,
   TestgenRunReceipt,
@@ -46,11 +63,54 @@ import v4.lens.edit_locus { GitDiffNameOnly, RepoPath }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.change {
   AffectedDependency,
+  AffectedExclusion,
   AffectedSet,
+  AffectedSetDiagnostics,
   AffectedSetFailClosed,
   AffectedSetProduced,
   AffectedSetReason,
-  ChangeSet
+  Change,
+  ChangeKind,
+  ChangeSet,
+  DependencyEndpoint,
+  DependencyDependent,
+  DependencySource,
+  ArtifactChanged,
+  NodeAdded,
+  NodeRemoved,
+  NodeChanged,
+  ProjectionChanged
+}
+import v4.std.artifact {
+  Artifact,
+  ArtifactKind,
+  CorePackage,
+  GeneratedArtifact,
+  GeneratedSource,
+  ProjectionArtifact,
+  SourceFile,
+  Stage0Candidate,
+  TestClaimArtifact,
+  WitnessBundle
+}
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  Contains,
+  DataDependsOn,
+  DependencyKind,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy
 }
 // Phase 1.4 canonical authority: `dsl/std/patterns.dag` (#3981). v4 compile uses `v4.std.patterns` /
 // `v4.std.types` mirrors (shapes aligned; see module headers) until compile roots include dsl/std.
@@ -80,16 +140,26 @@ import v4.std.node {
   Named,
   Node,
   NodeQuery,
+  Path,
   Positional,
   Symbol,
   TypeNode,
   Arrow,
+  Behavior,
+  Value,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
   combine_hash,
   content_hash,
   ByteOffsetCacheEligible,
   ByteOffsetCacheIneligible,
   byte_offset_cache_key,
   byte_offset_cache_key_projection_node,
+  bag_hash_digest,
+  canonical_hash_of_behavior,
+  canonical_hash_of_connective,
   canonical_tag_byte_limb_out_of_range
 }
 import v4.std.integer { int_add, int_negate }
@@ -104,6 +174,7 @@ import v4.std.diagnostic {
   Locus,
   NoCorrectionReason,
   Diagnostics,
+  NonEmptyDiagnostics,
   Outcome,
   Accepted,
   Rejected,
@@ -121,7 +192,14 @@ import v4.std.algebra {
   unique
 }
 import v4.std.verification {
+  ClaimAnchorKey,
+  GeneratedAnchorKey,
+  ManualAnchorKey,
   TestClaim,
+  TestClaimCoproductVariant,
+  TestClassification,
+  TestgenLayer,
+  TestgenTier,
   test_claim_anchor,
   test_claim_ci_selection_fail_closed,
   test_claim_evaluation_touches_rerun_frontier
@@ -552,6 +630,15 @@ type CiSelectionReceipt {
   testgen_slots: List<TestgenSlotSelection>
   component_affected_comparison: CiComponentAffected
 }
+
+// 🟡 bounded persistence — feature:f11c-ci-selection-receipt-persistence — bind node://adhoc-87c3a213-099 — dissolve-on-arrival: persisted CI selection receipts are stored by the runtime TestClaimRun/cache receipt substrate, and lookup keys are derived from canonical full receipt projection hashes; interim key below is still derived from modeled receipt partition hashes, never caller-authored names. Forbidden: treating transient fixture construction as persisted receipt evidence or accepting caller-chosen symbols as lookup authority.
+type CiSelectionReceiptStoreRow {
+  receipt: CiSelectionReceipt
+}
+
+type CiSelectionReceiptLookup
+  = CiSelectionReceiptFound { receipt: CiSelectionReceipt }
+  | CiSelectionReceiptMissing { key: Hash }
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:wave3-shadow-selection-receipt — consumer:ci_floor_held / fixture witnesses — bind docs/planning/v4-ci-selection-receipt-wave3-claim-projection-worksheet-2026-06-01.md §8 — dissolve-on-arrival: `CiSelectionMode` drives floor policy at GHA projection sites (delete Bool projection when Active scheduling lands); forbidden: persisting independent `floor_skip` or untagged mode→Bool helpers beside `mode`.
 fn ci_floor_held(receipt: CiSelectionReceipt) -> Bool {
@@ -3633,6 +3720,870 @@ fn ci_selection_receipt_mk(
 }
 
 
+data ci_selection_receipt_persistence_key_tag: Symbol = ci_selection_receipt_persistence_key_tag
+data ci_selection_mode_shadow_tag: Symbol = ci_selection_mode_shadow_tag
+data ci_selection_mode_active_tag: Symbol = ci_selection_mode_active_tag
+data ci_selection_provenance_fixture_tag: Symbol = ci_selection_provenance_fixture_tag
+data ci_selection_provenance_live_pr_git_diff_tag: Symbol = ci_selection_provenance_live_pr_git_diff_tag
+data ci_selection_decision_run_tag: Symbol = ci_selection_decision_run_tag
+data ci_selection_decision_skip_tag: Symbol = ci_selection_decision_skip_tag
+data ci_selection_decision_carved_out_tag: Symbol = ci_selection_decision_carved_out_tag
+data ci_selection_testgen_slot_tag: Symbol = ci_selection_testgen_slot_tag
+data ci_claim_reason_fail_closed_superset_tag: Symbol = ci_claim_reason_fail_closed_superset_tag
+data ci_claim_reason_affected_frontier_empty_tag: Symbol = ci_claim_reason_affected_frontier_empty_tag
+data ci_claim_reason_affected_intersection_nonempty_tag: Symbol = ci_claim_reason_affected_intersection_nonempty_tag
+data ci_claim_reason_affected_intersection_empty_tag: Symbol = ci_claim_reason_affected_intersection_empty_tag
+data ci_claim_reason_testgen_slot_mapped_tag: Symbol = ci_claim_reason_testgen_slot_mapped_tag
+data ci_claim_reason_shadow_observe_only_tag: Symbol = ci_claim_reason_shadow_observe_only_tag
+data ci_claim_reason_floor_step_carveout_tag: Symbol = ci_claim_reason_floor_step_carveout_tag
+data ci_digest_true_tag: Symbol = ci_digest_true_tag
+data ci_digest_false_tag: Symbol = ci_digest_false_tag
+data ci_digest_empty_hash_list_tag: Symbol = ci_digest_empty_hash_list_tag
+data ci_digest_empty_change_set_tag: Symbol = ci_digest_empty_change_set_tag
+data ci_digest_empty_affected_dependency_list_tag: Symbol = ci_digest_empty_affected_dependency_list_tag
+data ci_digest_empty_diagnostics_list_tag: Symbol = ci_digest_empty_diagnostics_list_tag
+data ci_digest_empty_affected_exclusion_list_tag: Symbol = ci_digest_empty_affected_exclusion_list_tag
+data ci_digest_empty_dependency_kind_list_tag: Symbol = ci_digest_empty_dependency_kind_list_tag
+data ci_digest_empty_step_selection_list_tag: Symbol = ci_digest_empty_step_selection_list_tag
+data ci_digest_empty_testclaim_selection_list_tag: Symbol = ci_digest_empty_testclaim_selection_list_tag
+data ci_digest_empty_testgen_slot_selection_list_tag: Symbol = ci_digest_empty_testgen_slot_selection_list_tag
+data ci_digest_empty_node_list_tag: Symbol = ci_digest_empty_node_list_tag
+data ci_change_kind_node_changed_tag: Symbol = ci_change_kind_node_changed_tag
+data ci_change_kind_node_added_tag: Symbol = ci_change_kind_node_added_tag
+data ci_change_kind_node_removed_tag: Symbol = ci_change_kind_node_removed_tag
+data ci_change_kind_projection_changed_tag: Symbol = ci_change_kind_projection_changed_tag
+data ci_change_kind_artifact_changed_tag: Symbol = ci_change_kind_artifact_changed_tag
+data ci_dependency_endpoint_source_tag: Symbol = ci_dependency_endpoint_source_tag
+data ci_dependency_endpoint_dependent_tag: Symbol = ci_dependency_endpoint_dependent_tag
+data ci_affected_set_produced_tag: Symbol = ci_affected_set_produced_tag
+data ci_affected_set_fail_closed_tag: Symbol = ci_affected_set_fail_closed_tag
+data ci_affected_set_diagnostics_tag: Symbol = ci_affected_set_diagnostics_tag
+data ci_affected_set_reason_evidence_tag: Symbol = ci_affected_set_reason_evidence_tag
+data ci_affected_set_diagnostics_evidence_tag: Symbol = ci_affected_set_diagnostics_evidence_tag
+data ci_no_correction_user_input_boundary_tag: Symbol = ci_no_correction_user_input_boundary_tag
+data ci_no_correction_ambiguous_intent_tag: Symbol = ci_no_correction_ambiguous_intent_tag
+data ci_no_correction_external_contract_unknown_tag: Symbol = ci_no_correction_external_contract_unknown_tag
+data ci_correction_suggested_tag: Symbol = ci_correction_suggested_tag
+data ci_correction_unavailable_tag: Symbol = ci_correction_unavailable_tag
+data ci_extent_whole_file_tag: Symbol = ci_extent_whole_file_tag
+data ci_extent_byte_range_tag: Symbol = ci_extent_byte_range_tag
+data ci_locus_textual_tag: Symbol = ci_locus_textual_tag
+data ci_locus_node_tag: Symbol = ci_locus_node_tag
+data ci_locus_port_tag: Symbol = ci_locus_port_tag
+data ci_dependency_kind_contains_tag: Symbol = ci_dependency_kind_contains_tag
+data ci_dependency_kind_binds_to_tag: Symbol = ci_dependency_kind_binds_to_tag
+data ci_dependency_kind_type_depends_on_tag: Symbol = ci_dependency_kind_type_depends_on_tag
+data ci_dependency_kind_data_depends_on_tag: Symbol = ci_dependency_kind_data_depends_on_tag
+data ci_dependency_kind_effect_depends_on_tag: Symbol = ci_dependency_kind_effect_depends_on_tag
+data ci_dependency_kind_resource_depends_on_tag: Symbol = ci_dependency_kind_resource_depends_on_tag
+data ci_dependency_kind_module_depends_on_tag: Symbol = ci_dependency_kind_module_depends_on_tag
+data ci_dependency_kind_barrier_before_tag: Symbol = ci_dependency_kind_barrier_before_tag
+data ci_dependency_kind_placement_depends_on_tag: Symbol = ci_dependency_kind_placement_depends_on_tag
+data ci_dependency_kind_model_depends_on_tag: Symbol = ci_dependency_kind_model_depends_on_tag
+data ci_dependency_kind_projection_depends_on_tag: Symbol = ci_dependency_kind_projection_depends_on_tag
+data ci_dependency_kind_generated_from_tag: Symbol = ci_dependency_kind_generated_from_tag
+data ci_dependency_kind_verified_by_tag: Symbol = ci_dependency_kind_verified_by_tag
+data ci_dependency_kind_promoted_by_tag: Symbol = ci_dependency_kind_promoted_by_tag
+data ci_dependency_kind_bootstrap_depends_on_tag: Symbol = ci_dependency_kind_bootstrap_depends_on_tag
+data ci_testclaim_variant_compiles_tag: Symbol = ci_testclaim_variant_compiles_tag
+data ci_testclaim_variant_diagnostic_tag: Symbol = ci_testclaim_variant_diagnostic_tag
+data ci_testclaim_variant_equals_tag: Symbol = ci_testclaim_variant_equals_tag
+data ci_testclaim_variant_round_trip_tag: Symbol = ci_testclaim_variant_round_trip_tag
+data ci_claim_anchor_manual_tag: Symbol = ci_claim_anchor_manual_tag
+data ci_claim_anchor_generated_tag: Symbol = ci_claim_anchor_generated_tag
+data ci_manual_anchor_tc_conj_empty_tag: Symbol = ci_manual_anchor_tc_conj_empty_tag
+data ci_manual_anchor_tc_disj_empty_tag: Symbol = ci_manual_anchor_tc_disj_empty_tag
+data ci_manual_anchor_tc_arrow_two_conj_tag: Symbol = ci_manual_anchor_tc_arrow_two_conj_tag
+data ci_manual_anchor_tc_cardinality_empty_tag: Symbol = ci_manual_anchor_tc_cardinality_empty_tag
+data ci_manual_anchor_tc_instantiation_empty_tag: Symbol = ci_manual_anchor_tc_instantiation_empty_tag
+data ci_manual_anchor_tc_arrow_empty_tag: Symbol = ci_manual_anchor_tc_arrow_empty_tag
+data ci_manual_anchor_tc_transform_empty_tag: Symbol = ci_manual_anchor_tc_transform_empty_tag
+data ci_manual_anchor_tc_branch_empty_tag: Symbol = ci_manual_anchor_tc_branch_empty_tag
+data ci_manual_anchor_tc_loop_empty_tag: Symbol = ci_manual_anchor_tc_loop_empty_tag
+data ci_manual_anchor_tc_bind_zero_children_tag: Symbol = ci_manual_anchor_tc_bind_zero_children_tag
+data ci_manual_anchor_tc_conj_equals_refl_tag: Symbol = ci_manual_anchor_tc_conj_equals_refl_tag
+data ci_manual_anchor_nat_add_left_identity_tag: Symbol = ci_manual_anchor_nat_add_left_identity_tag
+data ci_manual_anchor_nat_add_right_identity_tag: Symbol = ci_manual_anchor_nat_add_right_identity_tag
+data ci_manual_anchor_nat_add_associativity_tag: Symbol = ci_manual_anchor_nat_add_associativity_tag
+data ci_manual_anchor_nat_mul_left_identity_tag: Symbol = ci_manual_anchor_nat_mul_left_identity_tag
+data ci_manual_anchor_nat_mul_annihilator_tag: Symbol = ci_manual_anchor_nat_mul_annihilator_tag
+data ci_manual_anchor_nat_mul_associativity_tag: Symbol = ci_manual_anchor_nat_mul_associativity_tag
+data ci_manual_anchor_lbe_conj_dag_surface_tag: Symbol = ci_manual_anchor_lbe_conj_dag_surface_tag
+data ci_manual_anchor_lbe_disj_dag_surface_tag: Symbol = ci_manual_anchor_lbe_disj_dag_surface_tag
+data ci_manual_anchor_lbe_transform_dag_surface_tag: Symbol = ci_manual_anchor_lbe_transform_dag_surface_tag
+data ci_manual_anchor_refinement_non_empty_list_base_tag: Symbol = ci_manual_anchor_refinement_non_empty_list_base_tag
+data ci_manual_anchor_absent_tag: Symbol = ci_manual_anchor_absent_tag
+data ci_generated_anchor_coproduct_exhaustiveness_tag: Symbol = ci_generated_anchor_coproduct_exhaustiveness_tag
+data ci_testgen_tier1_tag: Symbol = ci_testgen_tier1_tag
+data ci_testgen_tier2_tag: Symbol = ci_testgen_tier2_tag
+data ci_testgen_tier3_tag: Symbol = ci_testgen_tier3_tag
+data ci_testgen_layer_unit_tag: Symbol = ci_testgen_layer_unit_tag
+data ci_testgen_layer_integration_tag: Symbol = ci_testgen_layer_integration_tag
+data ci_testgen_layer_boundary_tag: Symbol = ci_testgen_layer_boundary_tag
+data ci_artifact_kind_source_file_tag: Symbol = ci_artifact_kind_source_file_tag
+data ci_artifact_kind_generated_source_tag: Symbol = ci_artifact_kind_generated_source_tag
+data ci_artifact_kind_test_claim_artifact_tag: Symbol = ci_artifact_kind_test_claim_artifact_tag
+data ci_artifact_kind_projection_artifact_tag: Symbol = ci_artifact_kind_projection_artifact_tag
+data ci_artifact_kind_stage0_candidate_tag: Symbol = ci_artifact_kind_stage0_candidate_tag
+data ci_artifact_kind_core_package_tag: Symbol = ci_artifact_kind_core_package_tag
+data ci_artifact_kind_witness_bundle_tag: Symbol = ci_artifact_kind_witness_bundle_tag
+data ci_testgen_concept_type_construction_tag: Symbol = ci_testgen_concept_type_construction_tag
+data ci_testgen_concept_algebra_law_tag: Symbol = ci_testgen_concept_algebra_law_tag
+data ci_testgen_concept_diagnostic_exhaustiveness_tag: Symbol = ci_testgen_concept_diagnostic_exhaustiveness_tag
+data ci_testgen_concept_lens_applicability_tag: Symbol = ci_testgen_concept_lens_applicability_tag
+data ci_testgen_concept_bidirectional_roundtrip_tag: Symbol = ci_testgen_concept_bidirectional_roundtrip_tag
+data ci_testgen_concept_language_behavior_equivalence_tag: Symbol = ci_testgen_concept_language_behavior_equivalence_tag
+data ci_testgen_concept_refinement_preservation_tag: Symbol = ci_testgen_concept_refinement_preservation_tag
+
+fn ci_bool_digest(value: Bool) -> Hash {
+  match value {
+    true => ci_symbol_digest(sym: ci_digest_true_tag)
+    false => ci_symbol_digest(sym: ci_digest_false_tag)
+  }
+}
+
+
+fn ci_hash_list_digest(xs: List<Hash>) -> Hash {
+  fold_list(
+    xs: xs,
+    empty: ci_symbol_digest(sym: ci_digest_empty_hash_list_tag),
+    cons: fn(acc, item) {
+      combine_hash(a: acc, b: item)
+    }
+  )
+}
+
+
+fn ci_node_list_digest(nodes: List<Node>) -> Hash {
+  fold_list(
+    xs: nodes,
+    empty: ci_symbol_digest(sym: ci_digest_empty_node_list_tag),
+    cons: fn(acc, node) {
+      combine_hash(a: acc, b: content_hash(n: node))
+    }
+  )
+}
+
+
+fn ci_string_digest(s: String) -> Hash {
+  content_hash(n: ci_string_projection_node(s: s))
+}
+
+
+fn ci_path_digest(path: Path) -> Hash {
+  content_hash(n: ci_symbol_list_projection_node(xs: path.steps))
+}
+
+
+fn ci_artifact_kind_digest(kind: ArtifactKind) -> Hash {
+  match kind {
+    SourceFile => ci_symbol_digest(sym: ci_artifact_kind_source_file_tag)
+    GeneratedSource => ci_symbol_digest(sym: ci_artifact_kind_generated_source_tag)
+    TestClaimArtifact => ci_symbol_digest(sym: ci_artifact_kind_test_claim_artifact_tag)
+    ProjectionArtifact => ci_symbol_digest(sym: ci_artifact_kind_projection_artifact_tag)
+    Stage0Candidate => ci_symbol_digest(sym: ci_artifact_kind_stage0_candidate_tag)
+    CorePackage => ci_symbol_digest(sym: ci_artifact_kind_core_package_tag)
+    WitnessBundle => ci_symbol_digest(sym: ci_artifact_kind_witness_bundle_tag)
+  }
+}
+
+
+fn ci_artifact_digest(artifact: Artifact) -> Hash {
+  ci_hash_list_digest(xs: [
+    ci_artifact_kind_digest(kind: artifact.kind),
+    ci_symbol_digest(sym: artifact.id),
+    ci_string_digest(s: artifact.file_path)
+  ])
+}
+
+
+fn ci_generated_artifact_digest(artifact: GeneratedArtifact) -> Hash {
+  ci_artifact_digest(artifact: artifact.refined.base)
+}
+
+
+fn ci_connective_digest(connective: Connective) -> Hash {
+  canonical_hash_of_connective(c: connective)
+}
+
+
+fn ci_behavior_digest(behavior: Behavior) -> Hash {
+  canonical_hash_of_behavior(b: behavior)
+}
+
+fn ci_change_kind_digest(kind: ChangeKind) -> Hash {
+  match kind {
+    NodeChanged => ci_symbol_digest(sym: ci_change_kind_node_changed_tag)
+    NodeAdded => ci_symbol_digest(sym: ci_change_kind_node_added_tag)
+    NodeRemoved => ci_symbol_digest(sym: ci_change_kind_node_removed_tag)
+    ProjectionChanged => ci_symbol_digest(sym: ci_change_kind_projection_changed_tag)
+    ArtifactChanged => ci_symbol_digest(sym: ci_change_kind_artifact_changed_tag)
+  }
+}
+
+
+fn ci_change_digest(change: Change) -> Hash {
+  combine_hash(
+    a: ci_change_kind_digest(kind: change.kind),
+    b: combine_hash(
+      a: content_hash(n: change.subject),
+      b: ci_path_digest(path: change.at)
+    )
+  )
+}
+
+
+fn ci_change_set_digest(changes: ChangeSet) -> Hash {
+  fold_list(
+    xs: changes.changes,
+    empty: ci_symbol_digest(sym: ci_digest_empty_change_set_tag),
+    cons: fn(acc, change) {
+      combine_hash(a: acc, b: ci_change_digest(change: change))
+    }
+  )
+}
+
+
+fn ci_dependency_kind_digest(kind: DependencyKind) -> Hash {
+  match kind {
+    Contains => ci_symbol_digest(sym: ci_dependency_kind_contains_tag)
+    BindsTo => ci_symbol_digest(sym: ci_dependency_kind_binds_to_tag)
+    TypeDependsOn => ci_symbol_digest(sym: ci_dependency_kind_type_depends_on_tag)
+    DataDependsOn => ci_symbol_digest(sym: ci_dependency_kind_data_depends_on_tag)
+    EffectDependsOn => ci_symbol_digest(sym: ci_dependency_kind_effect_depends_on_tag)
+    ResourceDependsOn => ci_symbol_digest(sym: ci_dependency_kind_resource_depends_on_tag)
+    ModuleDependsOn => ci_symbol_digest(sym: ci_dependency_kind_module_depends_on_tag)
+    BarrierBefore => ci_symbol_digest(sym: ci_dependency_kind_barrier_before_tag)
+    PlacementDependsOn => ci_symbol_digest(sym: ci_dependency_kind_placement_depends_on_tag)
+    ModelDependsOn => ci_symbol_digest(sym: ci_dependency_kind_model_depends_on_tag)
+    ProjectionDependsOn => ci_symbol_digest(sym: ci_dependency_kind_projection_depends_on_tag)
+    GeneratedFrom => ci_symbol_digest(sym: ci_dependency_kind_generated_from_tag)
+    VerifiedBy => ci_symbol_digest(sym: ci_dependency_kind_verified_by_tag)
+    PromotedBy => ci_symbol_digest(sym: ci_dependency_kind_promoted_by_tag)
+    BootstrapDependsOn => ci_symbol_digest(sym: ci_dependency_kind_bootstrap_depends_on_tag)
+  }
+}
+
+
+fn ci_dependency_view_digest(view: DependencyView) -> Hash {
+  combine_hash(
+    a: content_hash(n: view.source),
+    b: combine_hash(
+      a: content_hash(n: view.dependent),
+      b: combine_hash(
+        a: ci_dependency_kind_digest(kind: view.kind),
+        b: content_hash(n: view.usage_site)
+      )
+    )
+  )
+}
+
+
+fn ci_dependency_endpoint_digest(target: DependencyEndpoint) -> Hash {
+  match target {
+    DependencySource => ci_symbol_digest(sym: ci_dependency_endpoint_source_tag)
+    DependencyDependent => ci_symbol_digest(sym: ci_dependency_endpoint_dependent_tag)
+  }
+}
+
+
+fn ci_affected_dependency_digest(dep: AffectedDependency) -> Hash {
+  combine_hash(
+    a: ci_change_digest(change: dep.change),
+    b: combine_hash(
+      a: ci_dependency_view_digest(view: dep.dependency),
+      b: ci_dependency_endpoint_digest(target: dep.target)
+    )
+  )
+}
+
+
+fn ci_affected_dependency_list_digest(xs: List<AffectedDependency>) -> Hash {
+  fold_list(
+    xs: xs,
+    empty: ci_symbol_digest(sym: ci_digest_empty_affected_dependency_list_tag),
+    cons: fn(acc, dep) {
+      combine_hash(a: acc, b: ci_affected_dependency_digest(dep: dep))
+    }
+  )
+}
+
+
+fn ci_extent_digest(extent: Extent) -> Hash {
+  match extent {
+    WholeFile => ci_symbol_digest(sym: ci_extent_whole_file_tag)
+    ByteRange { start, end } =>
+      ci_hash_list_digest(xs: [
+        ci_symbol_digest(sym: ci_extent_byte_range_tag),
+        content_hash(n: byte_offset_cache_key_projection_node(i: start)),
+        content_hash(n: byte_offset_cache_key_projection_node(i: end))
+      ])
+  }
+}
+
+
+fn ci_locus_digest(locus: Locus) -> Hash {
+  match locus {
+    Textual { file, extent } =>
+      ci_hash_list_digest(xs: [
+        ci_symbol_digest(sym: ci_locus_textual_tag),
+        ci_symbol_digest(sym: file),
+        ci_extent_digest(extent: extent)
+      ])
+    NodeLocus { anchor } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_locus_node_tag),
+        b: content_hash(n: anchor.at)
+      )
+    PortLocus { anchor } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_locus_port_tag),
+        b: ci_symbol_digest(sym: anchor.at)
+      )
+  }
+}
+
+
+fn ci_no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
+  match reason {
+    UserInputBoundary => ci_symbol_digest(sym: ci_no_correction_user_input_boundary_tag)
+    AmbiguousIntent => ci_symbol_digest(sym: ci_no_correction_ambiguous_intent_tag)
+    ExternalContractUnknown => ci_symbol_digest(sym: ci_no_correction_external_contract_unknown_tag)
+  }
+}
+
+
+fn ci_correction_digest(correction: Correction) -> Hash {
+  match correction {
+    Suggested { node } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_correction_suggested_tag),
+        b: content_hash(n: node)
+      )
+    Unavailable { reason } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_correction_unavailable_tag),
+        b: ci_no_correction_reason_digest(reason: reason)
+      )
+  }
+}
+
+
+fn ci_diagnostic_digest(diagnostic: Diagnostic) -> Hash {
+  combine_hash(
+    a: ci_symbol_digest(sym: diagnostic.reason),
+    b: combine_hash(
+      a: ci_locus_digest(locus: diagnostic.at),
+      b: ci_correction_digest(correction: diagnostic.correction)
+    )
+  )
+}
+
+
+fn ci_diagnostics_list_digest(xs: List<Diagnostic>) -> Hash {
+  bag_hash_digest(
+    empty: ci_symbol_digest(sym: ci_digest_empty_diagnostics_list_tag),
+    xs: map(xs, diagnostic => ci_diagnostic_digest(diagnostic: diagnostic))
+  )
+}
+
+
+fn ci_non_empty_diagnostics_digest(diagnostics: NonEmptyDiagnostics) -> Hash {
+  combine_hash(
+    a: ci_diagnostic_digest(diagnostic: diagnostics.head),
+    b: ci_diagnostics_list_digest(xs: diagnostics.tail)
+  )
+}
+
+
+fn ci_affected_exclusion_digest(exclusion: AffectedExclusion) -> Hash {
+  combine_hash(
+    a: ci_change_digest(change: exclusion.change),
+    b: combine_hash(
+      a: ci_dependency_view_digest(view: exclusion.dependency),
+      b: combine_hash(
+        a: content_hash(n: exclusion.usage_site),
+        b: ci_symbol_digest(sym: exclusion.changed_dimension)
+      )
+    )
+  )
+}
+
+
+fn ci_affected_exclusion_list_digest(xs: List<AffectedExclusion>) -> Hash {
+  fold_list(
+    xs: xs,
+    empty: ci_symbol_digest(sym: ci_digest_empty_affected_exclusion_list_tag),
+    cons: fn(acc, exclusion) {
+      combine_hash(a: acc, b: ci_affected_exclusion_digest(exclusion: exclusion))
+    }
+  )
+}
+
+
+fn ci_dependency_kind_list_digest(xs: List<DependencyKind>) -> Hash {
+  fold_list(
+    xs: xs,
+    empty: ci_symbol_digest(sym: ci_digest_empty_dependency_kind_list_tag),
+    cons: fn(acc, kind) {
+      combine_hash(a: acc, b: ci_dependency_kind_digest(kind: kind))
+    }
+  )
+}
+
+
+fn ci_affected_set_digest(affected: AffectedSet) -> Hash {
+  match affected {
+    AffectedSetProduced { changes, affected: deps, exclusions, restricted_to } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_affected_set_produced_tag),
+        b: combine_hash(
+          a: ci_change_set_digest(changes: changes),
+          b: combine_hash(
+            a: ci_affected_dependency_list_digest(xs: deps),
+            b: combine_hash(
+              a: ci_affected_exclusion_list_digest(xs: exclusions),
+              b: ci_dependency_kind_list_digest(xs: restricted_to)
+            )
+          )
+        )
+      )
+    AffectedSetFailClosed { changes, evidence } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_affected_set_fail_closed_tag),
+        b: combine_hash(
+          a: ci_change_set_digest(changes: changes),
+          b: match evidence {
+            AffectedSetReason { reason } =>
+              combine_hash(
+                a: ci_symbol_digest(sym: ci_affected_set_reason_evidence_tag),
+                b: ci_symbol_digest(sym: reason)
+              )
+            AffectedSetDiagnostics { diagnostics } =>
+              combine_hash(
+                a: ci_symbol_digest(sym: ci_affected_set_diagnostics_evidence_tag),
+                b: ci_non_empty_diagnostics_digest(diagnostics: diagnostics)
+              )
+          }
+        )
+      )
+  }
+}
+
+
+fn ci_testclaim_variant_digest(variant: TestClaimCoproductVariant) -> Hash {
+  match variant {
+    TestClaimCompilesClaimVariant => ci_symbol_digest(sym: ci_testclaim_variant_compiles_tag)
+    TestClaimDiagnosticClaimVariant => ci_symbol_digest(sym: ci_testclaim_variant_diagnostic_tag)
+    TestClaimEqualsClaimVariant => ci_symbol_digest(sym: ci_testclaim_variant_equals_tag)
+    TestClaimRoundTripClaimVariant => ci_symbol_digest(sym: ci_testclaim_variant_round_trip_tag)
+  }
+}
+
+
+fn ci_manual_anchor_digest(anchor: ManualAnchorKey) -> Hash {
+  match anchor {
+    ManualTcConjEmpty => ci_symbol_digest(sym: ci_manual_anchor_tc_conj_empty_tag)
+    ManualTcDisjEmpty => ci_symbol_digest(sym: ci_manual_anchor_tc_disj_empty_tag)
+    ManualTcArrowTwoConj => ci_symbol_digest(sym: ci_manual_anchor_tc_arrow_two_conj_tag)
+    ManualTcCardinalityEmpty => ci_symbol_digest(sym: ci_manual_anchor_tc_cardinality_empty_tag)
+    ManualTcInstantiationEmpty => ci_symbol_digest(sym: ci_manual_anchor_tc_instantiation_empty_tag)
+    ManualTcArrowEmpty => ci_symbol_digest(sym: ci_manual_anchor_tc_arrow_empty_tag)
+    ManualTcTransformEmpty => ci_symbol_digest(sym: ci_manual_anchor_tc_transform_empty_tag)
+    ManualTcBranchEmpty => ci_symbol_digest(sym: ci_manual_anchor_tc_branch_empty_tag)
+    ManualTcLoopEmpty => ci_symbol_digest(sym: ci_manual_anchor_tc_loop_empty_tag)
+    ManualTcBindZeroChildren => ci_symbol_digest(sym: ci_manual_anchor_tc_bind_zero_children_tag)
+    ManualTcConjEqualsRefl => ci_symbol_digest(sym: ci_manual_anchor_tc_conj_equals_refl_tag)
+    ManualNatAddLeftIdentity => ci_symbol_digest(sym: ci_manual_anchor_nat_add_left_identity_tag)
+    ManualNatAddRightIdentity => ci_symbol_digest(sym: ci_manual_anchor_nat_add_right_identity_tag)
+    ManualNatAddAssociativity => ci_symbol_digest(sym: ci_manual_anchor_nat_add_associativity_tag)
+    ManualNatMulLeftIdentity => ci_symbol_digest(sym: ci_manual_anchor_nat_mul_left_identity_tag)
+    ManualNatMulAnnihilator => ci_symbol_digest(sym: ci_manual_anchor_nat_mul_annihilator_tag)
+    ManualNatMulAssociativity => ci_symbol_digest(sym: ci_manual_anchor_nat_mul_associativity_tag)
+    ManualLbeConjDagSurface => ci_symbol_digest(sym: ci_manual_anchor_lbe_conj_dag_surface_tag)
+    ManualLbeDisjDagSurface => ci_symbol_digest(sym: ci_manual_anchor_lbe_disj_dag_surface_tag)
+    ManualLbeTransformDagSurface => ci_symbol_digest(sym: ci_manual_anchor_lbe_transform_dag_surface_tag)
+    ManualRefinementNonEmptyListBase => ci_symbol_digest(sym: ci_manual_anchor_refinement_non_empty_list_base_tag)
+    ManualAnchorAbsent => ci_symbol_digest(sym: ci_manual_anchor_absent_tag)
+  }
+}
+
+
+fn ci_generated_anchor_digest(anchor: GeneratedAnchorKey) -> Hash {
+  match anchor {
+    GeneratedCoproductExhaustiveness { omitted_variant } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_generated_anchor_coproduct_exhaustiveness_tag),
+        b: ci_testclaim_variant_digest(variant: omitted_variant)
+      )
+  }
+}
+
+
+fn ci_claim_anchor_digest(anchor: ClaimAnchorKey) -> Hash {
+  match anchor {
+    ManualClaimAnchor { manual_anchor } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_claim_anchor_manual_tag),
+        b: ci_manual_anchor_digest(anchor: manual_anchor)
+      )
+    GeneratedClaimAnchor { generated_anchor } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_claim_anchor_generated_tag),
+        b: ci_generated_anchor_digest(anchor: generated_anchor)
+      )
+  }
+}
+
+
+fn ci_testgen_tier_digest(tier: TestgenTier) -> Hash {
+  match tier {
+    Tier1 => ci_symbol_digest(sym: ci_testgen_tier1_tag)
+    Tier2 => ci_symbol_digest(sym: ci_testgen_tier2_tag)
+    Tier3 => ci_symbol_digest(sym: ci_testgen_tier3_tag)
+  }
+}
+
+
+fn ci_testgen_layer_digest(layer: TestgenLayer) -> Hash {
+  match layer {
+    Unit => ci_symbol_digest(sym: ci_testgen_layer_unit_tag)
+    Integration => ci_symbol_digest(sym: ci_testgen_layer_integration_tag)
+    Boundary => ci_symbol_digest(sym: ci_testgen_layer_boundary_tag)
+  }
+}
+
+
+fn ci_test_classification_digest(classification: TestClassification) -> Hash {
+  combine_hash(
+    a: ci_testgen_tier_digest(tier: classification.tier),
+    b: ci_testgen_layer_digest(layer: classification.layer)
+  )
+}
+
+
+fn ci_component_affected_digest(component: CiComponentAffected) -> Hash {
+  ci_hash_list_digest(xs: [
+    ci_bool_digest(value: component.v2),
+    ci_bool_digest(value: component.v3),
+    ci_bool_digest(value: component.v4),
+    ci_bool_digest(value: component.testclaim_corpus),
+    ci_bool_digest(value: component.workflow_policy),
+    ci_bool_digest(value: component.release_distribution),
+    ci_bool_digest(value: component.release_distribution_only)
+  ])
+}
+
+
+fn ci_selection_mode_digest(mode: CiSelectionMode) -> Hash {
+  match mode {
+    Shadow => ci_symbol_digest(sym: ci_selection_mode_shadow_tag)
+    Active { skip_evidence } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_selection_mode_active_tag),
+        b: skip_evidence.cached_verdict_digest
+      )
+  }
+}
+
+
+fn ci_selection_provenance_digest(provenance: CiSelectionReceiptProvenance) -> Hash {
+  match provenance {
+    FixtureReceipt => ci_symbol_digest(sym: ci_selection_provenance_fixture_tag)
+    LivePrGitDiff => ci_symbol_digest(sym: ci_selection_provenance_live_pr_git_diff_tag)
+  }
+}
+
+
+fn ci_selection_decision_digest(decision: SelectionDecision) -> Hash {
+  match decision {
+    Run => ci_symbol_digest(sym: ci_selection_decision_run_tag)
+    Skip => ci_symbol_digest(sym: ci_selection_decision_skip_tag)
+    CarvedOut { carveout_reason } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_selection_decision_carved_out_tag),
+        b: ci_symbol_digest(sym: carveout_reason)
+      )
+  }
+}
+
+
+fn ci_claim_selection_reason_digest(reason: CiClaimSelectionReason) -> Hash {
+  match reason {
+    FailClosedSuperset => ci_symbol_digest(sym: ci_claim_reason_fail_closed_superset_tag)
+    AffectedFrontierEmpty => ci_symbol_digest(sym: ci_claim_reason_affected_frontier_empty_tag)
+    AffectedIntersectionNonempty => ci_symbol_digest(sym: ci_claim_reason_affected_intersection_nonempty_tag)
+    AffectedIntersectionEmpty => ci_symbol_digest(sym: ci_claim_reason_affected_intersection_empty_tag)
+    TestgenSlotMapped => ci_symbol_digest(sym: ci_claim_reason_testgen_slot_mapped_tag)
+    ShadowObserveOnly => ci_symbol_digest(sym: ci_claim_reason_shadow_observe_only_tag)
+    FloorStepCarveout => ci_symbol_digest(sym: ci_claim_reason_floor_step_carveout_tag)
+  }
+}
+
+
+fn ci_step_selection_digest(row: CiStepSelection) -> Hash {
+  combine_hash(
+    a: content_hash(n: ci_step_id_projection_node(step_id: row.step_id)),
+    b: combine_hash(
+      a: content_hash(n: ci_upsert_input_ref_list_projection_node(refs: row.inputs_consulted)),
+      b: combine_hash(
+        a: ci_affected_dependency_list_digest(xs: row.affected_intersection),
+        b: combine_hash(
+          a: ci_selection_decision_digest(decision: row.decision),
+          b: combine_hash(
+            a: row.cache_digest,
+            b: ci_symbol_digest(sym: row.reason)
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn ci_step_selection_list_digest(rows: List<CiStepSelection>) -> Hash {
+  fold_list(
+    xs: rows,
+    empty: ci_symbol_digest(sym: ci_digest_empty_step_selection_list_tag),
+    cons: fn(acc, row) {
+      combine_hash(a: acc, b: ci_step_selection_digest(row: row))
+    }
+  )
+}
+
+
+fn ci_testclaim_selection_digest(row: CiTestClaimSelection) -> Hash {
+  combine_hash(
+    a: ci_claim_anchor_digest(anchor: row.anchor),
+    b: combine_hash(
+      a: ci_string_digest(s: row.label),
+      b: combine_hash(
+        a: ci_testclaim_variant_digest(variant: row.coproduct_variant),
+        b: combine_hash(
+          a: row.claim_projection_hash,
+          b: combine_hash(
+            a: ci_bool_digest(value: row.selected),
+            b: ci_claim_selection_reason_digest(reason: row.reason)
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn ci_testclaim_selection_list_digest(rows: List<CiTestClaimSelection>) -> Hash {
+  fold_list(
+    xs: rows,
+    empty: ci_symbol_digest(sym: ci_digest_empty_testclaim_selection_list_tag),
+    cons: fn(acc, row) {
+      combine_hash(a: acc, b: ci_testclaim_selection_digest(row: row))
+    }
+  )
+}
+
+
+fn ci_type_construction_subject_digest(subject: TypeConstructionSubject) -> Hash {
+  match subject {
+    ConnectiveKernel { connective } => ci_connective_digest(connective: connective)
+    BehaviorValueSubject { behavior } => ci_behavior_digest(behavior: behavior)
+  }
+}
+
+
+fn ci_algebra_law_subject_digest(subject: AlgebraLawSubject) -> Hash {
+  ci_hash_list_digest(xs: [
+    ci_symbol_digest(sym: subject.algebra),
+    ci_symbol_digest(sym: subject.inhabitant),
+    ci_symbol_digest(sym: subject.law)
+  ])
+}
+
+
+fn ci_lens_applicability_subject_digest(subject: LensApplicabilitySubject) -> Hash {
+  combine_hash(a: ci_symbol_digest(sym: subject.lens), b: content_hash(n: subject.program))
+}
+
+
+fn ci_bidirectional_roundtrip_subject_digest(subject: BidirectionalRoundtripSubject) -> Hash {
+  combine_hash(a: ci_symbol_digest(sym: subject.language), b: ci_symbol_digest(sym: subject.production))
+}
+
+
+fn ci_language_behavior_io_mock_digest(mock: LanguageBehaviorIoMock) -> Hash {
+  ci_hash_list_digest(xs: [
+    ci_symbol_digest(sym: mock.snapshot.language),
+    content_hash(n: mock.snapshot.input_node),
+    content_hash(n: mock.snapshot.expected_value)
+  ])
+}
+
+
+fn ci_language_behavior_equivalence_subject_digest(subject: LanguageBehaviorEquivalenceSubject) -> Hash {
+  combine_hash(
+    a: ci_type_construction_subject_digest(subject: subject.subject),
+    b: ci_symbol_digest(sym: subject.language)
+  )
+}
+
+
+fn ci_refinement_preservation_subject_digest(subject: RefinementPreservationSubject) -> Hash {
+  ci_hash_list_digest(xs: [
+    ci_node_list_digest(nodes: subject.refined.base),
+    ci_node_list_digest(nodes: subject.original)
+  ])
+}
+
+
+fn ci_testgen_concept_digest(concept: TestgenConcept) -> Hash {
+  match concept {
+    TypeConstruction { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_type_construction_tag),
+        b: ci_type_construction_subject_digest(subject: subject)
+      )
+    AlgebraLaw { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_algebra_law_tag),
+        b: ci_algebra_law_subject_digest(subject: subject)
+      )
+    DiagnosticExhaustiveness { omitted_variant } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_diagnostic_exhaustiveness_tag),
+        b: ci_testclaim_variant_digest(variant: omitted_variant)
+      )
+    LensApplicability { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_lens_applicability_tag),
+        b: ci_lens_applicability_subject_digest(subject: subject)
+      )
+    BidirectionalRoundtrip { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_bidirectional_roundtrip_tag),
+        b: ci_bidirectional_roundtrip_subject_digest(subject: subject)
+      )
+    LanguageBehaviorEquivalence { subject, mock } =>
+      ci_hash_list_digest(xs: [
+        ci_symbol_digest(sym: ci_testgen_concept_language_behavior_equivalence_tag),
+        ci_language_behavior_equivalence_subject_digest(subject: subject),
+        ci_language_behavior_io_mock_digest(mock: mock)
+      ])
+    RefinementPreservation { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_refinement_preservation_tag),
+        b: ci_refinement_preservation_subject_digest(subject: subject)
+      )
+  }
+}
+
+
+fn ci_testgen_slot_selection_digest(row: TestgenSlotSelection) -> Hash {
+  combine_hash(
+    a: ci_testclaim_variant_digest(variant: row.generator.kind),
+    b: combine_hash(
+      a: ci_test_classification_digest(classification: row.generator.classification),
+      b: combine_hash(
+        a: ci_claim_anchor_digest(anchor: row.generator.anchor),
+        b: combine_hash(
+          a: ci_testgen_concept_digest(concept: row.generator.slot),
+          b: combine_hash(
+            a: ci_symbol_digest(sym: row.generator.provenance.generator_id),
+            b: combine_hash(
+              a: ci_generated_artifact_digest(artifact: row.generator.provenance.artifact),
+              b: combine_hash(
+                a: ci_symbol_digest(sym: row.generator.profile_metadata.profile_ref),
+                b: combine_hash(
+                  a: ci_claim_anchor_digest(anchor: row.emits_claim_anchor),
+                  b: combine_hash(
+                    a: ci_bool_digest(value: row.selected),
+                    b: ci_claim_selection_reason_digest(reason: row.reason)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn ci_testgen_slot_selection_list_digest(rows: List<TestgenSlotSelection>) -> Hash {
+  fold_list(
+    xs: rows,
+    empty: ci_symbol_digest(sym: ci_digest_empty_testgen_slot_selection_list_tag),
+    cons: fn(acc, row) {
+      combine_hash(a: acc, b: ci_testgen_slot_selection_digest(row: row))
+    }
+  )
+}
+
+
+fn ci_selection_receipt_storage_key(receipt: CiSelectionReceipt) -> Hash {
+  combine_hash(
+    a: ci_symbol_digest(sym: ci_selection_receipt_persistence_key_tag),
+    b: combine_hash(
+      a: ci_change_set_digest(changes: receipt.pr),
+      b: combine_hash(
+        a: ci_affected_set_digest(affected: receipt.affected),
+        b: combine_hash(
+          a: ci_selection_mode_digest(mode: receipt.mode),
+          b: combine_hash(
+            a: ci_selection_provenance_digest(provenance: receipt.provenance),
+            b: combine_hash(
+              a: ci_step_selection_list_digest(rows: receipt.decisions),
+              b: combine_hash(
+                a: ci_testclaim_selection_list_digest(rows: receipt.testclaim_decisions),
+                b: combine_hash(
+                  a: ci_testgen_slot_selection_list_digest(rows: receipt.testgen_slots),
+                  b: ci_component_affected_digest(component: receipt.component_affected_comparison)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn ci_selection_receipt_persist(
+  receipt: CiSelectionReceipt,
+  store: List<CiSelectionReceiptStoreRow>
+) -> List<CiSelectionReceiptStoreRow> {
+  list_snoc_item(
+    xs: store,
+    item: CiSelectionReceiptStoreRow {
+      receipt: receipt
+    }
+  )
+}
+
+
+fn ci_selection_receipt_lookup(
+  key: Hash,
+  store: List<CiSelectionReceiptStoreRow>
+) -> CiSelectionReceiptLookup {
+  fold(
+    store,
+    init: CiSelectionReceiptMissing { key: key },
+    f: fn(acc, row) {
+      match acc {
+        CiSelectionReceiptFound { receipt: _ } => acc
+        CiSelectionReceiptMissing { key: missing_key } =>
+          if ci_selection_receipt_storage_key(receipt: row.receipt) == missing_key {
+            CiSelectionReceiptFound { receipt: row.receipt }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+
 // ── Wave 3 §11.7.4 — CiSelectionReceipt claim projection (consumes #4178 runtime selection API) ──
 fn ci_wave3_shadow_testclaim_selection_reason(
   claim: TestClaim,
@@ -4368,6 +5319,28 @@ fn ci_wave3_shadow_fixture_manual_subset_selected_holds() -> Bool {
 data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_closed_superset_holds() && ci_wave3_shadow_fixture_floor_held_holds() && ci_wave3_shadow_fixture_provenance_is_fixture_holds() && ci_wave3_shadow_fixture_manual_subset_selected_holds() && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
 
 data witness_ci_wave3_shadow_testgen_receipts_ok: Bool = ci_wave3_shadow_testgen_run_receipt_holds() && ci_testgen_selected_receipt_holds(affected: ci_wave3_shadow_fail_closed_affected, profile_ref: testgen_default_profile_ref) && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
+
+data ci_selection_receipt_shadow_fixture_storage_key: Hash = ci_selection_receipt_storage_key(receipt: ci_selection_receipt_shadow_fixture_receipt)
+
+data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow> = ci_selection_receipt_persist(
+    receipt: ci_selection_receipt_shadow_fixture_receipt,
+    store: []
+  )
+
+data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup = ci_selection_receipt_lookup(
+    key: ci_selection_receipt_shadow_fixture_storage_key,
+    store: ci_selection_receipt_shadow_fixture_store
+  )
+
+fn ci_selection_receipt_shadow_fixture_persistence_lookup_holds() -> Bool {
+  match ci_selection_receipt_shadow_fixture_lookup {
+    CiSelectionReceiptFound { receipt } =>
+      ci_selection_receipt_storage_key(receipt: receipt) == ci_selection_receipt_shadow_fixture_storage_key
+    CiSelectionReceiptMissing { key: _ } => false
+  }
+}
+
+data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool = ci_selection_receipt_shadow_fixture_persistence_lookup_holds()
 
 data ci_selection_receipt_shadow_generatable_ok: Bool = ci_selection_receipt_shadow_fixture_well_formed_ok && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 
