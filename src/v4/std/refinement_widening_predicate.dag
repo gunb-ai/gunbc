@@ -1,0 +1,50 @@
+// src/v4/std/refinement_widening_predicate.dag
+// Scope: declared refinement-widening preservation check for coercion/find_witness.
+// Status: W3.2 Rung 3 — explicit relation-node realization, no implicit non-equal fallback.
+// Anchor: INVARIANTS.md P3 fail-closed; THESIS.md derived homomorphism.
+
+
+module v4.std.refinement_widening_predicate
+
+
+import v4.std.collection { Absent, Optional, Present, list_at_optional }
+import v4.std.node { Edge, Node, well_formed }
+
+
+type RefinementWideningRelationProjection
+  = RefinementWideningRelationFound { source: Node, target: Node }
+  | RefinementWideningRelationMissing
+
+
+fn refinement_widening_relation_projection(
+  relation: Node,
+) -> RefinementWideningRelationProjection {
+  match list_at_optional(xs: relation.children, index: 0) {
+    Present { value: source_edge } =>
+      match list_at_optional(xs: relation.children, index: 1) {
+        Present { value: target_edge } =>
+          RefinementWideningRelationFound {
+            source: source_edge.target,
+            target: target_edge.target
+          }
+        Absent => RefinementWideningRelationMissing
+      }
+    Absent => RefinementWideningRelationMissing
+  }
+}
+
+
+fn refinement_widening_preservation_holds(
+  source_facts: Node,
+  candidate: Node,
+  algebra: Node,
+) -> Bool {
+  well_formed(n: source_facts)
+    && well_formed(n: candidate)
+    && well_formed(n: algebra)
+    && match refinement_widening_relation_projection(relation: algebra) {
+      RefinementWideningRelationFound { source, target } =>
+        (source == source_facts) && (target == candidate) && (source_facts != candidate)
+      RefinementWideningRelationMissing => false
+    }
+}

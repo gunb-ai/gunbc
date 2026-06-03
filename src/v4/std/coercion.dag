@@ -36,15 +36,17 @@ import v4.std.find_witness {
   find_witness_reason_invalid_witness,
   find_witness_reason_no_candidate,
   find_witness_reason_not_realized,
-  preservation_rule_exact_structural_equality_zip_fold
+  preservation_rule_exact_structural_equality_zip_fold,
+  preservation_rule_refinement_widening
 }
-import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.node { Conj, Edge, Named, Node, Positional, Symbol, TypeNode, well_formed }
 import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
 data coercion_property_candidate_set_closedness: Symbol = coercion_property_candidate_set_closedness
 data coercion_homomorphism_evidence_source: Symbol = coercion_homomorphism_evidence_source
 data coercion_homomorphism_evidence_candidate: Symbol = coercion_homomorphism_evidence_candidate
 data coercion_homomorphism_evidence_find_witness: Symbol = coercion_homomorphism_evidence_find_witness
+data coercion_refinement_widening_relation: Symbol = coercion_refinement_widening_relation
 data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
 data coercion_not_realized: Symbol = coercion_not_realized
 data coercion_mismatch_no_target: Symbol = coercion_mismatch_no_target
@@ -63,6 +65,7 @@ type FindWitnessRejectionKind
 type CoercionQuality
   = Identity
   | Exact
+  | Widened
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type CoercionMismatchKind
   = NoTargetCandidate
@@ -159,10 +162,14 @@ fn coercion_quality_for_witness(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
 ) -> CoercionQuality {
-  if fw.candidate == source.node {
-    Identity
+  if fw.witness.property == preservation_rule_refinement_widening {
+    Widened
   } else {
-    Exact
+    if fw.candidate == source.node {
+      Identity
+    } else {
+      Exact
+    }
   }
 }
 fn coercion_find_witness_reason_unmapped_diagnostic(
@@ -244,6 +251,22 @@ fn coercion_homomorphism_evidence(
     ]
   }
 }
+fn refinement_widening_relation_node(
+  source: Node,
+  target: Node,
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: source },
+      Edge { label: Positional, target: target },
+      Edge {
+        label: Named { name: coercion_refinement_widening_relation },
+        target: source
+      }
+    ]
+  }
+}
 fn coercion_fold(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
@@ -255,6 +278,43 @@ fn coercion_fold(
     predicate: PreservationPredicate {
       algebra: source.node,
       preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+    },
+    multiplicity_policy: TargetSelection { policy: policy }
+  ) {
+    Accepted { value: fw, diagnostics: fw_d } =>
+      Accepted {
+        value: CoercionResult {
+          target: fw.candidate,
+          quality: coercion_quality_for_witness(source: source, fw: fw),
+          witness: CoercionWitness {
+            homomorphism: HomomorphismWitness {
+              rule: homomorphism_rule_exact_structural_equality,
+              evidence: coercion_homomorphism_evidence(source: source, fw: fw)
+            }
+          }
+        },
+        diagnostics: fw_d
+      }
+    Rejected { diagnostics: r } =>
+      match coercion_wrap_find_witness_rejection(source: source, upstream: r) {
+        Accepted { value: wrapped, diagnostics: _ } =>
+          Rejected { diagnostics: wrapped }
+        Rejected { diagnostics: wrap_r } => Rejected { diagnostics: wrap_r }
+      }
+  }
+}
+fn coercion_fold_with_refinement_widening(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  policy: TargetSelectionPolicy,
+  target: Node,
+) -> Outcome<CoercionResult> {
+  match find_witness(
+    source_facts: source.node,
+    candidates: candidates.set,
+    predicate: PreservationPredicate {
+      algebra: refinement_widening_relation_node(source: source.node, target: target),
+      preservation_rule: preservation_rule_refinement_widening
     },
     multiplicity_policy: TargetSelection { policy: policy }
   ) {
