@@ -113,6 +113,10 @@ pub enum Value {
         body: Rc<Node>,
         env: Rc<Env>,
     },
+    /// Reference to a module-level `fn` / `func` item (first-class function value).
+    Fn {
+        node: Rc<Node>,
+    },
     Unit,
 }
 
@@ -130,6 +134,7 @@ impl Value {
             Value::Record { .. } => "Record",
             Value::Variant { .. } => "Variant",
             Value::Closure { .. } => "Closure",
+            Value::Fn { .. } => "Fn",
             Value::Unit => "Unit",
         }
     }
@@ -210,6 +215,7 @@ impl fmt::Display for Value {
                 }
             }
             Value::Closure { .. } => write!(f, "<closure>"),
+            Value::Fn { node } => write!(f, "<fn {}>", node.name),
             Value::Unit => write!(f, "()"),
         }
     }
@@ -240,6 +246,7 @@ impl PartialEq for Value {
                 },
             ) => a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
+            (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
             _ => false,
         }
     }
@@ -419,7 +426,7 @@ pub fn run(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
 ) -> InterpResult<Value> {
-    run_with_options(graph, source_indices, entry_fn, false)
+    run_with_options(graph, source_indices, entry_fn, false, true)
 }
 
 pub fn run_with_options(
@@ -427,6 +434,7 @@ pub fn run_with_options(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
     dry_run: bool,
+    eager_data_env: bool,
 ) -> InterpResult<Value> {
     let ctx = InterpContext::new(graph, source_indices, dry_run);
 
@@ -436,8 +444,14 @@ pub fn run_with_options(
         .ok_or_else(|| InterpError::NoMainFunction)?
         .clone();
 
-    // Build initial environment with data items
-    let env = build_initial_env(&ctx)?;
+    // Default: evaluate all `data` items up front (legacy `dag run` behavior).
+    // Claim-run mode skips this — src/v4 has hundreds of TestClaim data graphs;
+    // witnesses pull only what they need via lazy data-item resolution in eval_var.
+    let env = if eager_data_env {
+        build_initial_env(&ctx)?
+    } else {
+        Env::empty()
+    };
 
     // Call the entry function with no arguments
     call_function(&ctx, &item_node, &[], &env)
@@ -662,6 +676,16 @@ fn eval_var(
                 if let Some(ref body) = fn_node.body {
                     return eval_expr(body, env, ctx);
                 }
+            }
+        }
+        // Module-level fn/func items used as first-class values (higher-order refs).
+        // Precedence: eval_call resolves the callee via ctx.lookup_fn before env-bound
+        // Value::Fn, so a local `let f = …` does not shadow a same-named module fn at call sites.
+        if matches!(info.kind, ItemKind::FuncItem | ItemKind::FnItem) {
+            if let Some(fn_node) = ctx.lookup_fn(&name) {
+                return Ok(Value::Fn {
+                    node: fn_node.clone(),
+                });
             }
         }
     }
@@ -983,13 +1007,17 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
 
-    // Look up user-defined function
-    let fn_node = ctx
-        .lookup_fn(&func_name)
-        .ok_or_else(|| InterpError::NoSuchFunction {
+    // Look up user-defined function: module item wins over env-bound Value::Fn (see eval_var).
+    // Value::Closure is not dispatched here — lambda-as-value calls use a separate path.
+    let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
+        node.clone()
+    } else if let Some(Value::Fn { node }) = env.lookup(&func_name) {
+        node.clone()
+    } else {
+        return Err(InterpError::NoSuchFunction {
             name: func_name.clone(),
-        })?
-        .clone();
+        });
+    };
 
     call_function(ctx, &fn_node, &args, env)
 }
@@ -2195,6 +2223,7 @@ fn value_to_json(val: &Value) -> serde_json::Value {
         }
         Value::Unit => serde_json::Value::Null,
         Value::Closure { .. } => serde_json::Value::String("<closure>".to_string()),
+        Value::Fn { node } => serde_json::Value::String(format!("<fn {}>", node.name)),
     }
 }
 

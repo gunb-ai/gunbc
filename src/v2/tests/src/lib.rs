@@ -24,6 +24,8 @@ mod diagnostics;
 #[cfg(test)]
 mod effects;
 #[cfg(test)]
+mod fn_as_value_test;
+#[cfg(test)]
 mod infer_semantics;
 #[cfg(test)]
 mod int_pow_bounded_test;
