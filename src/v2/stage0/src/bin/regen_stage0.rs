@@ -59,6 +59,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_compile.rs",
     "v2_compiler_compiler_tests_rust.rs",
     "v2_compiler_complexity.rs",
+    "v2_compiler_dag_collect_support.rs",
     "v2_compiler_effect_derivation.rs",
     "v2_compiler_emit.rs",
     "v2_compiler_emit_go.rs",
@@ -106,6 +107,13 @@ const BOOTSTRAP_DAG_COLLECT_USE: &str = r#"pub use crate::v2_compiler_dag_collec
 
 "#;
 
+const BOOTSTRAP_DAG_COLLECT_SUPPORT_USE: &str = r#"pub use crate::v2_compiler_dag_collect_support::{
+    connective_name, dag_node_key_collision_error, dag_node_surface_fingerprint, expr_data_variant,
+    inferred_fingerprint, json_quote, DagCollectAcc,
+};
+
+"#;
+
 /// Symbols delegated to `v2_compiler_dag_collect`; fresh codegen must not retain local `pub fn`.
 const DELEGATED_DAG_COLLECT_SYMBOLS: &[&str] = &[
     "collect_dag_nodes",
@@ -120,6 +128,16 @@ const DELEGATED_DAG_COLLECT_SYMBOLS: &[&str] = &[
     "dag_node_fingerprint",
     "dag_node_is_resolved_identity_shell",
     "dag_node_key",
+];
+
+/// Symbols delegated to `v2_compiler_dag_collect_support`.
+const DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS: &[&str] = &[
+    "connective_name",
+    "dag_node_key_collision_error",
+    "dag_node_surface_fingerprint",
+    "expr_data_variant",
+    "inferred_fingerprint",
+    "json_quote",
 ];
 
 const GENERATED_METHOD_TEMPLATE_PROJECTION_DAG: &str = r#"module generated.method_template_projection
