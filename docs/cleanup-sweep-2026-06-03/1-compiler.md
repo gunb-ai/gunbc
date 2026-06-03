@@ -2,6 +2,13 @@
 
 **Session:** wise-ant-755 · **Date:** 2026-06-03 · **Mode:** read-only audit (hard freeze; no code changes).
 
+**Frozen artifact (ledger standing):** This file is a **one-shot session snapshot** for PM
+aggregation during the 2026-06-03 cleanup sweep. It summarizes patterns visible in the tree at
+commit time; it is **not** a parallel ledger to keep in sync with inline `.dag` marks
+(`dissolve-on`, `feature:`, scariness tags). **Do not update this doc** when marks change —
+authoritative receipts stay in the substrate; open a new dated sweep doc if a fresh census is
+needed.
+
 **Scope:** 14 `.dag` modules under `src/v4/compiler/` (~11.2k lines). Pipeline stages:
 `00_compile`, `01_tokenize`, `02_parse`, `03_{normalize,resolve,name_resolve}`, `04_infer`,
 `05_{eval,emit}`, `06_translate`, `07_target_carriers`, plus adjunct `emit_host`, `self_host`,
