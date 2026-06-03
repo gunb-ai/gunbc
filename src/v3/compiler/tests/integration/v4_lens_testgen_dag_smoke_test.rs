@@ -16,11 +16,14 @@
 //! construction until M2 can compile this module end-to-end (codex **#14839** — bounded parse
 //! ratchet, not a permanent substitute for `.dag` `TestClaim` coverage).
 //!
-//! **PR #4265 P5 receipt (+0 SG-0 paths):** same-path expansion for the T-38B
-//! `lens_effect/effect_depends_on` TestClaimRun roster receipt. This uses the existing
-//! `EXPECTED_HAND_AUTHORED_TEST` census entry for this file; dissolves under ROADMAP.md
-//! **T-PB-B / `pb_rust_tests_outside_residual_zero`** when generated or `.dag` TestClaim
-//! coverage owns the lens_effect roster/claim-id receipt without this Rust string ratchet.
+//! **INVARIANTS §P5 checkable receipt (mechanism (b), SG-0 delta 0):** this file's row in
+//! `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` is unchanged — no new hand-Rust path;
+//! `sg0_v3_test_hand_authored_subratchet` enforces disk-vs-list parity on that invariant.
+//! F.2-P1/F.2-P2 same-path tests expand inside this harness only. Explicit deferral:
+//! **ROADMAP.md** **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+//! (`ROADMAP.md:43` Public Operational Lanes, `ROADMAP.md:63` Nine lanes); dissolve when T-22 runs
+//! `lens_testgen/generator_provenance.dag` + `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim`
+//! end-to-end. PR #4265 added T-38B `lens_effect/effect_depends_on` pins the same way.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
@@ -44,6 +47,15 @@ const LENS_TESTGEN_DAG_INPUT_SURFACE_PATH: &str =
 const LENS_EFFECT_DEPENDS_ON_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_effect/effect_depends_on.dag");
 const LENS_EFFECT_DEPENDS_ON_PATH: &str = "src/v4/test/claim/lens_effect/effect_depends_on.dag";
+const LENS_TESTGEN_GENERATOR_PROVENANCE_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_testgen/generator_provenance.dag");
+const LENS_TESTGEN_GENERATOR_PROVENANCE_PATH: &str =
+    "src/v4/test/claim/lens_testgen/generator_provenance.dag";
+const LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_testgen/shadow_ci_receipt.dag");
+const LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH: &str =
+    "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag";
+const ROADMAP: &str = include_str!("../../../../../ROADMAP.md");
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -137,6 +149,143 @@ fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("stub_empty_transform")
             && !LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("compile-only until T-19"),
         "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring or green witnesses"
+    );
+}
+
+// F.2-P1 / F.2-P2 — three same-path `#[test]` slices below; census row unchanged (see module doc).
+#[test]
+fn v4_lens_testgen_generator_carries_provenance_and_profile_fields() {
+    // F.2-P1: Generator<C> gains a provenance bundle (GeneratorProvenance, authored in
+    // v4.std.artifact — no duplicated artifact law here) + testgen-local profile_metadata.
+    let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
+    let prov_ty =
+        generator_field_ty(&testgen, "provenance").expect("Generator should declare `provenance`");
+    assert!(
+        matches!(prov_ty, SurfaceType::Named { name: n, .. } if n == "GeneratorProvenance"),
+        "Generator.provenance must be GeneratorProvenance (bundle authored in v4.std.artifact); got {prov_ty:?}"
+    );
+    let profile_ty = generator_field_ty(&testgen, "profile_metadata")
+        .expect("Generator should declare `profile_metadata`");
+    assert!(
+        matches!(profile_ty, SurfaceType::Named { name: n, .. } if n == "GeneratorProfile"),
+        "Generator.profile_metadata must be GeneratorProfile (testgen-local concept); got {profile_ty:?}"
+    );
+    let artifact_imports = import_names_for_path(&testgen, &["v4", "std", "artifact"])
+        .expect("testgen must import provenance carriers from v4.std.artifact");
+    for sym in [
+        "GeneratorId",
+        "GeneratorProvenance",
+        "test_claim_generated_artifact",
+    ] {
+        assert!(
+            artifact_imports.iter().any(|n| n == sym),
+            "testgen must import `{sym}` from v4.std.artifact (single-authority cross-ref, no duplicated artifact law); got {artifact_imports:?}"
+        );
+    }
+    assert!(
+        TESTGEN_DAG.contains("fn scheduled_generators_carry_provenance()")
+            && TESTGEN_DAG.contains("fn generator_carries_provenance"),
+        "testgen must expose the provenance-integrity witness fns (close-criterion witness)"
+    );
+    assert!(
+        TESTGEN_DAG.contains("fn testgen_scheduled_generators_outcome()")
+            && TESTGEN_DAG.contains("fn testgen_scheduled_generators_roster_holds()")
+            && TESTGEN_DAG.contains("type TestgenRunReceipt")
+            && TESTGEN_DAG.contains("fn testgen_run_receipt_outcome(")
+            && TESTGEN_DAG.contains("fn generator_matches_profile(")
+            && !TESTGEN_DAG.contains("fn testgen_scheduled_generators()"),
+        "testgen must expose F.2-P2 Outcome roster authority (no silent Rejected→Empty truncation)"
+    );
+    // Identity must be DERIVED from the row's canonical ClaimAnchorKey (single authority,
+    // unique per row) — not a coarse static category symbol shared across distinct anchors.
+    assert!(
+        TESTGEN_DAG
+            .contains("fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId")
+            && TESTGEN_DAG
+                .contains("fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId"),
+        "testgen must derive GeneratorId from the canonical anchor (no per-row collision)"
+    );
+    assert!(
+        !TESTGEN_DAG.contains("testgen_gen_id_bootstrap_manual_anchor")
+            && !TESTGEN_DAG.contains("testgen_gen_id_algebra_law"),
+        "the shared static GeneratorIds (one id across distinct-anchor rows) must be gone — identity is anchor-derived"
+    );
+    // Provenance must not re-declare artifact law in the testgen lens.
+    assert!(
+        !TESTGEN_DAG.contains("type GeneratorProvenance")
+            && !TESTGEN_DAG.contains("type GeneratorId"),
+        "GeneratorProvenance/GeneratorId are authored in v4.std.artifact; testgen only consumes them"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_generator_provenance_claim_parses_and_pins_witness() {
+    let module = parse_module(
+        LENS_TESTGEN_GENERATOR_PROVENANCE_DAG,
+        LENS_TESTGEN_GENERATOR_PROVENANCE_PATH,
+    );
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "lens_testgen",
+            "generator_provenance"
+        ]],
+        "provenance claim module should stay under recursive T-22 discovery"
+    );
+    assert!(
+        LENS_TESTGEN_GENERATOR_PROVENANCE_DAG.contains(
+            "import v4.lens.testgen { scheduled_generators_carry_provenance }"
+        ) && LENS_TESTGEN_GENERATOR_PROVENANCE_DAG.contains(
+            "data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = EqualsClaim"
+        ) && LENS_TESTGEN_GENERATOR_PROVENANCE_DAG.contains(
+            "data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()"
+        ),
+        "{LENS_TESTGEN_GENERATOR_PROVENANCE_PATH}: must pin the testgen provenance witness via EqualsClaim + green Bool routed through the lens helper"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_p5_roadmap_t_pb_b_deferral_is_checkable() {
+    assert!(
+        ROADMAP.contains("### Nine lanes")
+            && ROADMAP.contains("| **T-PB-B** | `pb_rust_tests_outside_residual_zero`")
+            && ROADMAP.contains("T-PB-B / `pb_rust_tests_outside_residual_zero`"),
+        "P5 deferral must bind to checkable T-PB-B authority (Nine lanes + Public Operational Lanes)"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_shadow_ci_receipt_claim_parses_and_pins_witness() {
+    let module = parse_module(
+        LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG,
+        LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH,
+    );
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "lens_testgen",
+            "shadow_ci_receipt"
+        ]],
+        "shadow CI receipt claim module should stay under recursive T-22 discovery"
+    );
+    assert!(
+        LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
+            "import v4.lens.testgen {"
+        ) && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains("testgen_run_receipt_carries_profile_roster")
+            && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains("testgen_run_receipt_outcome")
+            && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
+                "data claim_lens_testgen_shadow_ci_run_receipt: TestClaim = EqualsClaim"
+            )
+            && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
+                "data witness_lens_testgen_shadow_ci_run_receipt_green: Bool = lens_testgen_shadow_ci_run_receipt_holds()"
+            ),
+        "{LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH}: must pin F.2-P2 TestgenRunReceipt witness via EqualsClaim + green Bool"
     );
 }
 

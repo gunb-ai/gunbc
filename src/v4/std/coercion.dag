@@ -7,6 +7,7 @@
 module v4.std.coercion
 
 
+import v4.std.algebra { Empty, list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.diagnostic {
@@ -14,6 +15,9 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   None,
+  NonEmptyDiagnostics,
+  diagnostics_singleton,
+  non_empty_diagnostics_append,
   node_locus,
   Outcome,
   Rejected,
@@ -28,6 +32,10 @@ import v4.std.find_witness {
   TargetSelection,
   TargetSelectionPolicy,
   find_witness,
+  find_witness_reason_ambiguous_candidate,
+  find_witness_reason_invalid_witness,
+  find_witness_reason_no_candidate,
+  find_witness_reason_not_realized,
   preservation_rule_exact_structural_equality_zip_fold
 }
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
@@ -44,6 +52,13 @@ data coercion_mismatch_ambiguous: Symbol = coercion_mismatch_ambiguous
 data coercion_mismatch_structural: Symbol = coercion_mismatch_structural
 data coercion_mismatch_would_lose: Symbol = coercion_mismatch_would_lose
 data coercion_mismatch_candidate_set_not_closed: Symbol = coercion_mismatch_candidate_set_not_closed
+data coercion_find_witness_reason_unmapped: Symbol = coercion_find_witness_reason_unmapped
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type FindWitnessRejectionKind
+  = FindWitnessNoCandidate
+  | FindWitnessAmbiguousCandidate
+  | FindWitnessNotRealized
+  | FindWitnessInvalidWitness
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type CoercionQuality
   = Identity
@@ -150,6 +165,72 @@ fn coercion_quality_for_witness(
     Exact
   }
 }
+fn coercion_find_witness_reason_unmapped_diagnostic(
+  source: CanonicalGrounding,
+) -> Diagnostic {
+  Diagnostic {
+    reason: coercion_find_witness_reason_unmapped,
+    at: node_locus(node: source.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn find_witness_rejection_kind_from_reason(
+  source: CanonicalGrounding,
+  reason: Symbol,
+) -> Outcome<FindWitnessRejectionKind> {
+  match reason {
+    find_witness_reason_no_candidate =>
+      Accepted { value: FindWitnessNoCandidate, diagnostics: None }
+    find_witness_reason_ambiguous_candidate =>
+      Accepted { value: FindWitnessAmbiguousCandidate, diagnostics: None }
+    find_witness_reason_not_realized =>
+      Accepted { value: FindWitnessNotRealized, diagnostics: None }
+    find_witness_reason_invalid_witness =>
+      Accepted { value: FindWitnessInvalidWitness, diagnostics: None }
+    _ =>
+      outcome_rejected(
+        coercion_find_witness_reason_unmapped_diagnostic(source: source)
+      )
+  }
+}
+fn coercion_mismatch_kind_for_find_witness_rejection_kind(
+  kind: FindWitnessRejectionKind,
+) -> CoercionMismatchKind {
+  match kind {
+    FindWitnessNoCandidate => NoTargetCandidate
+    FindWitnessAmbiguousCandidate => AmbiguousTargetCandidate
+    FindWitnessNotRealized => StructuralMismatch
+    FindWitnessInvalidWitness => StructuralMismatch
+  }
+}
+fn coercion_wrap_find_witness_rejection(
+  source: CanonicalGrounding,
+  upstream: NonEmptyDiagnostics,
+) -> Outcome<NonEmptyDiagnostics> {
+  match find_witness_rejection_kind_from_reason(
+    source: source,
+    reason: upstream.head.reason
+  ) {
+    Accepted { value: fw_kind, diagnostics: _ } =>
+      Accepted {
+        value: NonEmptyDiagnostics {
+          head: coercion_not_realized_diagnostic(
+            source: source,
+            kind: coercion_mismatch_kind_for_find_witness_rejection_kind(kind: fw_kind)
+          ),
+          tail: list_append(
+            left: list_snoc_item(xs: Empty, item: upstream.head),
+            right: upstream.tail
+          )
+        },
+        diagnostics: None
+      }
+    Rejected { diagnostics: coerce_r } =>
+      Rejected {
+        diagnostics: non_empty_diagnostics_append(a: upstream, b: coerce_r)
+      }
+  }
+}
 fn coercion_homomorphism_evidence(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
@@ -191,7 +272,12 @@ fn coercion_fold(
         },
         diagnostics: fw_d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } =>
+      match coercion_wrap_find_witness_rejection(source: source, upstream: r) {
+        Accepted { value: wrapped, diagnostics: _ } =>
+          Rejected { diagnostics: wrapped }
+        Rejected { diagnostics: wrap_r } => Rejected { diagnostics: wrap_r }
+      }
   }
 }
 fn coercion_fold_with_declared_priority(

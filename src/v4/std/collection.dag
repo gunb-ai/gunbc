@@ -12,7 +12,15 @@ module v4.std.collection
 
 
 import v4.std.algebra { FreeMonoid, PointwisePower, fold_list, is_empty }
-import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 // 🟢 coproduct dissolution — M6-Optional-generic.
@@ -86,6 +94,19 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
         false => m.lookup(candidate)
       }
     }
+  }
+}
+
+
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
+// dissolve-on: bootstrap Witness<V> dispatch at Map.lookup (substrate Witness above); forbidden:
+// ad hoc map_get outside v4.std.collection.
+// Bootstrap (v2 M1 emit): lookup projects as Option — Some→Present, None→Absent. Substrate intent
+// (map_key_absent Violates→Absent, other Violates→Rejected) lands when emit matches Witness.
+fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
+  match m.lookup(key) {
+    Some { value: v } => outcome_accepted(value: Present { value: v })
+    None => outcome_accepted(value: Absent)
   }
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {

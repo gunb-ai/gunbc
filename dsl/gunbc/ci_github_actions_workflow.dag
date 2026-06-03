@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 55512a228095d4125057914a86604aa8b30f9fd611dd76fceecd266a8f787c6d
+// Source-SHA256(.github/workflows/ci.yml): d47207d3be0d359cb3e9e01d9367a47e8c90f440db3b7d9787290d5820c60422
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -195,6 +195,35 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Emit Wave 3 shadow selection receipt (Class C, non-blocking)" },
+          id: none,
+          run: "cargo run -p ci_affected_components --bin emit-ci-wave3-shadow-receipt -- \"${{ github.event_name }}\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: true,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Emit affected-set CI kill-criterion receipt" },
+          id: none,
+          run: "cargo run -p ci_affected_components --bin emit-affected-set-ci-receipt -- \"${{ github.event_name }}\" \"$RUNNER_TEMP/affected-set-ci-receipt.json\" --estimated-full-run-minutes 15",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Upload affected-set CI receipt" },
+          id: none,
+          uses: { owner: "actions", repo: "upload-artifact", ref: "v4" },
+          with: { "name": "affected-set-ci-receipt", "path": "${{ runner.temp }}/affected-set-ci-receipt.json", "if-no-files-found": "warn" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
         }],
       needs: [],
       env: none,
@@ -293,7 +322,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
-          timeout_minutes: Some { value: 20 }
+          timeout_minutes: Some { value: 35 }
         }, RunStep {
           name: Some { value: "v2 DAG emit parity receipt (required before bootstrap reuse)" },
           id: none,

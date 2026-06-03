@@ -276,6 +276,16 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
+    // F.14 / T-PB-B: `ExecuteCommand` logical child for `tests/dag/boundary_emit_gates.template.dag`.
+    // Irreducible host-shim bin (exit 0/1); calls `v3_compiler::boundary_emit_gates::check_*`.
+    // **P5 receipt (Mechanism (b), disposition (3)):** deferral to ROADMAP.md **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` and active deferral **PB-Runtime-External-Toolchain-TestClaims**
+    // (hand `tests/boundary/*.rs` → `.dag` `TestClaim` / substrate target verification).
+    // Dissolution: delete this bin when the last class-5 boundary host shim in `tests/boundary/`
+    // is retired and `boundary_emit_gates.template.dag` (or generated runner) is sole authority
+    // for the remaining `ExecuteCommand` claims — checkable: SG-0 `EXPECTED_HAND_AUTHORED_TEST`
+    // no longer lists any `tests/boundary/*` path still covered only by this bin.
+    "src/v3/compiler/src/bin/boundary_emit_gates.rs",
     "src/v3/compiler/src/bin/gunbc_ci.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
@@ -358,6 +368,14 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
     "src/v3/compiler/src/process_exit.rs",
+    // F.14 / T-PB-B: shared `check_*` for class-5 boundary emit gates; thin host `#[test]`
+    // shims and `boundary_emit_gates` bin both call (`tests/dag/boundary_emit_gates.template.dag`).
+    // **P5 receipt (Mechanism (b), disposition (3)):** deferral to ROADMAP.md **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` + **PB-Runtime-External-Toolchain-TestClaims**.
+    // Dissolution: delete when every claim in `boundary_emit_gates.template.dag` is evaluated by
+    // substrate `run_target_verification` / v4 `.dag` `TestClaim` runtime without this module
+    // (same lane as `r1c_e_gates.rs` scaffold, but boundary-class scope not R1C-E / issue #973).
+    "src/v3/compiler/src/boundary_emit_gates.rs",
     // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
     // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
     // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
@@ -404,7 +422,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
-    "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
+    // **P5 receipt (F.14 / T-PB-B):** `m2_emit_multi_field_struct_variant_test.rs` retired;
+    // `tests/dag/boundary_emit_gates.template.dag` + `boundary_emit_gates` bin are authority
+    // (`t_pb_b_1_dag_runner_test::boundary_emit_gates_suite_passes_through_runner`).
     // Phase 1 leaf-model go R1/R2a/R2b/R3-external: boundary Go toolchain exercise for
     // R1 int surface spelling, R2a int algebra ops, R2b int64 overflow wrap, R3-external
     // Symbol-as-string projection until T-22 modeled `run_target_verification` owns target
@@ -992,6 +1012,18 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
+    // G.1.4: parse-surface ratchet on `typescript.dag` PerLanguageFactBundleRegistry
+    // population (wave-2b primitive fact axes via insert_per_language_fact_bundle_entry).
+    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_extdeps_typescript_g14_grounding_smoke_test.rs`.
+    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+    // (ROADMAP.md:62); dissolves when `.dag` TestClaim coverage asserts G.1.4 registry rows directly.
+    "src/v3/compiler/tests/integration/v4_extdeps_typescript_g14_grounding_smoke_test.rs",
+    // G.2: parse-surface ratchet on `grounding_typescript/*` T-38B claim family
+    // (SG-1 / G.1.4 / SG-2 / SG-5 executable claim stack).
+    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_grounding_typescript_g2_smoke_test.rs`.
+    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+    // (ROADMAP.md:62); dissolves when substrate `run_test_claim` executes the grounding_typescript roster.
+    "src/v3/compiler/tests/integration/v4_grounding_typescript_g2_smoke_test.rs",
     // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
     // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
@@ -1021,6 +1053,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `bootstrap_claim_generator_for_manual_anchor` + `testgen_concept_for_manual_claim` +
     // `manual_test_claim_for_manual_anchor` in `src/v4/lens/testgen.dag`; `src/v4/std/verification.dag`
     // for closed `TestClaim` schema only (no std present-key helper).
+    //
+    // **P5 receipt (INVARIANTS.md §P5 mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // checkable same-path expansion — this row is unchanged (SG-0 delta 0); F.2-P1/F.2-P2 tests
+    // added inside the existing harness only. Explicit deferral: **ROADMAP.md** **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:43` Public Operational Lanes,
+    // `ROADMAP.md:63` Nine lanes);
+    // dissolves when T-22 evaluates `lens_testgen/generator_provenance.dag` and
+    // `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses without this Rust string ratchet.
     "src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs",
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
@@ -1031,7 +1071,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `pb_rust_tests_outside_residual_zero`; dissolves when a `.dag` TestClaim or
     // generated harness executes the source-authority receipt directly.
     "src/v3/compiler/tests/integration/v4_source_authority_contract_smoke_test.rs",
-    // T-33: parse ratchet on `src/v4/std/model_core.dag` — Ratified Q1 ModelCore carrier.
+    // G.0: parse ratchet on `src/v4/std/grounding.dag` — Branch G.0 schema carriers.
+    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_grounding_dag_smoke_test.rs` in EXPECTED_HAND_AUTHORED_TEST.
+    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+    // (ROADMAP.md:62); dissolves when `.dag` TestClaim coverage asserts PerLanguageFactBundleRegistry
+    // + GroundingEvidenceSchema directly.
+    "src/v3/compiler/tests/integration/v4_std_grounding_dag_smoke_test.rs",
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
@@ -1047,6 +1092,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
     // PR #4295 (+0 paths): `check_t19_testgen_activation` same-path expansion —
     // Rust migration of `scripts/check_t19_testgen_activation.py` (deleted #4252).
+    // PR #4335 (+0 paths): `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` RR-A §5.2
+    // bootstrap harness parse-surface ratchet (ROADMAP.md:43,63 T-PB-B deferral).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
     // TestClaims or generated harness coverage (ROADMAP.md T-PB-B row).
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",

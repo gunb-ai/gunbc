@@ -22,6 +22,8 @@ import v4.lens.testgen {
   TypeConstruction,
   TypeConstructionSubject,
   ConnectiveKernel,
+  default_generator_profile,
+  generator_provenance,
   lbe_io_mock_conj_dag_surface,
   lbe_subject_conj_dag_surface,
   law_nat_add_associativity
@@ -151,6 +153,20 @@ data t19_generator_wishlist_dag_surface_production: Symbol = t19_generator_wishl
 data t19_generator_wishlist_count_symbol: Symbol = t19_generator_wishlist_count_symbol
 
 
+// F.2-P1: explicit per-row GeneratorIds for the wishlist ledger. These rows are NOT the
+// scheduled generators; several carry a placeholder ManualAnchorAbsent anchor, so identity
+// cannot be derived from the anchor (that would collapse distinct ledger rows). Each row
+// therefore mints its own unique id. Dissolves with the ledger as rows graduate to scheduled
+// generators (which derive their id from a real ClaimAnchorKey via generator_id_for_claim_anchor).
+data wishlist_gen_id_type_construction: Symbol = wishlist_gen_id_type_construction
+data wishlist_gen_id_algebra_law: Symbol = wishlist_gen_id_algebra_law
+data wishlist_gen_id_diagnostic_exhaustiveness: Symbol = wishlist_gen_id_diagnostic_exhaustiveness
+data wishlist_gen_id_lens_applicability: Symbol = wishlist_gen_id_lens_applicability
+data wishlist_gen_id_bidirectional_roundtrip: Symbol = wishlist_gen_id_bidirectional_roundtrip
+data wishlist_gen_id_language_behavior_equivalence: Symbol = wishlist_gen_id_language_behavior_equivalence
+data wishlist_gen_id_refinement_preservation: Symbol = wishlist_gen_id_refinement_preservation
+
+
 fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimCompilesClaimVariant,
@@ -158,7 +174,9 @@ fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: TypeConstruction {
       subject: ConnectiveKernel { connective: Conj },
-    }
+    },
+    provenance: generator_provenance(id: wishlist_gen_id_type_construction),
+    profile_metadata: default_generator_profile(),
   }
 }
 
@@ -174,7 +192,9 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
         inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
         law: law_nat_add_associativity,
       },
-    }
+    },
+    provenance: generator_provenance(id: wishlist_gen_id_algebra_law),
+    profile_metadata: default_generator_profile(),
   }
 }
 
@@ -190,7 +210,9 @@ fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept>
     ),
     slot: DiagnosticExhaustiveness {
       omitted_variant: TestClaimDiagnosticClaimVariant,
-    }
+    },
+    provenance: generator_provenance(id: wishlist_gen_id_diagnostic_exhaustiveness),
+    profile_metadata: default_generator_profile(),
   }
 }
 
@@ -205,7 +227,9 @@ fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
         lens: t19_generator_wishlist_lens_structural_resolution,
         program: stub_empty_conj,
       },
-    }
+    },
+    provenance: generator_provenance(id: wishlist_gen_id_lens_applicability),
+    profile_metadata: default_generator_profile(),
   }
 }
 
@@ -220,7 +244,9 @@ fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
         language: dag_language_model_surface_id,
         production: t19_generator_wishlist_dag_surface_production,
       },
-    }
+    },
+    provenance: generator_provenance(id: wishlist_gen_id_bidirectional_roundtrip),
+    profile_metadata: default_generator_profile(),
   }
 }
 
@@ -233,7 +259,9 @@ fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConc
     slot: LanguageBehaviorEquivalence {
       subject: lbe_subject_conj_dag_surface(),
       mock: lbe_io_mock_conj_dag_surface(),
-    }
+    },
+    provenance: generator_provenance(id: wishlist_gen_id_language_behavior_equivalence),
+    profile_metadata: default_generator_profile(),
   }
 }
 
@@ -248,7 +276,9 @@ fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
         refined: refinement_preservation_stub_generator_refined(),
         original: [stub_empty_conj],
       },
-    }
+    },
+    provenance: generator_provenance(id: wishlist_gen_id_refinement_preservation),
+    profile_metadata: default_generator_profile(),
   }
 }
 
