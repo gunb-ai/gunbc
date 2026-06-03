@@ -136,6 +136,8 @@ pub fn load_sources_for_entry(
         );
     }
     let mut sources = resolve_transitively(vec![(rel_path.clone(), content.clone())], &index, seen);
+    // Module-less entry files have no `module` line, so they never enter `seen`; ensure the
+    // entry path is still in the closure result.
     if !sources.iter().any(|s| s.path == rel_path) {
         sources.push(Rc::new(v2_compiler_compile::SourceFile {
             path: rel_path,

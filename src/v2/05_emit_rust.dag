@@ -7533,25 +7533,24 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
       make_indent(level: depth + 2), "target: String,\n",
       make_indent(level: depth + 1), "},")
   } else { "" }
-  let run_variant = if has_pipeline {
-    concat(
-      "/// Execute a .dag program directly (interpreter)\n",
-      make_indent(level: depth + 1), "Run {\n",
-      make_indent(level: depth + 2), "/// Source root directories (searched recursively for .dag files)\n",
-      make_indent(level: depth + 2), "#[arg(long = \"source-root\")]\n",
-      make_indent(level: depth + 2), "source_roots: Vec<String>,\n",
-      make_indent(level: depth + 2), "/// Entry function to execute (default: \"main\")\n",
-      make_indent(level: depth + 2), "#[arg(long, default_value = \"main\")]\n",
-      make_indent(level: depth + 2), "function: String,\n",
-      make_indent(level: depth + 2), "/// Entry `.dag` file: load only this module and its transitive imports\n",
-      make_indent(level: depth + 2), "/// (not every file under --source-root). Required for scoped TestClaim runs.\n",
-      make_indent(level: depth + 2), "#[arg(long)]\n",
-      make_indent(level: depth + 2), "entry: Option<String>,\n",
-      make_indent(level: depth + 2), "/// TestClaim / witness run: Bool false → exit 1; requires --entry\n",
-      make_indent(level: depth + 2), "#[arg(long)]\n",
-      make_indent(level: depth + 2), "claim_run: bool,\n",
-      make_indent(level: depth + 1), "},")
-  } else { "" }
+  let run_variant_lines = [
+    "/// Execute a .dag program directly (interpreter)\n",
+    make_indent(level: depth + 1), "Run {\n",
+    make_indent(level: depth + 2), "/// Source root directories (searched recursively for .dag files)\n",
+    make_indent(level: depth + 2), "#[arg(long = \"source-root\")]\n",
+    make_indent(level: depth + 2), "source_roots: Vec<String>,\n",
+    make_indent(level: depth + 2), "/// Entry function to execute (default: \"main\")\n",
+    make_indent(level: depth + 2), "#[arg(long, default_value = \"main\")]\n",
+    make_indent(level: depth + 2), "function: String,\n",
+    make_indent(level: depth + 2), "/// Entry `.dag` file: load only this module and its transitive imports\n",
+    make_indent(level: depth + 2), "/// (not every file under --source-root). Required for scoped TestClaim runs.\n",
+    make_indent(level: depth + 2), "#[arg(long)]\n",
+    make_indent(level: depth + 2), "entry: Option<String>,\n",
+    make_indent(level: depth + 2), "/// TestClaim / witness run: Bool false → exit 1; requires --entry\n",
+    make_indent(level: depth + 2), "#[arg(long)]\n",
+    make_indent(level: depth + 2), "claim_run: bool,\n",
+    make_indent(level: depth + 1), "},"]
+  let run_variant = if has_pipeline { run_variant_lines |> join(separator: "") } else { "" }
   let all_variants = if has_pipeline { concat(variants, [compile_variant, run_variant]) } else { variants }
   let variants_str = all_variants |> join(separator: "\n")
   concat(
