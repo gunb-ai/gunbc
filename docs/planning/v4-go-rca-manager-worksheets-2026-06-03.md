@@ -122,11 +122,10 @@ Non-goals:
 
 ## Current Closeout State
 
-- L0 R1: modeled by Worksheet A.
-- L0 R2a: modeled by Worksheet B.
-- L0 R2b: modeled by Worksheet C.
-- L1 fixture-scale: modeled by Worksheet D and ready to execute as a bounded
-  compiler-slice receipt.
+- L0 R1/R2a/R2b: on main (#4243 claims + boundary bridge); worksheets A–C closed.
+- L1 fixture-scale: **in flight** — PR [#4367](https://github.com/gunb-ai/gunbc/pull/4367)
+  (`go_l1_nat_semiring_rung2` emit fixes on `session/smart-moth-425`); worker
+  `swift-lark-898` addressing cursor REQUEST_CHANGES + PR body.
 - L2 fixture-execution: sequenced by Worksheet E; implementation remains gated
   on T-22 `run_target_verification`.
 
