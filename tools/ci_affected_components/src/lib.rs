@@ -8,6 +8,7 @@
 //! (INVARIANTS P3 fail-closed boundary).
 
 pub mod git_diff_transport;
+pub mod receipt;
 pub mod runner_pool;
 pub mod wave3_shadow_receipt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
