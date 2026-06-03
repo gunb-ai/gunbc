@@ -55,6 +55,10 @@ use v3_compiler::tokenize_for_test;
 
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
 const FIND_WITNESS_PATH: &str = "src/v4/std/find_witness.dag";
+const MVP_INT_CROSS_TARGET_COERCION_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp_int_cross_target_coercion.dag");
+const MVP_INT_CROSS_TARGET_COERCION_CLAIM_PATH: &str =
+    "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag";
 const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.dag");
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const EMIT_DAG: &str = include_str!("../../../../v4/compiler/05_emit.dag");
@@ -1361,6 +1365,14 @@ fn v4_mvp1_rust_add_claim_imports_translate_and_emit() {
 #[test]
 fn v4_mvp1_python_add_claim_tokenizes_and_parses() {
     let _module = parse_module(MVP1_PYTHON_CLAIM_DAG, MVP1_PYTHON_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp_int_cross_target_coercion_claim_tokenizes_and_parses() {
+    let _module = parse_module(
+        MVP_INT_CROSS_TARGET_COERCION_CLAIM_DAG,
+        MVP_INT_CROSS_TARGET_COERCION_CLAIM_PATH,
+    );
 }
 
 #[test]

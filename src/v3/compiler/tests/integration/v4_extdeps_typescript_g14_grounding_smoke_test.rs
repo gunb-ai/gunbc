@@ -4,6 +4,11 @@
 //! primitives (number, bigint, boolean, string) via fail-closed
 //! `insert_per_language_fact_bundle_entry`. Parse-surface smoke only; full-tree M1 emit
 //! exercises cross-module resolution (same posture as `v4_std_grounding_dag_smoke_test`).
+//!
+//! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+//! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:62); dissolves when `.dag` TestClaim
+//! coverage asserts G.1.4 registry rows directly.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
