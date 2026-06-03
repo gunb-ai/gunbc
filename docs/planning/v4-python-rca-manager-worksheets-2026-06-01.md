@@ -23,12 +23,14 @@ The mypy lane reuses the same fixture and claim id as Worksheet A, but with a di
 
 ## Worksheet C - L2 Cross-Target Behavioral Parity
 
-Authority rows:
-- Fixture sources: `python_l2_parity_{python,rust,go}_source` in `src/v4/lens/leaf_model_verification.dag`.
-- Runner: `scripts/v4-leaf-model-python-l2-cross-target-parity-verify.sh`.
+Authority rows (implemented):
+- Carrier: `LeafModelCrossTargetParityProbe` + `ValueDiff<String>` in `src/v4/std/leaf_model_verification.dag` (positive complement of `LeafModelCrossRuntimeDriftProbe`).
+- Probes: `python_l2_parity_r2a_probe` / `python_l2_parity_r3_probe` (+ `python_l2_parity_probe_roster`) with `python_l2_parity_{r2a,r3}_{python,rust,go}_source` and `_value` in `src/v4/lens/leaf_model_verification.dag`.
+- Claim wiring: `src/v4/test/claim/language_model/python_l2_cross_target_parity.dag` (wiring + positive-parity `TestClaim`s).
+- Boundary host exercise: `src/v3/compiler/tests/boundary/v4_leaf_model_python_l2_cross_target_parity_test.rs` (Python + Rust mandatory, Go corroborating when present), until the modeled `TestClaim` runner executes the target sources directly (same gate as the drift lane).
 
 The L2 receipt compares stdout across Python, Rust, and Go for the common-domain subset:
-- R2a integer add/order on small values.
-- R3-external Symbol nominal/value projection to the same displayed payload.
+- R2a integer add on small values (`2 + 3 = 5`, inside the subdomain where arbitrary-precision and two's-complement coincide). Order's boolean surface formatting differs per language and is excluded from the numeric parity payload.
+- R3-external Symbol nominal/value projection to the same displayed payload (`x`).
 
-R2b arbitrary precision is not asserted as cross-target equality against Rust `i32` or Go `int`. That is a modeled divergence receipt from L0/L1, not an L2 parity claim.
+R2b arbitrary precision is not asserted as cross-target equality against Rust `i32`/`i64` or Go `int64`. That is the modeled divergence receipt (`python_cross_runtime_drift`), the exact complement of this parity lane, not an L2 parity claim.

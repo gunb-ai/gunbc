@@ -1861,8 +1861,11 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
     );
     assert!(
         import_includes_name(&module, &["v4", "lens", "testgen"], "Generator")
-            && import_includes_name(&module, &["v4", "lens", "testgen"], "TestgenConcept"),
-        "{CI_DAG_PATH}: TestgenSlotSelection must import `Generator` + `TestgenConcept` from v4.lens.testgen"
+            && import_includes_name(&module, &["v4", "lens", "testgen"], "TestgenConcept")
+            && import_includes_name(&module, &["v4", "lens", "testgen"], "TestgenRunReceipt")
+            && import_includes_name(&module, &["v4", "lens", "testgen"], "testgen_scheduled_generators_outcome")
+            && import_includes_name(&module, &["v4", "lens", "testgen"], "testgen_scheduled_generators_roster_holds"),
+        "{CI_DAG_PATH}: testgen shadow CI must import Generator, Outcome roster authority, and roster_holds from v4.lens.testgen"
     );
     for sym in [
         "type CiActiveFloorSkipEvidence",
@@ -1878,6 +1881,16 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
         "claim_projection_hash: test_claim_claim_hash_digest(c: claim)",
         "data ci_wave3_shadow_fixture_fail_closed_receipt",
         "data ci_wave3_shadow_fixture_receipt_ok",
+        "type SelectedTestgenReceipt",
+        "testgen_scheduled_generators_outcome",
+        "fn ci_wave3_shadow_testgen_selection_rows_outcome",
+        "fn ci_testgen_selected_receipt_outcome",
+        "fn ci_testgen_selected_receipt_holds",
+        "fn ci_wave3_shadow_testgen_run_receipt_holds",
+        "data ci_wave3_shadow_testgen_run_receipt",
+        "data ci_wave3_shadow_selected_testgen_receipt",
+        "data witness_ci_wave3_shadow_testgen_receipts_ok",
+        "fn ci_wave3_shadow_fixture_testgen_not_fail_closed_holds",
     ] {
         assert!(
             CI_DAG.contains(sym),
@@ -1914,13 +1927,32 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
         .nth(1)
         .and_then(|rest| rest.split("\ndata ").next())
         .unwrap_or("");
+    let fixture_mk_body = extract_fn_body(CI_DAG, "ci_wave3_shadow_fixture_fail_closed_receipt_mk");
     assert!(
-        fixture_binding.contains("provenance: FixtureReceipt"),
+        fixture_mk_body.contains("provenance: FixtureReceipt"),
         "{CI_DAG_PATH}: Wave 3 fixture receipt must construct with FixtureReceipt provenance"
     );
     assert!(
-        !fixture_binding.contains("provenance: LivePrGitDiff"),
+        !fixture_mk_body.contains("provenance: LivePrGitDiff"),
         "{CI_DAG_PATH}: Wave 3 fixture receipt must not use LivePrGitDiff"
+    );
+    assert!(
+        fixture_binding.contains("ci_wave3_shadow_testgen_selection_rows_outcome(")
+            && fixture_binding.contains("Outcome<CiSelectionReceipt>")
+            && !fixture_mk_body.contains("testgen_slots: Empty"),
+        "{CI_DAG_PATH}: F.2-P2 fixture must bind testgen_slots via selection_rows Outcome (not Empty truncation)"
+    );
+    assert!(
+        CI_DAG.contains("data ci_wave3_shadow_testgen_run_receipt: Outcome<TestgenRunReceipt>")
+            && CI_DAG.contains("data ci_wave3_shadow_selected_testgen_receipt: Outcome<SelectedTestgenReceipt>"),
+        "{CI_DAG_PATH}: shadow testgen receipt data must stay Outcome-typed (no Rejected→Empty fixture collapse)"
+    );
+    let testgen_reason_body = extract_fn_body(CI_DAG, "ci_wave3_shadow_testgen_selection_reason");
+    assert!(
+        testgen_reason_body.contains("ci_affected_set_is_fail_closed")
+            && testgen_reason_body.contains("TestgenSlotMapped")
+            && !testgen_reason_body.contains("FailClosedSuperset"),
+        "{CI_DAG_PATH}: testgen shadow selection must be profile-gated NOT fail-closed (no FailClosedSuperset on testgen rows)"
     );
     assert!(
         !CI_DAG.contains("floor_skip:"),
