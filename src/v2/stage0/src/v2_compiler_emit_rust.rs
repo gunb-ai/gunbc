@@ -5479,10 +5479,12 @@ pub fn rust_pub_use_braced_subset_covered(line: String, lines: Rc<Vec<String>>) 
             {
                 let mut __found = false;
                 for other in lines.iter().cloned() {
-                    if ((((other.clone().as_str() != line.clone().as_str())
+                    if (((((other.clone().as_str() != line.clone().as_str())
                         && (rust_pub_use_module_name(other.clone()).as_str()
                             == mod_name.clone().as_str()))
                         && v2_rt::contains(other.clone(), "::{".to_string()))
+                        && ((rust_pub_use_braced_names(other.clone()).len() as i64)
+                            > (names.clone().len() as i64)))
                         && {
                             let mut __all = true;
                             for name in names.clone().iter().cloned() {
@@ -5508,6 +5510,74 @@ pub fn rust_pub_use_braced_subset_covered(line: String, lines: Rc<Vec<String>>) 
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BracedImportCoverAccum {
+    pub found_current: bool,
+    pub covered: bool,
+}
+
+pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Rc<Vec<String>>) -> bool {
+    {
+        let mod_name = rust_pub_use_module_name(line.clone());
+        let names = rust_pub_use_braced_names(line.clone());
+        if ((mod_name.clone().as_str() == "".to_string().as_str())
+            || ((names.clone().len() as i64) == 0))
+        {
+            false
+        } else {
+            {
+                let acc = lines.iter().cloned().fold(
+                    BracedImportCoverAccum {
+                        found_current: false,
+                        covered: false,
+                    },
+                    |inner: BracedImportCoverAccum, other: String| {
+                        if (inner.found_current.clone() || inner.covered.clone()) {
+                            inner.clone()
+                        } else {
+                            if (other.clone().as_str() == line.clone().as_str()) {
+                                BracedImportCoverAccum {
+                                    found_current: true,
+                                    covered: inner.covered.clone(),
+                                }
+                            } else {
+                                {
+                                    let other_names = rust_pub_use_braced_names(other.clone());
+                                    let is_equal_cover =
+                                        ((((rust_pub_use_module_name(other.clone()).as_str()
+                                            == mod_name.clone().as_str())
+                                            && v2_rt::contains(other.clone(), "::{".to_string()))
+                                            && ((other_names.clone().len() as i64)
+                                                == (names.clone().len() as i64)))
+                                            && {
+                                                let mut __all = true;
+                                                for name in names.clone().iter().cloned() {
+                                                    if !(rust_pub_use_braced_line_has_name(
+                                                        other.clone(),
+                                                        mod_name.clone(),
+                                                        name.clone(),
+                                                    )) {
+                                                        __all = false;
+                                                        break;
+                                                    }
+                                                }
+                                                __all
+                                            });
+                                    BracedImportCoverAccum {
+                                        found_current: false,
+                                        covered: is_equal_cover.clone(),
+                                    }
+                                }
+                            }
+                        }
+                    },
+                );
+                acc.covered.clone()
+            }
+        }
+    }
+}
+
 pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let exact = unique_strings(Rc::new({
@@ -5522,8 +5592,10 @@ pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
         Rc::new({
             let mut __result = Vec::new();
             for line in exact.clone().iter().cloned() {
-                if ((rust_pub_use_singleton_covered(line.clone(), exact.clone()) == false)
+                if (((rust_pub_use_singleton_covered(line.clone(), exact.clone()) == false)
                     && (rust_pub_use_braced_subset_covered(line.clone(), exact.clone()) == false))
+                    && (rust_pub_use_braced_equal_prior_covered(line.clone(), exact.clone())
+                        == false))
                 {
                     __result.push(line);
                 }
