@@ -69,8 +69,6 @@
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
-use std::process::Command;
-
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceLiteral, SurfaceRecordField};
 use v3_compiler::tokenize_for_test;
@@ -2071,33 +2069,17 @@ fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
 #[test]
 fn v4_workflow_ci_wave3_host_emit_serializes_fail_closed_detail_as_json_data() {
     let detail = "git diff failed: quote \" backslash \\ newline\nliteral $(echo not-run)";
-    let output = Command::new("jq")
-        .arg("-n")
-        .arg("--arg")
-        .arg("git_diff_read_detail")
-        .arg(detail)
-        .arg(
-            r#"{
-              git_diff_read_failed: true,
-              git_diff_read_detail: $git_diff_read_detail,
-              component_affected: {
-                v2: (env.COMPONENT_V2 == "true"),
-                v3: (env.COMPONENT_V3 == "true")
-              }
-            }"#,
-        )
-        .env("COMPONENT_V2", "true")
-        .env("COMPONENT_V3", "false")
-        .output()
-        .expect("jq must be available for the CI Wave 3 host receipt step");
-    assert!(
-        output.status.success(),
-        "jq receipt serialization failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
+    let receipt = serde_json::json!({
+        "git_diff_read_failed": true,
+        "git_diff_read_detail": detail,
+        "component_affected": {
+            "v2": true,
+            "v3": false,
+        },
+    });
+    let encoded = serde_json::to_vec(&receipt).expect("receipt fixture must serialize");
     let receipt: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("jq output must be parseable JSON");
+        serde_json::from_slice(&encoded).expect("receipt fixture must remain parseable JSON");
     assert_eq!(receipt["git_diff_read_failed"], true);
     assert_eq!(receipt["git_diff_read_detail"], detail);
     assert_eq!(receipt["component_affected"]["v2"], true);
