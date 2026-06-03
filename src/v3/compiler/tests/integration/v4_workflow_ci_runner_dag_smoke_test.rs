@@ -2028,7 +2028,7 @@ fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
     // `ci_selection_receipt_shadow_from_git_diff` stays deferred until the bootstrap eval
     // (`node://adhoc-331899f9-19a`) — the receipt's claim/testgen partitions remain queued.
     assert!(
-        CI_YML.contains("source: \"bootstrap-stage0-run\""),
+        CI_YML.contains("\"source\": \"bootstrap-stage0-run\""),
         "{CI_YML_PATH}: Phase 2 — stage0 host shadow emit step must be wired into ci.yml"
     );
     assert!(
@@ -2045,16 +2045,18 @@ fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
         "{CI_YML_PATH}: Wave 3 host shadow emit must be Class C (continue-on-error: true)"
     );
     assert!(
-        emit_block.contains("jq -n"),
-        "{CI_YML_PATH}: Wave 3 host shadow emit must serialize JSON through jq, not a raw heredoc"
+        !emit_block.contains("jq -n"),
+        "{CI_YML_PATH}: Wave 3 host shadow emit must not depend on undeclared host jq"
     );
     assert!(
-        emit_block.contains("--arg git_diff_read_detail \"$GIT_DIFF_READ_DETAIL\""),
-        "{CI_YML_PATH}: git_diff_read_detail must cross the shell/JSON boundary as typed jq data"
+        emit_block.contains(
+            "GIT_DIFF_READ_DETAIL_JSON: ${{ toJSON(steps.detect.outputs.git_diff_read_detail) }}"
+        ),
+        "{CI_YML_PATH}: git_diff_read_detail must cross into shell as GitHub toJSON data"
     );
     assert!(
-        emit_block.contains("git_diff_read_detail: $git_diff_read_detail"),
-        "{CI_YML_PATH}: receipt must preserve the jq-escaped git_diff_read_detail field"
+        emit_block.contains("\"git_diff_read_detail\": $GIT_DIFF_READ_DETAIL_JSON"),
+        "{CI_YML_PATH}: receipt must preserve the toJSON-escaped git_diff_read_detail field"
     );
     assert!(
         !emit_block.contains("\"git_diff_read_detail\": \"${{ steps.detect.outputs.git_diff_read_detail }}\""),
