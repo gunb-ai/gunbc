@@ -113,6 +113,10 @@ pub enum Value {
         body: Rc<Node>,
         env: Rc<Env>,
     },
+    /// Reference to a module-level `fn` / `func` item (first-class function value).
+    Fn {
+        node: Rc<Node>,
+    },
     Unit,
 }
 
@@ -130,6 +134,7 @@ impl Value {
             Value::Record { .. } => "Record",
             Value::Variant { .. } => "Variant",
             Value::Closure { .. } => "Closure",
+            Value::Fn { .. } => "Fn",
             Value::Unit => "Unit",
         }
     }
@@ -210,6 +215,7 @@ impl fmt::Display for Value {
                 }
             }
             Value::Closure { .. } => write!(f, "<closure>"),
+            Value::Fn { node } => write!(f, "<fn {}>", node.name),
             Value::Unit => write!(f, "()"),
         }
     }
@@ -240,6 +246,7 @@ impl PartialEq for Value {
                 },
             ) => a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
+            (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
             _ => false,
         }
     }
@@ -664,6 +671,14 @@ fn eval_var(
                 }
             }
         }
+        // Module-level fn/func items used as first-class values (higher-order refs).
+        if matches!(info.kind, ItemKind::FuncItem | ItemKind::FnItem) {
+            if let Some(fn_node) = ctx.lookup_fn(&name) {
+                return Ok(Value::Fn {
+                    node: fn_node.clone(),
+                });
+            }
+        }
     }
 
     Err(InterpError::NoSuchVariable { name })
@@ -983,13 +998,16 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
 
-    // Look up user-defined function
-    let fn_node = ctx
-        .lookup_fn(&func_name)
-        .ok_or_else(|| InterpError::NoSuchFunction {
+    // Look up user-defined function (global item or env-bound fn value).
+    let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
+        node.clone()
+    } else if let Some(Value::Fn { node }) = env.lookup(&func_name) {
+        node.clone()
+    } else {
+        return Err(InterpError::NoSuchFunction {
             name: func_name.clone(),
-        })?
-        .clone();
+        });
+    };
 
     call_function(ctx, &fn_node, &args, env)
 }
@@ -2195,6 +2213,7 @@ fn value_to_json(val: &Value) -> serde_json::Value {
         }
         Value::Unit => serde_json::Value::Null,
         Value::Closure { .. } => serde_json::Value::String("<closure>".to_string()),
+        Value::Fn { node } => serde_json::Value::String(format!("<fn {}>", node.name)),
     }
 }
 

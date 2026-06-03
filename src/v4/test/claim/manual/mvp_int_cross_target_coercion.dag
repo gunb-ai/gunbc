@@ -62,6 +62,7 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { StructuralPropertyWitness }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
 
 
 fn python_unbounded_int_grounding() -> CanonicalGrounding {
