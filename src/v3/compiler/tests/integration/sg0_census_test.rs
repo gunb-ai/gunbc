@@ -462,11 +462,19 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // The positive complement of the cross-runtime DRIFT boundary test: drift proves divergence at
     // the fixed-width boundary, parity proves agreement on the common domain.
     //
-    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable receipt
-    // is this registration itself (per-PR mechanism (b)); lane
-    // `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet C (#4137 §11.8).
-    // Dissolution: drop when the modeled `TestClaim` runner executes the three target sources and
-    // binds observed stdout, superseding `python_l2_cross_target_parity.dag`'s host-process bridge.
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable
+    // receipt is this registration itself (per-PR mechanism (b)) — the `EXPECTED_HAND_AUTHORED_TEST`
+    // census moves by exactly +1 now and must shrink by 1 at dissolution; the sorted/unique and
+    // disk-vs-list census tests in this file mechanically enforce it. Deferral lane —
+    // **ROADMAP.md** `PB-Runtime-External-Toolchain-TestClaims` (the exact deferral for
+    // host-spawned toolchain boundary tests; same lane as the Go and drift leaf-model siblings at
+    // `:431` / `:439-448`) plus the "What v4 is building toward" rows "Tests as `.dag` `TestClaim`
+    // data" (`src/v4/test/claim/`) and "Pure bootstrap / self-host" (trajectory to zero
+    // hand-maintained Rust). Concrete dissolution trigger: delete this hand-Rust test when the
+    // modeled `TestClaim` runner executes the three target sources and binds observed stdout to
+    // `expected_parity.actual`, so the boundary host-process bridge is no longer the only exerciser
+    // of `src/v4/test/claim/language_model/python_l2_cross_target_parity.dag` (lane
+    // `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet C / #4137 §11.8).
     "src/v3/compiler/tests/boundary/v4_leaf_model_python_l2_cross_target_parity_test.rs",
     // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
     // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
