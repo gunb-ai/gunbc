@@ -145,8 +145,6 @@ mod m1_fn_external_body_reconciliation_test;
 mod m1_lens_structural_resolution_test;
 #[path = "integration/m1_substrate_test.rs"]
 mod m1_substrate_test;
-#[path = "boundary/m2_emit_multi_field_struct_variant_test.rs"]
-mod m2_emit_multi_field_struct_variant_test;
 #[path = "integration/m2_feature_parity_test.rs"]
 mod m2_feature_parity_test;
 #[path = "integration/m2_field_access_binding_test.rs"]
@@ -281,6 +279,8 @@ mod timing_lens_substrate_carrier_test;
 mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/v4_bin_main_dag_smoke_test.rs"]
 mod v4_bin_main_dag_smoke_test;
+#[path = "integration/v4_claim_pipeline_spine_smoke_test.rs"]
+mod v4_claim_pipeline_spine_smoke_test;
 #[path = "integration/v4_compiler_compile_public_terminal_smoke_test.rs"]
 mod v4_compiler_compile_public_terminal_smoke_test;
 #[path = "integration/v4_compiler_emit_translate_smoke_test.rs"]
@@ -301,12 +301,16 @@ mod v4_extdeps_formatters_black_dag_smoke_test;
 mod v4_extdeps_react_dag_smoke_test;
 #[path = "integration/v4_extdeps_typescript_g14_grounding_smoke_test.rs"]
 mod v4_extdeps_typescript_g14_grounding_smoke_test;
+#[path = "integration/v4_grounding_typescript_g2_smoke_test.rs"]
+mod v4_grounding_typescript_g2_smoke_test;
 #[path = "boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"]
 mod v4_leaf_model_go_r1_r2_r3_external_test;
 #[path = "boundary/v4_leaf_model_python_cross_runtime_drift_test.rs"]
 mod v4_leaf_model_python_cross_runtime_drift_test;
 #[path = "boundary/v4_leaf_model_python_l1_static_receipts_test.rs"]
 mod v4_leaf_model_python_l1_static_receipts_test;
+#[path = "boundary/v4_leaf_model_python_l2_cross_target_parity_test.rs"]
+mod v4_leaf_model_python_l2_cross_target_parity_test;
 #[path = "boundary/v4_leaf_model_python_r1_test.rs"]
 mod v4_leaf_model_python_r1_test;
 #[path = "boundary/v4_leaf_model_python_r2_r3_external_test.rs"]

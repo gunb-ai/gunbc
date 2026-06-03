@@ -19,14 +19,14 @@ import v4.std.algebra {
   bounded_lattice_field_lattice,
   bounded_lattice_field_top,
   lattice_field_join,
-  lattice_field_meet,
+  lattice_field_meet
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.node { Node, Symbol }
 import v4.std.node_query {
   find_named_child,
   named_child_ambiguous,
-  named_child_missing,
+  named_child_missing
 }
 
 

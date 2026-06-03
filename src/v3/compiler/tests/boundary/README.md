@@ -17,7 +17,8 @@ Four target-emission suites moved here from `tests/integration/`:
 - `m1_3_emit_go_test.rs`    — Go roundtrip
 - `m1_3_emit_rust_test.rs`  — rustc roundtrip (module + standalone)
 - `m1_4_emit_python_test.rs` — CPython roundtrip
-- `m2_emit_multi_field_struct_variant_test.rs` — rustc emit regression
+- ~~`m2_emit_multi_field_struct_variant_test.rs`~~ — dissolved F.14; see
+  `tests/dag/boundary_emit_gates.template.dag` (`m2-*` subcommands)
 
 Files are still included from the consolidated `tests/integration.rs`
 binary via `#[path = "boundary/…"]` — the directory carries the

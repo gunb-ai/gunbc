@@ -5,6 +5,9 @@
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.8.1 rung **L1**; Go row target "L0 complete + **L1 fixture-scale**".
 > **Prerequisites:** #4076 merged; L0 leaf-model claims PROVEN (`docs/planning/v4-go-leaf-model-verification-worksheet-2026-06-01.md`); Go SG-1/SG-2 rows landed for atoms/generics touched by slice.
 
+> **Manager closeout:** the L0 R1/R2 prerequisites and the L2 fixture-execution
+> sequence are split out in `docs/planning/v4-go-rca-manager-worksheets-2026-06-03.md`.
+
 ---
 
 ## Mechanical dispatch rule
@@ -77,3 +80,4 @@ Metric allowed only as secondary:
 - PR **#4076** — module layout prerequisite
 - PR **#3946** — ladder rung specs (lands `docs/planning/v4-ladder-rung-specs-2026-05-30.md` on merge)
 - `docs/planning/v4-go-leaf-model-verification-worksheet-2026-06-01.md` — L0 Go R1/R2 prerequisite worksheet
+- `docs/planning/v4-go-rca-manager-worksheets-2026-06-03.md` — manager worksheet split for R1/R2, L1 fixture-scale, and L2 fixture-execution sequencing

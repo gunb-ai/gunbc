@@ -5,6 +5,7 @@ use self::StringScanResult::*;
 pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
 pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
+pub use crate::v2_std_core::make_file_span;
 use crate::v2_std_core::TokenShape::{
     ShAnd, ShArrow, ShBang, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq, ShFatArrow,
     ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat, ShLitInt,
@@ -12,7 +13,7 @@ use crate::v2_std_core::TokenShape::{
     ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin, ShStrEnd,
     ShStrMid, ShUnknown,
 };
-pub use crate::v2_std_core::{make_file_span, Token, TokenShape};
+pub use crate::v2_std_core::{Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

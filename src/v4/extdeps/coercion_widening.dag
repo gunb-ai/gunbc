@@ -1,0 +1,50 @@
+// src/v4/extdeps/coercion_widening.dag
+// Scope: cross-target faithful refinement widening pair registry (MVP rust i32 → python int).
+// Anchor: ROADMAP.md coercion (i32 → arbitrary-precision int); W3.2 Leg B.
+// Status: MVP pair table lives here; std/refinement_widening_predicate proves bundle evidence (P2).
+
+
+module v4.extdeps.coercion_widening
+
+
+import v4.extdeps.languages.python { python_int_inhabitant_node }
+import v4.extdeps.languages.rust { rust_inhabitant_i32_node }
+import v4.std.coercion {
+  CoercionCandidateSet,
+  CoercionResult,
+  coercion_fold_refinement_widening
+}
+import v4.std.constraints { CanonicalGrounding }
+import v4.std.diagnostic { Outcome }
+import v4.std.find_witness {
+  PreservationPredicate,
+  TargetDeclaredPriority,
+  preservation_rule_refinement_widening
+}
+import v4.std.node { Node }
+import v4.std.refinement_widening_predicate { refinement_widening_predicate_algebra }
+
+
+fn mvp_rust_i32_python_int_refinement_widening_predicate() -> PreservationPredicate {
+  PreservationPredicate {
+    algebra: refinement_widening_predicate_algebra(
+      source: rust_inhabitant_i32_node(),
+      candidate: python_int_inhabitant_node()
+    ),
+    preservation_rule: preservation_rule_refinement_widening
+  }
+}
+
+
+fn coercion_fold_mvp_rust_i32_to_python_int_widening(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  priority: Node,
+) -> Outcome<CoercionResult> {
+  coercion_fold_refinement_widening(
+    source: source,
+    candidates: candidates,
+    policy: TargetDeclaredPriority { priority: priority },
+    predicate: mvp_rust_i32_python_int_refinement_widening_predicate()
+  )
+}
