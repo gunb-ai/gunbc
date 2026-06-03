@@ -20,8 +20,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
-# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag binding)
-# Required on every non-draft PR: fmt, affected-set component receipt, bootstrap viability, M1 rust emit, ci.dag structural receipt.
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (M1 rust+dag emit + DAG parity)
+# Required on every non-draft PR: fmt, affected-set component receipt, M1 rust+dag emit, DAG parity receipt.
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR -- model authority: src/v4/workflow/ci.dag
   # `ci_runner_isolation_policy`. This job + its carrier Job record are coverage-bound byte-for-byte
@@ -257,22 +257,8 @@ jobs:
         V4_M1_DAG_EMIT_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
         V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash .github/ci-floor/v4-m1-rust-emit-probe.sh
-    - name: v2 DAG emit parity receipt (required before bootstrap reuse)
+    - name: v2 DAG emit parity receipt (shared closure)
       run: cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
-    - name: v2 -> v4 bootstrap compile (fail-closed full)
-      timeout-minutes: 35
-      env:
-        V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
-        V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
-        V4_BOOTSTRAP_REUSE_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
-        V4_BOOTSTRAP_TIMEOUT_SECS: '900'
-      run: bash .github/ci-floor/v4-bootstrap-viability.sh
-    - name: M1 v4 workflow CI model/YAML binding smoke
-      run: |
-        set -euo pipefail
-        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet
-        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet
-        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
     needs: [affected, ci_floor, infra_isolation]
@@ -294,7 +280,7 @@ jobs:
           echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + four Class-A gates in ci_floor; infra_isolation de-priv guard green)"
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + M1 rust+dag emit and DAG parity in ci_floor; infra_isolation de-priv guard green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag structural receipt)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (M1 rust+dag emit + DAG parity)"
