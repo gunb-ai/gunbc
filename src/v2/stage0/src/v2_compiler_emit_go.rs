@@ -4,6 +4,9 @@
 pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffix};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+use crate::std_syntax::BinOp::NullCoalesce;
+pub use crate::std_syntax::{BinOp, LiteralValue};
+pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Go;
 pub use crate::v2_compiler_emit::{
@@ -30,11 +33,16 @@ pub use crate::v2_compiler_emit::{
     sanitize_service_name, scope_after_expr, seed_bindings, service_fallback_transport,
     service_field_decls, service_var_name, test_file_path, test_function_name, to_lower_char,
     to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    typed_named_arg_matches, unique_strings, BlockEmitState, EmitResult, InterpPart,
-    ServiceFieldSet, TestProjection,
+    typed_named_arg_matches, unique_strings,
 };
-pub use crate::v2_compiler_infer::{build_params_scope, expr_span, extend_scope, InferScope};
-pub use crate::v2_compiler_infer_env::{authored_name, TypeBinding, TypeEnv};
+pub use crate::v2_compiler_emit::{
+    BlockEmitState, EmitResult, InterpPart, ServiceFieldSet, TestProjection,
+};
+pub use crate::v2_compiler_emit_rust::{function_type_params, function_value_params};
+pub use crate::v2_compiler_infer::InferScope;
+pub use crate::v2_compiler_infer::{build_params_scope, expr_span, extend_scope};
+pub use crate::v2_compiler_infer_env::authored_name;
+pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -45,12 +53,11 @@ pub use crate::v2_compiler_infer_types::{
 };
 use crate::v2_compiler_languages::VisibilitySpec::CaseVisibility;
 pub use crate::v2_compiler_languages::{
-    is_string_like, scaffold_for_target, test_conventions_for_target, ItemKeywords,
-    TestConventions, VisibilitySpec,
+    is_string_like, scaffold_for_target, test_conventions_for_target,
 };
+pub use crate::v2_compiler_languages::{ItemKeywords, TestConventions, VisibilitySpec};
 pub use crate::v2_compiler_runtime_go::go_runtime_source;
 use crate::v2_rt;
-use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{
@@ -74,17 +81,19 @@ pub use crate::v2_std_core::{
     arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, cast_expr, cast_target,
     expr_call_func_at, expr_field_access_summary, expr_method_call_semantics, expr_method_name_at,
     expr_var_name_at, field_access_base, field_access_field_at, field_init_node_name_at,
-    field_init_node_value, foreach_body, foreach_collection, foreach_variable_at, if_condition,
-    if_else_branch, if_then_branch, import_is_all, index_base, index_expr, is_file_transport,
-    is_rest_transport, is_shell_transport, lambda_body, let_binding_name_at, let_body, let_value,
-    make_expr_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, param_node_name_at, param_node_type_expr,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
-    slice_end, slice_start, transport_auth_header_name, transport_env, transport_has_auth,
-    transport_headers, with_required_cardinality, BinOp, Cardinality, Connective, DeclaredFuncSig,
-    ExprData, FieldAccessStyle, FieldSummary, InferredNode, LiteralValue, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
-    VarBindingKind,
+    field_init_node_value, foreach_body, foreach_collection, foreach_variable_at,
+    generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all, index_base,
+    index_expr, is_file_transport, is_rest_transport, is_shell_transport, lambda_body,
+    let_binding_name_at, let_body, let_value, make_expr_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, param_node_name_at,
+    param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    return_value, slice_base, slice_end, slice_start, transport_auth_header_name, transport_env,
+    transport_has_auth, transport_headers, with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -171,10 +180,14 @@ pub fn emit_go_v2rt_module() -> Rc<TextFile> {
 
 pub fn emit_go_mod(module_name: String) -> Rc<TextFile> {
     {
-        let manifest_path = match scaffold_for_target(RenderTarget::Go).manifest_file.clone() {
+        let manifest_basename = match scaffold_for_target(RenderTarget::Go).manifest_file.clone() {
             Some(path) => path.clone(),
             None => "go.mod".to_string(),
         };
+        let manifest_path = v2_rt::concat(
+            v2_rt::concat(go_emit_module_root(), "/".to_string()),
+            manifest_basename,
+        );
         let content = v2_rt::concat(
             v2_rt::concat("module ".to_string(), module_name),
             "\n\ngo 1.21\n".to_string(),
@@ -763,20 +776,48 @@ pub fn emit_go_typed_item(
     }
 }
 
+pub fn emit_go_type_param_decl(
+    params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((params.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let names = Rc::new({
+                let mut __result = Vec::new();
+                for p in params.clone().iter().cloned() {
+                    __result.push(v2_rt::concat(
+                        generic_param_name_at(p.clone(), source_indices.clone()),
+                        " any".to_string(),
+                    ));
+                }
+                __result
+            });
+            v2_rt::concat(
+                v2_rt::concat("[".to_string(), names.join(&", ".to_string())),
+                "]".to_string(),
+            )
+        }
+    }
+}
+
 pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
+        let type_params = emit_go_type_param_decl(item.params.clone(), env.source_indices.clone());
         let is_product = (item.connective.clone() == Connective::Conj);
         if is_product {
-            emit_go_struct_from_children(item_text, item.children.clone(), env.clone())
+            emit_go_struct_from_children(item_text, type_params, item.children.clone(), env.clone())
         } else {
-            emit_go_sum_from_children(item_text, item.children.clone(), env.clone())
+            emit_go_sum_from_children(item_text, type_params, item.children.clone(), env.clone())
         }
     }
 }
 
 pub fn emit_go_struct_from_children(
     name: String,
+    type_params: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -786,14 +827,17 @@ pub fn emit_go_struct_from_children(
                 v2_rt::concat(
                     v2_rt::concat(
                         v2_rt::concat(
-                            language_spec(RenderTarget::Go)
-                                .items
-                                .clone()
-                                .type_alias_keyword
-                                .clone(),
-                            " ".to_string(),
+                            v2_rt::concat(
+                                language_spec(RenderTarget::Go)
+                                    .items
+                                    .clone()
+                                    .type_alias_keyword
+                                    .clone(),
+                                " ".to_string(),
+                            ),
+                            name,
                         ),
-                        name,
+                        type_params,
                     ),
                     " ".to_string(),
                 ),
@@ -822,14 +866,17 @@ pub fn emit_go_struct_from_children(
                             v2_rt::concat(
                                 v2_rt::concat(
                                     v2_rt::concat(
-                                        language_spec(RenderTarget::Go)
-                                            .items
-                                            .clone()
-                                            .type_alias_keyword
-                                            .clone(),
-                                        " ".to_string(),
+                                        v2_rt::concat(
+                                            language_spec(RenderTarget::Go)
+                                                .items
+                                                .clone()
+                                                .type_alias_keyword
+                                                .clone(),
+                                            " ".to_string(),
+                                        ),
+                                        name,
                                     ),
-                                    name,
+                                    type_params,
                                 ),
                                 " ".to_string(),
                             ),
@@ -876,6 +923,7 @@ pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> Str
 
 pub fn emit_go_sum_from_children(
     name: String,
+    type_params: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
 ) -> String {
@@ -897,14 +945,17 @@ pub fn emit_go_sum_from_children(
                         v2_rt::concat(
                             v2_rt::concat(
                                 v2_rt::concat(
-                                    language_spec(RenderTarget::Go)
-                                        .items
-                                        .clone()
-                                        .type_alias_keyword
-                                        .clone(),
-                                    " ".to_string(),
+                                    v2_rt::concat(
+                                        language_spec(RenderTarget::Go)
+                                            .items
+                                            .clone()
+                                            .type_alias_keyword
+                                            .clone(),
+                                        " ".to_string(),
+                                    ),
+                                    name.clone(),
                                 ),
-                                name.clone(),
+                                type_params.clone(),
                             ),
                             " interface {\n\tis".to_string(),
                         ),
@@ -917,6 +968,7 @@ pub fn emit_go_sum_from_children(
                     for child in children.clone().iter().cloned() {
                         __result.push(emit_go_variant_struct(
                             name.clone(),
+                            type_params.clone(),
                             child.clone(),
                             env.clone(),
                         ));
@@ -996,7 +1048,12 @@ pub fn emit_go_sum_from_children(
     }
 }
 
-pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_go_variant_struct(
+    parent_name: String,
+    type_params: String,
+    child: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> String {
     {
         let struct_name = v2_rt::concat(
             parent_name.clone(),
@@ -1029,14 +1086,17 @@ pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<Type
                         v2_rt::concat(
                             v2_rt::concat(
                                 v2_rt::concat(
-                                    language_spec(RenderTarget::Go)
-                                        .items
-                                        .clone()
-                                        .type_alias_keyword
-                                        .clone(),
-                                    " ".to_string(),
+                                    v2_rt::concat(
+                                        language_spec(RenderTarget::Go)
+                                            .items
+                                            .clone()
+                                            .type_alias_keyword
+                                            .clone(),
+                                        " ".to_string(),
+                                    ),
+                                    struct_name.clone(),
                                 ),
-                                struct_name.clone(),
+                                type_params,
                             ),
                             " ".to_string(),
                         ),
@@ -1068,14 +1128,17 @@ pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<Type
                                     v2_rt::concat(
                                         v2_rt::concat(
                                             v2_rt::concat(
-                                                language_spec(RenderTarget::Go)
-                                                    .items
-                                                    .clone()
-                                                    .type_alias_keyword
-                                                    .clone(),
-                                                " ".to_string(),
+                                                v2_rt::concat(
+                                                    language_spec(RenderTarget::Go)
+                                                        .items
+                                                        .clone()
+                                                        .type_alias_keyword
+                                                        .clone(),
+                                                    " ".to_string(),
+                                                ),
+                                                struct_name.clone(),
                                             ),
-                                            struct_name.clone(),
+                                            type_params,
                                         ),
                                         " ".to_string(),
                                     ),
@@ -1132,16 +1195,19 @@ pub fn emit_go_fn_def(
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let params_str = emit_params_shared(params.clone(), RenderTarget::Go, si.clone());
+        let fn_type_params = function_type_params(params.clone());
+        let fn_value_params = function_value_params(params.clone());
+        let type_params = emit_go_type_param_decl(fn_type_params, si.clone());
+        let params_str = emit_params_shared(fn_value_params.clone(), RenderTarget::Go, si.clone());
         let ret_str = emit_inferred_shared(inferred, RenderTarget::Go, si.clone());
-        let body_scope = build_params_scope(scope.clone(), params.clone());
+        let body_scope = build_params_scope(scope.clone(), fn_value_params.clone());
         let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone(), si.clone());
         if use_tco {
             {
                 let body_str = emit_tco_unified(
                     body.clone(),
                     name.clone(),
-                    params.clone(),
+                    fn_value_params.clone(),
                     RenderTarget::Go,
                     registry.clone(),
                     body_scope,
@@ -1157,14 +1223,17 @@ pub fn emit_go_fn_def(
                                         v2_rt::concat(
                                             v2_rt::concat(
                                                 v2_rt::concat(
-                                                    language_spec(RenderTarget::Go)
-                                                        .items
-                                                        .clone()
-                                                        .func_keyword
-                                                        .clone(),
-                                                    " ".to_string(),
+                                                    v2_rt::concat(
+                                                        language_spec(RenderTarget::Go)
+                                                            .items
+                                                            .clone()
+                                                            .func_keyword
+                                                            .clone(),
+                                                        " ".to_string(),
+                                                    ),
+                                                    go_export_ident(name.clone()),
                                                 ),
-                                                go_export_ident(name.clone()),
+                                                type_params,
                                             ),
                                             "(".to_string(),
                                         ),
@@ -1199,14 +1268,17 @@ pub fn emit_go_fn_def(
                                         v2_rt::concat(
                                             v2_rt::concat(
                                                 v2_rt::concat(
-                                                    language_spec(RenderTarget::Go)
-                                                        .items
-                                                        .clone()
-                                                        .func_keyword
-                                                        .clone(),
-                                                    " ".to_string(),
+                                                    v2_rt::concat(
+                                                        language_spec(RenderTarget::Go)
+                                                            .items
+                                                            .clone()
+                                                            .func_keyword
+                                                            .clone(),
+                                                        " ".to_string(),
+                                                    ),
+                                                    go_export_ident(name.clone()),
                                                 ),
-                                                go_export_ident(name.clone()),
+                                                type_params,
                                             ),
                                             "(".to_string(),
                                         ),

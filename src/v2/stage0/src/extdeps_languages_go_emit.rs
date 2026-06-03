@@ -268,7 +268,7 @@ pub fn go_error_type_template() -> String {
 pub fn go_type_arg_open() -> String {
     thread_local! {
         static CACHED: String = {
-            "<".to_string()
+            "[".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -277,7 +277,7 @@ pub fn go_type_arg_open() -> String {
 pub fn go_type_arg_close() -> String {
     thread_local! {
         static CACHED: String = {
-            ">".to_string()
+            "]".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

@@ -39,7 +39,10 @@ if [[ -z "$out" ]]; then
 fi
 
 go_tree="$out/go"
-go_module_root="$go_tree"
+go_module_root="$go_tree/generated"
+if [[ ! -f "$go_module_root/go.mod" ]]; then
+  go_module_root="$go_tree"
+fi
 summary="${out}.go-compiler-slice-gate-summary.txt"
 receipt_json="${out}.go-compiler-slice-receipt.json"
 

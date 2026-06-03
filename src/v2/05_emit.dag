@@ -1824,9 +1824,9 @@ fn emit_tco_match_go(
       recurse_expr: (expr, sc, d) => emit_unified_typed_expr(texpr: expr, target: Go, registry: registry, scope: sc, depth: d, fuel: 1024, render_pattern: render_pattern),
       render_match: frame => emit_unified_tco_match(frame: frame, fn_name: fn_name, params: params, target: Go, registry: registry, render_pattern: render_pattern, render_init_stmts: render_init_stmts),
       render_init_stmts: render_init_stmts)
-    let body_str = emit_match_arm_body_stmt(target: Go, body_str: tco_body)
+    // TCO lowering already emits return/continue/reassign; do not prepend a second return.
     let guard_str = emit_arm_guard(arm: arm, target: Go, render_guard_expr: g => emit_unified_typed_expr(texpr: g, target: Go, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern))
-    emit_match_arm_line(arm: arm, target: Go, case_depth: case_depth, body_depth: body_depth, body_str: concat(bindings, body_str), guard_str: guard_str, render_pattern: render_pattern)
+    emit_match_arm_line(arm: arm, target: Go, case_depth: case_depth, body_depth: body_depth, body_str: concat(bindings, tco_body), guard_str: guard_str, render_pattern: render_pattern)
   )
   concat("switch __gunbcMatch := ", scrutinee_str, ".(type)", bs.block_open, arm_strs |> join(separator: "\n"), "\n", make_indent(level: depth), bs.block_close)
 }
@@ -1894,8 +1894,16 @@ fn emit_tco_unified(
     render_init_stmts: (stmts, scope, depth) => emit_unified_init_block_stmts(remaining: stmts, text: [], scope: scope, depth: depth, target: target, registry: registry, render_pattern: render_pattern))
 }
 
-fn emit_unified_typed_func_body(body: Node, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_unified_typed_func_body(body: Node, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, return_suffix_override: String?) -> String {
   let es = language_spec(target: target).expression_semantics
+  let return_suffix = match return_suffix_override {
+    Some { value: rs } => rs
+    None => es.return_suffix
+  }
+  let empty_return_value = match return_suffix_override {
+    Some { value: rs } => if rs == "" { "" } else { es.empty_return_value }
+    None => es.empty_return_value
+  }
   let bs = language_spec(target: target).block_syntax
   let si = scope.type_env.source_indices
   let prefix = if bs.significant_whitespace { "" } else { make_indent(level: depth) }
@@ -1911,14 +1919,14 @@ fn emit_unified_typed_func_body(body: Node, target: RenderTarget, registry: Map<
       let next_scope = extend_scope(scope: scope, name: n, resolved: resolved_type(n: v), provenance: SubValueUnknown)
       match inner {
         Some { value: bd } =>
-          concat(let_line, "\n", emit_unified_typed_func_body(body: bd, target: target, registry: registry, scope: next_scope, depth: depth))
+          concat(let_line, "\n", emit_unified_typed_func_body(body: bd, target: target, registry: registry, scope: next_scope, depth: depth, return_suffix_override: return_suffix_override))
         None => let_line
       }
     }
     ExprBlock => {
       let ss = body.children
       if ss |> count == 0 {
-        concat(prefix, "return ", es.empty_return_value)
+        if empty_return_value == "" { "" } else { concat(prefix, "return ", empty_return_value) }
       } else {
         let init_state = emit_unified_init_block_stmts(
           remaining: ss, text: [], scope: scope, depth: depth,
@@ -1927,8 +1935,8 @@ fn emit_unified_typed_func_body(body: Node, target: RenderTarget, registry: Map<
         let last_stmt = ss |> last
         let last_str = match last_stmt {
           Some { value: s } => concat(prefix, "return ", emit_unified_typed_expr(texpr: s, target: target, registry: registry, scope: init_state.scope, depth: depth, fuel: 1024,
-            render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)), es.return_suffix)
-          None => concat(prefix, "return ", es.empty_return_value)
+            render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)), return_suffix)
+          None => if empty_return_value == "" { "" } else { concat(prefix, "return ", empty_return_value) }
         }
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
@@ -1940,10 +1948,10 @@ fn emit_unified_typed_func_body(body: Node, target: RenderTarget, registry: Map<
             render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si))
         MatchExpression =>
           concat(prefix, "return ", emit_unified_typed_expr(texpr: body, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024,
-            render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)), es.return_suffix)
+            render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)), return_suffix)
       }
     _ => concat(prefix, "return ", emit_unified_typed_expr(texpr: body, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024,
-      render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)), es.return_suffix)
+      render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)), return_suffix)
   }
 }
 
@@ -2130,7 +2138,21 @@ fn emit_expr_var_shared(expr: Node, target: RenderTarget, source_indices: Map<St
   let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
   if n == "none" { emit_keyword(key: "null", target: target) }
   else if n == "true" || n == "false" { emit_keyword(key: n, target: target) }
-  else { emit_ident(name: n, target: target) }
+  else {
+    match expr.expr_data {
+      ExprVar { binding_kind: bk } =>
+        match target {
+          Go =>
+            match bk {
+              Some { value: VariantValueBinding { parent_enum: pe } } =>
+                concat(go_variant_case_type(name: n, parent_enum: pe), language_spec(target: Go).record_lit.named_empty)
+              _ => emit_ident(name: n, target: target)
+            }
+          _ => emit_ident(name: n, target: target)
+        }
+      _ => emit_ident(name: n, target: target)
+    }
+  }
 }
 
 fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: fn(Node) -> String, source_indices: Map<String, NewlineIndex>) -> String {
@@ -2544,7 +2566,7 @@ fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarge
   }
 }
 
-fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>, recurse: fn(Node) -> String) -> String {
+fn emit_typed_record_lit_unified(type_name: String?, parent_enum: String?, fields: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>, recurse: fn(Node) -> String) -> String {
   let rls = language_spec(target: target).record_lit
   match type_name {
     None => {
@@ -2559,14 +2581,18 @@ fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target:
       }
     }
     Some { value: tn } =>
+      let type_str = match target {
+        Go => go_variant_case_type(name: tn, parent_enum: parent_enum)
+        _ => tn
+      }
       if fields |> count == 0 {
-        concat(tn, rls.named_empty)
+        concat(type_str, rls.named_empty)
       } else {
         let field_strs = fields |> map(f =>
           concat(emit_export_ident(name: field_init_node_name_at(n: f, source_indices: source_indices), target: target), rls.named_field_sep, recurse(field_init_node_value(n: f)))
         )
         let fields_str = field_strs |> join(separator: rls.named_field_join)
-        concat(tn, rls.named_open, fields_str, rls.named_close)
+        concat(type_str, rls.named_open, fields_str, rls.named_close)
       }
   }
 }
@@ -2693,10 +2719,16 @@ fn emit_unified_pattern(pattern: MatchPattern, target: RenderTarget, source_indi
 }
 
 fn go_variant_case_type(name: String, parent_enum: String?) -> String {
+  let exported = emit_export_ident(name: name, target: Go)
   match parent_enum {
-    Some { value: parent } => concat(parent, name)
-    None => name
+    Some { value: parent } => concat(emit_export_ident(name: parent, target: Go), exported)
+    None => exported
   }
+}
+
+// Go match arms that are already a type-switch statement cannot take `return` prefix.
+fn go_match_arm_is_type_switch_stmt(body_str: String) -> Bool {
+  substring(s: body_str, start: 0, end: 7) == "switch "
 }
 
 fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
@@ -2729,7 +2761,12 @@ fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindin
 // match_value_form requires statement arms (Python match / Go switch), not expression arms (Rust).
 fn emit_match_arm_body_stmt(target: RenderTarget, body_str: String) -> String {
   match language_spec(target: target).expression_semantics.match_value_form {
-    MatchStatementArmReturn => concat("return ", body_str)
+    MatchStatementArmReturn =>
+      if target == Go && go_match_arm_is_type_switch_stmt(body_str: body_str) {
+        body_str
+      } else {
+        concat("return ", body_str)
+      }
     MatchExpression => body_str
   }
 }
@@ -2892,8 +2929,12 @@ fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<Stri
         scope: scope, value_node: let_value(texpr: expr))
     },
     emit_record_lit: expr =>
-      emit_typed_record_lit_unified(type_name: record_lit_type_name_at(texpr: expr, source_indices: si), fields: expr.children, target: target, source_indices: si,
-        recurse: n => emit_unified_typed_expr(texpr: n, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
+      match expr.expr_data {
+        ExprRecordLit { parent_enum: pe } =>
+          emit_typed_record_lit_unified(type_name: record_lit_type_name_at(texpr: expr, source_indices: si), parent_enum: pe, fields: expr.children, target: target, source_indices: si,
+            recurse: n => emit_unified_typed_expr(texpr: n, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern))
+        _ => emit_error_expr(message: "emit_record_lit expected ExprRecordLit", target: target)
+      },
     emit_string_interp: expr =>
       emit_typed_string_interp_unified(parts: extract_string_interp_parts(expr: expr), target: target,
         recurse: e => emit_unified_typed_expr(texpr: e, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),

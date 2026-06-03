@@ -335,10 +335,15 @@ else
   fi
 fi
 
+# go.mod is emitted under generated/ (module path == go_emit_module_root); build from there.
+go_module_root="$out/go/generated"
+if [[ ! -f "$go_module_root/go.mod" ]]; then
+  go_module_root="$out/go"
+fi
 if [[ "${verdict[R0-go-parse]}" == "PASS" ]]; then
   go_build_log="$out/logs/go_build.log"
   set +e
-  ( cd "$out/go" && run_step "$go_build_log" "$go_bin" build ./... )
+  ( cd "$go_module_root" && run_step "$go_build_log" "$go_bin" build ./... )
   go_build_status=$?
   set -e
   if [[ "$go_build_status" -eq 0 ]]; then

@@ -26,7 +26,7 @@ import v2.std.core {
   VarBindingKind, FunctionValueBinding,
   import_is_all, module_imports, module_items,
   param_node_type_expr,
-  authored_name_at, NewlineIndex,
+  authored_name_at, NewlineIndex, generic_param_name_at,
   expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at,
   param_node_name_at, resource_use_name_at,
   MatchPattern, LiteralValue,
@@ -92,6 +92,9 @@ import std.induction { SubValueUnknown }
 
 import v2.compiler.runtime_go { go_runtime_source }
 
+import v2.compiler.emit_rust {
+  function_type_params, function_value_params
+}
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type,
@@ -174,10 +177,13 @@ fn emit_go_v2rt_module() -> TextFile {
 // =========================================================================
 
 fn emit_go_mod(module_name: String) -> TextFile {
-  let manifest_path = match scaffold_for_target(target: Go).manifest_file {
+  let manifest_basename = match scaffold_for_target(target: Go).manifest_file {
     Some { value: path } => path
     None => "go.mod"
   }
+  // go.mod lives under go_emit_module_root/ so import paths `generated/<pkg>` resolve
+  // when the module path is `generated` and build runs from that directory (#4076).
+  let manifest_path = concat(go_emit_module_root(), "/", manifest_basename)
   let content = concat("module ", module_name, "\n\ngo 1.21\n")
   TextFile { path: manifest_path, content: content }
 }
@@ -362,24 +368,35 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // Type definitions
 // =========================================================================
 
+// Go 1.18+ generic param list: [T any, U any] (distinct from Rust emit_type_params <T>).
+fn emit_go_type_param_decl(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  if params |> count == 0 {
+    ""
+  } else {
+    let names = params |> map(p => concat(generic_param_name_at(p: p, source_indices: source_indices), " any"))
+    concat("[", names |> join(separator: ", "), "]")
+  }
+}
+
 fn emit_go_type_def_from_connective(item: Node, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
+  let type_params = emit_go_type_param_decl(params: item.params, source_indices: env.source_indices)
   let is_product = item.connective == Conj
   if is_product {
-    emit_go_struct_from_children(name: item_text, children: item.children, env: env)
+    emit_go_struct_from_children(name: item_text, type_params: type_params, children: item.children, env: env)
   } else {
-    emit_go_sum_from_children(name: item_text, children: item.children, env: env)
+    emit_go_sum_from_children(name: item_text, type_params: type_params, children: item.children, env: env)
   }
 }
 
 
-fn emit_go_struct_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
+fn emit_go_struct_from_children(name: String, type_params: String, children: List<Node>, env: TypeEnv) -> String {
   if children |> count == 0 {
-    concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, "{}")
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", name, type_params, " ", language_spec(target: Go).items.struct_keyword, "{}")
   } else {
     let field_lines = children |> map(child => emit_go_struct_field_from_child(child: child, env: env))
     let fields_str = field_lines |> join(separator: "\n")
-    concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, " {\n", fields_str, "\n}")
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", name, type_params, " ", language_spec(target: Go).items.struct_keyword, " {\n", fields_str, "\n}")
   }
 }
 
@@ -390,11 +407,11 @@ fn emit_go_struct_field_from_child(child: Node, env: TypeEnv) -> String {
   concat("\t", go_export_ident(name: child_text), " ", ty, json_tag)
 }
 
-fn emit_go_sum_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
+fn emit_go_sum_from_children(name: String, type_params: String, children: List<Node>, env: TypeEnv) -> String {
   let has_data = children |> any(child => child.children |> count > 0)
   if has_data {
-    let iface = concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " interface {\n\tis", name, "()\n}")
-    let variant_structs = children |> map(child => emit_go_variant_struct(parent_name: name, child: child, env: env))
+    let iface = concat(language_spec(target: Go).items.type_alias_keyword, " ", name, type_params, " interface {\n\tis", name, "()\n}")
+    let variant_structs = children |> map(child => emit_go_variant_struct(parent_name: name, type_params: type_params, child: child, env: env))
     let structs_str = variant_structs |> join(separator: "\n\n")
     concat(iface, "\n\n", structs_str)
   } else {
@@ -413,15 +430,15 @@ fn emit_go_sum_from_children(name: String, children: List<Node>, env: TypeEnv) -
   }
 }
 
-fn emit_go_variant_struct(parent_name: String, child: Node, env: TypeEnv) -> String {
+fn emit_go_variant_struct(parent_name: String, type_params: String, child: Node, env: TypeEnv) -> String {
   let struct_name = concat(parent_name, authored_name(env: env, node: child))
   let marker_method = concat(language_spec(target: Go).items.func_keyword, " (", struct_name, ") is", parent_name, "() {}")
   if child.children |> count == 0 {
-    concat(language_spec(target: Go).items.type_alias_keyword, " ", struct_name, " ", language_spec(target: Go).items.struct_keyword, "{}\n\n", marker_method)
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", struct_name, type_params, " ", language_spec(target: Go).items.struct_keyword, "{}\n\n", marker_method)
   } else {
     let field_lines = child.children |> map(f => emit_go_struct_field_from_child(child: f, env: env))
     let fields_str = field_lines |> join(separator: "\n")
-    concat(language_spec(target: Go).items.type_alias_keyword, " ", struct_name, " ", language_spec(target: Go).items.struct_keyword, " {\n", fields_str, "\n}\n\n", marker_method)
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", struct_name, type_params, " ", language_spec(target: Go).items.struct_keyword, " {\n", fields_str, "\n}\n\n", marker_method)
   }
 }
 
@@ -440,19 +457,22 @@ fn emit_go_type_alias(name: String, base: Node, source_indices: Map<String, Newl
 
 fn emit_go_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let si = scope.type_env.source_indices
-  let params_str = emit_params_shared(params: params, target: Go, source_indices: si)
+  let fn_type_params = function_type_params(params: params)
+  let fn_value_params = function_value_params(params: params)
+  let type_params = emit_go_type_param_decl(params: fn_type_params, source_indices: si)
+  let params_str = emit_params_shared(params: fn_value_params, target: Go, source_indices: si)
   let ret_str = emit_inferred_shared(inferred: inferred, target: Go, source_indices: si)
-  let body_scope = build_params_scope(scope: scope, params: params)
+  let body_scope = build_params_scope(scope: scope, params: fn_value_params)
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
   if use_tco {
-    let body_str = emit_tco_unified(texpr: body, fn_name: name, params: params,
+    let body_str = emit_tco_unified(texpr: body, fn_name: name, params: fn_value_params,
       target: Go, registry: registry, scope: body_scope, depth: 1,
       render_pattern: pat => emit_unified_pattern(pattern: pat, target: Go, source_indices: si))
-    concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
+    concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), type_params, "(", params_str, ")", ret_str, " {\n",
       body_str, "\n}")
   } else {
-    let body_str = emit_unified_typed_func_body(body: body, target: Go, registry: registry, scope: body_scope, depth: 1)
-    concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
+    let body_str = emit_unified_typed_func_body(body: body, target: Go, registry: registry, scope: body_scope, depth: 1, return_suffix_override: Some { value: "" })
+    concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), type_params, "(", params_str, ")", ret_str, " {\n",
       body_str, "\n}")
   }
 }
@@ -481,7 +501,7 @@ fn emit_go_func_def(
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
     extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
   )
-  let body_str = emit_unified_typed_func_body(body: body, target: Go, registry: registry, scope: body_scope, depth: 1)
+  let body_str = emit_unified_typed_func_body(body: body, target: Go, registry: registry, scope: body_scope, depth: 1, return_suffix_override: none)
   concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), "(", params_str, ") (", ret_type, ", error) {\n",
     body_str, "\n}")
 }

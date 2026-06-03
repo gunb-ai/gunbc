@@ -451,7 +451,7 @@ fn emit_py_func_def(
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
     extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
   )
-  let body_str = emit_unified_typed_func_body(body: body, target: Python, registry: registry, scope: body_scope, depth: depth + 1)
+  let body_str = emit_unified_typed_func_body(body: body, target: Python, registry: registry, scope: body_scope, depth: depth + 1, return_suffix_override: none)
   let items = language_spec(target: Python).items
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: name, target: Python), "(", params_str, ")", ret_str, ":\n",
     make_indent(level: depth + 1), body_str)
