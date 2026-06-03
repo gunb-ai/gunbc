@@ -1397,7 +1397,9 @@ fn ci_testclaim_corpus_eval_command() -> CiCommand {
 }
 
 // RR-A §5.2 / A.3b step-3 — host transport for `testclaim_corpus_eval_execution` when scheduled.
-// Invokes stage0 `gunbc test` (scripts/v4-testclaim-corpus-eval.sh); demoted from Wave-1 required path.
+// Invokes stage0 `gunbc test` (scripts/v4-testclaim-corpus-eval.sh) → run_test_claim verdict chain.
+// Wave-1 §11.7.1: NOT on ci.yml required path yet (Class C demoted); execution-runnable when
+// affected-set schedules the job — shadow / non-fail-closed posture OK until live projection.
 data ci_testclaim_corpus_eval_host_script: String = "scripts/v4-testclaim-corpus-eval.sh"
 
 fn ci_testclaim_corpus_eval_host_transport_well_formed() -> Bool {

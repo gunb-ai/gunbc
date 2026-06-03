@@ -1020,6 +1020,34 @@ fn rung1_gunbc_test_stage0_handler_and_corpus_eval_host_script() {
             && CI_DAG.contains("witness_ci_testclaim_corpus_eval_host_transport"),
         "ci.dag must model corpus-eval host script path for execution-runnable transport"
     );
+    // Acceptance path: >=1 real Verdict via gunbc test → run_test_claim (not emit_host).
+    assert!(
+        TESTCLAIM_CORPUS_RUNNER_DAG
+            .contains("map(subjects, fn(subject) { run_test_claim(subject: subject) })")
+            && TESTCLAIM_CORPUS_RUNNER_DAG.contains("test_claim_run_verdict(run: e.run)")
+            && TESTCLAIM_CORPUS_RUNNER_DAG
+                .contains("manual_corpus_gate(report: run_manual_testclaim_corpus_eval())"),
+        "acceptance path must fold per-row TestClaimRun verdicts from run_test_claim (T-38)"
+    );
+    assert!(
+        !TESTCLAIM_CORPUS_RUNNER_DAG.lines().any(|line| {
+            let t = line.trim();
+            !t.starts_with("//")
+                && (t.contains("import") && t.contains("emit_host")
+                    || t.contains("emit_host_"))
+        }),
+        "manual corpus runner must not import or call emit_host (gunbc test / stage0 interpreter only)"
+    );
+    assert!(
+        !cli_test_body.contains("emit_host"),
+        "cli_test.rs must dispatch gunbc test via cli_run only, not emit_host"
+    );
+    // ci.yml: corpus-eval job is modeled in ci.dag but demoted from Wave-1 required path (Class C).
+    const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
+    assert!(
+        !CI_YML.contains("v4-testclaim-corpus-eval.sh"),
+        "ci.yml required path must not invoke corpus-eval script until live-workflow projection lands (shadow/demoted OK per brief)"
+    );
 }
 
 /// Returns true when a `data x: TestClaim = …` body directly assigns a ManualAnchorKey

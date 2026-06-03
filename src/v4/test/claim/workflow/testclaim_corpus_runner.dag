@@ -145,8 +145,13 @@ fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
 }
 
 
-// Stage0 / `gunbc test` harness entry — wraps the corpus eval report in `ProcessExit` so
-// `cli_run` can map success/failure to a host exit code (std/process.dag contract).
+// Stage0 / `gunbc test` acceptance path (RR-A Rung-1; NOT emit_host):
+//   gunbc test → cli_run → gunbc_test_manual_corpus_harness_exit → run_manual_testclaim_corpus_eval
+//   → run_node_runtime_value_subjects → run_test_claim → TestClaimRun verdict per row
+//   → corpus_report_tally / test_claim_run_verdict → manual_corpus_gate → ProcessExit.
+// At least one real Verdict fact flows through run_test_claim on the manual roster (F5 gate:
+// zero Fail + zero Deferred). Forbidden: emit_host transport as terminal pass authority.
+// Wraps the corpus report in `ProcessExit` so `cli_run` maps pass/fail to a host exit code.
 // Authority: v4.workflow.bootstrap `bootstrap_manual_corpus_harness` is invoked via this
 // symbol from `cli_test.rs`, not via `run_manual_testclaim_corpus_eval` (CorpusEvalReport).
 data gunbc_test_manual_corpus_harness_exit: Symbol = gunbc_test_manual_corpus_harness_exit
