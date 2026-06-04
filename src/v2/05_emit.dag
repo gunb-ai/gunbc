@@ -80,6 +80,12 @@ import v2.compiler.infer {
 import v2.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
+import v2.compiler.emit_core_support {
+  escape_json_string, module_to_filename, make_indent,
+  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
+  sanitize_service_name, capitalize_first, service_var_name,
+  escape_string_literal_body
+}
 import generated.method_template_projection {
   rust_method_template_emit, python_method_template_emit, go_method_template_emit
 }
@@ -498,33 +504,6 @@ fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) 
 }
 
 
-fn escape_json_string(s: String) -> String {
-  s |> split(delimiter: "\\") |> join(separator: "\\\\")
-    |> split(delimiter: "\"") |> join(separator: "\\\"")
-    |> split(delimiter: "\n") |> join(separator: "\\n")
-    |> split(delimiter: "\t") |> join(separator: "\\t")
-}
-
-// =========================================================================
-// Module path conversion
-// =========================================================================
-
-fn module_to_filename(name: String) -> String {
-  name |> split(delimiter: ".") |> join(separator: "_")
-}
-
-// =========================================================================
-// Indentation utility
-// =========================================================================
-
-fn make_indent(level: Int) -> String {
-  if level <= 0 {
-    ""
-  } else {
-    concat("    ", make_indent(level: level - 1))
-  }
-}
-
 // =========================================================================
 // Integer to string conversion
 // =========================================================================
@@ -559,29 +538,6 @@ fn to_string_helper(value: Int, acc: List<String>) -> List<String> {
 // Identifier conversion utilities
 // =========================================================================
 
-fn to_snake(name: String) -> String {
-  let chars_list = name |> chars
-  let result = chars_list |> enumerate |> map(pair =>
-    let idx = pair.first
-    let ch = pair.second
-    if is_upper(ch: ch) {
-      if idx == 0 {
-        to_lower_char(ch: ch)
-      } else {
-        concat("_", to_lower_char(ch: ch))
-      }
-    } else {
-      from_code_point(cp: ch)
-    }
-  )
-  result |> join(separator: "")
-}
-
-fn to_screaming_snake(name: String) -> String {
-  let snake = to_snake(name: name)
-  snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
-}
-
 fn to_camel(name: String) -> String {
   let parts = name |> split(delimiter: "_")
   if parts |> count == 0 { name }
@@ -594,55 +550,6 @@ fn to_camel(name: String) -> String {
       |> filter(pair => pair.first > 0)
       |> map(pair => capitalize_first(s: pair.second))
     concat(first_part, rest_parts |> join(separator: ""))
-  }
-}
-
-fn is_upper(ch: Int) -> Bool {
-  ch >= 65 && ch <= 90
-}
-
-fn to_lower_char(ch: Int) -> String {
-  let cp = ch
-  if cp >= 65 && cp <= 90 {
-    let lower_cp = cp + 32
-    from_code_point(cp: lower_cp)
-  } else {
-    from_code_point(cp: ch)
-  }
-}
-
-fn to_upper_char(ch: Int) -> String {
-  let cp = ch
-  if cp >= 97 && cp <= 122 {
-    let upper_cp = cp - 32
-    from_code_point(cp: upper_cp)
-  } else {
-    from_code_point(cp: ch)
-  }
-}
-
-// =========================================================================
-// Service name sanitization
-// =========================================================================
-
-fn sanitize_service_name(name: String) -> String {
-  let parts = name |> split(delimiter: ".")
-  let pascal_parts = parts |> map(p => capitalize_first(s: p))
-  pascal_parts |> join(separator: "")
-}
-
-fn capitalize_first(s: String) -> String {
-  let chars_list = s |> chars
-  if chars_list |> count == 0 {
-    ""
-  } else {
-    chars_list |> enumerate |> map(pair =>
-      if pair.first == 0 {
-        to_upper_char(ch: pair.second)
-      } else {
-        from_code_point(cp: pair.second)
-      }
-    ) |> join(separator: "")
   }
 }
 
@@ -664,10 +571,6 @@ fn apply_naming_case(name: String, case_style: NamingCase) -> String {
     CamelCase => to_camel(name: name)
     AsAuthored => name
   }
-}
-
-fn service_var_name(service_name: String) -> String {
-  to_snake(name: sanitize_service_name(name: service_name))
 }
 
 fn test_file_path(module_name: String, target: RenderTarget) -> String {
@@ -768,19 +671,6 @@ fn reserved_suffix(target: RenderTarget) -> String {
 // =========================================================================
 // Shared leaf functions -- parameterized by language data
 // =========================================================================
-
-fn escape_string_literal_body(s: String) -> String {
-  let escaped_backslash = s
-    |> split(delimiter: "\\") |> join(separator: "\\\\")
-  let escaped_quote = escaped_backslash
-    |> split(delimiter: "\"") |> join(separator: "\\\"")
-  let escaped_newline = escaped_quote
-    |> split(delimiter: "\n") |> join(separator: "\\n")
-  let escaped_return = escaped_newline
-    |> split(delimiter: "\r") |> join(separator: "\\r")
-  escaped_return
-    |> split(delimiter: "\t") |> join(separator: "\\t")
-}
 
 fn escape_rust_interp_text(s: String) -> String {
   let escaped = escape_string_literal_body(s: s)
