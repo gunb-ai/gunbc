@@ -46,6 +46,7 @@ pub mod v2_compiler_compile;
 pub mod v2_compiler_compiler_tests_rust;
 pub mod v2_compiler_complexity;
 pub mod v2_compiler_dag_collect;
+pub mod v2_compiler_dag_collect_support;
 pub mod v2_compiler_effect_derivation;
 pub mod v2_compiler_emit;
 pub mod v2_compiler_emit_go;

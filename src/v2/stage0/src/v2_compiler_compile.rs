@@ -349,13 +349,6 @@ pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<Emi
     }
 }
 
-pub fn json_quote(s: String) -> String {
-    v2_rt::concat(
-        v2_rt::concat("\"".to_string(), escape_json_string(s)),
-        "\"".to_string(),
-    )
-}
-
 pub fn json_list(items: Rc<Vec<String>>) -> String {
     v2_rt::concat(
         v2_rt::concat("[".to_string(), items.join(&", ".to_string())),
@@ -370,12 +363,10 @@ pub fn json_optional_string(value: Option<String>) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DagCollectAcc {
-    pub seen: Rc<HashMap<String, String>>,
-    pub order: Rc<Vec<Rc<Node>>>,
-    pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-}
+pub use crate::v2_compiler_dag_collect_support::{
+    connective_name, dag_node_key_collision_error, dag_node_surface_fingerprint, expr_data_variant,
+    inferred_fingerprint, json_quote, DagCollectAcc,
+};
 
 pub use crate::v2_compiler_dag_collect::{
     collect_dag_nodes, dag_collect_from_module, dag_collect_inferred, dag_collect_insert,
@@ -383,125 +374,6 @@ pub use crate::v2_compiler_dag_collect::{
     dag_collect_optional_node, dag_node_collection_anchor, dag_node_fingerprint,
     dag_node_is_resolved_identity_shell, dag_node_key,
 };
-
-pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
-    match value.as_deref().cloned() {
-        None => "none".to_string(),
-        Some(InferredNode::Resolved { node: _, .. }) => "Resolved".to_string(),
-        Some(InferredNode::TypeVariable { id: id, .. }) => {
-            v2_rt::concat("TypeVariable:".to_string(), id.clone())
-        }
-        Some(InferredNode::CompilerError { message: m, .. }) => {
-            v2_rt::concat("CompilerError:".to_string(), m.clone())
-        }
-    }
-}
-
-pub fn expr_data_variant(data: Rc<ExprData>) -> String {
-    match (*data).clone() {
-        ExprData::NoExprData => "NoExprData".to_string(),
-        ExprData::ExprLiteral { value: _, .. } => "ExprLiteral".to_string(),
-        ExprData::ExprError { .. } => "ExprError".to_string(),
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => "ExprVar".to_string(),
-        ExprData::ExprFieldAccess { summary: _, .. } => "ExprFieldAccess".to_string(),
-        ExprData::ExprCall { .. } => "ExprCall".to_string(),
-        ExprData::ExprMethodCall {
-            method_semantics: _,
-            ..
-        } => "ExprMethodCall".to_string(),
-        ExprData::ExprMatch => "ExprMatch".to_string(),
-        ExprData::ExprIf => "ExprIf".to_string(),
-        ExprData::ExprLet => "ExprLet".to_string(),
-        ExprData::ExprRecordLit { parent_enum: _, .. } => "ExprRecordLit".to_string(),
-        ExprData::ExprListLit => "ExprListLit".to_string(),
-        ExprData::ExprBinOp { .. } => "ExprBinOp".to_string(),
-        ExprData::ExprUnaryOp { op: _, .. } => "ExprUnaryOp".to_string(),
-        ExprData::ExprLambda => "ExprLambda".to_string(),
-        ExprData::ExprStringInterp => "ExprStringInterp".to_string(),
-        ExprData::ExprBlock => "ExprBlock".to_string(),
-        ExprData::ExprCast => "ExprCast".to_string(),
-        ExprData::ExprForEach => "ExprForEach".to_string(),
-        ExprData::ExprIndex => "ExprIndex".to_string(),
-        ExprData::ExprSlice => "ExprSlice".to_string(),
-        ExprData::ExprReturn => "ExprReturn".to_string(),
-    }
-}
-
-pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
-    {
-        let child_names = Rc::new({
-            let mut __result = Vec::new();
-            for c in node.children.clone().iter().cloned() {
-                __result.push(c.name.clone());
-            }
-            __result
-        })
-        .join(&",".to_string());
-        let param_names = Rc::new({
-            let mut __result = Vec::new();
-            for p in node.params.clone().iter().cloned() {
-                __result.push(p.name.clone());
-            }
-            __result
-        })
-        .join(&",".to_string());
-        v2_rt::concat(
-            v2_rt::concat(
-                v2_rt::concat(
-                    v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(
-                                            v2_rt::concat(node.name.clone(), "|".to_string()),
-                                            connective_name(node.connective.clone()),
-                                        ),
-                                        "|".to_string(),
-                                    ),
-                                    inferred_fingerprint(node.inferred.clone()),
-                                ),
-                                "|".to_string(),
-                            ),
-                            expr_data_variant(node.expr_data.clone()),
-                        ),
-                        "|".to_string(),
-                    ),
-                    child_names,
-                ),
-                "|".to_string(),
-            ),
-            param_names,
-        )
-    }
-}
-
-pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
-    {
-        let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
-        let detail = if synthetic {
-            " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
-                .to_string()
-        } else {
-            "".to_string()
-        };
-        make_error_node(
-            Rc::new(CompilerDiagnostic::InternalError {
-                message: v2_rt::concat(
-                    v2_rt::concat(
-                        "dag artifact: distinct nodes share identity key ".to_string(),
-                        json_quote(key),
-                    ),
-                    detail,
-                ),
-                span: span.clone(),
-            }),
-            "".to_string(),
-        )
-    }
-}
 
 pub fn dag_node_missing_ref_error(node: Rc<Node>) -> Rc<ErrorNode> {
     make_error_node(
@@ -716,15 +588,6 @@ pub fn json_bool(value: bool) -> String {
         "true".to_string()
     } else {
         "false".to_string()
-    }
-}
-
-pub fn connective_name(value: Connective) -> String {
-    match value {
-        Connective::Conj => "Conj".to_string(),
-        Connective::Disj => "Disj".to_string(),
-        Connective::NoConnective => "NoConnective".to_string(),
-        Connective::Arrow => "Arrow".to_string(),
     }
 }
 

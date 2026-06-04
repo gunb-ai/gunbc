@@ -56,7 +56,7 @@ enum Commands {
         /// (not every file under --source-root). Required for scoped TestClaim runs.
         #[arg(long)]
         entry: Option<String>,
-        /// TestClaim / witness run: map Bool false → exit 1 (requires --entry).
+        /// TestClaim / witness run: Bool false → exit 1; requires --entry
         #[arg(long)]
         claim_run: bool,
     },
