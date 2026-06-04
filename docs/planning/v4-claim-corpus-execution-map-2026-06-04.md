@@ -10,10 +10,15 @@ interpreter/substrate effort pays off.
 
 Every Bool witness in `src/v4/test/claim/**` was *run* via the existing
 single-witness CLI (`gunbc run --claim-run --entry <file> --function <name>`),
-looped — no new batch layer. Two witness classes:
+looped — no new batch layer. Two witness classes, **deduplicated**:
 
-- **pass 1** — `fn name() -> Bool` (nullary predicate functions)
-- **pass 2** — `data name: Bool = expr` (the runner evaluates these as zero-arg thunks)
+- **fn** — `fn name() -> Bool` (nullary predicate functions): all 291 run.
+- **data** — `data name: Bool = expr` (the runner evaluates these as zero-arg
+  thunks): run **only when distinct**. A `data w: Bool = foo()` that just rebinds a
+  same-file nullary fn `foo` is skipped — running it re-evaluates a fn already
+  counted under **fn**. Of 137 total data witnesses, 51 are such rebindings
+  (skipped) and **86 are distinct** (58 in files with no fn + 28 in fn-bearing
+  files). 291 fn + 86 distinct data = **377 distinct witnesses**.
 
 Discipline that keeps the map honest:
 
@@ -30,29 +35,32 @@ This is E-10 applied corpus-wide: most of these witnesses had **never executed**
 Running them is the disease-detection. **The map is the deliverable — not
 "fix every red."**
 
-## Headline — 349 witnesses executed
+## Headline — 377 distinct witnesses executed
 
-| status | meaning | pass 1 (fns) | pass 2 (data) | **total** |
-|--------|---------|------:|------:|------:|
-| **GREEN**  | executed and holds | 151 | 44 | **195** |
-| **RED**    | executed and **false** | 34 | 4 | **38** |
-| **ERROR**  | never executed (infra/interp) | 96 | 9 | **105** |
-| **PERF**   | over 60 s/6 GiB cap (keystone) | 10 | 1 | **11** |
-| no-witness | pure library/roster, no Bool claim | — | — | **109** |
+| status | meaning | fn (291) | data: fn-less files (58) | data: distinct in fn files (28) | **total** |
+|--------|---------|------:|------:|------:|------:|
+| **GREEN**  | executed and holds | 151 | 44 | 25 | **220** |
+| **RED**    | executed and **false** | 34 | 4 | 1 | **39** |
+| **ERROR**  | never executed (infra/interp) | 96 | 9 | 2 | **107** |
+| **PERF**   | over 60 s/6 GiB cap (keystone) | 10 | 1 | 0 | **11** |
+| no-witness | pure library/roster, no Bool claim | — | — | — | **109** |
 
-~56% green, ~30% error, ~11% red, ~3% perf across everything that asserts a Bool.
-Pass 2 closed what a per-fn-only sweep would mis-label "no entry": of the 129 files
-with no nullary `()->Bool`, **20 held 58 runnable data-bound witnesses** (now
-measured); the other **109 are genuinely claim-free** (rosters, manifests, helpers).
+~58% green, ~28% error, ~10% red, ~3% perf across everything that asserts a Bool.
+The data class closes what a per-fn-only sweep would miss: of the 129 files with no
+nullary `()->Bool`, **20 held 58 runnable data witnesses**; a further **28 distinct
+data witnesses live in fn-bearing files** (not rebindings of their fns); the
+remaining **109 files are genuinely claim-free** (rosters, manifests, helpers).
 
-claim-vs-helper split (pass 1): GREEN 140 claim / 11 helper; RED 29 claim / 5
+claim-vs-helper split (fn pass): GREEN 140 claim / 11 helper; RED 29 claim / 5
 helper; ERROR 82 claim / 14 helper; PERF 9 / 1.
 
-## The big finding: 105 ERRORs collapse to ~9 root causes
+## The big finding: 107 ERRORs collapse to ~9 root causes
 
-The error bucket is not 105 problems. It is a short list of shared
+The error bucket is not 107 problems. It is a short list of shared
 interpreter/builtin gaps, each blocking many witnesses. Fix the gap, unblock the
-fan-out:
+fan-out (the table below totals ~103; the 28 distinct-data witnesses added 2 more
+errors that fall into the existing `ClassifiedDependencyView` and coercion classes,
+plus 1 new RED — `infer_bounded_lattice_completeness_anchor`):
 
 | n | root cause | class | where |
 |--:|------------|-------|-------|
@@ -69,7 +77,7 @@ fan-out:
 | 3 | grammar parse match missing go/py/kotlin source surface | non-exhaustive | manual/*_mvp1_grammar_claim |
 
 **Materiality read:** the top three rows (`contains` String/Set-only,
-`ClassifiedDependencyView` fold, TS `left`) account for ~49 of the 105 errors and
+`ClassifiedDependencyView` fold, TS `left`) account for ~49 of the 107 errors and
 are exactly what E-10 should surface — load-bearing lens families (affected_set,
 ownership, structural_resolution) whose witnesses are specification-only because the
 interpreter can't yet run the predicate they call. The two key gaps are concrete:
@@ -120,7 +128,7 @@ files — genuinely parallelizable work off the keystone's path. The other half 
 keystone-lane (interpreter builtins + the translate serialize path) and should be
 sequenced within that lane, not double-edited.
 
-## RED claims (38) — behavioral, executed-and-false
+## RED claims (39) — behavioral, executed-and-false
 
 Clusters dominate; triage by materiality:
 

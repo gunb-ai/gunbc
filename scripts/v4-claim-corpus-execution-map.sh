@@ -57,6 +57,17 @@ run_one() { # $1=class $2=file $3=witness
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$st" "$cls" "$file" "$w" "$secs" "$ex" "$last" >> "$TSV"
 }
 
+# A data witness `data w: Bool = foo()` where `foo` is a nullary Bool fn in the
+# SAME file is a rebinding — running it re-evaluates a fn already measured in
+# pass 1, so it would double-count. Skip those; run only distinct data witnesses.
+is_rebinding() { # $1=file $2=witness -> 0 (true) iff pure same-file fn rebinding
+  local rhs callee
+  rhs=$(grep -P "^data $2 *: *Bool *=" "$1" | head -1 | sed -E 's/^data [a-zA-Z0-9_]+ *: *Bool *= *//')
+  printf '%s' "$rhs" | grep -qP '^[a-zA-Z0-9_]+\(\)[[:space:]]*$' || return 1
+  callee=$(printf '%s' "$rhs" | grep -oP '^[a-zA-Z0-9_]+')
+  grep -qP "^fn ${callee}\(\) -> Bool" "$1"
+}
+
 n=0
 for f in $(find "$CLAIMS" -name '*.dag' | sort); do
   fns=$(grep -oP "^fn \K\w+(?=\(\) -> Bool)" "$f" 2>/dev/null)
@@ -65,11 +76,15 @@ for f in $(find "$CLAIMS" -name '*.dag' | sort); do
     printf 'NOWITNESS\tnone\t%s\t-\t0\t-\tno Bool witness (library/roster)\n' "$f" >> "$TSV"
     continue
   fi
-  for w in $fns;  do [ -n "$w" ] && run_one fn   "$f" "$w" && n=$((n+1)); done
-  for w in $data; do [ -n "$w" ] && run_one data "$f" "$w" && n=$((n+1)); done
+  for w in $fns;  do [ -n "$w" ] && run_one fn "$f" "$w" && n=$((n+1)); done
+  for w in $data; do
+    [ -z "$w" ] && continue
+    is_rebinding "$f" "$w" && continue   # dedup: skip fn rebindings (counted in pass 1)
+    run_one data "$f" "$w" && n=$((n+1))
+  done
   [ $((n % 25)) -lt 2 ] && echo "...$n witnesses run" >&2
 done
-echo "DONE: $n witnesses executed" >&2
+echo "DONE: $n distinct witnesses executed" >&2
 
 echo
 echo "==== status x class ===="
