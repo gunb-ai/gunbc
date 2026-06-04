@@ -1,0 +1,111 @@
+// v2 emit core support -- target-independent backend helper surface.
+//
+// This module owns leaf helpers used by multiple emit backends.  It is the
+// .dag-authored successor to the temporary Rust-only
+// `v2_compiler_emit_core_support` facade.
+
+module v2.compiler.emit_core_support
+
+fn escape_json_string(s: String) -> String {
+  s |> split(delimiter: "\\") |> join(separator: "\\\\")
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+    |> split(delimiter: "\n") |> join(separator: "\\n")
+    |> split(delimiter: "\t") |> join(separator: "\\t")
+}
+
+fn module_to_filename(name: String) -> String {
+  name |> split(delimiter: ".") |> join(separator: "_")
+}
+
+fn make_indent(level: Int) -> String {
+  if level <= 0 {
+    ""
+  } else {
+    concat("    ", make_indent(level: level - 1))
+  }
+}
+
+fn to_snake(name: String) -> String {
+  let chars_list = name |> chars
+  let result = chars_list |> enumerate |> map(pair =>
+    let idx = pair.first
+    let ch = pair.second
+    if is_upper(ch: ch) {
+      if idx == 0 {
+        to_lower_char(ch: ch)
+      } else {
+        concat("_", to_lower_char(ch: ch))
+      }
+    } else {
+      from_code_point(cp: ch)
+    }
+  )
+  result |> join(separator: "")
+}
+
+fn to_screaming_snake(name: String) -> String {
+  let snake = to_snake(name: name)
+  snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
+}
+
+fn is_upper(ch: Int) -> Bool {
+  ch >= 65 && ch <= 90
+}
+
+fn to_lower_char(ch: Int) -> String {
+  let cp = ch
+  if cp >= 65 && cp <= 90 {
+    let lower_cp = cp + 32
+    from_code_point(cp: lower_cp)
+  } else {
+    from_code_point(cp: ch)
+  }
+}
+
+fn to_upper_char(ch: Int) -> String {
+  let cp = ch
+  if cp >= 97 && cp <= 122 {
+    let upper_cp = cp - 32
+    from_code_point(cp: upper_cp)
+  } else {
+    from_code_point(cp: ch)
+  }
+}
+
+fn sanitize_service_name(name: String) -> String {
+  let parts = name |> split(delimiter: ".")
+  let pascal_parts = parts |> map(p => capitalize_first(s: p))
+  pascal_parts |> join(separator: "")
+}
+
+fn capitalize_first(s: String) -> String {
+  let chars_list = s |> chars
+  if chars_list |> count == 0 {
+    ""
+  } else {
+    chars_list |> enumerate |> map(pair =>
+      if pair.first == 0 {
+        to_upper_char(ch: pair.second)
+      } else {
+        from_code_point(cp: pair.second)
+      }
+    ) |> join(separator: "")
+  }
+}
+
+fn service_var_name(service_name: String) -> String {
+  to_snake(name: sanitize_service_name(name: service_name))
+}
+
+fn escape_string_literal_body(s: String) -> String {
+  let escaped_backslash = s
+    |> split(delimiter: "\\") |> join(separator: "\\\\")
+  let escaped_quote = escaped_backslash
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+  let escaped_newline = escaped_quote
+    |> split(delimiter: "\n") |> join(separator: "\\n")
+  let escaped_return = escaped_newline
+    |> split(delimiter: "\r") |> join(separator: "\\r")
+  escaped_return
+    |> split(delimiter: "\t") |> join(separator: "\\t")
+}
