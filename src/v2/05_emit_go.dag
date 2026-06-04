@@ -93,7 +93,7 @@ import std.induction { SubValueUnknown }
 import v2.compiler.runtime_go { go_runtime_source }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, InterpPart, TestProjection,
+  BlockEmitState, InterpPart,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op,
@@ -101,17 +101,9 @@ import v2.compiler.emit {
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
   lookup_item,
-  unique_strings,
-  to_string, to_string_helper,
-  test_function_name,
-  apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template,
-  language_spec,
-  is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
+  is_null_coalesce, emit_null_coalesce,
   has_nested_records_node,
-  is_service_item,
   typed_named_arg_matches, order_typed_call_args,
-  is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item,
-  extract_test_projections,
   is_tco_eligible,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls,
@@ -131,10 +123,18 @@ import v2.compiler.emit {
   emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch
 }
 import v2.compiler.emit_core_support {
+  EmitResult, TestProjection,
   escape_json_string, module_to_filename, make_indent,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   sanitize_service_name, capitalize_first, service_var_name,
-  escape_string_literal_body
+  escape_string_literal_body, unique_strings, to_string, to_string_helper,
+  test_function_name,
+  apply_type_template1, apply_type_template2, apply_type_template3,
+  apply_named_template, language_spec,
+  is_type_alias_return_node, is_service_item,
+  is_type_def_item, is_type_alias_item, is_type_decl_item,
+  is_function_item, is_data_def_item, is_service_def_item,
+  is_resource_def_item, extract_test_projections
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)

@@ -9,7 +9,6 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Python;
 pub use crate::v2_compiler_emit::{
-    apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
     compute_service_fields, effective_operation_transport, emit_algebra_method_template,
     emit_bin_op_symbol, emit_container, emit_default_bin_op, emit_error_expr,
     emit_expr_field_access_shared, emit_expr_var_shared, emit_ident, emit_inferred_shared,
@@ -24,22 +23,22 @@ pub use crate::v2_compiler_emit::{
     emit_unified_operation_method, emit_unified_pattern, emit_unified_service_def,
     emit_unified_transport_dispatch, emit_unified_typed_expr, emit_unified_typed_func_body,
     empty_emit_scope, escape_python_interp_text, extract_string_interp_parts,
-    extract_test_projections, has_nested_records_node, has_service_items, is_data_def_item,
-    is_function_item, is_null_coalesce, is_resource_def_item, is_service_def_item, is_service_item,
-    is_tco_eligible, is_type_alias_item, is_type_alias_return_node, is_type_decl_item,
-    is_type_def_item, language_spec, lookup_item, module_emit_scope, order_typed_call_args,
-    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
-    service_field_decls, test_file_path, test_function_name, to_string, to_string_helper,
-    typed_named_arg_matches, unique_strings,
+    has_nested_records_node, has_service_items, is_null_coalesce, is_tco_eligible, lookup_item,
+    module_emit_scope, order_typed_call_args, scope_after_expr, seed_bindings,
+    service_fallback_transport, service_field_ctors, service_field_decls, test_file_path,
+    typed_named_arg_matches,
 };
-pub use crate::v2_compiler_emit::{
-    BlockEmitState, EmitResult, InterpPart, ServiceFieldSet, TestProjection,
-};
+pub use crate::v2_compiler_emit::{BlockEmitState, InterpPart, ServiceFieldSet};
 pub use crate::v2_compiler_emit_core_support::{
-    capitalize_first, escape_json_string, escape_string_literal_body, is_upper, make_indent,
-    module_to_filename, sanitize_service_name, service_var_name, to_lower_char, to_screaming_snake,
-    to_snake, to_upper_char,
+    apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
+    capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
+    is_data_def_item, is_function_item, is_resource_def_item, is_service_def_item, is_service_item,
+    is_type_alias_item, is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper,
+    language_spec, make_indent, module_to_filename, sanitize_service_name, service_var_name,
+    test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string, to_string_helper,
+    to_upper_char, unique_strings,
 };
+pub use crate::v2_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v2_compiler_infer::InferScope;
 pub use crate::v2_compiler_infer::{build_params_scope, expr_span, extend_scope};
 pub use crate::v2_compiler_infer_env::authored_name;
