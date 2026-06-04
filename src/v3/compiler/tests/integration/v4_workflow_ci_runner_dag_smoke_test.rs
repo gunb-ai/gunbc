@@ -95,11 +95,6 @@ const SHARED_CLOSURE_WORKSHEET_PATH: &str =
     "docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
     include_str!("../../../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
-const M1_BINDING_TEST_FILTER: &str =
-    "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
-const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
-    "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_";
-const CI_MODEL_YAML_BINDING_STEP_NAME: &str = "M1 v4 workflow CI model/YAML binding smoke";
 const T15_SELF_HOST_STEP_NAME: &str = "T-15 self-host fixed-point harness (stage1==stage2)";
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
@@ -895,8 +890,6 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     let live_signal = data_body(&module, "m1_ci_live_workflow_signal");
     let live_step = record_body_field(live_signal, "step");
-    let binding_smoke_step_name =
-        expr_string(record_body_field(live_step, "binding_smoke_step_name"));
     let step_name = expr_string(record_body_field(live_step, "step_name"));
     let script_path = host_script_shell_path(record_body_field(live_step, "host_script"))
         .expect("{CI_DAG_PATH}: M1 probe must model ShellScript host transport");
@@ -914,12 +907,14 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         rust_emit_probe_policy,
         "rustc_residuals_block_required_path",
     ));
-    let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
     assert!(
-        binding_smoke_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {M1_BINDING_TEST_FILTER} -- --exact --quiet"
-        )),
-        "{CI_YML_PATH}: `{binding_smoke_step_name}` must execute the M1 model/YAML binding receipt (gunbc#846 zero-test-filter bypass)"
+        !CI_YML.contains("M1 v4 workflow CI model/YAML binding smoke")
+            && !CI_YML.contains(
+                "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml"
+            )
+            && !CI_YML.contains("v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_")
+            && !CI_YML.contains("v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_"),
+        "{CI_YML_PATH}: CI model/YAML binding smoke is retired from the every-PR ci_floor"
     );
     let m1_step = workflow_step_block(CI_YML, step_name);
     assert!(
@@ -946,7 +941,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
             "data m1_rust_emit_probe_shared_dag_log_env: String = \"V4_M1_DAG_EMIT_LOG\""
         ) && CI_DAG.contains(
             "data m1_rust_dag_emit_parity_receipt_test: String = \"cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet\""
-        ) && CI_DAG.contains("data v4_bootstrap_reuse_log_env: String = \"V4_BOOTSTRAP_REUSE_LOG\""),
+        ),
         "{CI_DAG_PATH}: shared M1/bootstrap closure env names must be modeled"
     );
     assert!(
@@ -1008,19 +1003,15 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         M1_RUST_EMIT_PROBE_SCRIPT.contains("^compiled: [0-9]+ files emitted, [0-9]+ diagnostics$")
             && M1_RUST_EMIT_PROBE_SCRIPT.contains("0 diagnostics")
-            && M1_RUST_EMIT_PROBE_SCRIPT.contains("at least one emitted file"),
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("at least one emitted file")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("M1 shared rust+dag probe requires non-empty DAG artifact"),
         ".github/ci-floor/v4-m1-rust-emit-probe.sh: gate must fail closed on compile receipt (0 diagnostics, N≥1)"
     );
     assert!(
         !M1_RUST_EMIT_PROBE_SCRIPT.contains("cargo check"),
         ".github/ci-floor/v4-m1-rust-emit-probe.sh: M1 gate is v2 emit + receipt only — no cargo check"
     );
-    let bootstrap_step =
-        workflow_step_block(CI_YML, "v2 -> v4 bootstrap compile (fail-closed full)");
-    let parity_step = workflow_step_block(
-        CI_YML,
-        "v2 DAG emit parity receipt (required before bootstrap reuse)",
-    );
+    let parity_step = workflow_step_block(CI_YML, "v2 DAG emit parity receipt (shared closure)");
     assert!(
         parity_step.contains(
             "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet"
@@ -1028,13 +1019,10 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_YML_PATH}: bootstrap reuse must be preceded by the v2 DAG emit parity receipt"
     );
     assert!(
-        CI_YML.find("v2 DAG emit parity receipt (required before bootstrap reuse)")
-            < CI_YML.find("v2 -> v4 bootstrap compile (fail-closed full)"),
-        "{CI_YML_PATH}: parity receipt must run before bootstrap reuse"
-    );
-    assert!(
-        bootstrap_step.contains("V4_BOOTSTRAP_REUSE_LOG:"),
-        "{CI_YML_PATH}: bootstrap step must validate the shared M1 DAG artifact instead of recompiling src/v4"
+        !CI_YML.contains("v2 -> v4 bootstrap compile (fail-closed full)")
+            && !CI_YML.contains("V4_BOOTSTRAP_REUSE_LOG:")
+            && !CI_YML.contains("bash .github/ci-floor/v4-bootstrap-viability.sh"),
+        "{CI_YML_PATH}: redundant bootstrap reuse step must be folded into the M1 rust+dag probe"
     );
 }
 
@@ -1168,8 +1156,10 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
         "{CI_DAG_PATH}: ci_pipeline_well_formed must reject dangling gate run-policy jobs"
     );
     assert!(
-        CI_YML.contains("bash .github/ci-floor/v4-bootstrap-viability.sh"),
-        "{CI_YML_PATH}: Wave 1 floor runs bootstrap viability directly (no advisory two-step gate)"
+        !CI_YML.contains("bash .github/ci-floor/v4-bootstrap-viability.sh")
+            && M1_RUST_EMIT_PROBE_SCRIPT
+                .contains("M1 shared rust+dag probe requires non-empty DAG artifact"),
+        "{CI_YML_PATH}: bootstrap artifact viability is folded into the M1 rust+dag probe"
     );
     assert!(
         CI_DAG.contains("workflow_local_bootstrap_dag_upstream")
@@ -1197,11 +1187,9 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
 /// generated `.dag` `TestClaim` execution covers the §11.7.5 shell-exception table + no-new-shell
 /// ratchet (and A15 Shape-B emitted `ci.yml`), retiring this hand-Rust parse/string harness.
 ///
-/// **Required-CI wiring:** the `v4_workflow_ci_wave1_` name prefix places this under the required
-/// `ci_floor` "M1 v4 workflow CI model/YAML binding smoke" step's `::v4_workflow_ci_wave1_` filter
-/// (`.github/workflows/ci.yml`), so the no-new-shell ratchet — §11.7.1 item #5, a safety-floor
-/// gate — is enforced on every PR, not just locally. The §11.7.5 table it asserts is Wave 2 work,
-/// but the ratchet it enforces is Wave 1 floor, which is why it joins the `wave1_` floor-binding group.
+/// **Required-CI wiring:** this ratchet used to run under the every-PR CI model/YAML binding smoke.
+/// That smoke was retired from `ci_floor` because it compiled the v3 integration binary on every PR.
+/// The test remains the modeled/local receipt for edits touching `ci.dag` or `.github/workflows/ci.yml`.
 #[test]
 fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
@@ -1231,18 +1219,14 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         .next()
         .expect("ci_class_a_shell_exceptions table must terminate with `]`");
 
-    // Exactly the two Class-A shell-owned floor steps carry an exception: bootstrap + M1.
+    // Exactly one Class-A shell-owned floor step remains: M1 rust+dag emit. Bootstrap artifact
+    // existence is now checked inside that script, not by a second ci-floor script.
     assert_eq!(
         table.matches("CiShellExceptionRow {").count(),
-        2,
-        "{CI_DAG_PATH}: §11.7.5 carries exactly two Class-A shell exceptions (bootstrap + M1)"
+        1,
+        "{CI_DAG_PATH}: §11.7.5 carries exactly one Class-A shell exception (M1)"
     );
     for needle in [
-        // bootstrap-viability.sh is the v2→v4 full compile over src/v4 — its live step + retiring
-        // authority are `v2_compile_src_v4`, not the lighter `v2_bootstrap_smoke_execution`.
-        "job: v2_compile_src_v4",
-        ".github/ci-floor/v4-bootstrap-viability.sh",
-        "protects_floor: BootstrapMinimalViability",
         "job: m1_rust_emit_probe_execution",
         ".github/ci-floor/v4-m1-rust-emit-probe.sh",
         "protects_floor: OneRustEmitProbe",
@@ -1256,10 +1240,7 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
     // P2 single-authority: `replacement_upsert` binds the canonical `CiUpsertStepSymbol` data
     // declared elsewhere in this module — NOT a parallel `Symbol` alias that could drift or name
     // a non-existent upsert. Assert both the table reference and the authority declaration exist.
-    for upsert in [
-        "ci_upsert_v2_compile_src_v4",
-        "ci_upsert_m1_rust_emit_probe_execution",
-    ] {
+    for upsert in ["ci_upsert_m1_rust_emit_probe_execution"] {
         assert!(
             table.contains(&format!("replacement_upsert: {upsert}")),
             "{CI_DAG_PATH}: shell exception must point `replacement_upsert` at the canonical \
@@ -1277,7 +1258,7 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         table
             .matches("dissolution_target: ModelMissingSubstrate")
             .count(),
-        2,
+        1,
         "{CI_DAG_PATH}: each shell exception must name a structural dissolution_target"
     );
 
@@ -1337,10 +1318,7 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
     // §11.7.5 cond 1 — each modeled shell_owner is a live REQUIRED ci.yml floor invocation,
     // checked against the SAME comment-safe parsed live set (not raw `CI_YML.contains`, which a
     // comment could satisfy). No phantom exception for a script that does not actually run on PRs.
-    for script in [
-        ".github/ci-floor/v4-bootstrap-viability.sh",
-        ".github/ci-floor/v4-m1-rust-emit-probe.sh",
-    ] {
+    for script in [".github/ci-floor/v4-m1-rust-emit-probe.sh"] {
         assert!(
             ci_floor_scripts.iter().any(|s| s == script),
             "{CI_YML_PATH}: shell exception owner `{script}` must be a live (non-comment) floor invocation"
@@ -1744,38 +1722,6 @@ fn v4_workflow_ci_bankruptcy_tier0_lens_ci_mask_matches_ci_yml() {
     assert!(
         !CI_YML.contains(&format!("- name: {semantic_step_name}")),
         "{CI_YML_PATH}: Wave 1 — `{semantic_step_name}` demoted from required path"
-    );
-}
-
-#[test]
-fn v4_workflow_ci_bankruptcy_tier0_binding_step_matches_generated_workflow() {
-    let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
-    assert!(
-        binding_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
-        )),
-        "{CI_YML_PATH}: binding step must run bankruptcy D3 prefix filter on the Wave 1 floor"
-    );
-}
-
-#[test]
-fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step() {
-    let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
-    assert!(
-        binding_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {M1_BINDING_TEST_FILTER} -- --exact --quiet"
-        )),
-        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run M1 binding with one TESTNAME per cargo invocation"
-    );
-    assert!(
-        binding_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
-        )),
-        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run bankruptcy D3 ratchet tests (prefix filter, one claim per test)"
-    );
-    assert!(
-        binding_step.contains("v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_"),
-        "{CI_YML_PATH}: binding step must run Wave 1 floor prefix filter"
     );
 }
 

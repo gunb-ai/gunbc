@@ -82,6 +82,14 @@ if [[ -n "$dag_out" && -d "$shared_out/rust" && -d "$shared_out/dag" ]]; then
   cp "$compile_log" "$dag_log"
 fi
 
+if [[ -n "$dag_out" ]]; then
+  dag_artifact="$dag_out/dag-artifact.json"
+  if [[ ! -s "$dag_artifact" ]]; then
+    echo "error: M1 shared rust+dag probe requires non-empty DAG artifact: $dag_artifact" >&2
+    exit 1
+  fi
+fi
+
 compiled_receipt=""
 if [[ -f "$compile_log" ]]; then
   compiled_receipt="$(grep -E '^compiled: [0-9]+ files emitted, [0-9]+ diagnostics$' "$compile_log" | tail -1 || true)"
