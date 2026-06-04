@@ -649,6 +649,24 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
 // Variables
 // ---------------------------------------------------------------------------
 
+struct DataCache {
+    map: HashMap<usize, Value>,
+    // Hold the keyed data-item nodes alive so their Rc addresses can't be freed and
+    // reused by a later program in the same process (which would alias a stale entry).
+    keepalive_fns: Vec<Rc<Node>>,
+}
+thread_local! {
+    // Cache for evaluated `data` items (immutable global constants), keyed by the data
+    // item's node identity. Preserves structural sharing across references so a `data`
+    // referenced N times yields ONE Value, not N rebuilds. thread-local because Value
+    // holds Rc (!Send+!Sync) and cannot live in a static.
+    static DATA_CACHE: std::cell::RefCell<DataCache> =
+        std::cell::RefCell::new(DataCache {
+            map: HashMap::new(),
+            keepalive_fns: Vec::new(),
+        });
+}
+
 fn eval_var(
     node: &Rc<Node>,
     binding_kind: Option<&VarBindingKind>,
@@ -696,7 +714,21 @@ fn eval_var(
                             return Ok(Value::Str(name));
                         }
                     }
-                    return eval_expr(body, env, ctx);
+                    // Data items are immutable global constants: evaluate the body once and
+                    // cache the resulting Value, returning the shared Rc on later references.
+                    // A `data` referenced N times then yields ONE Value instead of N rebuilds,
+                    // removing the dominant re-derivation cost in the emit pipeline.
+                    let key = Rc::as_ptr(fn_node) as usize;
+                    if let Some(v) = DATA_CACHE.with(|c| c.borrow().map.get(&key).cloned()) {
+                        return Ok(v);
+                    }
+                    let v = eval_expr(body, env, ctx)?;
+                    DATA_CACHE.with(|c| {
+                        let mut dc = c.borrow_mut();
+                        dc.keepalive_fns.push(fn_node.clone());
+                        dc.map.insert(key, v.clone());
+                    });
+                    return Ok(v);
                 }
             }
         }
@@ -1106,7 +1138,98 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         }
     };
 
+    // Sharing-preservation memo: cache results of pure module functions keyed by the
+    // RESOLVED function identity (collision-free) plus argument identities. Sound because a
+    // module fn is deterministic in its args and same-Rc args ⇒ same value, so a hit is
+    // never wrong. Builtins/closures returned above bypass this (they may carry effects or
+    // captured env). Covers (a) nullary constructors and (b) the single-node structural
+    // predicates (content_hash/well_formed/...), collapsing the emit pipeline's redundant
+    // re-derivation and re-traversal. Args are kept alive so their Rc pointers can't be reused.
+    if let Some(key) = pure_call_memo_key(&fn_node, &func_name, &args) {
+        if let Some(v) = pure_call_memo_get(&key) {
+            return Ok(v);
+        }
+        let result = call_function(ctx, &fn_node, &args, env)?;
+        pure_call_memo_put(&fn_node, key, &args, result.clone());
+        return Ok(result);
+    }
     call_function(ctx, &fn_node, &args, env)
+}
+
+struct PureCallMemo {
+    map: HashMap<(usize, Vec<usize>), Value>,
+    // Args kept alive so their Rc addresses (used in keys) can't be freed and aliased.
+    keepalive: Vec<Value>,
+    // Resolved fn nodes kept alive for the same reason (the key includes their address).
+    keepalive_fns: Vec<Rc<Node>>,
+}
+thread_local! {
+    // thread-local because Value holds Rc (!Send+!Sync) so it can't live in a static.
+    static PURE_CALL_MEMO: std::cell::RefCell<PureCallMemo> =
+        std::cell::RefCell::new(PureCallMemo {
+            map: HashMap::new(),
+            keepalive: Vec::new(),
+            keepalive_fns: Vec::new(),
+        });
+}
+fn is_structural_pure_fn(name: &str) -> bool {
+    matches!(
+        name,
+        "content_hash"
+            | "well_formed"
+            | "locally_well_formed"
+            | "fold_node"
+            | "fold_node_content_hash"
+            | "node_subtree_count"
+    )
+}
+fn value_rc_identity(v: &Value) -> Option<usize> {
+    match v {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            Some(Rc::as_ptr(fields) as usize)
+        }
+        Value::List(xs) => Some(Rc::as_ptr(xs) as usize),
+        Value::Map(m) => Some(Rc::as_ptr(m) as usize),
+        Value::Set(s) => Some(Rc::as_ptr(s) as usize),
+        _ => None,
+    }
+}
+fn pure_call_memo_key(
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+) -> Option<(usize, Vec<usize>)> {
+    let fid = Rc::as_ptr(fn_node) as usize;
+    if args.is_empty() {
+        // Nullary module fn: deterministic constant — cache by resolved identity.
+        return Some((fid, Vec::new()));
+    }
+    if !is_structural_pure_fn(func_name) {
+        return None;
+    }
+    let mut ids = Vec::with_capacity(args.len());
+    for (_, v) in args {
+        ids.push(value_rc_identity(v)?);
+    }
+    Some((fid, ids))
+}
+fn pure_call_memo_get(key: &(usize, Vec<usize>)) -> Option<Value> {
+    PURE_CALL_MEMO.with(|m| m.borrow().map.get(key).cloned())
+}
+fn pure_call_memo_put(
+    fn_node: &Rc<Node>,
+    key: (usize, Vec<usize>),
+    args: &[(Option<String>, Value)],
+    result: Value,
+) {
+    PURE_CALL_MEMO.with(|m| {
+        let mut st = m.borrow_mut();
+        st.keepalive_fns.push(fn_node.clone());
+        for (_, v) in args {
+            st.keepalive.push(v.clone());
+        }
+        st.map.insert(key, result);
+    });
 }
 
 // ---------------------------------------------------------------------------
