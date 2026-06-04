@@ -20,6 +20,11 @@ pub use crate::v2_compiler_coercion::{
     can_cast, coerce_container_template, coerce_primitive_type, literal_suffix, render_cast,
     target_callable, target_optional_template,
 };
+pub use crate::v2_compiler_emit_core_support::{
+    capitalize_first, escape_json_string, escape_string_literal_body, is_upper, make_indent,
+    module_to_filename, sanitize_service_name, service_var_name, to_lower_char, to_screaming_snake,
+    to_snake, to_upper_char,
+};
 pub use crate::v2_compiler_infer::InferScope;
 pub use crate::v2_compiler_infer::{build_params_scope, extend_scope};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
@@ -1018,52 +1023,6 @@ pub fn emit_data_value_json(
     })
 }
 
-pub fn escape_json_string(s: String) -> String {
-    Rc::new(
-        Rc::new(
-            Rc::new(
-                Rc::new(
-                    s.split(&"\\".to_string())
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>(),
-                )
-                .join(&"\\\\".to_string())
-                .split(&"\"".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-            )
-            .join(&"\\\"".to_string())
-            .split(&"\n".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-        )
-        .join(&"\\n".to_string())
-        .split(&"\t".to_string())
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>(),
-    )
-    .join(&"\\t".to_string())
-}
-
-pub fn module_to_filename(name: String) -> String {
-    Rc::new(
-        name.split(&".".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-    )
-    .join(&"_".to_string())
-}
-
-pub fn make_indent(level: i64) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (level.clone() <= 0) {
-            "".to_string()
-        } else {
-            v2_rt::concat("    ".to_string(), make_indent((level.clone() - 1)))
-        }
-    })
-}
-
 pub fn to_string(value: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (value.clone() < 0) {
@@ -1147,59 +1106,6 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
     }
 }
 
-pub fn to_snake(name: String) -> String {
-    {
-        let chars_list = Rc::new(name.chars().map(|c| c as i64).collect::<Vec<_>>());
-        let result = Rc::new({
-            let mut __result = Vec::new();
-            for pair in Rc::new(
-                chars_list
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, v)| (i as i64, v))
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            {
-                __result.push({
-                    let idx = pair.0.clone();
-                    let ch = pair.1.clone();
-                    if is_upper(ch.clone()) {
-                        if (idx.clone() == 0) {
-                            to_lower_char(ch.clone())
-                        } else {
-                            v2_rt::concat("_".to_string(), to_lower_char(ch.clone()))
-                        }
-                    } else {
-                        v2_rt::from_code_point(ch.clone())
-                    }
-                });
-            }
-            __result
-        });
-        result.join(&"".to_string())
-    }
-}
-
-pub fn to_screaming_snake(name: String) -> String {
-    {
-        let snake = to_snake(name);
-        Rc::new({
-            let mut __result = Vec::new();
-            for ch in Rc::new(snake.chars().map(|c| c as i64).collect::<Vec<_>>())
-                .iter()
-                .cloned()
-            {
-                __result.push(to_upper_char(ch.clone()));
-            }
-            __result
-        })
-        .join(&"".to_string())
-    }
-}
-
 pub fn to_camel(name: String) -> String {
     {
         let parts = Rc::new(
@@ -1261,89 +1167,6 @@ pub fn to_camel(name: String) -> String {
     }
 }
 
-pub fn is_upper(ch: i64) -> bool {
-    ((ch.clone() >= 65) && (ch.clone() <= 90))
-}
-
-pub fn to_lower_char(ch: i64) -> String {
-    {
-        let cp = ch.clone();
-        if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
-            {
-                let lower_cp = (cp.clone() + 32);
-                v2_rt::from_code_point(lower_cp)
-            }
-        } else {
-            v2_rt::from_code_point(ch.clone())
-        }
-    }
-}
-
-pub fn to_upper_char(ch: i64) -> String {
-    {
-        let cp = ch.clone();
-        if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
-            {
-                let upper_cp = (cp.clone() - 32);
-                v2_rt::from_code_point(upper_cp)
-            }
-        } else {
-            v2_rt::from_code_point(ch.clone())
-        }
-    }
-}
-
-pub fn sanitize_service_name(name: String) -> String {
-    {
-        let parts = Rc::new(
-            name.split(&".".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        );
-        let pascal_parts = Rc::new({
-            let mut __result = Vec::new();
-            for p in parts.iter().cloned() {
-                __result.push(capitalize_first(p.clone()));
-            }
-            __result
-        });
-        pascal_parts.join(&"".to_string())
-    }
-}
-
-pub fn capitalize_first(s: String) -> String {
-    {
-        let chars_list = Rc::new(s.chars().map(|c| c as i64).collect::<Vec<_>>());
-        if ((chars_list.clone().len() as i64) == 0) {
-            "".to_string()
-        } else {
-            Rc::new({
-                let mut __result = Vec::new();
-                for pair in Rc::new(
-                    chars_list
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
-                    __result.push(if (pair.0.clone() == 0) {
-                        to_upper_char(pair.1.clone())
-                    } else {
-                        v2_rt::from_code_point(pair.1.clone())
-                    });
-                }
-                __result
-            })
-            .join(&"".to_string())
-        }
-    }
-}
-
 pub fn to_pascal(name: String) -> String {
     {
         let snake = to_snake(name);
@@ -1385,10 +1208,6 @@ pub fn apply_naming_case(name: String, case_style: NamingCase) -> String {
         NamingCase::CamelCase => to_camel(name),
         NamingCase::AsAuthored => name,
     }
-}
-
-pub fn service_var_name(service_name: String) -> String {
-    to_snake(sanitize_service_name(service_name))
 }
 
 pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
@@ -1598,45 +1417,6 @@ pub fn reserved_suffix(target: RenderTarget) -> String {
     {
         ReservedWordStrategy::SuffixEscape { suffix: suffix, .. } => suffix.clone(),
         _ => "".to_string(),
-    }
-}
-
-pub fn escape_string_literal_body(s: String) -> String {
-    {
-        let escaped_backslash = Rc::new(
-            s.split(&"\\".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\\\".to_string());
-        let escaped_quote = Rc::new(
-            escaped_backslash
-                .split(&"\"".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\\"".to_string());
-        let escaped_newline = Rc::new(
-            escaped_quote
-                .split(&"\n".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\n".to_string());
-        let escaped_return = Rc::new(
-            escaped_newline
-                .split(&"\\r".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\r".to_string());
-        Rc::new(
-            escaped_return
-                .split(&"\t".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\\t".to_string())
     }
 }
 
