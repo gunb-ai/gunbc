@@ -1199,14 +1199,15 @@ fn pure_call_memo_key(
     func_name: &str,
     args: &[(Option<String>, Value)],
 ) -> Option<(usize, Vec<usize>)> {
-    let fid = Rc::as_ptr(fn_node) as usize;
-    if args.is_empty() {
-        // Nullary module fn: deterministic constant — cache by resolved identity.
-        return Some((fid, Vec::new()));
-    }
+    // Purity is NOT assumed from arity: a nullary module fn can wrap an effectful service
+    // call (eval_method_call -> transport dispatch), so caching it would run the effect once
+    // and skip it thereafter. Restrict the memo to an explicitly-verified pure surface — the
+    // structural Node predicates below, which contain no service/effect dispatch. Aggressive
+    // pure-constructor caching is deferred until it has a checkable purity basis.
     if !is_structural_pure_fn(func_name) {
         return None;
     }
+    let fid = Rc::as_ptr(fn_node) as usize;
     let mut ids = Vec::with_capacity(args.len());
     for (_, v) in args {
         ids.push(value_rc_identity(v)?);
