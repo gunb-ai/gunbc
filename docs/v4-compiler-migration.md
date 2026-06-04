@@ -222,27 +222,37 @@ Supersedes the prior "port the logic, don't `rm`" framing: that protected fake-c
 and step-zero shows the protected code (`06_translate` emit) is *broken*, not merely
 unexecuted. The gate is now **"does this run green when executed,"** not typecheck+grep.
 
-- [x] **S0. Diagnose emit's blowup — DONE (2026-06-04).** Root cause: **`fold_node`
-      (`std/node.dag:94`) is a non-memoized catamorphism** — it recurses into every edge
-      target with no visited-set/dedup. The `Node` graph is a **shared DAG** (the i32
-      inhabitant the `fn add` signature references 3× is itself a deep shared sub-DAG), so the
-      fold walks **paths, not nodes** → exponential. Empirically: counting *one tiny
-      function's* nodes hangs >75s while unrelated witnesses run in 60ms. Not emit-specific,
-      not the target-model size, not cyclic (the value is finite + acyclic — so this is a
-      **performance pathology, not a P4/boundedness violation**). It is the **walk primitive
-      itself**, which Appendix B mislabeled "DONE" (the no-consumer disease at the foundation).
+- [x] **S0. Diagnose emit's blowup — DONE (2026-06-04), with a correction.** First read was
+      "non-memoized `fold_node` path-explodes." Deeper probing on clean `main` **refuted that
+      as the root cause**: even *building* `mvp1_rust_emitted_root` with **no fold at all**
+      (`let n = mvp1_rust_emitted_root; true`) hangs, and so does constructing a *source-level
+      O(1)* leaf (`rust_inhabitant_atom(i32)`). So the blowup is **upstream of any fold, in
+      value evaluation/construction at runtime.** Further isolation: closure *compile* is only
+      ~13s (a trivial-body witness over the same rust.dag closure completes), and a **5M
+      `eval_call` counter never triggered** — so it is **not** function-call recursion either.
+      Conclusion: the cost is a **non-call-bound v2-interpreter *runtime* cost** — prime suspect
+      the known clone-on-share O(n²) churn in `v2_rt` (`make_mut` deep-cloning shared `Rc`
+      collections) while evaluating/constructing the rust.dag structures, and/or the lazy
+      `eval_var` data-resolution cascade. **This redirects R1:** the first lever is the v2
+      interpreter runtime, *not* `.dag` `fold_node` memoization (memoizing the fold cannot help
+      when building the fold's input — no fold — already hangs). Exact hot op still to be pinned
+      with eval-level profiling (next step; must run in an isolated worktree, see note below).
 - [ ] **S1. First real consumer: an executed emit witness.** A `run(emit(add)) == "fn add…"`
       Bool witness, run via the **pre-existing** `run --claim-run` (no batch runner needed).
       This is the milestone the whole project has been missing — the crossing from
       *specification* to *running system*.
-- [ ] **S2. Make `fold_node` sharing-aware (memoize by content-hash), then make S1 green.**
-      The fix: dedup the fold so each distinct node folds once (hash-consing; `fold_node_content_hash`
-      is half the machinery) → O(#nodes), and a fail-closed cycle guard. **Expect two rounds**
-      (per the consumer invariant): the memo fix makes emit *terminate*; the now-running witness
-      will then likely expose emit-*logic* bugs hidden behind the hang — that is the consumer
-      doing its job, not a regression. Re-derive emit along a spine that runs; do **not** port
-      the 4,316 lines. *Open design fork (decide before implementing): interpreter-level memo
-      (v2 executor) vs a `.dag` memoized-fold combinator vs hash-consed `Node` construction.*
+- [ ] **S2. Fix the v2-interpreter runtime cost S0 pinned, then make S1 green.** Per the S0
+      correction, the first blocker is the non-call-bound runtime cost (suspect: `v2_rt`
+      clone-on-share O(n²) `make_mut` and/or lazy `eval_var` re-evaluation), not the `.dag`
+      fold. Profile the interpreter (instrument `eval_expr` by node-kind + `v2_rt` ops) to
+      confirm the hot op, then fix it (e.g. share `Rc` collections instead of `make_mut`-cloning;
+      memoize pure `data`/CAF evaluation). **Expect two rounds** (consumer invariant): the perf
+      fix makes emit *terminate*; the now-running witness then likely exposes emit-*logic* bugs
+      hidden behind the hang — the consumer doing its job, not a regression. A memoized/sharing-
+      aware `fold_node` (hash-consing; `fold_node_content_hash` is half the machinery) is still
+      likely needed for the fold-family afterward, but it is **not** the first blocker.
+      *Caveat: interpreter experiments must run in an isolated worktree — this session's
+      auto-commit otherwise sweeps throwaway diagnostic edits onto the PR and breaks CI.*
 - [ ] **S3. Archive everything the executing spine doesn't touch.** Re-root reachability on
       **executing** consumers (green-running claims + executing v3 tests), *not* all claims
       (which over-count via type-imports). Everything outside that set is archived
@@ -492,7 +502,7 @@ edited (it shrinks toward zero per the thesis). Level-2 items 2–6 *are* substr
 
 | # | capability | file(s) | state today → edit | difficulty |
 |---|---|---|---|---|
-| 1 | generic `fold_node` | `std/node.dag:21,94` | **NOT done (S0 correction)** — it compiles, but is a *non-memoized* catamorphism that path-explodes on shared-DAG `Node`s (can't fold one `fn add` in 600s). Must be made sharing-aware (memoize by content-hash) **first** — this is the real #1 fix, and the precondition for everything below. The "DONE" label was the no-consumer disease at the foundation. | **the #1 fix** |
+| 1 | generic `fold_node` | `std/node.dag:21,94` | **NOT done, but NOT the first blocker (see S0 correction).** It is a non-memoized catamorphism that would path-explode on shared-DAG `Node`s, and a memoized/sharing-aware version is likely needed for the fold-family. But S0 showed even *building* the fold's input (no fold) hangs, so the **first** lever is the v2-interpreter runtime cost (S2), not this. The "DONE" label was still the no-consumer disease at the foundation. | needed, after S2 |
 | 2 | `GrammarExpr` → canonical `Node` (T-7.1) | `std/grammar.dag` (~:1049) | `grammar_expr_to_node` is a hand walker; the `🟡` mark says the projecting PR deletes it and routes through one `Node` projection so `fold_node` folds `GrammarExpr` directly | bounded |
 | 3 | substrate-derived coproduct morphism | `std/algebra.dag` (+`std/node.dag`) | variant-discriminant/payload projection is interim scaffold (`algebra.dag:638/647`); make it real so a fold dispatches by declared fact, not `match` | **hard (C1)** |
 | 4 | per-variant contribution as declared algebra | `std/algebra.dag` + `compiler/02_parse.dag` | `Monoid`/`BooleanAlgebra` carriers exist; declare each variant's op as data, rewrite the 4 queries as `(algebra + data)` over `fold_node`; builds on #3 | medium |
