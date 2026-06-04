@@ -1801,6 +1801,21 @@ fn rust_mvp1_target_model_bundle_core() -> Node {
       rust_named_edge(
         name: target_model_edge_collection_realization,
         target: rust_collection_realization_catalog_node()
+      ),
+      // MUST mirror every non-atom_realizations edge of rust_mvp1_target_model_node(): the
+      // catalog encodes this bundle and decode matches it against target_model_bundle_core
+      // (= the live model node minus {atom_realizations, signature_realizations}). These two
+      // edges drifted out of this hand-authored copy and broke atom realization. Proper fix
+      // (factor a shared core edge list — single source) is roadmapped in the duplication sweep.
+      rust_named_edge(
+        name: target_model_edge_reference_layer_tokens,
+        target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      ),
+      rust_named_edge(
+        name: target_model_edge_use_site_ownership_realizations,
+        target: target_use_site_ownership_catalog_node(
+          rows: rust_sg_rc_use_site_ownership_catalog()
+        )
       )
     ]
   }
