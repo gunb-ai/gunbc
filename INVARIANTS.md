@@ -20,6 +20,50 @@ Each principle below carries: the rule, why it stands alone, problem/solution sh
 
 ---
 
+## Read this first — the specification-without-execution trap (especially LLM agents)
+
+This codebase once grew a compiler-sized body of `.dag` that **typechecks, passes its
+grep-style claims, and does not run** — `emit` could not produce `fn add` (it hung >600s)
+despite a full corpus of "passing" claims. The lesson is cheap to state and expensive to
+relearn; the rest of this document is the structural rules that keep you out of it, but this
+is the orientation:
+
+- **A consumer is anything that breaks when the behavior is wrong.** Typecheck and
+  `.contains()` greps are **not** consumers — they pass whether or not the code runs
+  correctly. (Formalized as the consumer invariant **[E-10](#e-10)**.)
+- **"Done" means a consumer running green *by execution* — never typecheck-plus-grep.** If
+  nothing has *run* the behavior, it is unverified no matter how finished it looks.
+- **The acceleration warning (this is for you, LLM agent):** a capable model emits fluent,
+  type-checking, grep-passing code at scale — *exactly the artifact that looks finished
+  without running*. Speed buys **specification, not execution**. Treat your own fluent output
+  as unverified until a real consumer runs it green. Volume is not progress; a running
+  consumer is. *(Receipt for this very warning: an early draft of these notes asserted a
+  `fold_node` "non-memoized fold" root-cause for the emit hang and nearly shipped it as a
+  numbered invariant — deeper probing on clean `main` refuted it (the cost was a v2-interpreter
+  runtime cost, upstream of any fold). An **invariant** was about to be written on an
+  unverified diagnosis. That is the disease, in its purest form, and it is why the bar is "by
+  execution.")*
+- **The foundation is the most dangerous place to mark "done."** Consumers live at the top of
+  the stack (emit, the user); base primitives are maximally isolated from them, so a base
+  primitive can sit "DONE-by-typecheck" indefinitely and collapse the first time a consumer
+  exercises it. Weight foundational claims by whether a consumer has *run* them, not by how
+  settled they look.
+- **Planning and tidying are the most seductive form of the vacuum.** Reworking invariants,
+  drawing roadmaps, reorganizing files all *feel* like progress and none of them run. A clean
+  repo with no running keystone is still a project that does not run. Do the cheap, sharp,
+  timeboxed version of any such rework, pointed at the nearest running consumer; never let it
+  displace the keystone.
+- **Seesaw discipline** (how to keep top-down, structure-first design *without* the vacuum):
+  commit to the right *shape* on paper (interface + a roadmap entry); build only the
+  **minimal slice a real consumer validates**; defer the rest to consumer-triggered roadmap
+  items. The minimal slice must exercise the committed shape's **risk**, not dodge it.
+- **Map vs territory:** top-down design is fine *as a map* — its consumer is you reading it to
+  plan, so it lives in **docs** (or explicitly-experimental, archived `.dag`). Code is
+  **territory** and needs a real consumer. Writing the map in executable `.dag` and mistaking
+  it for territory is the trap.
+
+---
+
 ## P1: Modeling Faithfulness
 
 **Rule:** Every construct grounds in an identifiable external fact or a structural derivation from one; ungrounded constructs are not valid authorities.
@@ -418,8 +462,23 @@ A scaffold (hand-maintained generated file, interim API surface, staged declarat
 
 **Receipt:** Staged lens files once existed as hand-authored `.dag` with generated Rust that no consumer read. Dissolution trigger named in the PR: "when parse/parse_surface types converge, `expr_span` consumers wire in." When the trigger was reached, the staged files became real receipts; otherwise they would have been rollback candidates.
 
+### Problem shape: Code without a consumer (E-10)
+
+A model, function, type, or field is written ahead of anything that uses it — justified by top-down design ("define the structure first"). Nothing depends on its behavior, so nothing breaks when the behavior is wrong. Typecheck and grep/`.contains()` assertions pass without the code ever executing, so an entire subsystem accumulates as a **specification that does not run** — plausible, type-checking, and untrue.
+
+**A consumer is anything that breaks when the behavior is wrong.** Strength, weakest to strongest: (1) a human reading the *executed* output (forces execution + that output exists) — the floor, to be *upgraded*, not rested on; (2) an executed assertion (`run(emit(add)) == expected`) — falsifiable; (3) other code that depends on the behavior and breaks if it's wrong — correctness + regression. Typecheck and grep are **not** consumers.
+
+**Solution shape:** Name a real consumer *before* writing a model/function. If there is none, the work is experimental — **archived** (quarantined under `src/v4/archive/`, git-recoverable), not kept in the active tree, until a consumer exists. Top-down design stays in the *map* (docs, or explicitly-experimental archived `.dag`); code is promoted to *territory* only when a consumer pulls it. Reasoning about / porting consumer-less code is the trap — archive it (no reasoning required) rather than auditing it.
+
+**Review gate (hard-block):** every review asks "who is the consumer?" of new models / functions / fields. **No real consumer → REQUEST_CHANGES; merging anyway requires explicit operator escalation.** This generalizes [E-6](#e-6) ("no target-spec field without a same-PR consumer") and [DB-4](#db-4) ("clean-emission is a contract with real consumers") from the emission boundary to the whole tree, and enforces the THESIS modeling-discipline rule "every declared type has at least one structural consumer."
+
+**Adoption stance:** applies to new code and refactors (same live-state stance as `CODING.md`). Existing consumer-less code is archive-debt — sweep to `src/v4/archive/` on touch — not an instant repo-wide failure.
+
+**Receipt:** the v4 compiler grew to a ~4,300-line `06_translate` that cannot emit `fn add` (step-zero: >600s, no output) because its only "consumers" were typecheck + text-grep. Dissolution path: rebuild emit behind a real executed witness; archive what no executing consumer touches. See [`docs/v4-compiler-migration.md`](docs/v4-compiler-migration.md) Part 0 + governing invariant.
+
 ### Related rules (home-of-record here)
 
+- **E-10: No Code Without A Consumer** — no model/function/type/field enters the active tree without something that breaks when its behavior is wrong; review hard-blocks on "no consumer," archive-by-default to `src/v4/archive/`, escalation to merge. Generalizes E-6 / DB-4; enforces the THESIS "every declared type has a structural consumer."
 - **Strict Forward Progress** — canonical statement as used in reviewer discourse: a change counts as progress only if it reduces ad-hoc state, duplicate authority, or implicit behavior. Transitional scaffolds need explicit dissolution paths and cannot become the new steady state.
   - *Note:* the subdoc at `docs/invariants/strict-forward-progress.md` describes bounded forward execution (the P4 concept), not the dissolution-progress rule the reviewer-facing name has historically carried. This is pre-existing drift between the subdoc and the heading; reviewers continue to use "Strict Forward Progress" for the dissolution-progress rule (this bullet). Reconciling the subdoc content (either rename it or split into two) is future cleanup, not resolved by this rewrite.
 - **Sustainability Invariants** (entire heading, folded in) — cost of change should approach 1
@@ -464,6 +523,7 @@ Every numbered ID (C-N, E-N, L-N, DB-N) descends from one principle. The prose-n
 | <a id="e-7"></a>E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet | [invariants/e-7-…](docs/invariants/e-7-no-target-private-realization-schema-without-a-dissolution-ratchet.md) |
 | <a id="e-8"></a>E-8 | P3: Fail-Closed | unsupported core behaviors fail closed, never collapse semantically | [invariants/e-8-…](docs/invariants/e-8-unsupported-core-behaviors-fail-closed-never-collapse-semantically.md) |
 | <a id="e-9"></a>E-9 | P2: Boundary Discipline | external realization lives on `Arrow.body` | [invariants/e-9-…](docs/invariants/e-9-external-realization-lives-on-arrow-body.md) |
+| <a id="e-10"></a>E-10 | P5: Progress Is Dissolution (generalizes E-6, DB-4) | no model/function/field without a real consumer; review hard-block + archive-by-default (`src/v4/archive/`) | [v4-compiler-migration.md](docs/v4-compiler-migration.md) |
 | <a id="l-7"></a>L-7 | P2: Boundary Discipline | lenses consume declared substrate query functions | [invariants/l-7-…](docs/invariants/l-7-lenses-consume-declared-substrate-query-functions.md) |
 | <a id="l-8"></a>L-8 | P2: Boundary Discipline | lens Rust surfaces preserve typed failure carriers | [invariants/l-8-…](docs/invariants/l-8-lens-rust-surfaces-preserve-typed-failure-carriers.md) |
 | <a id="t-11"></a>T11 | P4: Decidability | tiered test execution (Tier 1/2/3 sub-rules) | [invariants/tiered-test-execution-t11.md](docs/invariants/tiered-test-execution-t11.md) |
