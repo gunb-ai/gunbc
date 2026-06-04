@@ -253,7 +253,38 @@ regardless of which resolver runs.
 
 ---
 
-## 8. Reproduction
+## 8. Verification status (the fail-closed teeth)
+
+The §5.1 fail-closed detection — *"a constructor name claimed by ≥2 distinct parent types is a
+collision"* — has been **verified executably against the real `src/v4` corpus** (positive +
+negative assertions, all PASS):
+
+- **Positive (teeth bite):** all 37 collisions caught; `D1..D9` attributed to both
+  `DecimalDigit` and `NonZeroDecimalDigit`; `Bits64` caught with all 16 owners.
+- **Negative (no false positives):** single-owner `D0` is **not** flagged; all 2244 single-owner
+  constructor names left unflagged; a synthetic distinct-name program yields zero collisions (the
+  check stays quiet on well-formed code).
+
+**Why this is not yet wired into the compiler (and shouldn't be today):** the running resolver is
+authored in `.dag` — `variant_locals_from_items` at **`src/v2/04_items.dag:122`** is where the
+silent last-write-wins `map_insert` lives; that is the exact site the fail-closed check belongs
+(emit a diagnostic when a key would be overwritten by a *different* parent type, mirroring the
+existing collision diagnostic at `src/v2/04_resolve.dag:896`). Landing it there has two gates that
+make it a **post-R2 "fire in its slot" task**, not a today task:
+
+1. **It needs a bootstrap regen to take effect** (the resolver *and* the test harness
+   `compiler_tests.rs` are generated — from `src/v2/04_items.dag` and
+   `src/v2/compiler_tests_rust.dag` respectively), so it cannot be verified in-compiler without a
+   full stage0 regen.
+2. **Firing it tree-wide reddens every `src/v4` compile** (all 37 collisions at once), which would
+   take the emit keystone offline — the lever currently in flight.
+
+So the modification is **spec'd and its detection verified**; activating it is sequenced after R2
+(add `::` qualified syntax → migrate the 37 → flip the check on behind a clean tree; §5–§6).
+Authoring the resolver function *unwired* in the meantime would itself violate E-10 (no consumer),
+which is why this PR carries the verified spec rather than a dormant resolver edit.
+
+## 9. Reproduction
 
 ```python
 import re, glob, collections
