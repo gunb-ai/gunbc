@@ -80,6 +80,18 @@ type FieldSummary {
 // types are parameterized. Arity comes from .dag declarations (params
 // field on type definitions). See std/types.dag for List, Map, Set.
 
+// Algebra type-variable names the inferencer defers rather than binds.
+// A sibling classifier to is_kernel_type: these names denote generic
+// type parameters (Outcome<T>, fold accumulators, mapped elements), so
+// type resolution must treat an unbound occurrence as a type variable,
+// not an unresolved-type error. Single source: consumed by both infer
+// (binding filter) and infer_resolve (leaf not-found routing).
+// NOTE (P1): the hardcoded set is a heuristic for principled declared-
+// generic detection; dissolve only when an off-set generic surfaces.
+fn is_type_variable_name(name: String) -> Bool {
+  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+}
+
 // P1.9 InferredNode: compiler errors are orthogonal to the node graph.
 // When inference fails, the result is structurally distinct from a type node.
 // Error and Dynamic type sentinels become CompilerError variants.
