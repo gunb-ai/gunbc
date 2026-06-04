@@ -1802,6 +1802,10 @@ fn rust_mvp1_target_model_bundle_core() -> Node {
         name: target_model_edge_collection_realization,
         target: rust_collection_realization_catalog_node()
       ),
+      rust_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: rust_type_expression_projection_bundle_node()
+      ),
       // 🟡 gated — scaffold:round9-bundle-core-dup — bind PR #4423 (duplication-sweep lane,
       //   owner deep-cat-105) — dissolve-on: rust_mvp1_target_model_bundle_core() and
       //   rust_mvp1_target_model_node() both derive from a single rust_mvp1_target_model_core_edges()
@@ -1941,6 +1945,10 @@ fn rust_mvp1_target_model_node() -> Node {
       rust_named_edge(
         name: target_model_edge_collection_realization,
         target: rust_collection_realization_catalog_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: rust_type_expression_projection_bundle_node()
       ),
       rust_named_edge(
         name: target_model_edge_atom_realizations,
