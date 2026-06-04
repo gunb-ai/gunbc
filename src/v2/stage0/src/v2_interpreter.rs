@@ -2,7 +2,6 @@
 // Hand-written infrastructure (same category as parser, tokenizer, v2_rt).
 // I-1: pure evaluation. I-2: shell service dispatch.
 
-use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::rc::Rc;
@@ -989,30 +988,8 @@ fn match_pattern(
 // Function call (ExprCall)
 // ---------------------------------------------------------------------------
 
-thread_local! {
-    static DIAG_FN_COUNTS: RefCell<HashMap<String, u64>> = RefCell::new(HashMap::new());
-    static DIAG_TOTAL: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = expr_call_func_at(node.clone(), ctx.si());
-    DIAG_FN_COUNTS.with(|m| *m.borrow_mut().entry(func_name.clone()).or_insert(0) += 1);
-    let __diag_total = DIAG_TOTAL.with(|c| {
-        let n = c.get() + 1;
-        c.set(n);
-        n
-    });
-    if __diag_total >= 5_000_000 {
-        DIAG_FN_COUNTS.with(|m| {
-            let mut v: Vec<(String, u64)> = m.borrow().iter().map(|(k, c)| (k.clone(), *c)).collect();
-            v.sort_by(|a, b| b.1.cmp(&a.1));
-            eprintln!("DIAG: top fn calls after {} total:", __diag_total);
-            for (name, count) in v.iter().take(15) {
-                eprintln!("DIAG   {:>10}  {}", count, name);
-            }
-        });
-        std::process::exit(7);
-    }
     let arg_nodes = &node.children;
 
     // Evaluate arguments
