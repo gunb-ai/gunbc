@@ -491,9 +491,22 @@ fn call_function(
         })?;
 
     // Bind parameters
+    // Positional argument binding must target VALUE params only. A generic type param
+    // (e.g. `<T>` in `fn outcome_rejected<T>(d: Diagnostic)`) also appears in
+    // `fn_node.params`; a value param is exactly one whose type-expr exists and differs from
+    // its own name (`d`'s type-expr is `Diagnostic`), whereas a type param's type-expr is
+    // itself (`T`'s is `T`). Counting type params would shift the positional index so the
+    // real value param never receives its arg.
     let param_names: Vec<String> = fn_node
         .params
         .iter()
+        .filter(|p| {
+            let name = authored_name_at(ctx.si(), (*p).clone());
+            match p.children.first() {
+                Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != name,
+                None => false,
+            }
+        })
         .map(|p| authored_name_at(ctx.si(), p.clone()))
         .collect();
 
@@ -973,6 +986,62 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
+                // Destructure a record-typed value: `match r { TypeName { f, g } => ... }`.
+                // Records build as Value::Record (no parent enum), so a VariantPattern whose
+                // name is the record type must bind its fields here — the Value::Variant arm
+                // above only covers coproduct variants.
+                Value::Record { type_name, fields } => {
+                    if type_name != name {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let field_val = fields.get(&field_name).cloned().unwrap_or(Value::Null);
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                // Bridge list literals (Value::List) to FreeMonoid Empty/Cons patterns:
+                // `match xs { Empty => ..., Cons { head, tail } => ... }`. List literals build
+                // as Value::List, but fold_list (std/algebra) matches the FreeMonoid coproduct.
+                Value::List(items) => match name.as_str() {
+                    "Empty" => {
+                        if items.is_empty() {
+                            Some(HashMap::new())
+                        } else {
+                            None
+                        }
+                    }
+                    "Cons" => {
+                        if items.is_empty() {
+                            None
+                        } else {
+                            let head = items[0].clone();
+                            let tail = Value::List(Rc::new(items[1..].to_vec()));
+                            let mut bindings = HashMap::new();
+                            for fb in field_bindings.iter() {
+                                let field_name =
+                                    field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                                let fb_pat = field_binding_pattern(fb.clone());
+                                // Cons has exactly head/tail; an unknown field (e.g. a typo
+                                // `Cons { hd, tl }`) fails the match rather than binding null.
+                                let field_val = match field_name.as_str() {
+                                    "head" => head.clone(),
+                                    "tail" => tail.clone(),
+                                    _ => return None,
+                                };
+                                let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                                bindings.extend(sub_bindings);
+                            }
+                            Some(bindings)
+                        }
+                    }
+                    _ => None,
+                },
                 // Match on Option: Some { value: x } pattern
                 Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
                 _ if name == "Some" => {
@@ -1017,15 +1086,24 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     }
 
     // Look up user-defined function: module item wins over env-bound Value::Fn (see eval_var).
-    // Value::Closure is not dispatched here — lambda-as-value calls use a separate path.
     let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
         node.clone()
-    } else if let Some(Value::Fn { node }) = env.lookup(&func_name) {
-        node.clone()
     } else {
-        return Err(InterpError::NoSuchFunction {
-            name: func_name.clone(),
-        });
+        match env.lookup(&func_name) {
+            Some(Value::Fn { node }) => node.clone(),
+            // Calling a closure-valued parameter directly, e.g. fold_list's `cons(empty, h)`.
+            // The arg names don't bind closure params (closures are positional), so pass values.
+            Some(closure @ Value::Closure { .. }) => {
+                let closure = closure.clone();
+                let arg_vals: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
+                return apply_closure(&closure, &arg_vals, env, ctx);
+            }
+            _ => {
+                return Err(InterpError::NoSuchFunction {
+                    name: func_name.clone(),
+                });
+            }
+        }
     };
 
     call_function(ctx, &fn_node, &args, env)
@@ -1063,15 +1141,34 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         .map(|a| eval_expr(&arg_value(a.clone()), env, ctx))
         .collect::<InterpResult<_>>()?;
 
+    // Record/Variant field holding a function: `r.field(args)` calls the field's closure/fn.
+    // Checked BEFORE semantics dispatch because it applies whether or not the method was
+    // tagged AlgebraMethodSemantics — e.g. fold_node's `algebra.init(n)`/`algebra.step(...)`
+    // over a NodeFold record, and the closure-backed `Map { lookup: fn(..) }` (`m.lookup(k)`).
+    if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
+        if let Some(field_val) = fields.get(&method_name) {
+            match field_val {
+                Value::Closure { .. } => {
+                    let f = field_val.clone();
+                    return apply_closure(&f, &args, env, ctx);
+                }
+                Value::Fn { node } => {
+                    let node = node.clone();
+                    let named: Vec<(Option<String>, Value)> =
+                        args.iter().map(|v| (None, v.clone())).collect();
+                    return call_function(ctx, &node, &named, env);
+                }
+                _ => {}
+            }
+        }
+    }
+
     match semantics.as_deref() {
         Some(MethodSemantics::AlgebraMethodSemantics { method_def, .. }) => {
             let mn = authored_name_at(ctx.si(), method_def.clone());
             eval_algebra_method(&mn, receiver_val, &args, env, ctx)
         }
-        _ => {
-            // Plain method — try as algebra by method name
-            eval_algebra_method(&method_name, receiver_val, &args, env, ctx)
-        }
+        _ => eval_algebra_method(&method_name, receiver_val, &args, env, ctx),
     }
 }
 
@@ -2665,12 +2762,50 @@ where
     f(&items, closure, env, ctx)
 }
 
+/// Flatten a FreeMonoid value into a Vec, or None if `val` is neither a list nor a
+/// well-formed Empty/Cons chain. Lists build as Value::List; FreeMonoid values constructed
+/// via Cons/Empty (e.g. list_snoc_item chains in Node.children) are Variant chains. The list
+/// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
+/// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
+/// raises a type error rather than fabricating an empty/partial list.
+fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+    let mut out = Vec::new();
+    let mut cur = val.clone();
+    loop {
+        match &cur {
+            Value::List(items) => {
+                out.extend(items.iter().cloned());
+                return Some(out);
+            }
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => match variant_name.as_str() {
+                "Empty" => return Some(out),
+                "Cons" => match (fields.get("head"), fields.get("tail")) {
+                    (Some(head), Some(tail)) => {
+                        out.push(head.clone());
+                        cur = tail.clone();
+                    }
+                    _ => return None,
+                },
+                _ => return None,
+            },
+            _ => return None,
+        }
+    }
+}
+
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<Vec<Value>>> {
     match val {
         Value::List(items) => Ok(items.clone()),
-        _ => Err(InterpError::TypeError {
-            msg: format!("{} expects a list, got {}", context, val.type_label()),
-        }),
+        _ => match free_monoid_to_vec(val) {
+            Some(items) => Ok(Rc::new(items)),
+            None => Err(InterpError::TypeError {
+                msg: format!("{} expects a list, got {}", context, val.type_label()),
+            }),
+        },
     }
 }
 

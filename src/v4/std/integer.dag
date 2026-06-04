@@ -11,10 +11,10 @@ module v4.std.integer
 
 import v4.std.algebra {
   AbelianGroup,
+  Cons,
   Empty,
-  fold_list,
+  fold_list_node,
   Group,
-  list_snoc_item,
   Magma,
   Monoid,
   OrderedRing,
@@ -24,7 +24,7 @@ import v4.std.algebra {
 }
 import v4.std.collection { List }
 import v4.std.diagnostic {Correction, Diagnostic, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
-import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.machine {
   MachineWidth,
   PointerWidth,
@@ -311,51 +311,42 @@ fn integer_decimal_digit_node(digit: DecimalDigit) -> Node {
   }
 }
 
-fn integer_decimal_digit_edge(digit: DecimalDigit) -> Edge {
-  Edge { label: Positional, target: integer_decimal_digit_node(digit: digit) }
-}
-
-fn integer_nonzero_decimal_digit_node(digit: NonZeroDecimalDigit) -> Node {
+// NonZeroDecimalDigit ⊂ DecimalDigit: widen the leading digit so a magnitude lowers as a
+// uniform digit sequence. The nonzero-lead invariant lives in the type, not the node.
+fn integer_nonzero_decimal_digit_widen(digit: NonZeroDecimalDigit) -> DecimalDigit {
   match digit {
-    D1 => integer_inhabitant_atom(id: integer_tag_digit_1)
-    D2 => integer_inhabitant_atom(id: integer_tag_digit_2)
-    D3 => integer_inhabitant_atom(id: integer_tag_digit_3)
-    D4 => integer_inhabitant_atom(id: integer_tag_digit_4)
-    D5 => integer_inhabitant_atom(id: integer_tag_digit_5)
-    D6 => integer_inhabitant_atom(id: integer_tag_digit_6)
-    D7 => integer_inhabitant_atom(id: integer_tag_digit_7)
-    D8 => integer_inhabitant_atom(id: integer_tag_digit_8)
-    D9 => integer_inhabitant_atom(id: integer_tag_digit_9)
+    D1 => D1
+    D2 => D2
+    D3 => D3
+    D4 => D4
+    D5 => D5
+    D6 => D6
+    D7 => D7
+    D8 => D8
+    D9 => D9
   }
 }
 
-fn integer_nonzero_decimal_digit_edge(digit: NonZeroDecimalDigit) -> Edge {
-  Edge { label: Positional, target: integer_nonzero_decimal_digit_node(digit: digit) }
-}
-
+// A decimal magnitude is an ordered digit sequence (place value = order), so it lowers via the
+// canonical FreeMonoid encoding (fold_list_node: named head/tail cons cells), NOT a flat
+// positional Conj — positional edges under a Conj fail well_formed (Conj requires labeled edges).
 fn integer_decimal_nonzero_node(magnitude: DecimalNonZeroMagnitude) -> Node {
   match magnitude {
-    DecimalNonZeroMagnitude { lead, tail } => Node {
-      kind: TypeNode { connective: Conj },
-      children: fold_list(
-        xs: tail,
-        empty: list_snoc_item(xs: Empty, item: integer_nonzero_decimal_digit_edge(digit: lead)),
-        cons: fn(acc, digit) {
-          list_snoc_item(xs: acc, item: integer_decimal_digit_edge(digit: digit))
-        }
+    DecimalNonZeroMagnitude { lead, tail } =>
+      fold_list_node(
+        xs: Cons { head: integer_nonzero_decimal_digit_widen(digit: lead), tail: tail },
+        item_node: fn(digit) { integer_decimal_digit_node(digit: digit) }
       )
-    }
   }
 }
 
 fn integer_decimal_magnitude_node(magnitude: DecimalMagnitude) -> Node {
   match magnitude {
-    DecimalZero => Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        integer_decimal_digit_edge(digit: D0)
-      ]
-    }
+    DecimalZero =>
+      fold_list_node(
+        xs: Cons { head: D0, tail: Empty },
+        item_node: fn(digit) { integer_decimal_digit_node(digit: digit) }
+      )
     DecimalNonZero { magnitude } => integer_decimal_nonzero_node(magnitude: magnitude)
   }
 }
