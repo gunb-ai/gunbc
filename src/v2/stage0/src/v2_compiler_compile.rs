@@ -24,7 +24,7 @@ pub use crate::v2_compiler_complexity::{
     ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext,
 };
 pub use crate::v2_compiler_emit::escape_json_string;
-pub use crate::v2_compiler_emit::EmitResult;
+pub use crate::v2_compiler_emit_core_support::EmitResult;
 pub use crate::v2_compiler_emit_go::emit_go;
 pub use crate::v2_compiler_emit_python::emit_python;
 pub use crate::v2_compiler_emit_rust::emit_rust;
