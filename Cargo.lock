@@ -1200,6 +1200,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "v2-stage0-emit-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "stacker",
+ "v2-compiler",
+]
+
+[[package]]
 name = "v3-compiler"
 version = "0.1.0"
 dependencies = [
