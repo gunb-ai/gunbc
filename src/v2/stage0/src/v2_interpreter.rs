@@ -1128,35 +1128,34 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         .map(|a| eval_expr(&arg_value(a.clone()), env, ctx))
         .collect::<InterpResult<_>>()?;
 
+    // Record/Variant field holding a function: `r.field(args)` calls the field's closure/fn.
+    // Checked BEFORE semantics dispatch because it applies whether or not the method was
+    // tagged AlgebraMethodSemantics — e.g. fold_node's `algebra.init(n)`/`algebra.step(...)`
+    // over a NodeFold record, and the closure-backed `Map { lookup: fn(..) }` (`m.lookup(k)`).
+    if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
+        if let Some(field_val) = fields.get(&method_name) {
+            match field_val {
+                Value::Closure { .. } => {
+                    let f = field_val.clone();
+                    return apply_closure(&f, &args, env, ctx);
+                }
+                Value::Fn { node } => {
+                    let node = node.clone();
+                    let named: Vec<(Option<String>, Value)> =
+                        args.iter().map(|v| (None, v.clone())).collect();
+                    return call_function(ctx, &node, &named, env);
+                }
+                _ => {}
+            }
+        }
+    }
+
     match semantics.as_deref() {
         Some(MethodSemantics::AlgebraMethodSemantics { method_def, .. }) => {
             let mn = authored_name_at(ctx.si(), method_def.clone());
             eval_algebra_method(&mn, receiver_val, &args, env, ctx)
         }
-        _ => {
-            // Record/Variant field holding a function: `r.field(args)` calls the field's
-            // closure/fn — e.g. fold_node's `algebra.init(n)` / `algebra.step(...)` over a
-            // NodeFold record whose `init`/`step` fields are lambdas.
-            if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
-                if let Some(field_val) = fields.get(&method_name) {
-                    match field_val {
-                        Value::Closure { .. } => {
-                            let f = field_val.clone();
-                            return apply_closure(&f, &args, env, ctx);
-                        }
-                        Value::Fn { node } => {
-                            let node = node.clone();
-                            let named: Vec<(Option<String>, Value)> =
-                                args.iter().map(|v| (None, v.clone())).collect();
-                            return call_function(ctx, &node, &named, env);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            // Plain method — try as algebra by method name
-            eval_algebra_method(&method_name, receiver_val, &args, env, ctx)
-        }
+        _ => eval_algebra_method(&method_name, receiver_val, &args, env, ctx),
     }
 }
 
