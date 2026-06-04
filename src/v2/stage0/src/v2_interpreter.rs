@@ -491,15 +491,12 @@ fn call_function(
         })?;
 
     // Bind parameters
-    // Positional argument binding must target VALUE params only. Generic type params
-    // (e.g. the `<T>` in `fn outcome_rejected<T>(d: Diagnostic)`) also appear in
-    // `fn_node.params` but carry no type-expr (no children); counting them shifts the
-    // positional index so the real value param never receives its arg.
     // Positional argument binding must target VALUE params only. A generic type param
     // (e.g. `<T>` in `fn outcome_rejected<T>(d: Diagnostic)`) also appears in
-    // `fn_node.params`, but its type-expr is itself (`T`'s declared type is `T`), whereas a
-    // value param's type-expr differs (`d`'s is `Diagnostic`). Counting type params shifts
-    // the positional index so the real value param never receives its arg.
+    // `fn_node.params`; a value param is exactly one whose type-expr exists and differs from
+    // its own name (`d`'s type-expr is `Diagnostic`), whereas a type param's type-expr is
+    // itself (`T`'s is `T`). Counting type params would shift the positional index so the
+    // real value param never receives its arg.
     let param_names: Vec<String> = fn_node
         .params
         .iter()
@@ -1030,12 +1027,12 @@ fn match_pattern(
                                 let field_name =
                                     field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                                 let fb_pat = field_binding_pattern(fb.clone());
-                                let field_val = if field_name == "head" {
-                                    head.clone()
-                                } else if field_name == "tail" {
-                                    tail.clone()
-                                } else {
-                                    Value::Null
+                                // Cons has exactly head/tail; an unknown field (e.g. a typo
+                                // `Cons { hd, tl }`) fails the match rather than binding null.
+                                let field_val = match field_name.as_str() {
+                                    "head" => head.clone(),
+                                    "tail" => tail.clone(),
+                                    _ => return None,
                                 };
                                 let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
                                 bindings.extend(sub_bindings);
@@ -2765,9 +2762,12 @@ where
     f(&items, closure, env, ctx)
 }
 
-/// Flatten a FreeMonoid value into a Vec. Lists build as Value::List, but FreeMonoid
-/// values constructed via Cons/Empty (e.g. list_snoc_item chains in Node.children) are
-/// Variant chains. The list builtins (fold/map/filter/foreach) accept either.
+/// Flatten a FreeMonoid value into a Vec, or None if `val` is neither a list nor a
+/// well-formed Empty/Cons chain. Lists build as Value::List; FreeMonoid values constructed
+/// via Cons/Empty (e.g. list_snoc_item chains in Node.children) are Variant chains. The list
+/// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
+/// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
+/// raises a type error rather than fabricating an empty/partial list.
 fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let mut out = Vec::new();
     let mut cur = val.clone();
@@ -2777,17 +2777,19 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 out.extend(items.iter().cloned());
                 return Some(out);
             }
-            Value::Null => return Some(out),
             Value::Variant {
                 variant_name,
                 fields,
                 ..
             } => match variant_name.as_str() {
                 "Empty" => return Some(out),
-                "Cons" => {
-                    out.push(fields.get("head").cloned().unwrap_or(Value::Null));
-                    cur = fields.get("tail").cloned().unwrap_or(Value::Null);
-                }
+                "Cons" => match (fields.get("head"), fields.get("tail")) {
+                    (Some(head), Some(tail)) => {
+                        out.push(head.clone());
+                        cur = tail.clone();
+                    }
+                    _ => return None,
+                },
                 _ => return None,
             },
             _ => return None,
