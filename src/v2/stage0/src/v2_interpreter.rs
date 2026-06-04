@@ -491,9 +491,25 @@ fn call_function(
         })?;
 
     // Bind parameters
+    // Positional argument binding must target VALUE params only. Generic type params
+    // (e.g. the `<T>` in `fn outcome_rejected<T>(d: Diagnostic)`) also appear in
+    // `fn_node.params` but carry no type-expr (no children); counting them shifts the
+    // positional index so the real value param never receives its arg.
+    // Positional argument binding must target VALUE params only. A generic type param
+    // (e.g. `<T>` in `fn outcome_rejected<T>(d: Diagnostic)`) also appears in
+    // `fn_node.params`, but its type-expr is itself (`T`'s declared type is `T`), whereas a
+    // value param's type-expr differs (`d`'s is `Diagnostic`). Counting type params shifts
+    // the positional index so the real value param never receives its arg.
     let param_names: Vec<String> = fn_node
         .params
         .iter()
+        .filter(|p| {
+            let name = authored_name_at(ctx.si(), (*p).clone());
+            match p.children.first() {
+                Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != name,
+                None => false,
+            }
+        })
         .map(|p| authored_name_at(ctx.si(), p.clone()))
         .collect();
 
