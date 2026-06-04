@@ -1060,21 +1060,13 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         })
         .collect::<InterpResult<_>>()?;
 
-    // Check for built-in runtime functions
-    if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
-        return Ok(result);
-    }
-
-    // Look up user-defined function: module item wins over env-bound Value::Fn (see eval_var).
-    // Value::Closure is not dispatched here — lambda-as-value calls use a separate path.
+    // Modeled `.dag` functions WIN over builtins (builtins are a reserved primitive fallback,
+    // reached only when nothing modeled binds the name).
     let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
         node.clone()
     } else {
         match env.lookup(&func_name) {
             Some(Value::Fn { node }) => node.clone(),
-            // A closure-valued parameter called by name, e.g. `cons(empty, h)` where `cons`
-            // is a fn parameter of `fold_list`. The named-call path must dispatch it; the
-            // builtin combinators (map/filter/fold) already apply closures this way.
             Some(closure @ Value::Closure { .. }) => {
                 let closure = closure.clone();
                 let positional: Vec<Value> =
@@ -1082,6 +1074,9 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 return apply_closure(&closure, &positional, env, ctx);
             }
             _ => {
+                if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
+                    return Ok(result);
+                }
                 return Err(InterpError::NoSuchFunction {
                     name: func_name.clone(),
                 });
@@ -1124,14 +1119,23 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         .map(|a| eval_expr(&arg_value(a.clone()), env, ctx))
         .collect::<InterpResult<_>>()?;
 
-    // A closure-valued record field called as a method: `record.field(args)` — e.g.
-    // `algebra.init(n)` / `algebra.step(acc, e, child)` on a NodeFold record. Access the
-    // field; if it holds a closure, apply it. Falls through to algebra-method dispatch.
+    // A function-valued record field called as a method: `record.field(args)` — e.g.
+    // `map.lookup(key)` on a modeled `Map { lookup: fn(K)->Witness<V> }`, or `algebra.init(n)`
+    // on a NodeFold. The field may hold a Closure (captured env) or a bare Fn node.
     if let Value::Record { fields, .. } = &receiver_val {
         if let Some(field_val) = fields.get(&method_name) {
-            if matches!(field_val, Value::Closure { .. }) {
-                let closure = field_val.clone();
-                return apply_closure(&closure, &args, env, ctx);
+            match field_val {
+                Value::Closure { .. } => {
+                    let closure = field_val.clone();
+                    return apply_closure(&closure, &args, env, ctx);
+                }
+                Value::Fn { node } => {
+                    let fn_node = node.clone();
+                    let named: Vec<(Option<String>, Value)> =
+                        args.iter().map(|v| (None, v.clone())).collect();
+                    return call_function(ctx, &fn_node, &named, env);
+                }
+                _ => {}
             }
         }
     }
