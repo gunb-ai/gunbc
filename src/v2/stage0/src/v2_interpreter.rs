@@ -674,6 +674,15 @@ fn eval_var(
         if info.kind == ItemKind::DataItem {
             if let Some(fn_node) = ctx.lookup_fn(&name) {
                 if let Some(ref body) = fn_node.body {
+                    // Symbol-declaration idiom: `data X: Symbol = X` is self-referential.
+                    // Resolve it to the symbol value (its interned name) instead of
+                    // evaluating the body, which would recurse `eval_var(X) -> eval_var(X)`
+                    // forever. Symbol values are their name; equality is by name.
+                    if let ExprData::ExprVar { .. } = &*body.expr_data {
+                        if expr_var_name_at(body.clone(), ctx.si()) == name {
+                            return Ok(Value::Str(name));
+                        }
+                    }
                     return eval_expr(body, env, ctx);
                 }
             }
