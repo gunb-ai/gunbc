@@ -18,28 +18,16 @@ use crate::v2_compiler_artifact::RenderTarget::Rust;
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
 pub use crate::v2_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v2_compiler_emit::{
-    apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
-    capitalize_first, compute_service_fields, effective_operation_transport, emit_bin_op_symbol,
-    emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
-    emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
-    emit_literal, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
-    emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
-    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_json_string,
-    escape_rust_interp_text, escape_string_literal_body, extract_modifier_names,
-    extract_test_projections, has_mock_prefix, has_nested_records_node, has_service_items,
-    is_data_def_item, is_function_item, is_null_coalesce, is_resource_def_item, is_self_recursive,
-    is_service_def_item, is_service_item, is_tco_eligible, is_tco_identity_passthrough,
-    is_type_alias_item, is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper,
-    language_spec, lookup_item, make_indent, module_emit_scope, module_to_filename,
-    order_typed_call_args, render_node_type, rust_literal_for_pattern, sanitize_service_name,
-    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
-    service_field_decls, service_var_name, tco_reassign_core, test_function_name, to_lower_char,
-    to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    typed_named_arg_matches, unique_strings, wrap_shared_type,
+    BlockEmitState, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
 };
-pub use crate::v2_compiler_emit::{
-    BlockEmitState, EmitResult, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
-    TestProjection,
+pub use crate::v2_compiler_emit_core_support::{
+    apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
+    capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
+    is_data_def_item, is_function_item, is_resource_def_item, is_service_def_item, is_service_item,
+    is_type_alias_item, is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper,
+    language_spec, make_indent, module_to_filename, sanitize_service_name, service_var_name,
+    test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string, to_string_helper,
+    to_upper_char, unique_strings, EmitResult, TestProjection,
 };
 pub use crate::v2_compiler_infer::InferScope;
 pub use crate::v2_compiler_infer::{
@@ -134,6 +122,20 @@ use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+pub use crate::v2_compiler_emit::{
+    compute_service_fields, effective_operation_transport, emit_bin_op_symbol,
+    emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
+    emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
+    emit_literal, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
+    emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
+    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
+    extract_modifier_names, has_mock_prefix, has_nested_records_node, has_service_items,
+    is_null_coalesce, is_self_recursive, is_tco_eligible, is_tco_identity_passthrough, lookup_item,
+    module_emit_scope, order_typed_call_args, render_node_type, rust_literal_for_pattern,
+    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
+    service_field_decls, tco_reassign_core, to_pascal, typed_named_arg_matches, wrap_shared_type,
+};
 
 pub fn render_rust_type(
     n: Rc<Node>,

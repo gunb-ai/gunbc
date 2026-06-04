@@ -20,8 +20,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
-# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (M1 rust+dag emit + DAG parity)
-# Required on every non-draft PR: fmt, affected-set component receipt, M1 rust+dag emit, DAG parity receipt.
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness + M1 rust+dag emit + DAG parity)
+# Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness, M1 rust+dag emit, DAG parity receipt.
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR -- model authority: src/v4/workflow/ci.dag
   # `ci_runner_isolation_policy`. This job + its carrier Job record are coverage-bound byte-for-byte
@@ -168,7 +168,7 @@ jobs:
         name: affected-set-ci-receipt
         path: ${{ runner.temp }}/affected-set-ci-receipt.json
         if-no-files-found: warn
-  # §11.7.1 Class A safety floor -- single job, one v2 build, two compiles (M1 rust + bootstrap dag).
+  # §11.7.1 Class A safety floor -- single job: stage0 freshness, M1 rust emit, bootstrap dag parity.
   ci_floor:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
@@ -249,6 +249,9 @@ jobs:
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: RUSTC_WRAPPER= cargo build -p v2-compiler --release
+    - name: v2 stage0 freshness receipt
+      timeout-minutes: 30
+      run: RUSTC_WRAPPER= cargo run --release -p v2-compiler --bin regen_stage0 -- --verify
     - name: M1 v4 full-tree rust emit probe (v2 emit)
       timeout-minutes: 35
       env:
@@ -280,7 +283,7 @@ jobs:
           echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + M1 rust+dag emit and DAG parity in ci_floor; infra_isolation de-priv guard green)"
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness + M1 rust+dag emit and DAG parity in ci_floor; infra_isolation de-priv guard green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + affected receipt + ci_floor (M1 rust+dag emit + DAG parity)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness + M1 rust+dag emit + DAG parity)"
