@@ -1,0 +1,6 @@
+module probe.d
+import v4.extdeps.languages.rust { rust_inhabitant_atom, rust_inhabitant_i32 }
+fn s_atom() -> Bool {
+  let a = rust_inhabitant_atom(id: rust_inhabitant_i32)
+  true
+}
