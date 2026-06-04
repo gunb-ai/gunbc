@@ -116,28 +116,18 @@ import v2.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single
 import std.induction { SubValueUnknown }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
+  BlockEmitState, TcoFrame, TcoReassignInput, InterpPart,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared,
-  emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body,
+  emit_string_literal, emit_simple_expr, escape_rust_interp_text,
   module_emit_scope,
   scope_after_expr,
   lookup_item,
-  unique_strings,
-  has_nested_records_node, emit_data_value_json, escape_json_string,
-  module_to_filename,
-  make_indent, to_string, to_string_helper,
-  to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char,
-  capitalize_first, sanitize_service_name, service_var_name, test_function_name,
-  apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template,
-  language_spec,
-  is_null_coalesce, is_type_alias_return_node,
-  is_service_item, has_service_items,
+  has_nested_records_node, emit_data_value_json,
+  is_null_coalesce,
+  has_service_items,
   typed_named_arg_matches, order_typed_call_args,
-  is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item,
-  has_mock_prefix,
-  extract_test_projections,
   is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core, is_tco_identity_passthrough,
   service_fallback_transport, effective_operation_transport,
@@ -146,6 +136,20 @@ import v2.compiler.emit {
   seed_bindings,
   emit_typed_if_shared, emit_typed_let_shared,
   wrap_shared_type
+}
+import v2.compiler.emit_core_support {
+  EmitResult, TestProjection,
+  escape_json_string, module_to_filename, make_indent,
+  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
+  sanitize_service_name, capitalize_first, service_var_name, to_pascal,
+  escape_string_literal_body, unique_strings, to_string, to_string_helper,
+  test_function_name,
+  apply_type_template1, apply_type_template2, apply_type_template3,
+  apply_named_template, language_spec,
+  is_type_alias_return_node, is_service_item,
+  is_type_def_item, is_type_alias_item, is_type_decl_item,
+  is_function_item, is_data_def_item, is_service_def_item,
+  is_resource_def_item, has_mock_prefix, extract_test_projections
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
