@@ -9,34 +9,15 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Go;
-pub use crate::v2_compiler_emit::{
-    apply_named_template, apply_naming_case, apply_type_template1, apply_type_template2,
-    apply_type_template3, capitalize_first, compute_service_fields, effective_operation_transport,
-    emit_algebra_method_template, emit_bin_op_symbol, emit_container, emit_default_bin_op,
-    emit_error_expr, emit_expr_field_access_shared, emit_expr_var_shared, emit_ident,
-    emit_inferred_shared, emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding,
-    emit_list_lit_expr, emit_literal, emit_map_type, emit_node_type, emit_null_coalesce,
-    emit_param_shared, emit_params_shared, emit_return, emit_shared_expr, emit_simple_expr,
-    emit_string_literal, emit_tco_unified, emit_typed_block_join, emit_typed_call_unified,
-    emit_typed_cast_shared, emit_typed_first_arg_shared, emit_typed_for_each_shared,
-    emit_typed_if_shared, emit_typed_index_shared, emit_typed_let_shared, emit_typed_match_unified,
-    emit_typed_method_call_unified, emit_typed_record_lit_unified, emit_typed_slice_shared,
-    emit_typed_string_interp_unified, emit_unary_op, emit_unified_init_block_stmts,
-    emit_unified_operation_method, emit_unified_pattern, emit_unified_service_def,
-    emit_unified_transport_dispatch, emit_unified_typed_expr, emit_unified_typed_func_body,
-    empty_emit_scope, escape_go_interp_text, escape_json_string, escape_string_literal_body,
-    extract_string_interp_parts, extract_test_projections, has_nested_records_node,
-    is_data_def_item, is_function_item, is_null_coalesce, is_resource_def_item,
-    is_service_def_item, is_service_item, is_tco_eligible, is_type_alias_item,
-    is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
-    lookup_item, make_indent, module_emit_scope, module_to_filename, order_typed_call_args,
-    sanitize_service_name, scope_after_expr, seed_bindings, service_fallback_transport,
-    service_field_decls, service_var_name, test_file_path, test_function_name, to_lower_char,
-    to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    typed_named_arg_matches, unique_strings,
-};
-pub use crate::v2_compiler_emit::{
-    BlockEmitState, EmitResult, InterpPart, ServiceFieldSet, TestProjection,
+pub use crate::v2_compiler_emit::{BlockEmitState, InterpPart, ServiceFieldSet};
+pub use crate::v2_compiler_emit_core_support::{
+    apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
+    capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
+    is_data_def_item, is_function_item, is_resource_def_item, is_service_def_item, is_service_item,
+    is_type_alias_item, is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper,
+    language_spec, make_indent, module_to_filename, sanitize_service_name, service_var_name,
+    test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string, to_string_helper,
+    to_upper_char, unique_strings, EmitResult, TestProjection,
 };
 pub use crate::v2_compiler_infer::InferScope;
 pub use crate::v2_compiler_infer::{build_params_scope, expr_span, extend_scope};
@@ -99,6 +80,26 @@ use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+pub use crate::v2_compiler_emit::{
+    apply_naming_case, compute_service_fields, effective_operation_transport,
+    emit_algebra_method_template, emit_bin_op_symbol, emit_container, emit_default_bin_op,
+    emit_error_expr, emit_expr_field_access_shared, emit_expr_var_shared, emit_ident,
+    emit_inferred_shared, emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding,
+    emit_list_lit_expr, emit_literal, emit_map_type, emit_node_type, emit_null_coalesce,
+    emit_param_shared, emit_params_shared, emit_return, emit_shared_expr, emit_simple_expr,
+    emit_string_literal, emit_tco_unified, emit_typed_block_join, emit_typed_call_unified,
+    emit_typed_cast_shared, emit_typed_first_arg_shared, emit_typed_for_each_shared,
+    emit_typed_if_shared, emit_typed_index_shared, emit_typed_let_shared, emit_typed_match_unified,
+    emit_typed_method_call_unified, emit_typed_record_lit_unified, emit_typed_slice_shared,
+    emit_typed_string_interp_unified, emit_unary_op, emit_unified_init_block_stmts,
+    emit_unified_operation_method, emit_unified_pattern, emit_unified_service_def,
+    emit_unified_transport_dispatch, emit_unified_typed_expr, emit_unified_typed_func_body,
+    empty_emit_scope, escape_go_interp_text, extract_string_interp_parts, has_nested_records_node,
+    is_null_coalesce, is_tco_eligible, lookup_item, module_emit_scope, order_typed_call_args,
+    scope_after_expr, seed_bindings, service_fallback_transport, service_field_decls,
+    test_file_path, typed_named_arg_matches,
+};
 
 pub fn go_emit_module_root() -> String {
     "generated".to_string()
