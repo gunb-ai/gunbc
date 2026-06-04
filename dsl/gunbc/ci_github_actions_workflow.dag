@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 467c2c49b2f010b17bf9fa1021bf48ebefd81e2753f9ee151586d57103afca8c
+// Source-SHA256(.github/workflows/ci.yml): de056f848acc630a3b5cca7bd3178024e3302d78e936fe1009c7a2c99e81e3c8
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -316,7 +316,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "v2 stage0 freshness receipt" },
           id: none,
-          run: "RUSTC_WRAPPER= cargo run -p v2-compiler --bin regen_stage0 -- --verify",
+          run: "RUSTC_WRAPPER= cargo run --release -p v2-compiler --bin regen_stage0 -- --verify",
           shell: Bash,
           env: none,
           working_directory: none,
