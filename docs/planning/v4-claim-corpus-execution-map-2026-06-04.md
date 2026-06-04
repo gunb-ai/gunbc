@@ -80,6 +80,46 @@ interpreter can't yet run the predicate they call. The two key gaps are concrete
 - the `error type cascade` (9) and `null`/empty matches are downstream — fix the
   primaries and re-run; they likely auto-resolve.
 
+### Routing the error fan-out by WHERE the fix lives
+
+The fan-out is the gold, but the fixes split by location — and the split decides
+keystone-lane vs clean-parallel. One check routes each cause:
+`InterpError::PatternMatchFailure` ("non-exhaustive pattern match") is raised when
+the interpreter evaluates a **`.dag` match with no covering arm** — so every
+non-exhaustive cluster is a `.dag` missing-arm fix, *not* a Rust `match` gap.
+`TypeError`/`Unimplemented` (`contains`, `lookup`, `atom_identity_hash`) are
+interpreter builtins. `undefined variable` is checked at its source.
+
+**Keystone-lane (~54) — on the round-grind's path; prioritize within that lane by
+this menu, do NOT spawn a second editor on these files:**
+
+- `contains` List/Variant/Record support (22) + `method 'lookup'` (5) +
+  `atom_identity_hash` arity (1) — interpreter builtins in `v2_interpreter.rs`
+  (the file the keystone round-grind edits).
+- `error type cascade` (9) — downstream of a primary type error; re-run after the above.
+- `undefined variable: left`/`p`/`node` (17) — the failing TS witnesses call
+  `target_serialize_source_from_model`, which lives in
+  **`src/v4/compiler/06_translate.dag`** (a load-bearing pipeline stage the keystone
+  owns). On the keystone's path regardless of whether the precise cause is
+  interpreter capture or `.dag` scoping — so it's the keystone's to pin. (Exact
+  `left` origin not yet localized; flagged for that owner.)
+
+**Clean-parallel (~50) — `.dag` missing arms in lens/witness files, off every
+load-bearing pipeline stage (confirmed: none of these matches live in
+emit/lower/infer/parse/translate):**
+
+- `ClassifiedDependencyView` fold (14) — missing classification arms in
+  `src/v4/lens/{effect,ownership,parallelism,idempotency,structural_resolution,unused_parameters}.dag`.
+- component-path classifier `src/v2/…` (10), `EqualsClaim` fold (5),
+  `prefix_sym`/`zip_eq` eq-callbacks (8), grammar go/py/kotlin surfaces (3), misc
+  variant folds (10) — all `.dag` matches in lens or witness files.
+
+This **inverts the naive read**: it is not "fix the interpreter and everything
+unblocks." Roughly half the error fan-out is `.dag`-side missing arms in lens/test
+files — genuinely parallelizable work off the keystone's path. The other half is
+keystone-lane (interpreter builtins + the translate serialize path) and should be
+sequenced within that lane, not double-edited.
+
 ## RED claims (38) — behavioral, executed-and-false
 
 Clusters dominate; triage by materiality:
