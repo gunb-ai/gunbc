@@ -2750,12 +2750,45 @@ where
     f(&items, closure, env, ctx)
 }
 
+/// Flatten a FreeMonoid value into a Vec. Lists build as Value::List, but FreeMonoid
+/// values constructed via Cons/Empty (e.g. list_snoc_item chains in Node.children) are
+/// Variant chains. The list builtins (fold/map/filter/foreach) accept either.
+fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+    let mut out = Vec::new();
+    let mut cur = val.clone();
+    loop {
+        match &cur {
+            Value::List(items) => {
+                out.extend(items.iter().cloned());
+                return Some(out);
+            }
+            Value::Null => return Some(out),
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => match variant_name.as_str() {
+                "Empty" => return Some(out),
+                "Cons" => {
+                    out.push(fields.get("head").cloned().unwrap_or(Value::Null));
+                    cur = fields.get("tail").cloned().unwrap_or(Value::Null);
+                }
+                _ => return None,
+            },
+            _ => return None,
+        }
+    }
+}
+
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<Vec<Value>>> {
     match val {
         Value::List(items) => Ok(items.clone()),
-        _ => Err(InterpError::TypeError {
-            msg: format!("{} expects a list, got {}", context, val.type_label()),
-        }),
+        _ => match free_monoid_to_vec(val) {
+            Some(items) => Ok(Rc::new(items)),
+            None => Err(InterpError::TypeError {
+                msg: format!("{} expects a list, got {}", context, val.type_label()),
+            }),
+        },
     }
 }
 
