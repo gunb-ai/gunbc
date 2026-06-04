@@ -2,6 +2,7 @@
 // Hand-written infrastructure (same category as parser, tokenizer, v2_rt).
 // I-1: pure evaluation. I-2: shell service dispatch.
 
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::rc::Rc;
@@ -356,6 +357,16 @@ pub struct InterpContext {
     service_ops: HashMap<String, ServiceOp>,
     /// Dry-run mode: use mock responses instead of executing services.
     pub dry_run: bool,
+    /// Amortization cache for top-level `data` items (pure constants): name → value.
+    /// Without it `eval_var` rebuilds a data item's whole construction on every
+    /// reference, so shared sub-nodes are distinct values and the fold memo below
+    /// cannot dedup them.
+    data_cache: Rc<RefCell<HashMap<String, Value>>>,
+    /// Memoizes the pure `std/node.fold_node` by (node identity, algebra identity).
+    /// Node values carry an `Rc<HashMap>` of fields, so `Rc::as_ptr` is a stable
+    /// identity shared by clones of a shared node. Avoids re-folding shared sub-nodes
+    /// once per path (exponential on the shared-DAG `Node` graph).
+    fold_memo: Rc<RefCell<HashMap<(usize, usize), Value>>>,
 }
 
 impl InterpContext {
@@ -405,6 +416,8 @@ impl InterpContext {
             fn_nodes,
             service_ops,
             dry_run,
+            data_cache: Rc::new(RefCell::new(HashMap::new())),
+            fold_memo: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
