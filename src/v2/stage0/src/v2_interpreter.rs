@@ -973,6 +973,24 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
+                // Match on a record value (`type X { .. }`) destructured by `X { .. }`.
+                // Records carry `type_name`, not `variant_name`; without this arm a record
+                // destructure in a `match` falls through to non-exhaustive.
+                Value::Record { type_name, fields } => {
+                    if type_name != name {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let field_val = fields.get(&field_name).cloned().unwrap_or(Value::Null);
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
                 // Match on Option: Some { value: x } pattern
                 Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
                 _ if name == "Some" => {
@@ -983,6 +1001,37 @@ fn match_pattern(
                     for fb in field_bindings.iter() {
                         let fb_pat = field_binding_pattern(fb.clone());
                         let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                // Match a list value against the FreeMonoid coproduct (`Empty | Cons{head,tail}`).
+                // A list is `Value::List`, not a Variant, so without these bridges a `match xs {
+                // Empty => .. Cons { head, tail } => .. }` (e.g. `fold_list`) is non-exhaustive.
+                Value::List(items) if name == "Empty" => {
+                    if items.is_empty() {
+                        Some(HashMap::new())
+                    } else {
+                        None
+                    }
+                }
+                Value::List(items) if name == "Cons" => {
+                    if items.is_empty() {
+                        return None;
+                    }
+                    let head_val = items[0].clone();
+                    let tail_val = Value::List(Rc::new(items[1..].to_vec()));
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let field_val = match field_name.as_str() {
+                            "head" => head_val.clone(),
+                            "tail" => tail_val.clone(),
+                            _ => Value::Null,
+                        };
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
                         bindings.extend(sub_bindings);
                     }
                     Some(bindings)
@@ -1020,12 +1069,24 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // Value::Closure is not dispatched here — lambda-as-value calls use a separate path.
     let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
         node.clone()
-    } else if let Some(Value::Fn { node }) = env.lookup(&func_name) {
-        node.clone()
     } else {
-        return Err(InterpError::NoSuchFunction {
-            name: func_name.clone(),
-        });
+        match env.lookup(&func_name) {
+            Some(Value::Fn { node }) => node.clone(),
+            // A closure-valued parameter called by name, e.g. `cons(empty, h)` where `cons`
+            // is a fn parameter of `fold_list`. The named-call path must dispatch it; the
+            // builtin combinators (map/filter/fold) already apply closures this way.
+            Some(closure @ Value::Closure { .. }) => {
+                let closure = closure.clone();
+                let positional: Vec<Value> =
+                    args.iter().map(|(_, val)| val.clone()).collect();
+                return apply_closure(&closure, &positional, env, ctx);
+            }
+            _ => {
+                return Err(InterpError::NoSuchFunction {
+                    name: func_name.clone(),
+                });
+            }
+        }
     };
 
     call_function(ctx, &fn_node, &args, env)
@@ -1062,6 +1123,18 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         .iter()
         .map(|a| eval_expr(&arg_value(a.clone()), env, ctx))
         .collect::<InterpResult<_>>()?;
+
+    // A closure-valued record field called as a method: `record.field(args)` — e.g.
+    // `algebra.init(n)` / `algebra.step(acc, e, child)` on a NodeFold record. Access the
+    // field; if it holds a closure, apply it. Falls through to algebra-method dispatch.
+    if let Value::Record { fields, .. } = &receiver_val {
+        if let Some(field_val) = fields.get(&method_name) {
+            if matches!(field_val, Value::Closure { .. }) {
+                let closure = field_val.clone();
+                return apply_closure(&closure, &args, env, ctx);
+            }
+        }
+    }
 
     match semantics.as_deref() {
         Some(MethodSemantics::AlgebraMethodSemantics { method_def, .. }) => {
