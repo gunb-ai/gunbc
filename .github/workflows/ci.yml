@@ -251,7 +251,7 @@ jobs:
       run: RUSTC_WRAPPER= cargo build -p v2-compiler --release
     - name: v2 stage0 freshness receipt
       timeout-minutes: 30
-      run: RUSTC_WRAPPER= cargo run -p v2-compiler --bin regen_stage0 -- --verify
+      run: RUSTC_WRAPPER= cargo run --release -p v2-compiler --bin regen_stage0 -- --verify
     - name: M1 v4 full-tree rust emit probe (v2 emit)
       timeout-minutes: 35
       env:
