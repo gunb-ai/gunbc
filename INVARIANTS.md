@@ -418,8 +418,23 @@ A scaffold (hand-maintained generated file, interim API surface, staged declarat
 
 **Receipt:** Staged lens files once existed as hand-authored `.dag` with generated Rust that no consumer read. Dissolution trigger named in the PR: "when parse/parse_surface types converge, `expr_span` consumers wire in." When the trigger was reached, the staged files became real receipts; otherwise they would have been rollback candidates.
 
+### Problem shape: Code without a consumer (E-10)
+
+A model, function, type, or field is written ahead of anything that uses it — justified by top-down design ("define the structure first"). Nothing depends on its behavior, so nothing breaks when the behavior is wrong. Typecheck and grep/`.contains()` assertions pass without the code ever executing, so an entire subsystem accumulates as a **specification that does not run** — plausible, type-checking, and untrue.
+
+**A consumer is anything that breaks when the behavior is wrong.** Strength, weakest to strongest: (1) a human reading the *executed* output (forces execution + that output exists) — the floor, to be *upgraded*, not rested on; (2) an executed assertion (`run(emit(add)) == expected`) — falsifiable; (3) other code that depends on the behavior and breaks if it's wrong — correctness + regression. Typecheck and grep are **not** consumers.
+
+**Solution shape:** Name a real consumer *before* writing a model/function. If there is none, the work is experimental — **archived** (quarantined under `src/v4/archive/`, git-recoverable), not kept in the active tree, until a consumer exists. Top-down design stays in the *map* (docs, or explicitly-experimental archived `.dag`); code is promoted to *territory* only when a consumer pulls it. Reasoning about / porting consumer-less code is the trap — archive it (no reasoning required) rather than auditing it.
+
+**Review gate (hard-block):** every review asks "who is the consumer?" of new models / functions / fields. **No real consumer → REQUEST_CHANGES; merging anyway requires explicit operator escalation.** This generalizes [E-6](#e-6) ("no target-spec field without a same-PR consumer") and [DB-4](#db-4) ("clean-emission is a contract with real consumers") from the emission boundary to the whole tree, and enforces the THESIS modeling-discipline rule "every declared type has at least one structural consumer."
+
+**Adoption stance:** applies to new code and refactors (same live-state stance as `CODING.md`). Existing consumer-less code is archive-debt — sweep to `src/v4/archive/` on touch — not an instant repo-wide failure.
+
+**Receipt:** the v4 compiler grew to a ~4,300-line `06_translate` that cannot emit `fn add` (step-zero: >600s, no output) because its only "consumers" were typecheck + text-grep. Dissolution path: rebuild emit behind a real executed witness; archive what no executing consumer touches. See [`docs/v4-compiler-migration.md`](docs/v4-compiler-migration.md) Part 0 + governing invariant.
+
 ### Related rules (home-of-record here)
 
+- **E-10: No Code Without A Consumer** — no model/function/type/field enters the active tree without something that breaks when its behavior is wrong; review hard-blocks on "no consumer," archive-by-default to `src/v4/archive/`, escalation to merge. Generalizes E-6 / DB-4; enforces the THESIS "every declared type has a structural consumer."
 - **Strict Forward Progress** — canonical statement as used in reviewer discourse: a change counts as progress only if it reduces ad-hoc state, duplicate authority, or implicit behavior. Transitional scaffolds need explicit dissolution paths and cannot become the new steady state.
   - *Note:* the subdoc at `docs/invariants/strict-forward-progress.md` describes bounded forward execution (the P4 concept), not the dissolution-progress rule the reviewer-facing name has historically carried. This is pre-existing drift between the subdoc and the heading; reviewers continue to use "Strict Forward Progress" for the dissolution-progress rule (this bullet). Reconciling the subdoc content (either rename it or split into two) is future cleanup, not resolved by this rewrite.
 - **Sustainability Invariants** (entire heading, folded in) — cost of change should approach 1
@@ -464,6 +479,7 @@ Every numbered ID (C-N, E-N, L-N, DB-N) descends from one principle. The prose-n
 | <a id="e-7"></a>E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet | [invariants/e-7-…](docs/invariants/e-7-no-target-private-realization-schema-without-a-dissolution-ratchet.md) |
 | <a id="e-8"></a>E-8 | P3: Fail-Closed | unsupported core behaviors fail closed, never collapse semantically | [invariants/e-8-…](docs/invariants/e-8-unsupported-core-behaviors-fail-closed-never-collapse-semantically.md) |
 | <a id="e-9"></a>E-9 | P2: Boundary Discipline | external realization lives on `Arrow.body` | [invariants/e-9-…](docs/invariants/e-9-external-realization-lives-on-arrow-body.md) |
+| <a id="e-10"></a>E-10 | P5: Progress Is Dissolution (generalizes E-6, DB-4) | no model/function/field without a real consumer; review hard-block + archive-by-default (`src/v4/archive/`) | [v4-compiler-migration.md](docs/v4-compiler-migration.md) |
 | <a id="l-7"></a>L-7 | P2: Boundary Discipline | lenses consume declared substrate query functions | [invariants/l-7-…](docs/invariants/l-7-lenses-consume-declared-substrate-query-functions.md) |
 | <a id="l-8"></a>L-8 | P2: Boundary Discipline | lens Rust surfaces preserve typed failure carriers | [invariants/l-8-…](docs/invariants/l-8-lens-rust-surfaces-preserve-typed-failure-carriers.md) |
 | <a id="t-11"></a>T11 | P4: Decidability | tiered test execution (Tier 1/2/3 sub-rules) | [invariants/tiered-test-execution-t11.md](docs/invariants/tiered-test-execution-t11.md) |
