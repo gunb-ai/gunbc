@@ -973,6 +973,62 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
+                // Destructure a record-typed value: `match r { TypeName { f, g } => ... }`.
+                // Records build as Value::Record (no parent enum), so a VariantPattern whose
+                // name is the record type must bind its fields here — the Value::Variant arm
+                // above only covers coproduct variants.
+                Value::Record { type_name, fields } => {
+                    if type_name != name {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let field_val = fields.get(&field_name).cloned().unwrap_or(Value::Null);
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                // Bridge list literals (Value::List) to FreeMonoid Empty/Cons patterns:
+                // `match xs { Empty => ..., Cons { head, tail } => ... }`. List literals build
+                // as Value::List, but fold_list (std/algebra) matches the FreeMonoid coproduct.
+                Value::List(items) => match name.as_str() {
+                    "Empty" => {
+                        if items.is_empty() {
+                            Some(HashMap::new())
+                        } else {
+                            None
+                        }
+                    }
+                    "Cons" => {
+                        if items.is_empty() {
+                            None
+                        } else {
+                            let head = items[0].clone();
+                            let tail = Value::List(Rc::new(items[1..].to_vec()));
+                            let mut bindings = HashMap::new();
+                            for fb in field_bindings.iter() {
+                                let field_name =
+                                    field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                                let fb_pat = field_binding_pattern(fb.clone());
+                                let field_val = if field_name == "head" {
+                                    head.clone()
+                                } else if field_name == "tail" {
+                                    tail.clone()
+                                } else {
+                                    Value::Null
+                                };
+                                let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                                bindings.extend(sub_bindings);
+                            }
+                            Some(bindings)
+                        }
+                    }
+                    _ => None,
+                },
                 // Match on Option: Some { value: x } pattern
                 Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
                 _ if name == "Some" => {
@@ -1017,15 +1073,24 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     }
 
     // Look up user-defined function: module item wins over env-bound Value::Fn (see eval_var).
-    // Value::Closure is not dispatched here — lambda-as-value calls use a separate path.
     let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
         node.clone()
-    } else if let Some(Value::Fn { node }) = env.lookup(&func_name) {
-        node.clone()
     } else {
-        return Err(InterpError::NoSuchFunction {
-            name: func_name.clone(),
-        });
+        match env.lookup(&func_name) {
+            Some(Value::Fn { node }) => node.clone(),
+            // Calling a closure-valued parameter directly, e.g. fold_list's `cons(empty, h)`.
+            // The arg names don't bind closure params (closures are positional), so pass values.
+            Some(closure @ Value::Closure { .. }) => {
+                let closure = closure.clone();
+                let arg_vals: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
+                return apply_closure(&closure, &arg_vals, env, ctx);
+            }
+            _ => {
+                return Err(InterpError::NoSuchFunction {
+                    name: func_name.clone(),
+                });
+            }
+        }
     };
 
     call_function(ctx, &fn_node, &args, env)
@@ -1069,6 +1134,26 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
             eval_algebra_method(&mn, receiver_val, &args, env, ctx)
         }
         _ => {
+            // Record/Variant field holding a function: `r.field(args)` calls the field's
+            // closure/fn — e.g. fold_node's `algebra.init(n)` / `algebra.step(...)` over a
+            // NodeFold record whose `init`/`step` fields are lambdas.
+            if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
+                if let Some(field_val) = fields.get(&method_name) {
+                    match field_val {
+                        Value::Closure { .. } => {
+                            let f = field_val.clone();
+                            return apply_closure(&f, &args, env, ctx);
+                        }
+                        Value::Fn { node } => {
+                            let node = node.clone();
+                            let named: Vec<(Option<String>, Value)> =
+                                args.iter().map(|v| (None, v.clone())).collect();
+                            return call_function(ctx, &node, &named, env);
+                        }
+                        _ => {}
+                    }
+                }
+            }
             // Plain method — try as algebra by method name
             eval_algebra_method(&method_name, receiver_val, &args, env, ctx)
         }
