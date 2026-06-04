@@ -718,11 +718,17 @@ fn eval_var(
                     // cache the resulting Value, returning the shared Rc on later references.
                     // A `data` referenced N times then yields ONE Value instead of N rebuilds,
                     // removing the dominant re-derivation cost in the emit pipeline.
+                    //
+                    // Evaluate against Env::empty(), NOT the caller's env: a data item is
+                    // module-scoped and must not resolve names against caller locals, or the
+                    // cached value would depend on whichever env first referenced it (unsound).
+                    // This matches the eager-preload path (build_initial_env) which also uses
+                    // Env::empty(), so lazy and eager resolution agree.
                     let key = Rc::as_ptr(fn_node) as usize;
                     if let Some(v) = DATA_CACHE.with(|c| c.borrow().map.get(&key).cloned()) {
                         return Ok(v);
                     }
-                    let v = eval_expr(body, env, ctx)?;
+                    let v = eval_expr(body, &Env::empty(), ctx)?;
                     DATA_CACHE.with(|c| {
                         let mut dc = c.borrow_mut();
                         dc.keepalive_fns.push(fn_node.clone());
