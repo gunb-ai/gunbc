@@ -468,7 +468,7 @@ Every numbered ID (C-N, E-N, L-N, DB-N) descends from one principle. The prose-n
 | <a id="db-8"></a>DB-8 | P4: Decidability | deterministic emission | [invariants/deterministic-emission-db-8.md](docs/invariants/deterministic-emission-db-8.md) |
 | <a id="db-9"></a>DB-9 | P4: Decidability | mutual recursion lowers structurally | [design-mutual-recursion-lowering.md](docs/design-mutual-recursion-lowering.md) |
 | <a id="db-14"></a>DB-14 | P2: Boundary Discipline | external primitives materialize through `Arrow.body` | [design-substrate-external-primitives.md](docs/design-substrate-external-primitives.md) |
-| <a id="db-15"></a>DB-15 | P4: Decidability (perf; cross-ref E-10) | substrate traversals are sharing-aware — memoized/visit-once fold over the `Node` DAG; naive path-recursion forbidden | [v4-compiler-migration.md](docs/v4-compiler-migration.md) |
+| <a id="db-15"></a>DB-15 | P4: Decidability (perf; cross-ref E-10) | substrate traversals are sharing-aware — memoized/visit-once fold over the `Node` DAG; naive path-recursion forbidden | PR #4405 (`docs/v4-compiler-migration.md` Part 0 / S0) |
 | <a id="e-5"></a>E-5 | P5: Progress Is Dissolution | clean-emission contract by construction | [invariants/e-5-…](docs/invariants/e-5-clean-emission-contract-is-satisfied-by-construction.md) |
 | <a id="e-6"></a>E-6 | P2: Boundary Discipline | no target-spec field without a same-PR consumer | [invariants/e-6-…](docs/invariants/e-6-no-target-spec-field-without-a-same-pr-consumer.md) |
 | <a id="e-7"></a>E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet | [invariants/e-7-…](docs/invariants/e-7-no-target-private-realization-schema-without-a-dissolution-ratchet.md) |
