@@ -20,6 +20,45 @@ Each principle below carries: the rule, why it stands alone, problem/solution sh
 
 ---
 
+## Read this first — the specification-without-execution trap (especially LLM agents)
+
+This codebase once grew a compiler-sized body of `.dag` that **typechecks, passes its
+grep-style claims, and does not run** — `06_translate` could not emit `fn add` (it hung
+>600s) despite a full corpus of "passing" claims. The lesson is cheap to state and expensive
+to relearn; the rest of this document is the structural rules that keep you out of it, but
+this is the orientation:
+
+- **A consumer is anything that breaks when the behavior is wrong.** Typecheck and
+  `.contains()` greps are **not** consumers — they pass whether or not the code runs
+  correctly. (Formalized as the consumer invariant **E-10**.)
+- **"Done" means a consumer running green *by execution* — never typecheck-plus-grep.** If
+  nothing has *run* the behavior, it is unverified no matter how finished it looks.
+- **The acceleration warning (this is for you, LLM agent):** a capable model emits fluent,
+  type-checking, grep-passing code at scale — *exactly the artifact that looks finished
+  without running*. Speed buys **specification, not execution**. Treat your own fluent output
+  as unverified until a real consumer runs it green. Volume is not progress; a running
+  consumer is.
+- **The foundation is the most dangerous place to mark "done."** Consumers live at the top
+  of the stack (emit, the user); base primitives are maximally isolated from them, so a base
+  primitive can sit "DONE-by-typecheck" indefinitely and collapse the first time a consumer
+  exercises it — exactly how `fold_node` shipped exponential (**DB-15**). Weight foundational
+  claims by whether a consumer has *run* them, not by how settled they look.
+- **Planning and tidying are the most seductive form of the vacuum.** Reworking invariants,
+  drawing roadmaps, reorganizing files all *feel* like progress and none of them run. A clean
+  repo with no running keystone is still a project that does not run. Do the cheap, sharp,
+  timeboxed version of any such rework, pointed at the nearest running consumer; never let it
+  displace the keystone.
+- **Seesaw discipline** (how to keep top-down, structure-first design *without* the vacuum):
+  commit to the right *shape* on paper (interface + a roadmap entry); build only the
+  **minimal slice a real consumer validates**; defer the rest to consumer-triggered roadmap
+  items. The minimal slice must exercise the committed shape's **risk**, not dodge it.
+- **Map vs territory:** top-down design is fine *as a map* — its consumer is you reading it
+  to plan, so it lives in **docs** (or explicitly-experimental, archived `.dag`). Code is
+  **territory** and needs a real consumer. Writing the map in executable `.dag` and mistaking
+  it for territory is the trap.
+
+---
+
 ## P1: Modeling Faithfulness
 
 **Rule:** Every construct grounds in an identifiable external fact or a structural derivation from one; ungrounded constructs are not valid authorities.
