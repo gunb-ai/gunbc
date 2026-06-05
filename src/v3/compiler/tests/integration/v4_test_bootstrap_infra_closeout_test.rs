@@ -59,6 +59,11 @@ const SG1B_FAILCLOSED_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/sg1b_signature_realization_failclosed.dag");
 const SG1B_FAILCLOSED_PATH: &str =
     "src/v4/test/claim/manual/sg1b_signature_realization_failclosed.dag";
+const REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_DAG: &str = include_str!(
+    "../../../../v4/test/claim/manual/refinement_brand_disjointness_is_sugar.dag"
+);
+const REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_PATH: &str =
+    "src/v4/test/claim/manual/refinement_brand_disjointness_is_sugar.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const RUNTIME_DAG: &str = include_str!("../../../../v4/std/runtime.dag");
 const LBE_GENERATED_DAG: &str =
@@ -453,6 +458,19 @@ fn t22_diagnostic_assert_eval_witnesses_parse() {
 #[test]
 fn sg1b_signature_realization_failclosed_receipt_parses() {
     parse_module(SG1B_FAILCLOSED_DAG, SG1B_FAILCLOSED_PATH);
+}
+
+#[test]
+fn claim1_refinement_brand_disjointness_is_sugar_parses() {
+    parse_module(
+        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_DAG,
+        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_PATH,
+    );
+    assert!(
+        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_DAG
+            .contains("claim_refinement_brand_disjointness_cross_brand_is_sugar"),
+        "Claim #1 lock must name cross-brand equivalence row"
+    );
 }
 
 #[test]
