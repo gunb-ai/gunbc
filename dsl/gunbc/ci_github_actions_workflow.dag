@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): f0b67ab6e1cfae8221fda3ec10bf1e22afccb1b174a8eae11be922ffdf02221c
+// Source-SHA256(.github/workflows/ci.yml): d278acd8236a22184c1fbe84f18a4a0bc0a72b2a8ff2c9cf88ada0297c899fd9
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -90,7 +90,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           id: none,
           uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "components": "rustfmt", "cache": "false", "rustflags": "" },
-          env: none,
+          env: { "HOME": "${{ runner.temp }}" },
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
@@ -161,7 +161,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           id: none,
           uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "cache": "false", "rustflags": "" },
-          env: none,
+          env: { "HOME": "${{ runner.temp }}" },
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
@@ -271,7 +271,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           id: none,
           uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "components": "rustfmt", "cache": "false", "rustflags": "" },
-          env: none,
+          env: { "HOME": "${{ runner.temp }}" },
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
