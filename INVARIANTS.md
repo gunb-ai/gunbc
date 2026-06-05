@@ -476,6 +476,16 @@ A model, function, type, or field is written ahead of anything that uses it — 
 
 **Receipt:** the v4 compiler grew to a ~4,300-line `06_translate` that cannot emit `fn add` (step-zero: >600s, no output) because its only "consumers" were typecheck + text-grep. Dissolution path: rebuild emit behind a real executed witness; archive what no executing consumer touches. See [`docs/v4-compiler-migration.md`](docs/v4-compiler-migration.md) Part 0 + governing invariant.
 
+#### Reviewer's three questions (operationalizes [E-10](#e-10))
+
+[E-10](#e-10) states the principle and the consumer test; this is the cheap, every-time check that enforces it. The proof burden is on the **author** — the evidence lives *in the PR*. The reviewer does not investigate: a missing answer is a "no," and a "no" defaults to deny or route-to-archive, never the benefit of the doubt. (A *stated* gate that needs judgment or effort gets skipped under throughput pressure — so each question is checkable from the PR alone.)
+
+1. **Consumer?** — is there something that breaks if this behavior is wrong — *not* a typecheck, *not* a grep/`.contains()`? (This is E-10's consumer test.) **No → route the code to `src/v4/archive/`.** It can land as experimental; it does not enter the active tree and is not "done." This is E-10's block-*from-the-active-tree*, not a rejection of the work.
+2. **Green by execution, shown?** — does the PR contain the consumer *run* — command + output — rather than "typechecks," "merged," or "looks right"? **No → the done / merge-to-main claim is denied.** Merged ≠ runs.
+3. **Green for the right reason?** — does the PR show the case that goes **red when the behavior is wrong** (the discriminating input)? A green that only ever exercised the first arm proves nothing — see the match-on-symbol silent fail-open (#4434). **No → the done / merge-to-main claim is denied.**
+
+**Split:** Q1 routes the *code* (archive-by-default — ungameable, and not a rejection of effort); Q2–Q3 hard-block the *claim* (no executed green + no red-when-wrong case = not done). So "block on no consumer" sharpens to **route the code, block the claim.** This is the operational layer under E-10, not a new numbered authority; materiality (what to rework) is a separate axis and is deliberately out of scope here.
+
 ### Related rules (home-of-record here)
 
 - **E-10: No Code Without A Consumer** — no model/function/type/field enters the active tree without something that breaks when its behavior is wrong; review hard-blocks on "no consumer," archive-by-default to `src/v4/archive/`, escalation to merge. Generalizes E-6 / DB-4; enforces the THESIS "every declared type has a structural consumer."
