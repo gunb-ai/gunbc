@@ -21,6 +21,7 @@ module v2.compiler.stage0_crates
 
 import v2.std.core { TextFile }
 import v2.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
+import extdeps.cargo { CargoDependency, RegistryDep, LocalPathDep }
 
 // =========================================================================
 // Crate-boundary model
@@ -31,10 +32,8 @@ type Stage0CrateKind
   = CoreCrate
   | EmitCoreCrate
 
-// A single `[dependencies]` entry, faithful to the three forms #4429 uses.
-type Stage0CrateDep
-  = VersionDep { name: String, version: String, features: List<String> }
-  | PathDep    { name: String, path: String }
+// Dependencies reuse the canonical `extdeps.cargo.CargoDependency` model
+// (name + source: registry version or local path) -- no local dep type.
 
 // One split support crate.
 //
@@ -47,7 +46,7 @@ type Stage0CrateSpec {
   kind: Stage0CrateKind
   header_doc: String
   modules: List<String>
-  dependencies: List<Stage0CrateDep>
+  dependencies: List<CargoDependency>
   // Whether this crate defines the `NonEmpty*` newtype wrappers at its lib
   // root. The wrapper bodies are NOT modeled here -- they are emitted from the
   // single source `v2.compiler.emit_rust.emit_non_empty_wrappers`, the same
@@ -117,15 +116,15 @@ fn stage0_emit_core_header_doc() -> String {
 // Manifest emission
 // =========================================================================
 
-// Version deps delegate to the existing single source `emit_cargo_dep`
-// (same renderer the compiler uses for its own Cargo manifests). Only the
-// path-dep form, which `emit_cargo_dep` does not cover, is rendered here.
-fn render_stage0_crate_dep(dep: Stage0CrateDep) -> String {
-  match dep {
-    VersionDep { name: name, version: version, features: features } =>
-      emit_cargo_dep(name: name, version: version, features: features)
-    PathDep { name: name, path: path } =>
-      concat(name, " = { path = \"", path, "\" }\n")
+// Registry deps delegate to the existing single source `emit_cargo_dep`
+// (same renderer the compiler uses for its own Cargo manifests). The path-dep
+// form, which `emit_cargo_dep` does not cover, is rendered here.
+fn render_stage0_crate_dep(dep: CargoDependency) -> String {
+  match dep.source {
+    RegistryDep { version: version, features: features } =>
+      emit_cargo_dep(name: dep.name, version: version, features: features)
+    LocalPathDep { path: path } =>
+      concat(dep.name, " = { path = \"", path, "\" }\n")
   }
 }
 
@@ -234,9 +233,9 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           "v2_std_core"
         ],
         dependencies: [
-          VersionDep { name: "stacker", version: "0.1", features: [] },
-          VersionDep { name: "serde", version: "1", features: ["derive", "rc"] },
-          VersionDep { name: "serde_json", version: "1", features: [] }
+          CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
+          CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
+          CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } }
         ],
         carries_non_empty_wrappers: true
       },
@@ -255,9 +254,9 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           "v2_std_core"
         ],
         dependencies: [
-          VersionDep { name: "stacker", version: "0.1", features: [] },
-          VersionDep { name: "serde", version: "1", features: ["derive", "rc"] },
-          PathDep { name: "v2-stage0-core", path: "../stage0_core" }
+          CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
+          CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
+          CargoDependency { name: "v2-stage0-core", source: LocalPathDep { path: "../stage0_core" } }
         ],
         carries_non_empty_wrappers: false
       }
