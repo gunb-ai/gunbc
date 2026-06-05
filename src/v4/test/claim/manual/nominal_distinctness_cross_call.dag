@@ -96,7 +96,7 @@ data nominal_distinct_algebra_symbol: Symbol = nominal_distinct_algebra_symbol
 data nominal_distinct_descent_symbol: Symbol = nominal_distinct_descent_symbol
 data nominal_distinct_descent_dimension: Symbol = nominal_distinct_descent_dimension
 data nominal_distinct_compile_accepted_miss: Symbol = nominal_distinct_compile_accepted_miss
-data nominal_distinct_compile_rejected_miss: Symbol = nominal_distinct_compile_rejected_miss
+data nominal_distinct_cross_call_must_reject: Symbol = nominal_distinct_cross_call_must_reject
 data nominal_distinct_forbidden_authority_source_text: TargetSource = "nominal_distinct_forbidden_authority_source_text"
 
 
@@ -159,9 +159,9 @@ data nominal_distinct_brands_compile_receipt: Outcome<TargetSource> = anchor_nom
 data nominal_distinct_control_compile_receipt: Outcome<TargetSource> = anchor_nominal_distinct_control_compile()
 
 
-fn nominal_distinct_compile_rejected_miss_diagnostic(at: Node) -> Diagnostic {
+fn nominal_distinct_cross_call_must_reject_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: nominal_distinct_compile_rejected_miss,
+    reason: nominal_distinct_cross_call_must_reject,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -182,7 +182,7 @@ fn nominal_distinct_records_expected_rejection() -> NonEmptyDiagnostics {
     Rejected { diagnostics: r } => r
     Accepted { value: _, diagnostics: _ } =>
       diagnostics_singleton(
-        d: nominal_distinct_compile_rejected_miss_diagnostic(at: nominal_distinct_records_input)
+        d: nominal_distinct_cross_call_must_reject_diagnostic(at: nominal_distinct_records_input)
       )
   }
 }
@@ -193,7 +193,7 @@ fn nominal_distinct_brands_expected_rejection() -> NonEmptyDiagnostics {
     Rejected { diagnostics: r } => r
     Accepted { value: _, diagnostics: _ } =>
       diagnostics_singleton(
-        d: nominal_distinct_compile_rejected_miss_diagnostic(at: nominal_distinct_brands_input)
+        d: nominal_distinct_cross_call_must_reject_diagnostic(at: nominal_distinct_brands_input)
       )
   }
 }
@@ -254,17 +254,13 @@ fn nominal_distinct_compile_for_input(node: Node) -> Outcome<RuntimeValue> {
     match nominal_distinct_records_compile_receipt {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: _, diagnostics: _ } =>
-        outcome_rejected(
-          nominal_distinct_compile_rejected_miss_diagnostic(at: node)
-        )
+        Accepted { value: nominal_distinct_runtime_unit(node: node), diagnostics: None }
     }
   } else if node == nominal_distinct_brands_input {
     match nominal_distinct_brands_compile_receipt {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: _, diagnostics: _ } =>
-        outcome_rejected(
-          nominal_distinct_compile_rejected_miss_diagnostic(at: node)
-        )
+        Accepted { value: nominal_distinct_runtime_unit(node: node), diagnostics: None }
     }
   } else if node == nominal_distinct_control_input {
     match nominal_distinct_control_compile_receipt {
@@ -384,47 +380,35 @@ fn nominal_distinct_context() -> EvalContext {
 }
 
 
-fn nominal_distinct_evaluator_pin_for_claim(claim: TestClaim) -> Symbol {
-  match claim {
-    DiagnosticClaim { input: input, label: _, anchor: _, classification: _, expected_rejection: _ } =>
-      match input {
-        nominal_distinct_records_input => nominal_distinct_records_input_symbol
-        nominal_distinct_brands_input => nominal_distinct_brands_input_symbol
-        _ => nominal_distinct_control_input_symbol
-      }
-    CompilesClaim { input: input, label: _, anchor: _, classification: _, expected_value: _ } =>
-      match input {
-        nominal_distinct_control_input => nominal_distinct_control_input_symbol
-        _ => nominal_distinct_records_input_symbol
-      }
-    _ => nominal_distinct_control_input_symbol
-  }
-}
-
-
-fn nominal_distinct_subject(claim: TestClaim) -> TestClaimEvalSubject<Node> {
+fn nominal_distinct_subject(
+  claim: TestClaim,
+  evaluator_pin: Symbol
+) -> TestClaimEvalSubject<Node> {
   let input = test_claim_input(c: claim)
   eval_test_claim_subject(
     claim: claim,
     context: nominal_distinct_context(),
     tree: nominal_distinct_inferred_tree(root: input),
-    evaluator_pin: nominal_distinct_evaluator_pin_for_claim(claim: claim)
+    evaluator_pin: evaluator_pin
   )
 }
 
 
 data subject_nominal_distinct_records_cross_call_rejects: TestClaimEvalSubject<Node> = nominal_distinct_subject(
-  claim: claim_nominal_distinct_records_cross_call_rejects
+  claim: claim_nominal_distinct_records_cross_call_rejects,
+  evaluator_pin: nominal_distinct_records_input_symbol
 )
 
 
 data subject_nominal_distinct_branded_aliases_cross_call_rejects: TestClaimEvalSubject<Node> = nominal_distinct_subject(
-  claim: claim_nominal_distinct_branded_aliases_cross_call_rejects
+  claim: claim_nominal_distinct_branded_aliases_cross_call_rejects,
+  evaluator_pin: nominal_distinct_brands_input_symbol
 )
 
 
 data subject_nominal_distinct_same_type_control_compiles: TestClaimEvalSubject<Node> = nominal_distinct_subject(
-  claim: claim_nominal_distinct_same_type_control_compiles
+  claim: claim_nominal_distinct_same_type_control_compiles,
+  evaluator_pin: nominal_distinct_control_input_symbol
 )
 
 
