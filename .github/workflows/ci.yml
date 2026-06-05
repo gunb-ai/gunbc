@@ -99,7 +99,7 @@ jobs:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 1
     - name: Setup Rust
@@ -172,7 +172,7 @@ jobs:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Setup Rust
@@ -210,7 +210,7 @@ jobs:
     - name: Emit affected-set CI kill-criterion receipt
       run: bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_affected_components --bin emit-affected-set-ci-receipt -- "${{ github.event_name }}" "$RUNNER_TEMP/affected-set-ci-receipt.json" --estimated-full-run-minutes 15
     - name: Upload affected-set CI receipt
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: affected-set-ci-receipt
         path: ${{ runner.temp }}/affected-set-ci-receipt.json
@@ -260,7 +260,7 @@ jobs:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Setup Rust
@@ -291,7 +291,7 @@ jobs:
     # Does NOT speed up the M1 emit-probe / bootstrap steps -- those need content-addressed
     # sccache via the modeled cache_interface projection (see ci.dag note). dissolve-on-arrival.
     - name: Cache Cargo (ci floor)
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ${{ runner.temp }}/cargo/registry/index/
@@ -303,7 +303,7 @@ jobs:
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: Cache gunbc binary (v4 floor)
       id: v4-v2-bin
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: target/release/gunbc
         key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
@@ -386,7 +386,7 @@ jobs:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Setup Rust
@@ -405,7 +405,7 @@ jobs:
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (ci floor)
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ${{ runner.temp }}/cargo/registry/index/
@@ -417,7 +417,7 @@ jobs:
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: Cache gunbc binary (v4 floor)
       id: v4-v2-bin
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: target/release/gunbc
         key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
