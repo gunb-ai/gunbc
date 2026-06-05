@@ -3,19 +3,27 @@
 
 #![allow(unused_variables, dead_code)]
 
-use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[cfg(feature = "text_lookup_work_counter")]
+use std::cell::Cell;
+
+#[cfg(feature = "text_lookup_work_counter")]
 thread_local! {
     static TEXT_LOOKUP_CHARS_WALKED: Cell<u64> = Cell::new(0);
 }
 
+#[cfg(feature = "text_lookup_work_counter")]
 pub fn reset_text_lookup_chars_walked() {
     TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(0));
 }
 
+#[cfg(not(feature = "text_lookup_work_counter"))]
+pub fn reset_text_lookup_chars_walked() {}
+
+#[cfg(feature = "text_lookup_work_counter")]
 pub fn take_text_lookup_chars_walked() -> u64 {
     TEXT_LOOKUP_CHARS_WALKED.with(|c| {
         let walked = c.get();
@@ -24,6 +32,12 @@ pub fn take_text_lookup_chars_walked() -> u64 {
     })
 }
 
+#[cfg(not(feature = "text_lookup_work_counter"))]
+pub fn take_text_lookup_chars_walked() -> u64 {
+    0
+}
+
+#[cfg(feature = "text_lookup_work_counter")]
 fn record_substring_chars_walked(s: &str, start: usize, take_len: usize) {
     let walked = if s.is_ascii() {
         take_len as u64
@@ -33,13 +47,24 @@ fn record_substring_chars_walked(s: &str, start: usize, take_len: usize) {
     TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + walked));
 }
 
+#[cfg(not(feature = "text_lookup_work_counter"))]
+fn record_substring_chars_walked(_s: &str, _start: usize, _take_len: usize) {}
+
+#[cfg(feature = "text_lookup_work_counter")]
 fn record_source_chars_slice_walked(units: u64) {
     TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + units));
 }
 
+#[cfg(not(feature = "text_lookup_work_counter"))]
+fn record_source_chars_slice_walked(_units: u64) {}
+
+#[cfg(feature = "text_lookup_work_counter")]
 pub fn record_source_chars_index_lookup() {
     TEXT_LOOKUP_CHARS_WALKED.with(|c| c.set(c.get() + 1));
 }
+
+#[cfg(not(feature = "text_lookup_work_counter"))]
+pub fn record_source_chars_index_lookup() {}
 
 pub trait V2Concat {
     fn v2_concat(self, other: Self) -> Self;

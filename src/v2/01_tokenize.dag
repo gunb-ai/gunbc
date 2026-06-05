@@ -89,6 +89,7 @@ fn source_char(source: SourceRef, pos: Int) -> String {
 }
 
 fn source_code_point(source: SourceRef, pos: Int) -> Int {
+  record_source_chars_index_lookup()
   source.source_chars[pos]
 }
 
