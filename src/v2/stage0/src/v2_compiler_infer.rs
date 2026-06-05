@@ -2631,6 +2631,30 @@ pub fn infer_expr(
                                     scope.clone(),
                                     expected.clone(),
                                 );
+                                if std::env::var("GUNBC_DBG_CASCADE").is_ok()
+                                    && (func_name.clone() == "bind_outcome".to_string()
+                                        || func_name.clone() == "bind_outcome_accepted".to_string())
+                                {
+                                    let desc = |n: &Rc<Node>| -> String {
+                                        let kids: Vec<String> =
+                                            n.children.iter().map(|c| c.name.clone()).collect();
+                                        format!(
+                                            "name={:?} nkids={} kids={:?}",
+                                            n.name,
+                                            n.children.len(),
+                                            kids
+                                        )
+                                    };
+                                    let actual = resolved_type(ar.typed.clone());
+                                    eprintln!(
+                                        "DBG_CALL fn={:?} arg#{} lambda={} formal[{}] actual[{}]",
+                                        func_name,
+                                        pair.0,
+                                        is_lambda_expr(arg_value(a.clone())),
+                                        desc(&formal_param_type),
+                                        desc(&actual)
+                                    );
+                                }
                                 Rc::new(ArgInferResult {
                                     typed_arg: make_arg_node(
                                         arg_name_at(
