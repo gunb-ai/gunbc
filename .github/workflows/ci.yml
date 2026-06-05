@@ -306,12 +306,18 @@ jobs:
         # incremental (~3-6 min saved) rather than cold. Safe: a stale binary is overwritten by the rebuild.
         restore-keys: |
           gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+    # sccache honored via the probe-decided RUSTC_WRAPPER (set in the toolchain-isolation step
+    # above): no per-step `RUSTC_WRAPPER=` override. Removing the override (a) lets the cold v2
+    # build reuse sccache-cached dep objects and (b) keeps build + stage0 + DAG-parity on ONE
+    # cargo fingerprint, so the parity `cargo test` reuses these artifacts instead of recompiling
+    # under a different wrapper. The probe already degrades to a cold build on any sccache
+    # unreachability, so this stays fail-closed (RR-L: observationally invisible + fail-closed).
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
-      run: RUSTC_WRAPPER= cargo build -p v2-compiler --release
+      run: cargo build -p v2-compiler --release
     - name: v2 stage0 freshness receipt
       timeout-minutes: 30
-      run: RUSTC_WRAPPER= cargo run --release -p v2-compiler --bin regen_stage0 -- --verify
+      run: cargo run --release -p v2-compiler --bin regen_stage0 -- --verify
     - name: M1 v4 full-tree rust emit probe (v2 emit)
       timeout-minutes: 35
       env:
