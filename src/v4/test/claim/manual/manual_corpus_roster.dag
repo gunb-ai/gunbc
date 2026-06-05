@@ -20,6 +20,11 @@ import v4.test.claim.manual.eval_runtime_mvp { subject_eval_mvp2_test_claim_rout
 import v4.test.claim.lens_effect.effect_depends_on {
   subject_lens_effect_depends_on_runtime_verdict
 }
+import v4.test.claim.manual.nominal_distinctness_cross_call {
+  subject_nominal_distinct_branded_aliases_cross_call_rejects,
+  subject_nominal_distinct_records_cross_call_rejects,
+  subject_nominal_distinct_same_type_control_compiles
+}
 
 
 data manual_corpus_node_subject_rows: List<TestClaimEvalSubject<Node>> = [
@@ -27,5 +32,8 @@ data manual_corpus_node_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_parallelism_data_dependency_receipt,
   subject_lens_effect_depends_on_runtime_verdict,
   subject_rust_language_model_emit_mechanical_reverification_claim,
-  subject_rust_language_model_emit_subsumption_reverifies
+  subject_rust_language_model_emit_subsumption_reverifies,
+  subject_nominal_distinct_records_cross_call_rejects,
+  subject_nominal_distinct_branded_aliases_cross_call_rejects,
+  subject_nominal_distinct_same_type_control_compiles
 ]
