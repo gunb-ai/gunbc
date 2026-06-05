@@ -7,21 +7,37 @@
 module v4.test.claim.workflow.manual_corpus_eval_expected
 
 
-import v4.compiler.eval { eval_rejected_invalid_node, eval_rejected_type_node }
+import v4.compiler.eval {
+  TestClaimRun,
+  eval_rejected_invalid_node,
+  eval_rejected_type_node
+}
 import v4.std.collection { List }
+import v4.std.diagnostic { Rejected }
 import v4.std.logic { Bool }
 import v4.std.nat { length }
-import v4.std.node { Symbol }
+import v4.std.node { Node, Symbol }
+import v4.std.runtime { RuntimeValue }
 import v4.std.text { String }
-import v4.test.claim.lens_effect.effect_depends_on { claim_lens_effect_depends_on_runtime_verdict }
+import v4.std.verdict { Deferred, Fail, Pass }
+import v4.test.claim.lens_effect.effect_depends_on {
+  claim_lens_effect_depends_on_runtime_verdict,
+  run_lens_effect_depends_on_runtime_verdict
+}
 import v4.test.claim.lens_parallelism.data_dependency {
-  claim_parallelism_data_dependency_run_test_claim_receipt
+  claim_parallelism_data_dependency_run_test_claim_receipt,
+  run_parallelism_data_dependency_receipt
 }
 import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_mechanical_reverification,
-  claim_rust_language_model_emit_subsumption_reverifies
+  claim_rust_language_model_emit_subsumption_reverifies,
+  run_rust_language_model_emit_mechanical_reverification_claim,
+  run_rust_language_model_emit_subsumption_reverifies
 }
-import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.manual.eval_runtime_mvp {
+  claim_eval_mvp2_test_claim_route,
+  run_eval_mvp2_test_claim_route
+}
 import v4.test.claim.manual.manual_corpus_roster { manual_corpus_node_subject_rows }
 
 
@@ -146,5 +162,133 @@ fn corpus_eval_tracked_expectation_pins_well_formed() -> Bool {
 }
 
 
-// Authoring-time witness: pin table frontier + host-run spec alignment (runtime drift gate lives in CI host transport).
+fn corpus_eval_observation_arm_matches(
+  actual: CorpusEvalExpectedObservation,
+  expected: CorpusEvalExpectedObservation
+) -> Bool {
+  match actual {
+    ExecutedPass => match expected {
+      ExecutedPass => true
+      ExecutedFail { .. } => false
+      ExecutedDeferred { .. } => false
+      HostRejected => false
+    }
+    ExecutedFail => match expected {
+      ExecutedFail => true
+      ExecutedPass => false
+      ExecutedDeferred => false
+      HostRejected => false
+    }
+    ExecutedDeferred => match expected {
+      ExecutedDeferred => true
+      ExecutedPass => false
+      ExecutedFail { .. } => false
+      HostRejected => false
+    }
+    HostRejected => match expected {
+      HostRejected => true
+      ExecutedPass => false
+      ExecutedFail { .. } => false
+      ExecutedDeferred { .. } => false
+    }
+  }
+}
+
+
+fn corpus_eval_observation_matches_pin(
+  actual: CorpusEvalExpectedObservation,
+  actual_reason: Symbol,
+  pin: CorpusEvalExpectedPin
+) -> Bool {
+  corpus_eval_observation_arm_matches(actual: actual, expected: pin.observation)
+    && (actual_reason == pin.primary_reason)
+}
+
+
+fn corpus_eval_executed_row_runtime_gate(
+  run: TestClaimRun<Node, RuntimeValue>,
+  pin: CorpusEvalExpectedPin
+) -> Bool {
+  match run.verdict {
+    Pass =>
+      corpus_eval_observation_matches_pin(
+        actual: ExecutedPass,
+        actual_reason: corpus_eval_verdict_pass_reason,
+        pin: pin
+      )
+    Fail { actual: Rejected { diagnostics: ds }, falsification: _ } =>
+      corpus_eval_observation_matches_pin(
+        actual: ExecutedFail,
+        actual_reason: ds.head.reason,
+        pin: pin
+      )
+    Deferred { diagnostic: d, actual: _ } =>
+      corpus_eval_observation_matches_pin(
+        actual: ExecutedDeferred,
+        actual_reason: d.reason,
+        pin: pin
+      )
+  }
+}
+
+
+fn corpus_eval_host_rejected_transport_gate(pin: CorpusEvalExpectedPin) -> Bool {
+  corpus_eval_observation_matches_pin(
+    actual: HostRejected,
+    actual_reason: interpreter_classified_dependency_view_non_exhaustive,
+    pin: pin
+  )
+}
+
+
+// Authoring-time witness: pin table frontier + host-run spec alignment.
 data witness_corpus_eval_tracked_expectation_closed: Bool = corpus_eval_tracked_expectation_pins_well_formed()
+
+// Runtime drift gates (projected by scripts/v4-testclaim-corpus-eval.sh via --claim-run).
+data witness_corpus_eval_row_eval_mvp2_runtime_gate: Bool = corpus_eval_executed_row_runtime_gate(
+  run: run_eval_mvp2_test_claim_route,
+  pin: CorpusEvalExpectedPin {
+    claim_id: claim_eval_mvp2_test_claim_route,
+    observation: ExecutedFail,
+    primary_reason: eval_rejected_invalid_node,
+    dissolution_target: dissolution_target_transform_eval
+  }
+)
+
+data witness_corpus_eval_row_mechanical_reverification_runtime_gate: Bool = corpus_eval_executed_row_runtime_gate(
+  run: run_rust_language_model_emit_mechanical_reverification_claim,
+  pin: CorpusEvalExpectedPin {
+    claim_id: claim_rust_language_model_emit_mechanical_reverification,
+    observation: ExecutedFail,
+    primary_reason: eval_rejected_invalid_node,
+    dissolution_target: dissolution_target_transform_eval
+  }
+)
+
+data witness_corpus_eval_row_subsumption_reverifies_runtime_gate: Bool = corpus_eval_executed_row_runtime_gate(
+  run: run_rust_language_model_emit_subsumption_reverifies,
+  pin: CorpusEvalExpectedPin {
+    claim_id: claim_rust_language_model_emit_subsumption_reverifies,
+    observation: ExecutedFail,
+    primary_reason: eval_rejected_type_node,
+    dissolution_target: dissolution_target_subsumption_tree_eval
+  }
+)
+
+data witness_corpus_eval_row_parallelism_host_rejected_gate: Bool = corpus_eval_host_rejected_transport_gate(
+  pin: CorpusEvalExpectedPin {
+    claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
+    observation: HostRejected,
+    primary_reason: interpreter_classified_dependency_view_non_exhaustive,
+    dissolution_target: dissolution_target_cdv_eager_moth_810
+  }
+)
+
+data witness_corpus_eval_row_effect_host_rejected_gate: Bool = corpus_eval_host_rejected_transport_gate(
+  pin: CorpusEvalExpectedPin {
+    claim_id: claim_lens_effect_depends_on_runtime_verdict,
+    observation: HostRejected,
+    primary_reason: interpreter_classified_dependency_view_non_exhaustive,
+    dissolution_target: dissolution_target_cdv_eager_moth_810
+  }
+)

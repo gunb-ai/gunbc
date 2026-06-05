@@ -437,8 +437,8 @@ jobs:
   # T-22 TestClaim manual-corpus eval — tracked-expectation drift gate (operator GO 2026-06-05).
   # Executes the 5-row manual roster via per-claim `gunbc run`; FAIL only on drift from
   # `manual_corpus_eval_expected_pins` (all-red-but-pinned == PASS). Authority:
-  # v4.workflow.ci TestClaimCorpusEvalCommand + `.github/ci-floor/v4-testclaim-corpus-eval.sh`.
-  # scripts/ is outside the §11.7.5 ci-floor ratchet — host transport lives under .github/ci-floor/.
+  # v4.workflow.ci TestClaimCorpusEvalCommand + scripts/v4-testclaim-corpus-eval.sh.
+  # Operator re-promotion from Wave-1 §11.7.1 Class-C demotion. scripts/ is outside §11.7.5.
   ci_corpus_eval:
     if: github.event.pull_request.draft != true && needs.affected.outputs.testclaim_corpus == 'true'
     needs: [affected, ci_floor, ci_floor_emit]
@@ -473,7 +473,7 @@ jobs:
       run: cargo build -p v2-compiler --release
     - name: T-22 TestClaim corpus eval (tracked-expectation drift gate)
       timeout-minutes: 40
-      run: bash .github/ci-floor/v4-testclaim-corpus-eval.sh
+      run: bash scripts/v4-testclaim-corpus-eval.sh
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
     needs: [affected, ci_floor, ci_floor_emit, infra_isolation, ci_corpus_eval]

@@ -1128,8 +1128,8 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
         "{CI_YML_PATH}: tracked-expectation corpus eval must be on the required path"
     );
     assert!(
-        CI_YML.contains("bash .github/ci-floor/v4-testclaim-corpus-eval.sh"),
-        "{CI_YML_PATH}: corpus eval host transport must invoke the ci-floor shell"
+        CI_YML.contains("bash scripts/v4-testclaim-corpus-eval.sh"),
+        "{CI_YML_PATH}: corpus eval host transport must invoke scripts/v4-testclaim-corpus-eval.sh (outside §11.7.5 ci-floor ratchet)"
     );
     assert!(
         CI_YML.contains("ci_corpus_eval:"),
@@ -1227,19 +1227,17 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         .next()
         .expect("ci_class_a_shell_exceptions table must terminate with `]`");
 
-    // Class-A shell-owned floor steps: M1 rust+dag emit + T-22 corpus eval drift gate.
+    // Exactly one Class-A shell-owned floor step remains: M1 rust+dag emit. Corpus eval uses
+    // scripts/v4-testclaim-corpus-eval.sh (outside the §11.7.5 ci-floor ratchet).
     assert_eq!(
         table.matches("CiShellExceptionRow {").count(),
-        2,
-        "{CI_DAG_PATH}: §11.7.5 carries M1 + corpus-eval Class-A shell exceptions"
+        1,
+        "{CI_DAG_PATH}: §11.7.5 carries exactly one Class-A shell exception (M1)"
     );
     for needle in [
         "job: m1_rust_emit_probe_execution",
         ".github/ci-floor/v4-m1-rust-emit-probe.sh",
         "protects_floor: OneRustEmitProbe",
-        "job: testclaim_corpus_eval_execution",
-        ".github/ci-floor/v4-testclaim-corpus-eval.sh",
-        "protects_floor: TestClaimCorpusEval",
     ] {
         assert!(
             table.contains(needle),
@@ -2095,9 +2093,9 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
          as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
     );
     assert!(
-        CI_DAG.contains("manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed")
+        CI_DAG.contains("manual_corpus_eval_expected_pins` -> `witness_corpus_eval_tracked_expectation_closed")
             && CI_DAG.contains("manual_testclaim_subject_roster_family_receipt"),
-        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind the per-row TestClaimRun verdict surface and family receipt"
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind tracked-expectation pins and family receipt"
     );
     assert!(
         CI_DAG.contains("fn_name == ci_testclaim_corpus_selection_fn"),
@@ -2115,11 +2113,16 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "declaration_name: ci_testclaim_corpus_decl_manual_corpus_node_subject_rows_name",
         "declaration_name: ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name",
         "declaration_name: ci_testclaim_corpus_decl_corpus_report_tally_name",
-        "declaration_name: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name",
+        "declaration_name: ci_testclaim_corpus_decl_witness_tracked_expectation_closed_name",
+        "module_path: ci_testclaim_corpus_module_eval_expected_path",
+        "ci_testclaim_corpus_decl_manual_corpus_eval_expected_pins_name: Symbol = manual_corpus_eval_expected_pins",
+        "ci_testclaim_corpus_decl_witness_tracked_expectation_closed_name: Symbol = witness_corpus_eval_tracked_expectation_closed",
         "ci_testclaim_corpus_decl_manual_corpus_node_subject_rows_name: Symbol = manual_corpus_node_subject_rows",
         "ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: Symbol = run_manual_testclaim_corpus_eval",
         "ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally",
-        "ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: Symbol = witness_manual_corpus_gate_closed",
+        "scripts/v4-testclaim-corpus-eval.sh",
+        "ci_upsert_file_set_input(segment: \"scripts/v4-testclaim-corpus-eval.sh\")",
+        "ci_testclaim_corpus_module_eval_expected_path: Symbol = v4_test_claim_workflow_manual_corpus_eval_expected",
         "ci_testclaim_corpus_decl_manual_testclaim_subject_roster_family_receipt_name: Symbol = manual_testclaim_subject_roster_family_receipt",
         "fn ci_testclaim_corpus_eval_command() -> CiCommand",
         "verdict_surface: ci_testclaim_corpus_verdict_surface_authority()",
