@@ -326,7 +326,6 @@ jobs:
     - name: v2 stage0 freshness receipt
       timeout-minutes: 30
       run: cargo run --release -p v2-compiler --bin regen_stage0 -- --verify
-<<<<<<< HEAD
     - name: v2 DAG emit parity receipt (shared closure)
       run: cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
@@ -419,8 +418,6 @@ jobs:
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
-=======
->>>>>>> origin/main
     - name: M1 v4 full-tree rust emit probe (v2 emit)
       timeout-minutes: 35
       env:
