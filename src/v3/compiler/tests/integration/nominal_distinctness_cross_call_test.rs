@@ -68,7 +68,9 @@ fn call_site(b: WrapB) -> Int = expects_a(b)
         "distinct named records WrapA/WrapB must reject cross-call; diags={diags:?}"
     );
     assert!(
-        diags.iter().any(|d| d.contains("WrapA") && d.contains("WrapB")),
+        diags
+            .iter()
+            .any(|d| d.contains("WrapA") && d.contains("WrapB")),
         "rejection must name both carriers; diags={diags:?}"
     );
 }
@@ -102,5 +104,8 @@ fn expects_a(x: WrapA) -> Int = x.value
 fn call_site(a: WrapA) -> Int = expects_a(a)
 "#;
     let result = compile_to_dag(source, "nominal_same_record_control.v3");
-    assert!(result.is_ok(), "same-type control must compile; got {result:?}");
+    assert!(
+        result.is_ok(),
+        "same-type control must compile; got {result:?}"
+    );
 }
