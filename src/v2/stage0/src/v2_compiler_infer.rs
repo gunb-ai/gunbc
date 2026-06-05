@@ -2631,30 +2631,6 @@ pub fn infer_expr(
                                     scope.clone(),
                                     expected.clone(),
                                 );
-                                if std::env::var("GUNBC_DBG_CASCADE").is_ok()
-                                    && (func_name.clone() == "bind_outcome".to_string()
-                                        || func_name.clone() == "bind_outcome_accepted".to_string())
-                                {
-                                    let desc = |n: &Rc<Node>| -> String {
-                                        let kids: Vec<String> =
-                                            n.children.iter().map(|c| c.name.clone()).collect();
-                                        format!(
-                                            "name={:?} nkids={} kids={:?}",
-                                            n.name,
-                                            n.children.len(),
-                                            kids
-                                        )
-                                    };
-                                    let actual = resolved_type(ar.typed.clone());
-                                    eprintln!(
-                                        "DBG_CALL fn={:?} arg#{} lambda={} formal[{}] actual[{}]",
-                                        func_name,
-                                        pair.0,
-                                        is_lambda_expr(arg_value(a.clone())),
-                                        desc(&formal_param_type),
-                                        desc(&actual)
-                                    );
-                                }
                                 Rc::new(ArgInferResult {
                                     typed_arg: make_arg_node(
                                         arg_name_at(
@@ -4108,25 +4084,12 @@ match bare_s {
                                         Rc::new(SubValueRelation::SubValueUnknown)
                                     };
                                     match exp.params.clone().get(pair.0.clone() as usize).cloned() {
-                                        Some(cp) => {
-                                            let cp_type = param_node_type_expr(cp.clone());
-                                            let is_bare_type_var =
-                                                ((((cp_type.children.clone().len() as i64) == 0)
-                                                    && (cp_type.connective.clone()
-                                                        == Connective::NoConnective))
-                                                    && is_type_variable_name(cp_type.name.clone()));
-                                            let bound_type = if is_bare_type_var.clone() {
-                                                type_variable_node(cp_type.name.clone())
-                                            } else {
-                                                cp_type.clone()
-                                            };
-                                            extend_scope(
-                                                acc.clone(),
-                                                pair.1.clone(),
-                                                bound_type.clone(),
-                                                param_prov.clone(),
-                                            )
-                                        }
+                                        Some(cp) => extend_scope(
+                                            acc.clone(),
+                                            pair.1.clone(),
+                                            param_node_type_expr(cp.clone()),
+                                            param_prov.clone(),
+                                        ),
                                         None => extend_scope(
                                             acc.clone(),
                                             pair.1.clone(),
