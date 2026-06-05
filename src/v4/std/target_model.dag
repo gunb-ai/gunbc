@@ -3267,13 +3267,20 @@ fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
   }
 }
 
+fn target_value_semantics_carrier_snoc(acc: List<Symbol>, edge: Edge) -> List<Symbol> {
+  match edge.label {
+    Named { name: n } => list_snoc_item(xs: acc, item: n)
+    _ => acc
+  }
+}
+
 fn target_value_semantics_carriers_from_node(node: Node) -> List<Symbol> {
   match node.kind {
     TypeNode { connective: Conj } =>
       fold_list(
         xs: node.children,
         empty: Empty,
-        cons: fn(acc, edge) { list_snoc_item(xs: acc, item: edge.name) }
+        cons: fn(acc, edge) { target_value_semantics_carrier_snoc(acc: acc, edge: edge) }
       )
     _ => Empty
   }
