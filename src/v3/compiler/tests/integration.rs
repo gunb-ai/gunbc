@@ -1296,3 +1296,6 @@ mod parse_stage4_prep {
         );
     }
 }
+
+#[path = "integration/_transient_nominal_distinctness_measurement_test.rs"]
+mod transient_nominal_distinctness_measurement_test;
