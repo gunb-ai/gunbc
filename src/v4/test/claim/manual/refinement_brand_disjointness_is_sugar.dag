@@ -234,25 +234,10 @@ fn claim1_verdict_for_agreement(
 }
 
 
-data verdict_refinement_brand_disjointness_cross_brand_is_sugar: Verdict<TestClaimEvalSubject<Node>, Node> =
-  claim1_verdict_for_agreement(
-    claim: claim_refinement_brand_disjointness_cross_brand_is_sugar,
-    refinement_accepts: refinement_accepts_cross_brand(),
-    desugared_accepts: desugared_accepts_cross_brand()
-  )
+data verdict_refinement_brand_disjointness_cross_brand_is_sugar: Verdict<TestClaimEvalSubject<Node>, Node> = claim1_verdict_for_agreement(claim: claim_refinement_brand_disjointness_cross_brand_is_sugar, refinement_accepts: refinement_accepts_cross_brand(), desugared_accepts: desugared_accepts_cross_brand())
 
 
-data verdict_refinement_brand_disjointness_same_brand_is_sugar: Verdict<TestClaimEvalSubject<Node>, Node> =
-  claim1_verdict_for_agreement(
-    claim: claim_refinement_brand_disjointness_same_brand_is_sugar,
-    refinement_accepts: refinement_accepts_same_brand(),
-    desugared_accepts: desugared_accepts_same_brand()
-  )
+data verdict_refinement_brand_disjointness_same_brand_is_sugar: Verdict<TestClaimEvalSubject<Node>, Node> = claim1_verdict_for_agreement(claim: claim_refinement_brand_disjointness_same_brand_is_sugar, refinement_accepts: refinement_accepts_same_brand(), desugared_accepts: desugared_accepts_same_brand())
 
 
-data verdict_refinement_brand_disjointness_raw_literal_is_sugar: Verdict<TestClaimEvalSubject<Node>, Node> =
-  claim1_verdict_for_agreement(
-    claim: claim_refinement_brand_disjointness_raw_literal_is_sugar,
-    refinement_accepts: refinement_accepts_raw_literal(),
-    desugared_accepts: desugared_accepts_raw_literal()
-  )
+data verdict_refinement_brand_disjointness_raw_literal_is_sugar: Verdict<TestClaimEvalSubject<Node>, Node> = claim1_verdict_for_agreement(claim: claim_refinement_brand_disjointness_raw_literal_is_sugar, refinement_accepts: refinement_accepts_raw_literal(), desugared_accepts: desugared_accepts_raw_literal())

@@ -114,17 +114,13 @@ fn claim1_raw_literal_is_red(report: Claim1CorpusReport) -> Bool {
 }
 
 
-data witness_claim1_refinement_brand_disjointness_tracked_red_lock: Bool =
-  claim1_tracked_red_lock_holds(report: claim1_corpus_report())
+data witness_claim1_refinement_brand_disjointness_tracked_red_lock: Bool = claim1_tracked_red_lock_holds(report: claim1_corpus_report())
 
 
-data witness_claim1_cross_brand_corpus_verdict_is_fail: Bool =
-  claim1_cross_brand_is_red(report: claim1_corpus_report())
+data witness_claim1_cross_brand_corpus_verdict_is_fail: Bool = claim1_cross_brand_is_red(report: claim1_corpus_report())
 
 
-data witness_claim1_same_brand_corpus_verdict_is_pass: Bool =
-  claim1_same_brand_is_green(report: claim1_corpus_report())
+data witness_claim1_same_brand_corpus_verdict_is_pass: Bool = claim1_same_brand_is_green(report: claim1_corpus_report())
 
 
-data witness_claim1_raw_literal_corpus_verdict_is_fail: Bool =
-  claim1_raw_literal_is_red(report: claim1_corpus_report())
+data witness_claim1_raw_literal_corpus_verdict_is_fail: Bool = claim1_raw_literal_is_red(report: claim1_corpus_report())
