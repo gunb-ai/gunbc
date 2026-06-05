@@ -1817,10 +1817,6 @@ fn rust_mvp1_target_model_core_edges() -> List<Edge> {
       target: target_use_site_ownership_catalog_node(
         rows: rust_sg_rc_use_site_ownership_catalog()
       )
-    ),
-    rust_named_edge(
-      name: target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
     )
   ]
 }
