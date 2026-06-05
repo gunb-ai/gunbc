@@ -2370,6 +2370,22 @@ pub fn infer_expr(
                 } else {
                     false
                 };
+                if std::env::var("GUNBC_DBG_CASCADE").is_ok() {
+                    let kind = |n: &Rc<Node>| -> String {
+                        match n.inferred.as_deref() {
+                            Some(Resolved { node, .. }) => format!("Resolved(name={:?})", node.name),
+                            Some(CompilerError { message, .. }) => {
+                                format!("CompilerError({:?})", message)
+                            }
+                            Some(TypeVariable { id, .. }) => format!("TypeVariable({:?})", id),
+                            None => format!("None(name={:?})", n.name),
+                        }
+                    };
+                    eprintln!(
+                        "DBG_CASCADE field={:?} base_rt[name={:?} {}] resolved_base[name={:?} {}] is_error={}",
+                        field_name, base_rt.name, kind(&base_rt), resolved_base.name, kind(&resolved_base), resolved_base_is_error
+                    );
+                }
                 if resolved_base_is_error {
                     Rc::new(InferResult {
                         typed: make_expr_error_node(
@@ -4084,12 +4100,24 @@ match bare_s {
                                         Rc::new(SubValueRelation::SubValueUnknown)
                                     };
                                     match exp.params.clone().get(pair.0.clone() as usize).cloned() {
-                                        Some(cp) => extend_scope(
-                                            acc.clone(),
-                                            pair.1.clone(),
-                                            param_node_type_expr(cp.clone()),
-                                            param_prov.clone(),
-                                        ),
+                                        Some(cp) => {
+                                            if std::env::var("GUNBC_DBG_CASCADE").is_ok() {
+                                                let ct = param_node_type_expr(cp.clone());
+                                                let k = match ct.inferred.as_deref() {
+                                                    Some(Resolved { node, .. }) => format!("Resolved(name={:?})", node.name),
+                                                    Some(CompilerError { message, .. }) => format!("CompilerError({:?})", message),
+                                                    Some(TypeVariable { id, .. }) => format!("TypeVariable({:?})", id),
+                                                    None => format!("None(name={:?})", ct.name),
+                                                };
+                                                eprintln!("DBG_BIND lambda_param={:?} bound_to[name={:?} {}]", pair.1, ct.name, k);
+                                            }
+                                            extend_scope(
+                                                acc.clone(),
+                                                pair.1.clone(),
+                                                param_node_type_expr(cp.clone()),
+                                                param_prov.clone(),
+                                            )
+                                        }
                                         None => extend_scope(
                                             acc.clone(),
                                             pair.1.clone(),
