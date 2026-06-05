@@ -294,6 +294,24 @@ fn run() -> Result<(), String> {
             let _ = fs::remove_dir_all(&fresh_dir);
             return Err(message);
         }
+        if let Err(message) = time_phase(&mut phases, "verify_workspace_members", || {
+            verify_workspace_members(&workspace)
+        }) {
+            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+                path: &receipt_path,
+                workspace: &workspace,
+                manifest_dir: &manifest_dir,
+                verify_only,
+                status: "failed_workspace_members_stale",
+                generated_file_count: GENERATED_STAGE0_FILES.len(),
+                emitted_file_count: emitted.len(),
+                phases,
+                elapsed_ms: elapsed_ms(run_started),
+                changed_generated_files: Vec::new(),
+            })?;
+            let _ = fs::remove_dir_all(&fresh_dir);
+            return Err(message);
+        }
         write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
             path: &receipt_path,
             workspace: &workspace,
@@ -317,6 +335,9 @@ fn run() -> Result<(), String> {
     })?;
     time_phase(&mut phases, "write_stage0_split_crate_boundaries", || {
         write_stage0_split_crate_boundaries(&workspace)
+    })?;
+    time_phase(&mut phases, "write_workspace_members", || {
+        write_workspace_members(&workspace)
     })?;
     time_phase(&mut phases, "rustfmt_workspace", || {
         rustfmt_workspace(&manifest_dir)
@@ -1037,6 +1058,96 @@ fn write_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
         fs::write(&path, contents).map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+// Top-level `[workspace] members` membership authority.
+//
+// The generated stage0 crate entries inside the top-level `Cargo.toml` members
+// array are owned by the `.dag` authority `v2.compiler.workspace_members`,
+// which derives them from the same `stage0_crate_plan` that emits each crate's
+// `Cargo.toml`/`lib.rs`. `regen_stage0` keeps only the transport: it locates
+// the model-owned sentinel comment lines and rewrites the lines between them.
+// Marker text and region body are NOT authored here -- they come from the
+// model, so the hand-authored members and the rest of the manifest are
+// untouched.
+const WORKSPACE_MEMBERS_REGEN_HINT: &str =
+    "Run `cargo run -p v2-compiler --bin regen_stage0` to regenerate.";
+
+fn workspace_members_markers_and_region() -> (String, String, String) {
+    // BOOTSTRAP-PASS-A TEMP: literals matching v2.compiler.workspace_members.
+    // Reverted to the generated-module calls in pass B once the module is in
+    // the seed.
+    (
+        "    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v2.compiler.workspace_members)".to_string(),
+        "    # END generated stage0 crate members".to_string(),
+        "    \"src/v2/stage0_core\",\n    \"src/v2/stage0_emit_core\",".to_string(),
+    )
+}
+
+// Split the top-level Cargo.toml around the model-owned members region.
+// Returns `(prefix, body, suffix)` where `prefix` runs through the newline that
+// ends the BEGIN-marker line, `body` is the current bytes between the markers,
+// and `suffix` starts at the END marker. Reconstructing `prefix + body + suffix`
+// is the identity, so write and verify share this one locator.
+fn locate_workspace_members_region<'a>(
+    content: &'a str,
+    begin_marker: &str,
+    end_marker: &str,
+) -> Result<(&'a str, &'a str, &'a str), String> {
+    let begin = content.find(begin_marker).ok_or_else(|| {
+        format!("top-level Cargo.toml is missing the generated-members BEGIN marker. {WORKSPACE_MEMBERS_REGEN_HINT}")
+    })?;
+    let end = content.find(end_marker).ok_or_else(|| {
+        format!("top-level Cargo.toml is missing the generated-members END marker. {WORKSPACE_MEMBERS_REGEN_HINT}")
+    })?;
+    if begin >= end {
+        return Err(
+            "generated-members markers in top-level Cargo.toml are out of order".to_string(),
+        );
+    }
+    let after_begin_marker = begin + begin_marker.len();
+    let body_start = match content[after_begin_marker..].find('\n') {
+        Some(rel) => after_begin_marker + rel + 1,
+        None => {
+            return Err(
+                "generated-members BEGIN marker in top-level Cargo.toml is not followed by a newline"
+                    .to_string(),
+            )
+        }
+    };
+    Ok((
+        &content[..body_start],
+        &content[body_start..end],
+        &content[end..],
+    ))
+}
+
+fn verify_workspace_members(workspace: &Path) -> Result<(), String> {
+    let (begin, end, region) = workspace_members_markers_and_region();
+    let path = workspace.join("Cargo.toml");
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let (_, body, _) = locate_workspace_members_region(&content, &begin, &end)?;
+    if body == format!("{region}\n") {
+        Ok(())
+    } else {
+        Err(format!(
+            "Top-level Cargo.toml `[workspace] members` generated region is stale. {WORKSPACE_MEMBERS_REGEN_HINT}"
+        ))
+    }
+}
+
+fn write_workspace_members(workspace: &Path) -> Result<(), String> {
+    let (begin, end, region) = workspace_members_markers_and_region();
+    let path = workspace.join("Cargo.toml");
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let (prefix, _, suffix) = locate_workspace_members_region(&content, &begin, &end)?;
+    let updated = format!("{prefix}{region}\n{suffix}");
+    if updated != content {
+        fs::write(&path, updated).map_err(|e| format!("write {}: {e}", path.display()))?;
     }
     Ok(())
 }
