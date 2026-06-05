@@ -1335,17 +1335,17 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         // Infer each arg; for lambdas where the formal param is Callable,
         // thread the Callable's param types to the lambda (P4.7e).
         //
-        // Generic-aware: declared generics are prepended to sig.params, so the
-        // value-formal for value-arg i is sig.params[n_generics + i]. Bind
-        // generics from concrete (non-lambda) args left-to-right and substitute
-        // into later formals — e.g. unify o: Outcome<T> against actual
-        // Outcome<Concrete> ⇒ T=Concrete, then substitute into f: fn(T) -> ...
-        // so the lambda param binds to the concrete success type. A single
-        // left-to-right fold infers each arg exactly once (no re-inference).
-        let n_generics = count_leading_generics(params: sig_params, source_indices: scope.type_env.source_indices)
+        // Generic-aware: declared generics live among sig.params, so the
+        // value-formal for value-arg i is value_params[i] (generics filtered
+        // out). Bind generics from concrete (non-lambda) args left-to-right and
+        // substitute into later formals — e.g. unify o: Outcome<T> against
+        // actual Outcome<Concrete> ⇒ T=Concrete, then substitute into
+        // f: fn(T) -> ... so the lambda param binds to the concrete success
+        // type. A single left-to-right fold infers each arg exactly once.
+        let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
-          let formal_lookup = sig_params |> skip(n_generics + pair.first) |> first
+          let formal_lookup = value_params |> skip(pair.first) |> first
           let formal_raw = match formal_lookup {
             Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
@@ -4865,34 +4865,24 @@ fn is_type_variable_name(name: String) -> Bool {
 }
 
 // ── Minimal generic instantiation for value-arg calls (R2) ───────────────
-// A function's declared generics are PREPENDED to its value params in
-// sig.params, so the value-formal for value-arg i is sig.params[#generics + i].
-// Detect #generics by counting the leading params whose TYPE is a bare
-// type-variable-name leaf (a generic declaration). This is representation-
-// agnostic and falls to 0 for non-generic calls (no offset), and is safer
-// than (#params - #args) which would mis-fire on omitted/optional value args.
-type GenericScan { count: Int, stopped: Bool }
+// A function's declared generics are stored as params ALONGSIDE its value
+// params (e.g. bind_outcome<T,U>(o,f) has params [T, U, o, f]), so a naive
+// sig.params[arg_index] lands on a generic, not the value-formal. A generic
+// DECLARATION param is self-named — its value-name equals its type-name
+// (`T: T`, `U: U`) — whereas a value param is not (`o: Outcome<T>`). Filtering
+// out the generic decls yields the value params positionally, no offset
+// arithmetic, robust to any generic name (incl. U, which is not in the
+// is_type_variable_name set) and to omitted/optional value args.
 
 // Fold state for generic-aware value-arg inference: accumulates typed args in
 // order while threading the generic substitution built from concrete args.
 type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node> }
 
-fn param_is_bare_type_var(p: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let pt = param_node_type_expr(n: p)
-  pt.children |> count == 0
-    && pt.connective == NoConnective
-    && is_type_variable_name(name: authored_name_at(source_indices: source_indices, node: pt))
-}
-
-fn count_leading_generics(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Int {
-  fold(params, init: GenericScan { count: 0, stopped: false }, f: (st, p) =>
-    if st.stopped { st }
-    else if param_is_bare_type_var(p: p, source_indices: source_indices) {
-      GenericScan { count: st.count + 1, stopped: false }
-    } else {
-      GenericScan { count: st.count, stopped: true }
-    }
-  ).count
+  let pname = param_node_name_at(n: p, source_indices: source_indices)
+  let tname = authored_name_at(source_indices: source_indices, node: pt)
+  ((pt.children |> count == 0 && pt.connective == NoConnective) && (pname != "")) && pname == tname
 }
 
 // Bind generic names by unifying a value-formal against the actual arg type.
