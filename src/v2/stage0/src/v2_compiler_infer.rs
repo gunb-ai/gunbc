@@ -10297,67 +10297,73 @@ pub fn substitute_generics(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let nm = authored_name_at(source_indices.clone(), n.clone());
-        let is_bare = ((((n.children.clone().len() as i64) == 0)
-            && (n.connective.clone() == Connective::NoConnective))
-            && ((n.params.clone().len() as i64) == 0));
-        if is_bare {
-            match v2_rt::map_get(&subst, nm) {
-                Some(c) => c.clone(),
-                None => n.clone(),
-            }
+        if ((Rc::new(v2_rt::map_keys(&subst)).len() as i64) == 0) {
+            n.clone()
         } else {
-            Rc::new(Node {
-                name: n.name.clone(),
-                span: n.span.clone(),
-                ident_span: n.ident_span.clone(),
-                children: Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.push(substitute_generics(
-                            c.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        ));
+            {
+                let nm = authored_name_at(source_indices.clone(), n.clone());
+                let is_bare = ((((n.children.clone().len() as i64) == 0)
+                    && (n.connective.clone() == Connective::NoConnective))
+                    && ((n.params.clone().len() as i64) == 0));
+                if is_bare {
+                    match v2_rt::map_get(&subst, nm) {
+                        Some(c) => c.clone(),
+                        None => n.clone(),
                     }
-                    __result
-                }),
-                connective: n.connective.clone(),
-                params: Rc::new({
-                    let mut __result = Vec::new();
-                    for p in n.params.clone().iter().cloned() {
-                        __result.push(substitute_generics(
-                            p.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        ));
-                    }
-                    __result
-                }),
-                inferred: match n.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: rt, .. }) => {
-                        Some(Rc::new(InferredNode::Resolved {
-                            node: substitute_generics(
-                                rt.clone(),
-                                subst.clone(),
-                                source_indices.clone(),
-                            ),
-                        }))
-                    }
-                    _ => n.inferred.clone(),
-                },
-                return_cardinality: n.return_cardinality.clone(),
-                uses: n.uses.clone(),
-                body: n.body.clone(),
-                transport: n.transport.clone(),
-                properties: n.properties.clone(),
-                type_annotation: n.type_annotation.clone(),
-                is_self_recursive: n.is_self_recursive.clone(),
-                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                match_pattern: n.match_pattern.clone(),
-                expr_data: n.expr_data.clone(),
-                ident: None,
-            })
+                } else {
+                    Rc::new(Node {
+                        name: n.name.clone(),
+                        span: n.span.clone(),
+                        ident_span: n.ident_span.clone(),
+                        children: Rc::new({
+                            let mut __result = Vec::new();
+                            for c in n.children.clone().iter().cloned() {
+                                __result.push(substitute_generics(
+                                    c.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        connective: n.connective.clone(),
+                        params: Rc::new({
+                            let mut __result = Vec::new();
+                            for p in n.params.clone().iter().cloned() {
+                                __result.push(substitute_generics(
+                                    p.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        inferred: match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => {
+                                Some(Rc::new(InferredNode::Resolved {
+                                    node: substitute_generics(
+                                        rt.clone(),
+                                        subst.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                }))
+                            }
+                            _ => n.inferred.clone(),
+                        },
+                        return_cardinality: n.return_cardinality.clone(),
+                        uses: n.uses.clone(),
+                        body: n.body.clone(),
+                        transport: n.transport.clone(),
+                        properties: n.properties.clone(),
+                        type_annotation: n.type_annotation.clone(),
+                        is_self_recursive: n.is_self_recursive.clone(),
+                        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                        match_pattern: n.match_pattern.clone(),
+                        expr_data: n.expr_data.clone(),
+                        ident: None,
+                    })
+                }
+            }
         }
     })
 }
