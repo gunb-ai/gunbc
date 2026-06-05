@@ -1302,12 +1302,20 @@ fn rust_scalar_is_copy(scalar: RustScalar) -> Bool {
 // co-indexed scalar↔spelling mapping; rust_scalar_is_copy stays the single Copy
 // authority and str is the one deliberate exclusion below.]
 fn rust_value_semantics_carrier_atoms() -> List<Symbol> {
+  // Both carrier-identity forms a Copy scalar can present as at the lookup: the
+  // surface spelling (type-shell path) and the inhabitant identity (value-expr
+  // path). str (non-Copy) is excluded from both.
   [
     rust_surface_spelling_i8, rust_surface_spelling_i16, rust_surface_spelling_i32, rust_surface_spelling_i64, rust_surface_spelling_i128,
     rust_surface_spelling_u8, rust_surface_spelling_u16, rust_surface_spelling_u32, rust_surface_spelling_u64, rust_surface_spelling_u128,
     rust_surface_spelling_isize, rust_surface_spelling_usize,
     rust_surface_spelling_f32, rust_surface_spelling_f64,
-    rust_surface_spelling_bool, rust_surface_spelling_char, rust_surface_spelling_unit, rust_surface_spelling_never
+    rust_surface_spelling_bool, rust_surface_spelling_char, rust_surface_spelling_unit, rust_surface_spelling_never,
+    rust_inhabitant_i8, rust_inhabitant_i16, rust_inhabitant_i32, rust_inhabitant_i64, rust_inhabitant_i128,
+    rust_inhabitant_u8, rust_inhabitant_u16, rust_inhabitant_u32, rust_inhabitant_u64, rust_inhabitant_u128,
+    rust_inhabitant_isize, rust_inhabitant_usize,
+    rust_inhabitant_f32, rust_inhabitant_f64,
+    rust_inhabitant_bool, rust_inhabitant_char, rust_inhabitant_unit, rust_inhabitant_never
   ]
 }
 
