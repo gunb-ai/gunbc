@@ -1316,8 +1316,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
         None => error_type
       }
-      let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
-        match call_args |> first {
+      let arg_call = if has_lambda && call_args |> count >= 2 && sig == none {
+        ArgGenericFoldState { subst: empty_map(), results: match call_args |> first {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
@@ -1330,7 +1330,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             )
           None =>
             []
-        }
+        } }
       } else {
         // Infer each arg; for lambdas where the formal param is Callable,
         // thread the Callable's param types to the lambda (P4.7e).
@@ -1367,14 +1367,20 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             subst: next_subst
           }
         )
-        final_state.results
+        final_state
       }
+      let arg_infer_results = arg_call.results
+      // Per-call generic substitution (from unifying value args). Apply it to
+      // the call's return type too — completes ②: param types were instantiated
+      // in the fold above; the return position (e.g. list_snoc_item -> FreeMonoid<T>)
+      // is instantiated here (substitute_generics(sig.inferred, subst)).
+      let call_subst = arg_call.subst
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
       let typed_arg_nodes = typed_args
       if sig != none {
         let resolved_type = match sig {
-          Some { value: s } => s.inferred
+          Some { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
           None => error_type
         }
         InferResult {
