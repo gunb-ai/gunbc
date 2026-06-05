@@ -709,18 +709,17 @@ fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<Symbol> {
 fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: cpp_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == primitive_fact_axis_width {
           Holds { value: facts.width_fact }
-        primitive_fact_axis_signedness =>
+      } else if axis == primitive_fact_axis_signedness {
           Holds { value: facts.signedness_fact }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: facts.encoding_fact }
-        primitive_fact_axis_overflow_disposition =>
+      } else if axis == primitive_fact_axis_overflow_disposition {
           Holds { value: facts.overflow_fact }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -732,16 +731,15 @@ fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<Symbol, Node> 
 fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: cpp_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == primitive_fact_axis_width {
           Holds { value: facts.width_fact }
-        primitive_fact_axis_signedness =>
+      } else if axis == primitive_fact_axis_signedness {
           Holds { value: facts.signedness_fact }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: facts.encoding_fact }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -753,12 +751,11 @@ fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<Symbol, No
 fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: cpp_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: facts.encoding_fact }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
