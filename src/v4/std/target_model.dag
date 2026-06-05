@@ -3257,7 +3257,12 @@ fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
     children: fold_list(
       xs: atoms,
       empty: Empty,
-      cons: fn(acc, id) { list_snoc_item(xs: acc, item: target_value_semantics_carrier_atom_node(id: id)) }
+      cons: fn(acc, id) {
+        list_snoc_item(
+          xs: acc,
+          item: target_model_named_edge(name: id, target: target_value_semantics_carrier_atom_node(id: id))
+        )
+      }
     )
   }
 }
@@ -3268,12 +3273,7 @@ fn target_value_semantics_carriers_from_node(node: Node) -> List<Symbol> {
       fold_list(
         xs: node.children,
         empty: Empty,
-        cons: fn(acc, child) {
-          match child.kind {
-            TypeNode { connective: Atom { identity: id } } => list_snoc_item(xs: acc, item: id)
-            _ => acc
-          }
-        }
+        cons: fn(acc, edge) { list_snoc_item(xs: acc, item: edge.name) }
       )
     _ => Empty
   }
