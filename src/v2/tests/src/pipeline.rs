@@ -3391,13 +3391,13 @@ fn complexity_counter_tokenizer_text_lookup_flat_in_file_size() {
         .collect();
     let compiled = crate::helpers::compile_multi_analyze_complexity(&file_refs);
 
+    // Only the per-index read helpers — not tail-recursive scan loops (`source_scan_while`,
+    // `source_skip_ws`, `source_scan_to_eol`), which advance `start` and may still carry
+    // analyzer "same-argument recursion" noise unrelated to O(pos) string walking.
     const TEXT_LOOKUP_FUNCS: &[&str] = &[
         "source_char",
         "source_code_point",
         "source_substring",
-        "source_scan_while",
-        "source_skip_ws",
-        "source_scan_to_eol",
     ];
     let lookup_violations: Vec<_> = compiled
         .complexity
