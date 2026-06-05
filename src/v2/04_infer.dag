@@ -1316,8 +1316,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
         None => error_type
       }
-      let arg_call = if has_lambda && call_args |> count >= 2 && sig == none {
-        ArgGenericFoldState { subst: empty_map(), results: match call_args |> first {
+      let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
+        match call_args |> first {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
@@ -1330,57 +1330,28 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             )
           None =>
             []
-        } }
+        }
       } else {
         // Infer each arg; for lambdas where the formal param is Callable,
         // thread the Callable's param types to the lambda (P4.7e).
-        //
-        // Generic-aware: declared generics live among sig.params, so the
-        // value-formal for value-arg i is value_params[i] (generics filtered
-        // out). Bind generics from concrete (non-lambda) args left-to-right and
-        // substitute into later formals — e.g. unify o: Outcome<T> against
-        // actual Outcome<Concrete> ⇒ T=Concrete, then substitute into
-        // f: fn(T) -> ... so the lambda param binds to the concrete success
-        // type. A single left-to-right fold infers each arg exactly once.
-        let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-        let generic_names = sig_params
-          |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-          |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: param_node_type_expr(n: p)))
-        let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
+        call_args |> enumerate |> map(pair =>
           let a = pair.second
-          let formal_lookup = value_params |> skip(pair.first) |> first
-          let formal_raw = match formal_lookup {
+          let formal_param_type = match sig_params |> skip(pair.first) |> first {
             Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
           }
-          let has_formal = match formal_lookup { Some { value: _ } => true  None => false }
-          let formal_param_type = substitute_generics(n: formal_raw, subst: st.subst, source_indices: scope.type_env.source_indices)
+          let has_formal = match sig_params |> skip(pair.first) |> first { Some { value: _ } => true  None => false }
           let expected = if has_formal { Some { value: formal_param_type } } else { none }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
-          let next_subst = if (is_lambda_expr(e: arg_value(n: a)) || !has_formal) {
-            st.subst
-          } else {
-            unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
-          }
-          ArgGenericFoldState {
-            results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
-            subst: next_subst
-          }
+          ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
         )
-        final_state
       }
-      let arg_infer_results = arg_call.results
-      // Per-call generic substitution (from unifying value args). Apply it to
-      // the call's return type too — completes ②: param types were instantiated
-      // in the fold above; the return position (e.g. list_snoc_item -> FreeMonoid<T>)
-      // is instantiated here (substitute_generics(sig.inferred, subst)).
-      let call_subst = arg_call.subst
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
       let typed_arg_nodes = typed_args
       if sig != none {
         let resolved_type = match sig {
-          Some { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
+          Some { value: s } => s.inferred
           None => error_type
         }
         InferResult {
@@ -4871,93 +4842,6 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 // metavariables, not user-facing type definitions.
 fn is_type_variable_name(name: String) -> Bool {
   name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
-}
-
-// ── Minimal generic instantiation for value-arg calls (R2) ───────────────
-// A function's declared generics are stored as params ALONGSIDE its value
-// params (e.g. bind_outcome<T,U>(o,f) has params [T, U, o, f]), so a naive
-// sig.params[arg_index] lands on a generic, not the value-formal. A generic
-// DECLARATION param is self-named — its value-name equals its type-name
-// (`T: T`, `U: U`) — whereas a value param is not (`o: Outcome<T>`). Filtering
-// out the generic decls yields the value params positionally, no offset
-// arithmetic, robust to any generic name (incl. U, which is not in the
-// is_type_variable_name set) and to omitted/optional value args.
-
-// Fold state for generic-aware value-arg inference: accumulates typed args in
-// order while threading the generic substitution built from concrete args.
-type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node> }
-
-fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let pt = param_node_type_expr(n: p)
-  let pname = param_node_name_at(n: p, source_indices: source_indices)
-  let tname = authored_name_at(source_indices: source_indices, node: pt)
-  // Bare-leaf type AND self-named: a generic declaration is spelled `T: T` /
-  // `U: U` (value-name == type-name), which distinguishes it from a value param
-  // whose type happens to be a generic (`x: T` — names differ) or a concrete
-  // type (`node: Node`). Do NOT fall back to is_type_variable_name(tname): that
-  // would misclassify a value param of a USER type named T/K/V (e.g. `x: T`
-  // where `type T { ... }`) as a generic, corrupting value-param indexing.
-  (pt.children |> count == 0 && pt.connective == NoConnective)
-    && ((pname != "") && (pname == tname))
-}
-
-// Bind generic names by unifying a value-formal against the actual arg type.
-// Scoped to R2's shape: a bare type-variable leaf binds to the actual, and a
-// single-type-parameter container (Outcome<T> vs Outcome<Concrete>) recurses
-// into its one type-arg. Multi-generic / nested / arrow unification is the
-// deferred roadmap (A) — added only when a witness forces it.
-fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
-  let fname = authored_name_at(source_indices: source_indices, node: formal)
-  let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
-  if f_bare && (generic_names |> any(g => g == fname)) {
-    map_insert(acc, fname, actual)
-  } else if formal.children |> count == 1 && actual.children |> count == 1 {
-    match formal.children |> first {
-      Some { value: fc } =>
-        match actual.children |> first {
-          Some { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
-          None => acc
-        }
-      None => acc
-    }
-  } else { acc }
-}
-
-// Substitute bound generics into a type node. Unlike substitute_type_slots,
-// this also descends Arrow params — an Arrow's input types live in Node.params
-// (not children), so a formal like fn(T) -> Outcome<U> needs the input T
-// replaced for the lambda param to bind concretely.
-fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
-  // No bindings ⇒ identity. Critical: the rebuild below allocates a fresh Node,
-  // which would duplicate a type's canonical declaration in the nodes table and
-  // change identity for downstream consumers. Returning n unchanged keeps every
-  // non-generic call (and any generic call that bound nothing) a true no-op.
-  if (map_keys(subst) |> count) == 0 { n }
-  else {
-  let nm = authored_name_at(source_indices: source_indices, node: n)
-  let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
-  if is_bare {
-    match map_get(subst, nm) {
-      Some { value: c } => c
-      None => n
-    }
-  } else {
-    Node {
-      name: n.name, span: n.span, ident_span: n.ident_span,
-      children: n.children |> map(c => substitute_generics(n: c, subst: subst, source_indices: source_indices)),
-      connective: n.connective,
-      params: n.params |> map(p => substitute_generics(n: p, subst: subst, source_indices: source_indices)),
-      inferred: match n.inferred {
-        Some { value: Resolved { node: rt } } => Some { value: Resolved { node: substitute_generics(n: rt, subst: subst, source_indices: source_indices) } }
-        _ => n.inferred
-      },
-      return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
-      properties: n.properties, type_annotation: n.type_annotation,
-      is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
-      match_pattern: n.match_pattern, expr_data: n.expr_data
-    }
-  }
-  }
 }
 
 // Merge type bindings from parent environments, filtering out algebra
