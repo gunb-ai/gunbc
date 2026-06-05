@@ -2665,11 +2665,6 @@ data target_model_edge_use_site_ownership_realizations: Symbol = target_model_ed
 
 data target_model_edge_reference_layer_tokens: Symbol = target_model_edge_reference_layer_tokens
 
-// Value-semantics (Copy) carrier set — the target-authored discrimination the
-// use-site-ownership lookup short-circuits on (Copy ⇒ by-value). Atom-identity
-// keyed, mirroring how the reference-ownership catalog matches carriers.
-data target_model_edge_value_semantics_carriers: Symbol = target_model_edge_value_semantics_carriers
-
 // 🟢 coproduct dissolution — SG-RC ownership boundary role axis (four use sites; not Node.kind).
 type TargetOwnershipUseSite
   = OwnershipAtFunctionReturn
@@ -2708,20 +2703,6 @@ type TargetUseSiteOwnershipRealization {
   reference_layer: TargetReferenceLayer
   display_name: Symbol
 }
-
-// 🟢 coproduct dissolution — value-vs-reference carrier semantics. A carrier is
-// owned by value (Copy ⇒ defaults to by-value: no reference layer applied) or by
-// reference (the SG-RC reference-layer realization applies). This is a DISTINCT
-// axis from TargetReferenceLayer (Owned|Rc|Box, which lives WITHIN the by-reference
-// arm) — reference_layer is inapplicable to value carriers, so it appears only in
-// CarrierOwnershipByReference. The use-site-ownership lookup discriminates this at
-// the authority: a value-semantics carrier short-circuits to ByValue before the
-// reference-catalog lookup; a reference carrier with no row is still a fail-closed
-// miss. Note: 'Copy ⇒ by-value default' is a default, not an absolute — a witness
-// later needing &primitive is a consumer-triggered extension, not pre-built here.
-type TargetCarrierOwnership
-  = CarrierOwnershipByValue
-  | CarrierOwnershipByReference { realization: TargetUseSiteOwnershipRealization }
 
 data target_ownership_use_site_function_return: Symbol = target_ownership_use_site_function_return
 data target_ownership_use_site_function_parameter: Symbol = target_ownership_use_site_function_parameter
@@ -3111,32 +3092,11 @@ fn target_use_site_ownership_catalog_lookup_step(
   }
 }
 
-// Value-semantics discrimination: a carrier whose atom identity is in the
-// target-provided value-semantics (Copy) set. Atom-identity-keyed to match how
-// the reference-ownership catalog matches carriers.
-fn target_carrier_is_value_semantics(source_carrier: Node, value_semantics_carriers: List<Symbol>) -> Bool {
-  match source_carrier.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      value_semantics_carriers |> any(c => c == id)
-    _ => false
-  }
-}
-
 fn target_use_site_ownership_lookup_in_catalog_node(
   catalog: Node,
-  value_semantics_carriers: List<Symbol>,
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
-) -> Outcome<TargetCarrierOwnership> {
-  // NAMED value-semantics branch at the authority. A value-semantics (Copy)
-  // carrier owns by value (Copy ⇒ by-value default) — short-circuit before the
-  // reference catalog so it does not (wrongly) miss for lacking an SG-RC row.
-  // Reference-semantics carriers fall through to the catalog; a reference carrier
-  // with no row is still a fail-closed miss. The lookup encapsulates the
-  // discrimination — call sites just call it.
-  if target_carrier_is_value_semantics(source_carrier: source_carrier, value_semantics_carriers: value_semantics_carriers) {
-    outcome_accepted(CarrierOwnershipByValue)
-  } else {
+) -> Outcome<TargetUseSiteOwnershipRealization> {
   match catalog.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -3154,7 +3114,7 @@ fn target_use_site_ownership_lookup_in_catalog_node(
         TargetUseSiteOwnershipCatalogMissing =>
           outcome_rejected(target_use_site_ownership_lookup_miss_diagnostic(source_carrier: source_carrier))
         TargetUseSiteOwnershipCatalogUnique { row: row } =>
-          outcome_accepted(CarrierOwnershipByReference { realization: row })
+          outcome_accepted(row)
         TargetUseSiteOwnershipCatalogAmbiguous =>
           outcome_rejected(target_use_site_ownership_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
         TargetUseSiteOwnershipCatalogInvalid =>
@@ -3170,7 +3130,6 @@ fn target_use_site_ownership_lookup_in_catalog_node(
           source_carrier: source_carrier
         )
       )
-  }
   }
 }
 
@@ -3241,48 +3200,6 @@ fn target_use_site_ownership_catalog_node(
       empty: Empty,
       cons: fn(acc, row) { target_use_site_ownership_catalog_snoc_edge(acc: acc, row: row) }
     )
-  }
-}
-
-// Value-semantics carrier set encode/decode (a Conj of bare atom nodes keyed by
-// identity — mirrors how carriers are encoded elsewhere). Encodes the target's
-// Copy carrier atom-identities for the bundle; the lookup decodes + matches.
-fn target_value_semantics_carrier_atom_node(id: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: id } }, children: Empty }
-}
-
-fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: fold_list(
-      xs: atoms,
-      empty: Empty,
-      cons: fn(acc, id) {
-        list_snoc_item(
-          xs: acc,
-          item: target_model_named_edge(name: id, target: target_value_semantics_carrier_atom_node(id: id))
-        )
-      }
-    )
-  }
-}
-
-fn target_value_semantics_carrier_snoc(acc: List<Symbol>, edge: Edge) -> List<Symbol> {
-  match edge.label {
-    Named { name: n } => list_snoc_item(xs: acc, item: n)
-    _ => acc
-  }
-}
-
-fn target_value_semantics_carriers_from_node(node: Node) -> List<Symbol> {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      fold_list(
-        xs: node.children,
-        empty: Empty,
-        cons: fn(acc, edge) { target_value_semantics_carrier_snoc(acc: acc, edge: edge) }
-      )
-    _ => Empty
   }
 }
 
