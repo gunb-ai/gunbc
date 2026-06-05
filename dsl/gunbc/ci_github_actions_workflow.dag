@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 4890c2577b38b6d671e796acbc698ea93f5f8e7e09d2f7a8ffd4494b3b34df26
+// Source-SHA256(.github/workflows/ci.yml): 938a290dc8dbe3520f897dca6a5fdceb6498dac2ac9a92877c37e76134066a93
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -79,7 +79,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, UsesStep {
           name: Some { value: "Checkout" },
           id: none,
-          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          uses: { owner: "actions", repo: "checkout", ref: "v5" },
           with: { "fetch-depth": "1" },
           env: none,
           if_condition: none,
@@ -150,7 +150,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, UsesStep {
           name: Some { value: "Checkout" },
           id: none,
-          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          uses: { owner: "actions", repo: "checkout", ref: "v5" },
           with: { "fetch-depth": "0" },
           env: none,
           if_condition: none,
@@ -218,7 +218,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, UsesStep {
           name: Some { value: "Upload affected-set CI receipt" },
           id: none,
-          uses: { owner: "actions", repo: "upload-artifact", ref: "v4" },
+          uses: { owner: "actions", repo: "upload-artifact", ref: "v6" },
           with: { "name": "affected-set-ci-receipt", "path": "${{ runner.temp }}/affected-set-ci-receipt.json", "if-no-files-found": "warn" },
           env: none,
           if_condition: none,
@@ -260,7 +260,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, UsesStep {
           name: Some { value: "Checkout" },
           id: none,
-          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          uses: { owner: "actions", repo: "checkout", ref: "v5" },
           with: { "fetch-depth": "0" },
           env: none,
           if_condition: none,
@@ -288,7 +288,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, UsesStep {
           name: Some { value: "Cache Cargo (ci floor)" },
           id: none,
-          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          uses: { owner: "actions", repo: "cache", ref: "v5" },
           with: { "path": "${{ runner.temp }}/cargo/registry/index/\n${{ runner.temp }}/cargo/registry/cache/\n${{ runner.temp }}/cargo/git/db/\ntarget/\n", "key": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-\n" },
           env: none,
           if_condition: none,
@@ -297,7 +297,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, UsesStep {
           name: Some { value: "Cache gunbc binary (v4 floor)" },
           id: Some { value: "v4-v2-bin" },
-          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          uses: { owner: "actions", repo: "cache", ref: "v5" },
           with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-\n" },
           env: none,
           if_condition: none,
@@ -369,7 +369,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, UsesStep {
           name: Some { value: "Checkout" },
           id: none,
-          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          uses: { owner: "actions", repo: "checkout", ref: "v5" },
           with: { "fetch-depth": "0" },
           env: none,
           if_condition: none,
@@ -397,7 +397,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, UsesStep {
           name: Some { value: "Cache Cargo (ci floor)" },
           id: none,
-          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          uses: { owner: "actions", repo: "cache", ref: "v5" },
           with: { "path": "${{ runner.temp }}/cargo/registry/index/\n${{ runner.temp }}/cargo/registry/cache/\n${{ runner.temp }}/cargo/git/db/\ntarget/\n", "key": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-\n" },
           env: none,
           if_condition: none,
@@ -406,7 +406,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, UsesStep {
           name: Some { value: "Cache gunbc binary (v4 floor)" },
           id: Some { value: "v4-v2-bin" },
-          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          uses: { owner: "actions", repo: "cache", ref: "v5" },
           with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-\n" },
           env: none,
           if_condition: none,
