@@ -2590,10 +2590,18 @@ pub fn infer_expr(
                     }
                 } else {
                     {
-                        let n_generics = count_leading_generics(
-                            sig_params.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        );
+                        let value_params = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in sig_params.iter().cloned() {
+                                if !param_is_generic_decl(
+                                    p.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    __result.push(p);
+                                }
+                            }
+                            __result
+                        });
                         let final_state = Rc::new(
                             call_args
                                 .clone()
@@ -2612,10 +2620,8 @@ pub fn infer_expr(
                             }),
                             |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<Node>)| {
                                 let a = pair.1.clone();
-                                let formal_lookup = sig_params
-                                    .clone()
-                                    .get((n_generics.clone() + pair.0.clone()) as usize)
-                                    .cloned();
+                                let formal_lookup =
+                                    value_params.clone().get(pair.0.clone() as usize).cloned();
                                 let formal_raw = match formal_lookup.clone() {
                                     Some(p) => param_node_type_expr(p.clone()),
                                     None => type_variable_node("callable_param".to_string()),
@@ -10179,62 +10185,26 @@ pub fn is_type_variable_name(name: String) -> bool {
         || (name.clone().as_str() == "FoldAccumulator".to_string().as_str()))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GenericScan {
-    pub count: i64,
-    pub stopped: bool,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgGenericFoldState {
     pub results: Rc<Vec<Rc<ArgInferResult>>>,
     pub subst: Rc<HashMap<String, Rc<Node>>>,
 }
 
-pub fn param_is_bare_type_var(
+pub fn param_is_generic_decl(
     p: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let pt = param_node_type_expr(p);
+        let pt = param_node_type_expr(p.clone());
+        let pname = param_node_name_at(p.clone(), source_indices.clone());
+        let tname = authored_name_at(source_indices.clone(), pt.clone());
         ((((pt.children.clone().len() as i64) == 0)
             && (pt.connective.clone() == Connective::NoConnective))
-            && is_type_variable_name(authored_name_at(source_indices, pt.clone())))
+            && (((pname.clone().as_str() != "".to_string().as_str())
+                && (pname.clone().as_str() == tname.clone().as_str()))
+                || is_type_variable_name(tname.clone())))
     }
-}
-
-pub fn count_leading_generics(
-    params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> i64 {
-    params
-        .iter()
-        .cloned()
-        .fold(
-            GenericScan {
-                count: 0,
-                stopped: false,
-            },
-            |st: GenericScan, p: Rc<Node>| {
-                if st.stopped.clone() {
-                    st.clone()
-                } else {
-                    if param_is_bare_type_var(p.clone(), source_indices.clone()) {
-                        GenericScan {
-                            count: (st.count.clone() + 1),
-                            stopped: false,
-                        }
-                    } else {
-                        GenericScan {
-                            count: st.count.clone(),
-                            stopped: true,
-                        }
-                    }
-                }
-            },
-        )
-        .count
-        .clone()
 }
 
 pub fn unify_generics(
