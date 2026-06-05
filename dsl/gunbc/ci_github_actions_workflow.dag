@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 3524349a1af8d4811cff25dc58d092d4e737173be87d259f7f2c242b0889af5a
+// Source-SHA256(.github/workflows/ci.yml): a370c1eabe3ac13c03092abec30c10f1bc45b6201727a41aa36c4b388f1bccfc
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -324,16 +324,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: Some { value: 30 }
         }, RunStep {
-          name: Some { value: "M1 v4 full-tree rust emit probe (v2 emit)" },
-          id: none,
-          run: "bash .github/ci-floor/v4-m1-rust-emit-probe.sh",
-          shell: Bash,
-          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_DAG_EMIT_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_M1_DAG_EMIT_LOG": "${{ runner.temp }}/v4-bootstrap.shared.log", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: Some { value: 35 }
-        }, RunStep {
           name: Some { value: "v2 DAG emit parity receipt (shared closure)" },
           id: none,
           run: "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet",
@@ -353,13 +343,112 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       continue_on_error: false,
       concurrency: none
     }, {
+      id: "ci_floor_emit",
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+      steps: [RunStep {
+          name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
+          id: none,
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\necho \"CARGO_BUILD_JOBS=2\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step -- so we gate in two stages. (1) the socket's\n# PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,\n# ctrl#1419); a missing/unwritable dir -> cold build. (2) actively\n# health-probe the server: `--start-server` is idempotent (no-op if up,\n# else starts + WARMS it) and `--show-stats` forces the SAME client->server\n# round-trip the compile will use. Why (2): the dir test only proves sccache\n# COULD start, not that the server is reachable -- a lazily-started server\n# from a prior job can be mid-idle-shutdown exactly as this job's first\n# `rustc -vV` connects, failing the build HARD with \"failed to read response\n# header\" (observed 2026-06-04, run 26985377093). Probing here catches a\n# sick/unreachable server and degrades to a cold build (::warning) instead\n# of a hard mid-build failure. The `&&` chain runs in an `if` condition, so\n# a probe failure under `set -e` selects the cold branch, never aborts.\n# Fails SAFE at every stage; dissolve-on-arrival (real fix: ci.dag cache projection).\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ] \\\n     && sccache --start-server >/dev/null 2>&1 \\\n     && sccache --show-stats >/dev/null 2>&1; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold\"\nfi\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Checkout" },
+          id: none,
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          with: { "fetch-depth": "0" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Rust" },
+          id: none,
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          with: { "cache": "false", "rustflags": "" },
+          env: { "HOME": "${{ runner.temp }}" },
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Cache Cargo (ci floor)" },
+          id: none,
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          with: { "path": "${{ runner.temp }}/cargo/registry/index/\n${{ runner.temp }}/cargo/registry/cache/\n${{ runner.temp }}/cargo/git/db/\ntarget/\n", "key": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-\n" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Cache gunbc binary (v4 floor)" },
+          id: Some { value: "v4-v2-bin" },
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-\n" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Build v2 compiler (v4 floor)" },
+          id: none,
+          run: "cargo build -p v2-compiler --release",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "steps.v4-v2-bin.outputs.cache-hit != 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "M1 v4 full-tree rust emit probe (v2 emit)" },
+          id: none,
+          run: "bash .github/ci-floor/v4-m1-rust-emit-probe.sh",
+          shell: Bash,
+          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_DAG_EMIT_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_M1_DAG_EMIT_LOG": "${{ runner.temp }}/v4-bootstrap.shared.log", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: Some { value: 35 }
+        }],
+      needs: [],
+      env: none,
+      outputs: none,
+      if_condition: Some { value: "github.event.pull_request.draft != true" },
+      strategy: none,
+      timeout_minutes: Some { value: 60 },
+      continue_on_error: false,
+      concurrency: none
+    }, {
       id: "ci",
       name: none,
       runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [RunStep {
           name: Some { value: "Validate prerequisites (fail-closed under skipped/failed deps)" },
           id: none,
-          run: "set -euo pipefail\nif [[ \"${{ needs.affected.result }}\" != \"success\" ]]; then\n  echo \"::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.infra_isolation.result }}\" != \"success\" ]]; then\n  echo \"::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness + M1 rust+dag emit and DAG parity in ci_floor; infra_isolation de-priv guard green)\"\n",
+          run: "set -euo pipefail\nif [[ \"${{ needs.affected.result }}\" != \"success\" ]]; then\n  echo \"::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.ci_floor_emit.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor_emit job did not succeed (result=${{ needs.ci_floor_emit.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.infra_isolation.result }}\" != \"success\" ]]; then\n  echo \"::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness + DAG parity in ci_floor + M1 rust+dag emit in ci_floor_emit; infra_isolation de-priv guard green)\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -369,7 +458,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "ci receipt (section 11.7.1 floor)" },
           id: none,
-          run: "echo \"::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness + M1 rust+dag emit + DAG parity)\"\n",
+          run: "echo \"::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness + DAG parity) + ci_floor_emit (M1 rust+dag emit)\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -377,7 +466,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["affected", "ci_floor", "infra_isolation"],
+      needs: ["affected", "ci_floor", "ci_floor_emit", "infra_isolation"],
       env: none,
       outputs: none,
       if_condition: Some { value: "${{ always() && github.event.pull_request.draft != true }}" },
@@ -386,7 +475,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       continue_on_error: false,
       concurrency: none
     }],
-  env: { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings" },
+  env: { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings", "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24": "true" },
   permissions: Some {
   value: {
       contents: PermRead,
