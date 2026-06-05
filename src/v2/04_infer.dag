@@ -4882,7 +4882,13 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
   let pt = param_node_type_expr(n: p)
   let pname = param_node_name_at(n: p, source_indices: source_indices)
   let tname = authored_name_at(source_indices: source_indices, node: pt)
-  ((pt.children |> count == 0 && pt.connective == NoConnective) && (pname != "")) && pname == tname
+  // Bare-leaf type AND self-named (value-name == type-name, e.g. `T: T`,
+  // `U: U`). Self-naming distinguishes a generic decl from a concrete-typed
+  // value param (`x: Int`, `node: Node` — names differ). is_type_variable_name
+  // is OR'd as a fallback for the canonical names, but `name == name` is what
+  // catches off-set generics like U.
+  (pt.children |> count == 0 && pt.connective == NoConnective)
+    && (((pname != "") && (pname == tname)) || is_type_variable_name(name: tname))
 }
 
 // Bind generic names by unifying a value-formal against the actual arg type.
