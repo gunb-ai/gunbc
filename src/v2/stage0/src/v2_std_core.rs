@@ -147,14 +147,6 @@ pub struct FieldSummary {
     pub value_shape: FieldValueShape,
 }
 
-pub fn is_type_variable_name(name: String) -> bool {
-    (((((name.clone().as_str() == "T".to_string().as_str())
-        || (name.clone().as_str() == "K".to_string().as_str()))
-        || (name.clone().as_str() == "V".to_string().as_str()))
-        || (name.clone().as_str() == "MappedElement".to_string().as_str()))
-        || (name.clone().as_str() == "FoldAccumulator".to_string().as_str()))
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum InferredNode {

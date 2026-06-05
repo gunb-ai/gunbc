@@ -26,7 +26,7 @@ import v2.std.core {
   ErrorNode, make_error_node, is_error_diagnostic,
   InternalError, TypeMismatch, VariantCollision,
   resource_use_name_at, resource_use_resource,
-  kernel_type_set, is_kernel_type, is_type_variable_name,
+  kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
@@ -2055,7 +2055,24 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
             let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { SubValueUnknown }
             match exp.params |> skip(pair.first) |> first {
-              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp), provenance: param_prov)
+              Some { value: cp } =>
+                // The expected (formal) param type comes from the RAW, unresolved
+                // signature: a generic-HOF formal like bind_outcome's `f: fn(T) -> U`
+                // carries the bare deferred type-variable name T as the lambda param's
+                // type. Binding the lambda param to that raw name makes a field access
+                // on it cascade to an error-typed base (the success type of Outcome<T>
+                // is never propagated here — full static generic instantiation is the
+                // separate roadmap (A) dissolution). Route ONLY the fixed deferred set
+                // (is_type_variable_name) to a type-variable node so the field access
+                // takes the graceful type-var path and eval runs the concrete runtime
+                // value. Fail-closed: an off-set generic (e.g. U) stays raw and still
+                // errors; concrete formals (Edge, Node, Int, ...) are untouched.
+                let cp_type = param_node_type_expr(n: cp)
+                let is_bare_type_var = cp_type.children |> count == 0
+                  && cp_type.connective == NoConnective
+                  && is_type_variable_name(name: cp_type.name)
+                let bound_type = if is_bare_type_var { type_variable_node(id: cp_type.name) } else { cp_type }
+                extend_scope(scope: acc, name: pair.second, resolved: bound_type, provenance: param_prov)
               None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
             }
           )
@@ -4837,8 +4854,12 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 // Build type environment for a single module
 // =========================================================================
 
-// is_type_variable_name: single-sourced into v2.std.core (imported above)
-// so the leaf not-found resolver (infer_resolve) can share the same set.
+// Names from the algebra type system that should not leak as ambient
+// type bindings when importing from std.types. These are template
+// metavariables, not user-facing type definitions.
+fn is_type_variable_name(name: String) -> Bool {
+  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+}
 
 // Merge type bindings from parent environments, filtering out algebra
 // type variable names that should not be visible to importing modules.

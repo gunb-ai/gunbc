@@ -26,7 +26,7 @@ import v2.std.core {
   make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
   make_transport_node, local_transport_node,
   is_local_transport, transport_request_body,
-  is_kernel_type, is_container_type, is_type_variable_name,
+  is_kernel_type, is_container_type,
   with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
@@ -36,7 +36,6 @@ import v2.std.core {
 import v2.compiler.infer_types {
   resolved_type, child_type_node, node_is_keyed_collection
 }
-import v2.compiler.infer_method { type_variable_node }
 import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
@@ -434,31 +433,17 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
         None =>
-          let name = authored_name(env: env, node: n)
-          // Deferred algebra type-variable names (e.g. the success type T of
-          // Outcome<T> threaded through bind_outcome, fold accumulators) reach
-          // here unbound: lookup_type_for cannot resolve a generic parameter to
-          // a concrete declaration. Route them to a type-variable node so a
-          // downstream field access takes the existing graceful type-var path
-          // instead of cascading on an error-typed base. This joins the
-          // deferral infer already grants these names (collect_parent_bindings_
-          // filtered excludes them from ambient bindings); a genuine unknown
-          // name — any off-set generic — still falls through to UnresolvedType.
-          if is_type_variable_name(name: name) {
-            NodeResolveResult { resolved: type_variable_node(id: name), diagnostics: [] }
+          let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
+          let n_is_callable = n.params |> count > 0
+          let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+          // Arrow nodes (callable types) handled by has_structure above.
+          // Dynamic/Error sentinel names dissolved — no .dag source declares them.
+          if is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error || n_is_callable {
+            NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
-            let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
-            let n_is_callable = n.params |> count > 0
-            let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
-            // Arrow nodes (callable types) handled by has_structure above.
-            // Dynamic/Error sentinel names dissolved — no .dag source declares them.
-            if is_kernel_type(name: name) || n_is_type_var || n_is_error || n_is_callable {
-              NodeResolveResult { resolved: n, diagnostics: [] }
-            } else {
-              NodeResolveResult {
-                resolved: n,
-                diagnostics: [make_error_node(diagnostic: UnresolvedType { name: name, span: n.span }, module_name: module_name)]
-              }
+            NodeResolveResult {
+              resolved: n,
+              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
             }
           }
       }
