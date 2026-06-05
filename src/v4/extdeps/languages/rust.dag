@@ -121,6 +121,7 @@ import v4.std.target_model {
   target_model_edge_collection_realization,
   target_model_edge_use_site_ownership_realizations,
   target_model_edge_reference_layer_tokens,
+  target_model_edge_value_semantics_carriers,
   TargetUseSiteOwnershipRealization,
   TargetUseSiteOwnershipSourceProjection,
   TargetOwnershipUseSite,
@@ -152,6 +153,7 @@ import v4.std.target_model {
   target_carrier_algebra_inhabitance_decl_node,
   target_carrier_probe_heap_node,
   target_use_site_ownership_catalog_node,
+  target_value_semantics_carriers_node,
   target_reference_layer_tokens_node,
   TargetCollectionRealization,
   TargetCollectionReprKind,
@@ -1280,6 +1282,34 @@ fn rust_declared_inhabitants_root() -> Node {
   }
 }
 
+// Value-semantics (Copy) classifier — the single source for Rust carrier
+// Copy-ness. Every Rust scalar is Copy EXCEPT str (heap-backed, move-only):
+// integers/floats/bool/char/unit/never are Copy. The value-semantics carrier set
+// is DERIVED from this classifier (not a separate hand-listed ledger).
+fn rust_scalar_is_copy(scalar: RustScalar) -> Bool {
+  match scalar {
+    StrScalar => false
+    _ => true
+  }
+}
+
+// Value-semantics carrier atom identities = the scalar inhabitants whose RustScalar
+// is Copy. These are exactly the scalar inhabitants rust_declared_inhabitants_root
+// enumerates, MINUS str (the sole non-Copy scalar per rust_scalar_is_copy).
+// [CONCESSION, flagged: expressed as the inhabitant-identity list rather than a
+// walk over a (RustScalar, inhabitant-id) table because the model has no co-indexed
+// scalar↔inhabitant-id mapping; rust_scalar_is_copy remains the single Copy
+// authority and str is the one deliberate exclusion below.]
+fn rust_value_semantics_carrier_atoms() -> List<Symbol> {
+  [
+    rust_inhabitant_i8, rust_inhabitant_i16, rust_inhabitant_i32, rust_inhabitant_i64, rust_inhabitant_i128,
+    rust_inhabitant_u8, rust_inhabitant_u16, rust_inhabitant_u32, rust_inhabitant_u64, rust_inhabitant_u128,
+    rust_inhabitant_isize, rust_inhabitant_usize,
+    rust_inhabitant_f32, rust_inhabitant_f64,
+    rust_inhabitant_bool, rust_inhabitant_char, rust_inhabitant_unit, rust_inhabitant_never
+  ]
+}
+
 fn rust_mvp1_selection_policy_node() -> Node {
   rust_inhabitant_i32_node()
 }
@@ -1817,6 +1847,16 @@ fn rust_mvp1_target_model_core_edges() -> List<Edge> {
       target: target_use_site_ownership_catalog_node(
         rows: rust_sg_rc_use_site_ownership_catalog()
       )
+    ),
+    rust_named_edge(
+      name: target_model_edge_value_semantics_carriers,
+      target: target_value_semantics_carriers_node(
+        atoms: rust_value_semantics_carrier_atoms()
+      )
+    ),
+    rust_named_edge(
+      name: target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
     )
   ]
 }

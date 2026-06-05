@@ -2665,6 +2665,11 @@ data target_model_edge_use_site_ownership_realizations: Symbol = target_model_ed
 
 data target_model_edge_reference_layer_tokens: Symbol = target_model_edge_reference_layer_tokens
 
+// Value-semantics (Copy) carrier set — the target-authored discrimination the
+// use-site-ownership lookup short-circuits on (Copy ⇒ by-value). Atom-identity
+// keyed, mirroring how the reference-ownership catalog matches carriers.
+data target_model_edge_value_semantics_carriers: Symbol = target_model_edge_value_semantics_carriers
+
 // 🟢 coproduct dissolution — SG-RC ownership boundary role axis (four use sites; not Node.kind).
 type TargetOwnershipUseSite
   = OwnershipAtFunctionReturn
@@ -3236,6 +3241,41 @@ fn target_use_site_ownership_catalog_node(
       empty: Empty,
       cons: fn(acc, row) { target_use_site_ownership_catalog_snoc_edge(acc: acc, row: row) }
     )
+  }
+}
+
+// Value-semantics carrier set encode/decode (a Conj of bare atom nodes keyed by
+// identity — mirrors how carriers are encoded elsewhere). Encodes the target's
+// Copy carrier atom-identities for the bundle; the lookup decodes + matches.
+fn target_value_semantics_carrier_atom_node(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: Empty }
+}
+
+fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: atoms,
+      empty: Empty,
+      cons: fn(acc, id) { list_snoc_item(xs: acc, item: target_value_semantics_carrier_atom_node(id: id)) }
+    )
+  }
+}
+
+fn target_value_semantics_carriers_from_node(node: Node) -> List<Symbol> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      fold_list(
+        xs: node.children,
+        empty: Empty,
+        cons: fn(acc, child) {
+          match child.kind {
+            TypeNode { connective: Atom { identity: id } } => list_snoc_item(xs: acc, item: id)
+            _ => acc
+          }
+        }
+      )
+    _ => Empty
   }
 }
 

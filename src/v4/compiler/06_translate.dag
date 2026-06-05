@@ -200,6 +200,11 @@ import v4.std.target_model {
   OwnershipAtStructField,
   target_model_edge_use_site_ownership_realizations,
   target_model_edge_reference_layer_tokens,
+  target_model_edge_value_semantics_carriers,
+  target_value_semantics_carriers_from_node,
+  TargetCarrierOwnership,
+  CarrierOwnershipByValue,
+  CarrierOwnershipByReference,
   target_use_site_ownership_lookup_in_catalog_node,
   target_use_site_ownership_lookup_miss,
   target_use_site_ownership_lookup_miss_diagnostic,
@@ -3339,6 +3344,25 @@ fn translate_use_site_ownership_catalog_from_model(
   }
 }
 
+// Value-semantics (Copy) carrier set from the target bundle. Edge absent ⇒ empty
+// (a target without value-semantics modeling behaves exactly as before: every
+// carrier flows to the reference catalog). Decoded to the Atom-identity list the
+// authority lookup matches on.
+fn translate_value_semantics_carriers_from_model(target: TargetModel) -> Outcome<List<Symbol>> {
+  match target_bundle_optional_child(
+    target: target,
+    edge_name: target_model_edge_value_semantics_carriers
+  ) {
+    Accepted { value: optional_node, diagnostics: d } =>
+      match optional_node {
+        None => Accepted { value: Empty, diagnostics: d }
+        Some { value: node } =>
+          Accepted { value: target_value_semantics_carriers_from_node(node: node), diagnostics: d }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
 fn translate_apply_use_site_ownership_to_projected_type(
   projected: Node,
   source_carrier: Node,
@@ -3530,22 +3554,32 @@ fn translate_apply_use_site_ownership_to_type_shell(
               source_carrier: source_carrier
             ),
             f: fn(catalog) {
-              match target_use_site_ownership_lookup_in_catalog_node(
-                catalog: catalog,
-                source_carrier: source_carrier,
-                use_site: use_site
-              ) {
-                Accepted { value: row, diagnostics: d } =>
-                  outcome_accepted(
-                    target_reference_layer_apply_type_emitted(
-                      inner: shell,
-                      layer: row.reference_layer,
-                      projection: projection,
-                      tokens: tokens
-                    )
-                  )
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              }
+              bind_outcome(
+                o: translate_value_semantics_carriers_from_model(target: target),
+                f: fn(value_semantics_carriers) {
+                  match target_use_site_ownership_lookup_in_catalog_node(
+                    catalog: catalog,
+                    value_semantics_carriers: value_semantics_carriers,
+                    source_carrier: source_carrier,
+                    use_site: use_site
+                  ) {
+                    Accepted { value: ownership, diagnostics: d } =>
+                      match ownership {
+                        CarrierOwnershipByValue => outcome_accepted(shell)
+                        CarrierOwnershipByReference { realization: row } =>
+                          outcome_accepted(
+                            target_reference_layer_apply_type_emitted(
+                              inner: shell,
+                              layer: row.reference_layer,
+                              projection: projection,
+                              tokens: tokens
+                            )
+                          )
+                      }
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  }
+                }
+              )
             }
           )
         }
@@ -3884,12 +3918,19 @@ fn translate_apply_use_site_ownership_to_value_expression(
           source_carrier: source_carrier
         ),
         f: fn(catalog) {
+          bind_outcome(
+            o: translate_value_semantics_carriers_from_model(target: target),
+            f: fn(value_semantics_carriers) {
           match target_use_site_ownership_lookup_in_catalog_node(
             catalog: catalog,
+            value_semantics_carriers: value_semantics_carriers,
             source_carrier: source_carrier,
             use_site: use_site
           ) {
-            Accepted { value: row, diagnostics: d } =>
+            Accepted { value: ownership, diagnostics: d } =>
+              match ownership {
+                CarrierOwnershipByValue => outcome_accepted(expr)
+                CarrierOwnershipByReference { realization: row } =>
               outcome_accepted(
                 target_reference_layer_apply_value_expression(
                   inner: expr,
@@ -3897,8 +3938,11 @@ fn translate_apply_use_site_ownership_to_value_expression(
                   tokens: tokens
                 )
               )
+              }
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
           }
+            }
+          )
         }
       )
     }
