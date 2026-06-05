@@ -5,11 +5,15 @@
 //! `workflow/refinement_brand_disjointness_is_sugar_eval.dag`). These Rust tests
 //! print load-bearing compile facts and host explicit lock reruns — they must not
 //! hard-fail the shared `cargo test -p v3-compiler --test integration` suite.
+//!
+//! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+//! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:43,63); this file hosts
+//! `compile_to_dag` program-matrix evidence until the v4 corpus eval runner is the
+//! sole consumer. Dissolves when `.dag` `TestClaim` rows or generated harness
+//! coverage own the compile-time matrix without this hand-Rust receipt.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::CompileError;
-
-const FIXTURE: &str = "dsl/std/integer.dag";
 
 /// Did this source compile cleanly (Accepted)?
 fn program_compiles(source: &str, file: &str) -> bool {
