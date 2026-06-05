@@ -1110,12 +1110,10 @@ fn locate_workspace_members_region<'a>(
     let after_begin_marker = begin + begin_marker.len();
     let body_start = match content[after_begin_marker..].find('\n') {
         Some(rel) => after_begin_marker + rel + 1,
-        None => {
-            return Err(
-                "generated-members BEGIN marker in top-level Cargo.toml is not followed by a newline"
-                    .to_string(),
-            )
-        }
+        None => return Err(
+            "generated-members BEGIN marker in top-level Cargo.toml is not followed by a newline"
+                .to_string(),
+        ),
     };
     Ok((
         &content[..body_start],
@@ -1127,8 +1125,7 @@ fn locate_workspace_members_region<'a>(
 fn verify_workspace_members(workspace: &Path) -> Result<(), String> {
     let (begin, end, region) = workspace_members_markers_and_region();
     let path = workspace.join("Cargo.toml");
-    let content =
-        fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let (_, body, _) = locate_workspace_members_region(&content, &begin, &end)?;
     if body == format!("{region}\n") {
         Ok(())
@@ -1142,8 +1139,7 @@ fn verify_workspace_members(workspace: &Path) -> Result<(), String> {
 fn write_workspace_members(workspace: &Path) -> Result<(), String> {
     let (begin, end, region) = workspace_members_markers_and_region();
     let path = workspace.join("Cargo.toml");
-    let content =
-        fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let (prefix, _, suffix) = locate_workspace_members_region(&content, &begin, &end)?;
     let updated = format!("{prefix}{region}\n{suffix}");
     if updated != content {
