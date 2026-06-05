@@ -1282,25 +1282,22 @@ fn rust_declared_inhabitants_root() -> Node {
   }
 }
 
-// Value-semantics (Copy) classifier — the single source for Rust carrier
-// Copy-ness. Every Rust scalar is Copy EXCEPT str (heap-backed, move-only):
-// integers/floats/bool/char/unit/never are Copy. The value-semantics carrier set
-// is DERIVED from this classifier (not a separate hand-listed ledger).
-fn rust_scalar_is_copy(scalar: RustScalar) -> Bool {
-  match scalar {
-    StrScalar => false
-    _ => true
-  }
-}
-
-// Value-semantics carrier atom identities = the SURFACE-SPELLING symbols of the
-// scalars whose RustScalar is Copy (the use-site-ownership carrier is keyed by
-// surface spelling, e.g. rust_surface_spelling_i32). These are exactly rust's
-// scalar surface spellings MINUS str (the sole non-Copy scalar per
-// rust_scalar_is_copy). [CONCESSION, flagged: a surface-spelling list rather than
-// a walk over a (RustScalar, surface-spelling) table because the model has no
-// co-indexed scalar↔spelling mapping; rust_scalar_is_copy stays the single Copy
-// authority and str is the one deliberate exclusion below.]
+// Value-semantics (Copy) carrier atom identities — the SINGLE, hand-maintained
+// authority for which Rust carriers own by value. Every Rust scalar is Copy EXCEPT
+// str (heap-backed, move-only): integers/floats/bool/char/unit/never are Copy. Each
+// Copy scalar can present at the ownership lookup as either of two carrier-identity
+// forms, so BOTH are listed: the surface spelling (type-shell path, e.g.
+// rust_surface_spelling_i32) and the inhabitant identity (value-expr path, e.g.
+// rust_inhabitant_i32). str is excluded from both.
+//
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10)
+// — feature: value-semantics-carrier-derivation — dissolve-on: a co-indexed
+// (RustScalar → surface_spelling, inhabitant) table exists so this set is DERIVED by
+// walking the scalars filtered by a single Copy predicate (str-exclusion then flows
+// from one source). Until then this list is NOT mechanically derived and MUST be kept
+// in sync with the Rust scalar set by hand. (A `rust_scalar_is_copy` classifier was
+// removed here: with no co-indexed scalar↔atom table it had no live caller, so it was
+// a second, drift-prone authority for Copy-ness rather than the single source.)
 fn rust_value_semantics_carrier_atoms() -> List<Symbol> {
   // Both carrier-identity forms a Copy scalar can present as at the lookup: the
   // surface spelling (type-shell path) and the inhabitant identity (value-expr
