@@ -121,6 +121,7 @@ import v4.std.target_model {
   target_model_edge_collection_realization,
   target_model_edge_use_site_ownership_realizations,
   target_model_edge_reference_layer_tokens,
+  target_model_edge_value_semantics_carriers,
   TargetUseSiteOwnershipRealization,
   TargetUseSiteOwnershipSourceProjection,
   TargetOwnershipUseSite,
@@ -152,6 +153,7 @@ import v4.std.target_model {
   target_carrier_algebra_inhabitance_decl_node,
   target_carrier_probe_heap_node,
   target_use_site_ownership_catalog_node,
+  target_value_semantics_carriers_node,
   target_reference_layer_tokens_node,
   TargetCollectionRealization,
   TargetCollectionReprKind,
@@ -1280,6 +1282,40 @@ fn rust_declared_inhabitants_root() -> Node {
   }
 }
 
+// Value-semantics (Copy) carrier atom identities — the SINGLE, hand-maintained
+// authority for which Rust carriers own by value. Every Rust scalar is Copy EXCEPT
+// str (heap-backed, move-only): integers/floats/bool/char/unit/never are Copy. Each
+// Copy scalar can present at the ownership lookup as either of two carrier-identity
+// forms, so BOTH are listed: the surface spelling (type-shell path, e.g.
+// rust_surface_spelling_i32) and the inhabitant identity (value-expr path, e.g.
+// rust_inhabitant_i32). str is excluded from both.
+//
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10)
+// — feature: value-semantics-carrier-derivation — dissolve-on: a co-indexed
+// (RustScalar → surface_spelling, inhabitant) table exists so this set is DERIVED by
+// walking the scalars filtered by a single Copy predicate (str-exclusion then flows
+// from one source). Until then this list is NOT mechanically derived and MUST be kept
+// in sync with the Rust scalar set by hand. (A `rust_scalar_is_copy` classifier was
+// removed here: with no co-indexed scalar↔atom table it had no live caller, so it was
+// a second, drift-prone authority for Copy-ness rather than the single source.)
+fn rust_value_semantics_carrier_atoms() -> List<Symbol> {
+  // Both carrier-identity forms a Copy scalar can present as at the lookup: the
+  // surface spelling (type-shell path) and the inhabitant identity (value-expr
+  // path). str (non-Copy) is excluded from both.
+  [
+    rust_surface_spelling_i8, rust_surface_spelling_i16, rust_surface_spelling_i32, rust_surface_spelling_i64, rust_surface_spelling_i128,
+    rust_surface_spelling_u8, rust_surface_spelling_u16, rust_surface_spelling_u32, rust_surface_spelling_u64, rust_surface_spelling_u128,
+    rust_surface_spelling_isize, rust_surface_spelling_usize,
+    rust_surface_spelling_f32, rust_surface_spelling_f64,
+    rust_surface_spelling_bool, rust_surface_spelling_char, rust_surface_spelling_unit, rust_surface_spelling_never,
+    rust_inhabitant_i8, rust_inhabitant_i16, rust_inhabitant_i32, rust_inhabitant_i64, rust_inhabitant_i128,
+    rust_inhabitant_u8, rust_inhabitant_u16, rust_inhabitant_u32, rust_inhabitant_u64, rust_inhabitant_u128,
+    rust_inhabitant_isize, rust_inhabitant_usize,
+    rust_inhabitant_f32, rust_inhabitant_f64,
+    rust_inhabitant_bool, rust_inhabitant_char, rust_inhabitant_unit, rust_inhabitant_never
+  ]
+}
+
 fn rust_mvp1_selection_policy_node() -> Node {
   rust_inhabitant_i32_node()
 }
@@ -1817,6 +1853,16 @@ fn rust_mvp1_target_model_core_edges() -> List<Edge> {
       target: target_use_site_ownership_catalog_node(
         rows: rust_sg_rc_use_site_ownership_catalog()
       )
+    ),
+    rust_named_edge(
+      name: target_model_edge_value_semantics_carriers,
+      target: target_value_semantics_carriers_node(
+        atoms: rust_value_semantics_carrier_atoms()
+      )
+    ),
+    rust_named_edge(
+      name: target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
     )
   ]
 }
