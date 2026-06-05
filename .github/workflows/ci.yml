@@ -67,15 +67,27 @@ jobs:
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
         # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
         # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
-        # at this pre-cargo step -- gate on the socket's PARENT DIR being writable, not the socket file:
-        # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
-        # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
-        # dir -> cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
-        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: ci.dag cache projection).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
-          echo "::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold"
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -120,15 +132,27 @@ jobs:
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
         # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
         # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
-        # at this pre-cargo step -- gate on the socket's PARENT DIR being writable, not the socket file:
-        # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
-        # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
-        # dir -> cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
-        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: ci.dag cache projection).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
-          echo "::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold"
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -148,7 +172,7 @@ jobs:
       run: git fetch origin main:refs/remotes/origin/main
     - name: Detect affected components
       id: detect
-      run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
     - name: Emit Wave 3 shadow selection receipt (Class C, non-blocking)
       continue-on-error: true
       run: cargo run -p ci_affected_components --bin emit-ci-wave3-shadow-receipt -- "${{ github.event_name }}"
@@ -161,7 +185,7 @@ jobs:
     # actual_run_minutes await a follow-up aggregator job that reads GHA job timings via the API, so
     # saved_minutes is not yet populated from real run time (actual_run_minutes defaults to 0).
     - name: Emit affected-set CI kill-criterion receipt
-      run: cargo run -p ci_affected_components --bin emit-affected-set-ci-receipt -- "${{ github.event_name }}" "$RUNNER_TEMP/affected-set-ci-receipt.json" --estimated-full-run-minutes 15
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_affected_components --bin emit-affected-set-ci-receipt -- "${{ github.event_name }}" "$RUNNER_TEMP/affected-set-ci-receipt.json" --estimated-full-run-minutes 15
     - name: Upload affected-set CI receipt
       uses: actions/upload-artifact@v4
       with:
@@ -187,15 +211,27 @@ jobs:
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
         # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
         # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
-        # at this pre-cargo step -- gate on the socket's PARENT DIR being writable, not the socket file:
-        # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
-        # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
-        # dir -> cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
-        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: ci.dag cache projection).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
-          echo "::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold"
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
