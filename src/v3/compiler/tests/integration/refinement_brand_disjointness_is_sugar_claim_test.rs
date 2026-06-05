@@ -1,17 +1,19 @@
-//! Claim #1 (§11): reproducible **evidence** for `refinement_brand_disjointness_is_sugar`.
+//! Claim #1 (§11): reproducible **measurement** for `refinement_brand_disjointness_is_sugar`.
 //!
-//! The tracked-red **lock** lives in the v4 claim corpus
-//! (`src/v4/test/claim/manual/refinement_brand_disjointness_is_sugar.dag` +
-//! `workflow/refinement_brand_disjointness_is_sugar_eval.dag`). These Rust tests
-//! print load-bearing compile facts and host explicit lock reruns — they must not
-//! hard-fail the shared `cargo test -p v3-compiler --test integration` suite.
+//! **Authoritative lock** — v3 `compile_to_dag` on real branded source. The v4 frontend
+//! is NOT in the measurement loop today (see
+//! `src/v4/test/claim/manual/refinement_brand_disjointness_is_sugar_scope.dag`).
+//!
+//! Tracked-red rows pin live measured `(refinement_accepts, desugared_accepts)` gaps while
+//! sugar and desugared disagree. **DISSOLUTION:** when a discriminating row goes green,
+//! flip `Some((true, false))` → `None` so the row becomes a permanent regression guard —
+//! a reintroduced gap then fails (`control row must agree`).
 //!
 //! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
 //! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
 //! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:43,63); this file hosts
-//! `compile_to_dag` program-matrix evidence until the v4 corpus eval runner is the
-//! sole consumer. Dissolves when `.dag` `TestClaim` rows or generated harness
-//! coverage own the compile-time matrix without this hand-Rust receipt.
+//! `compile_to_dag` program-matrix measurement until a v4 corpus compile primitive can
+//! observe branded-program accept/reject directly.
 
 use v3_compiler::compile_to_dag;
 
@@ -84,78 +86,77 @@ fn desugared_accepts_raw_literal() -> bool {
     program_compiles(DESUGAR_RAW_LITERAL, "claim1_desugar_raw_literal.v3")
 }
 
-/// Claim #1 lock: refinement sugar and hand-desugared must agree on every
-/// program in the matrix. Mismatch = fork/shelve, not sugar.
-fn assert_refinement_matches_desugared(
+/// Brand enforces nominal disjointness when refinement **rejects** the cross-brand call.
+fn brand_enforces_disjointness() -> bool {
+    !refinement_accepts_cross_brand()
+}
+
+/// Claim #1: sugar and desugared must agree, or the row must match a tracked-red gap.
+///
+/// `tracked_red_gap = None` — control / regression guard: disagreement fails closed.
+/// `tracked_red_gap = Some((r, d))` — pins the live measured gap while shelved.
+fn assert_claim1_agreement_or_tracked_gap(
     program: &str,
     refinement_accepts: bool,
     desugared_accepts: bool,
+    tracked_red_gap: Option<(bool, bool)>,
 ) {
+    if refinement_accepts == desugared_accepts {
+        return;
+    }
+    let expected = tracked_red_gap.unwrap_or_else(|| {
+        panic!(
+            "Claim #1 regression guard: `{program}` — sugar/desugared disagree \
+             (refinement={refinement_accepts}, desugared={desugared_accepts}); \
+             control row must agree"
+        )
+    });
     assert_eq!(
-        refinement_accepts, desugared_accepts,
-        "Claim #1 refinement_brand_disjointness_is_sugar: `{program}` — \
-         refinement sugar accepts={refinement_accepts}, \
-         hand-desugared accepts={desugared_accepts}; \
-         divergence means the refinement forked/shelved"
+        (refinement_accepts, desugared_accepts),
+        expected,
+        "Claim #1 tracked-red: unexpected measured gap for `{program}`"
     );
 }
 
-/// Claim #1 lock — RED until brand enforces nominal disjointness; run explicitly
-/// to verify: `cargo test -p v3-compiler claim1_refinement_brand_disjointness_cross_brand -- --ignored`
 #[test]
-#[ignore = "claim #1 lock — RED until brand enforces nominal disjointness; tracked in v4 claim corpus"]
 fn claim1_refinement_brand_disjointness_cross_brand_matches_desugared() {
-    assert_refinement_matches_desugared(
+    // DISSOLUTION: when this row goes green, change Some((true, false)) -> None.
+    assert_claim1_agreement_or_tracked_gap(
         "cross-brand call f(BrandB) where f: BrandA -> Int",
         refinement_accepts_cross_brand(),
         desugared_accepts_cross_brand(),
+        Some((true, false)),
     );
 }
 
 #[test]
 fn claim1_refinement_brand_disjointness_same_brand_matches_desugared() {
-    assert_refinement_matches_desugared(
+    assert_claim1_agreement_or_tracked_gap(
         "same-brand call f(BrandA) where f: BrandA -> Int",
         refinement_accepts_same_brand(),
         desugared_accepts_same_brand(),
+        None,
     );
 }
 
-/// Claim #1 lock — RED until brand enforces nominal disjointness; run explicitly
-/// to verify: `cargo test -p v3-compiler claim1_refinement_brand_disjointness_raw_literal -- --ignored`
 #[test]
-#[ignore = "claim #1 lock — RED until brand enforces nominal disjointness; tracked in v4 claim corpus"]
 fn claim1_refinement_brand_disjointness_raw_literal_matches_desugared() {
-    assert_refinement_matches_desugared(
+    // DISSOLUTION: when this row goes green, change Some((true, false)) -> None.
+    assert_claim1_agreement_or_tracked_gap(
         "raw Int literal call f(1) where f: BrandA -> Int",
         refinement_accepts_raw_literal(),
         desugared_accepts_raw_literal(),
+        Some((true, false)),
     );
 }
 
-/// Empirical verdict reporter — always runs, prints load-bearing facts for
-/// the operator realism gate (does not affect pass/fail of the locks above).
 #[test]
-fn claim1_refinement_brand_disjointness_empirical_verdict() {
-    eprintln!("=== Claim #1 empirical verdict (refinement_brand_disjointness_is_sugar) ===");
-    eprintln!(
-        "cross-brand:  refinement_accepts={} desugared_accepts={}",
-        refinement_accepts_cross_brand(),
-        desugared_accepts_cross_brand()
-    );
-    eprintln!(
-        "same-brand:   refinement_accepts={} desugared_accepts={}",
-        refinement_accepts_same_brand(),
-        desugared_accepts_same_brand()
-    );
-    eprintln!(
-        "raw-literal:  refinement_accepts={} desugared_accepts={}",
-        refinement_accepts_raw_literal(),
-        desugared_accepts_raw_literal()
-    );
-    eprintln!(
-        "brand_enforces_disjointness={}",
-        (!refinement_accepts_cross_brand() && !desugared_accepts_cross_brand())
-            || refinement_accepts_cross_brand() == desugared_accepts_cross_brand()
+fn claim1_refinement_brand_disjointness_brand_enforces_disjointness() {
+    // DISSOLUTION: when brand desugars, change assert_eq!(..., false) -> assert!(brand_enforces_disjointness()).
+    assert_eq!(
+        brand_enforces_disjointness(),
+        false,
+        "Claim #1: brand does not enforce nominal disjointness while shelved \
+         (refinement accepts cross-brand)"
     );
 }

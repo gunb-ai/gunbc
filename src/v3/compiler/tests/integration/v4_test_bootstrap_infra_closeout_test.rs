@@ -59,15 +59,11 @@ const SG1B_FAILCLOSED_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/sg1b_signature_realization_failclosed.dag");
 const SG1B_FAILCLOSED_PATH: &str =
     "src/v4/test/claim/manual/sg1b_signature_realization_failclosed.dag";
-const REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_DAG: &str =
-    include_str!("../../../../v4/test/claim/manual/refinement_brand_disjointness_is_sugar.dag");
-const REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_PATH: &str =
-    "src/v4/test/claim/manual/refinement_brand_disjointness_is_sugar.dag";
-const REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_EVAL_DAG: &str = include_str!(
-    "../../../../v4/test/claim/workflow/refinement_brand_disjointness_is_sugar_eval.dag"
+const REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_SCOPE_DAG: &str = include_str!(
+    "../../../../v4/test/claim/manual/refinement_brand_disjointness_is_sugar_scope.dag"
 );
-const REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_EVAL_PATH: &str =
-    "src/v4/test/claim/workflow/refinement_brand_disjointness_is_sugar_eval.dag";
+const REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_SCOPE_PATH: &str =
+    "src/v4/test/claim/manual/refinement_brand_disjointness_is_sugar_scope.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const RUNTIME_DAG: &str = include_str!("../../../../v4/std/runtime.dag");
 const LBE_GENERATED_DAG: &str =
@@ -465,33 +461,16 @@ fn sg1b_signature_realization_failclosed_receipt_parses() {
 }
 
 #[test]
-fn claim1_refinement_brand_disjointness_is_sugar_parses() {
+fn claim1_refinement_brand_disjointness_is_sugar_scope_parses() {
     parse_module(
-        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_DAG,
-        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_PATH,
+        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_SCOPE_DAG,
+        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_SCOPE_PATH,
     );
     assert!(
-        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_DAG
-            .contains("claim_refinement_brand_disjointness_cross_brand_is_sugar")
-            && REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_DAG
-                .contains("verdict_refinement_brand_disjointness_cross_brand_is_sugar")
-            && REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_DAG.contains("run_test_claim_assert("),
-        "Claim #1 lock must wire cross-brand row through run_test_claim_assert verdict"
-    );
-}
-
-#[test]
-fn claim1_refinement_brand_disjointness_is_sugar_eval_parses() {
-    parse_module(
-        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_EVAL_DAG,
-        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_EVAL_PATH,
-    );
-    assert!(
-        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_EVAL_DAG
-            .contains("witness_claim1_refinement_brand_disjointness_tracked_red_lock")
-            && REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_EVAL_DAG
-                .contains("claim1_corpus_report_tally"),
-        "Claim #1 corpus eval must compute tracked-red verdict tally"
+        REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_SCOPE_DAG
+            .contains("witness_claim1_v4_frontend_not_in_measurement_loop")
+            && REFINEMENT_BRAND_DISJOINTNESS_IS_SUGAR_SCOPE_DAG.contains("NOT a measurement"),
+        "Claim #1 scope receipt must document v4 frontend honesty (not a vacuous-oracle lock)"
     );
 }
 

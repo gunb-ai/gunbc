@@ -888,8 +888,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (`fixtures/r3_l5_corpus/*.v3` vs embedded `TestClaim.source` — byte equality ratchet in
     // `tests/boundary/l5_cross_target_consistency.rs`).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
-    // Claim #1 (§11): `refinement_brand_disjointness_is_sugar` compile_to_dag evidence;
-    // tracked-red lock lives in v4 claim corpus + eval workflow.
+    // Claim #1 (§11): `refinement_brand_disjointness_is_sugar` compile_to_dag measurement;
+    // authoritative lock (v4 scope receipt documents frontend not in loop).
     //
     // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
     // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
