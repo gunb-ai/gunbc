@@ -1862,6 +1862,10 @@ fn rust_mvp1_target_model_core_edges() -> List<Edge> {
       target: target_value_semantics_carriers_node(
         atoms: rust_value_semantics_carrier_atoms()
       )
+    ),
+    rust_named_edge(
+      name: target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
     )
   ]
 }
