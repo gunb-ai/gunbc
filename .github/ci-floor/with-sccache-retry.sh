@@ -48,6 +48,7 @@ log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
 attempt=1
+rc=0  # initialized so the final `exit $rc` is defined even if RETRIES=0 skips the loop (set -u)
 while [ "$attempt" -le "$RETRIES" ]; do
   rc=0
   # Capture stderr to inspect the failure shape; surface it afterward so the
