@@ -1,0 +1,150 @@
+// src/v4/test/claim/workflow/manual_corpus_eval_expected.dag
+// Scope: T-38 tracked-expectation pins for the manual corpus roster (verdict arm + primary reason).
+// Status: drift gate authority — host transport mirrors `manual_corpus_eval_expected_pins` +
+// `manual_corpus_eval_host_run_specs` (single authority; no parallel bash claim-list).
+// 🟡 gated — feature:t38-testclaim-corpus-eval — bind tracked-expectation gate design (operator GO 2026-06-05).
+
+module v4.test.claim.workflow.manual_corpus_eval_expected
+
+
+import v4.compiler.eval { eval_rejected_invalid_node, eval_rejected_type_node }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.nat { length }
+import v4.std.node { Symbol }
+import v4.std.text { String }
+import v4.test.claim.lens_effect.effect_depends_on { claim_lens_effect_depends_on_runtime_verdict }
+import v4.test.claim.lens_parallelism.data_dependency {
+  claim_parallelism_data_dependency_run_test_claim_receipt
+}
+import v4.test.claim.manual.dissolution_subsumption_reverification {
+  claim_rust_language_model_emit_mechanical_reverification,
+  claim_rust_language_model_emit_subsumption_reverifies
+}
+import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.manual.manual_corpus_roster { manual_corpus_node_subject_rows }
+
+
+data run_eval_mvp2_test_claim_route_sym: Symbol = run_eval_mvp2_test_claim_route
+data run_parallelism_data_dependency_receipt_sym: Symbol = run_parallelism_data_dependency_receipt
+data run_lens_effect_depends_on_runtime_verdict_sym: Symbol = run_lens_effect_depends_on_runtime_verdict
+data run_rust_language_model_emit_mechanical_reverification_claim_sym: Symbol = run_rust_language_model_emit_mechanical_reverification_claim
+data run_rust_language_model_emit_subsumption_reverifies_sym: Symbol = run_rust_language_model_emit_subsumption_reverifies
+
+// Host-transport rejection carrier for pre-TestClaimRun interpreter failures (CDV fold site).
+data interpreter_classified_dependency_view_non_exhaustive: Symbol = interpreter_classified_dependency_view_non_exhaustive
+
+// Pass-arm sentinel for `corpus_eval_row_primary_reason` (named constant, not a bare literal).
+data corpus_eval_verdict_pass_reason: Symbol = corpus_eval_verdict_pass_reason
+
+// Per-row dissolution targets (flip pin to must-pass-green when substrate lands).
+data dissolution_target_cdv_eager_moth_810: Symbol = dissolution_target_cdv_eager_moth_810
+data dissolution_target_transform_eval: Symbol = dissolution_target_transform_eval
+data dissolution_target_subsumption_tree_eval: Symbol = dissolution_target_subsumption_tree_eval
+
+// Pin observation arm — Executed uses existing Verdict substrate at runtime; HostRejected when
+// TestClaimRun is unreachable (emit_host / host_run rejection shape at transport boundary).
+type CorpusEvalExpectedObservation
+  = ExecutedFail
+  | ExecutedPass
+  | ExecutedDeferred
+  | HostRejected
+
+
+type CorpusEvalExpectedPin {
+  claim_id: Symbol
+  observation: CorpusEvalExpectedObservation
+  primary_reason: Symbol
+  dissolution_target: Symbol
+}
+
+
+// Runtime host transport: one entry file + run_fn per modeled roster claim_id.
+type CorpusEvalHostRunSpec {
+  claim_id: Symbol
+  entry_relpath: String
+  run_fn: Symbol
+}
+
+
+data manual_corpus_eval_host_run_specs: List<CorpusEvalHostRunSpec> = [
+  CorpusEvalHostRunSpec {
+    claim_id: claim_eval_mvp2_test_claim_route,
+    entry_relpath: "src/v4/test/claim/manual/eval_runtime_mvp.dag",
+    run_fn: run_eval_mvp2_test_claim_route_sym
+  },
+  CorpusEvalHostRunSpec {
+    claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
+    entry_relpath: "src/v4/test/claim/lens_parallelism/data_dependency.dag",
+    run_fn: run_parallelism_data_dependency_receipt_sym
+  },
+  CorpusEvalHostRunSpec {
+    claim_id: claim_lens_effect_depends_on_runtime_verdict,
+    entry_relpath: "src/v4/test/claim/lens_effect/effect_depends_on.dag",
+    run_fn: run_lens_effect_depends_on_runtime_verdict_sym
+  },
+  CorpusEvalHostRunSpec {
+    claim_id: claim_rust_language_model_emit_mechanical_reverification,
+    entry_relpath: "src/v4/test/claim/manual/dissolution_subsumption_reverification.dag",
+    run_fn: run_rust_language_model_emit_mechanical_reverification_claim_sym
+  },
+  CorpusEvalHostRunSpec {
+    claim_id: claim_rust_language_model_emit_subsumption_reverifies,
+    entry_relpath: "src/v4/test/claim/manual/dissolution_subsumption_reverification.dag",
+    run_fn: run_rust_language_model_emit_subsumption_reverifies_sym
+  }
+]
+
+
+data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
+  CorpusEvalExpectedPin {
+    claim_id: claim_eval_mvp2_test_claim_route,
+    observation: ExecutedFail,
+    primary_reason: eval_rejected_invalid_node,
+    dissolution_target: dissolution_target_transform_eval
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
+    observation: HostRejected,
+    primary_reason: interpreter_classified_dependency_view_non_exhaustive,
+    dissolution_target: dissolution_target_cdv_eager_moth_810
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_lens_effect_depends_on_runtime_verdict,
+    observation: HostRejected,
+    primary_reason: interpreter_classified_dependency_view_non_exhaustive,
+    dissolution_target: dissolution_target_cdv_eager_moth_810
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_rust_language_model_emit_mechanical_reverification,
+    observation: ExecutedFail,
+    primary_reason: eval_rejected_invalid_node,
+    dissolution_target: dissolution_target_transform_eval
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_rust_language_model_emit_subsumption_reverifies,
+    observation: ExecutedFail,
+    primary_reason: eval_rejected_type_node,
+    dissolution_target: dissolution_target_subsumption_tree_eval
+  }
+]
+
+
+fn corpus_eval_expected_pins_match_host_run_specs() -> Bool {
+  length(xs: manual_corpus_eval_expected_pins) == length(xs: manual_corpus_eval_host_run_specs)
+}
+
+
+fn corpus_eval_expected_pins_match_roster_frontier() -> Bool {
+  length(xs: manual_corpus_eval_expected_pins) == length(xs: manual_corpus_node_subject_rows)
+}
+
+
+fn corpus_eval_tracked_expectation_pins_well_formed() -> Bool {
+  corpus_eval_expected_pins_match_host_run_specs()
+    && corpus_eval_expected_pins_match_roster_frontier()
+}
+
+
+// Authoring-time witness: pin table frontier + host-run spec alignment (runtime drift gate lives in CI host transport).
+data witness_corpus_eval_tracked_expectation_closed: Bool = corpus_eval_tracked_expectation_pins_well_formed()
