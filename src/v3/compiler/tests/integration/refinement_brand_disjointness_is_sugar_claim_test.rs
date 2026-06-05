@@ -155,7 +155,7 @@ fn claim1_refinement_brand_disjointness_empirical_verdict() {
     );
     eprintln!(
         "brand_enforces_disjointness={}",
-        !refinement_accepts_cross_brand() && desugared_accepts_cross_brand() == false
+        (!refinement_accepts_cross_brand() && !desugared_accepts_cross_brand())
             || refinement_accepts_cross_brand() == desugared_accepts_cross_brand()
     );
 }
