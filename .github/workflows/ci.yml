@@ -326,8 +326,16 @@ jobs:
     - name: v2 stage0 freshness receipt
       timeout-minutes: 30
       run: cargo run --release -p v2-compiler --bin regen_stage0 -- --verify
+    # `--release` is load-bearing here, not cosmetic: the build + stage0 steps above compile
+    # v2-compiler in the RELEASE profile. A debug `cargo test` lives in a different profile dir
+    # (target/debug vs target/release) and shares ZERO artifacts with them, so it re-compiles the
+    # whole v2-compiler closure from scratch (~64s/run, measured run 27021002250 step 11: 69s total,
+    # of which the test itself is 0.01s). Running the parity test in release makes the "shared
+    # closure" real -- it reuses the release v2-compiler already built by stage0 and only compiles
+    # the small v2-compiler-tests crate (~5s). The receipt is profile-invariant (emit parity, no
+    # debug_assert-dependent behavior), so this is observationally invisible + fail-closed (RR-L).
     - name: v2 DAG emit parity receipt (shared closure)
-      run: cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
+      run: cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
   # Split out of `ci_floor` so it runs CONCURRENTLY with stage0 freshness + DAG parity: the probe
   # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
