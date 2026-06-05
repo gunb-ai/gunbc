@@ -7,6 +7,37 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+// === LOCAL PROFILING INSTRUMENTATION (throwaway, do not commit) ===
+use std::sync::atomic::{AtomicU64, Ordering};
+pub static SUBSTR_CALLS: AtomicU64 = AtomicU64::new(0);
+pub static SUBSTR_NANOS: AtomicU64 = AtomicU64::new(0);
+pub static SUBSTR_SLOW_CALLS: AtomicU64 = AtomicU64::new(0);
+pub static SUBSTR_CHARS_WALKED: AtomicU64 = AtomicU64::new(0);
+pub static STRLEN_CALLS: AtomicU64 = AtomicU64::new(0);
+pub static STRLEN_NANOS: AtomicU64 = AtomicU64::new(0);
+pub static CHARAT_CALLS: AtomicU64 = AtomicU64::new(0);
+pub static CHARAT_NANOS: AtomicU64 = AtomicU64::new(0);
+pub fn dump_rt_profile() {
+    eprintln!(
+        "PROFILE-RT substring: calls={} total={:.3}s slow_path_calls={} chars_walked={}",
+        SUBSTR_CALLS.load(Ordering::Relaxed),
+        SUBSTR_NANOS.load(Ordering::Relaxed) as f64 / 1e9,
+        SUBSTR_SLOW_CALLS.load(Ordering::Relaxed),
+        SUBSTR_CHARS_WALKED.load(Ordering::Relaxed),
+    );
+    eprintln!(
+        "PROFILE-RT string_length: calls={} total={:.3}s",
+        STRLEN_CALLS.load(Ordering::Relaxed),
+        STRLEN_NANOS.load(Ordering::Relaxed) as f64 / 1e9,
+    );
+    eprintln!(
+        "PROFILE-RT char_at: calls={} total={:.3}s",
+        CHARAT_CALLS.load(Ordering::Relaxed),
+        CHARAT_NANOS.load(Ordering::Relaxed) as f64 / 1e9,
+    );
+}
+// === END INSTRUMENTATION ===
+
 pub trait V2Concat {
     fn v2_concat(self, other: Self) -> Self;
 }
@@ -30,6 +61,13 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
 }
 
 pub fn char_at(s: &str, pos: i64) -> String {
+    let __t = std::time::Instant::now();
+    let __r = char_at_inner(s, pos);
+    CHARAT_CALLS.fetch_add(1, Ordering::Relaxed);
+    CHARAT_NANOS.fetch_add(__t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+    __r
+}
+fn char_at_inner(s: &str, pos: i64) -> String {
     let pos = pos.max(0) as usize;
     if s.is_ascii() {
         let bytes = s.as_bytes();
@@ -45,30 +83,45 @@ pub fn char_at(s: &str, pos: i64) -> String {
 }
 
 pub fn string_length(s: &str) -> i64 {
-    if s.is_ascii() {
+    let __t = std::time::Instant::now();
+    let __r = if s.is_ascii() {
         s.len() as i64
     } else {
         s.chars().count() as i64
-    }
+    };
+    STRLEN_CALLS.fetch_add(1, Ordering::Relaxed);
+    STRLEN_NANOS.fetch_add(__t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+    __r
 }
 
 pub fn substring(s: &str, start: i64, end: i64) -> String {
+    let __t = std::time::Instant::now();
+    SUBSTR_CALLS.fetch_add(1, Ordering::Relaxed);
     let start = start.max(0) as usize;
     let end = end.max(0) as usize;
     if end <= start {
+        SUBSTR_NANOS.fetch_add(__t.elapsed().as_nanos() as u64, Ordering::Relaxed);
         return String::new();
     }
     if s.is_ascii() {
         let len = s.len();
         if start >= len {
+            SUBSTR_NANOS.fetch_add(__t.elapsed().as_nanos() as u64, Ordering::Relaxed);
             return String::new();
         }
-        return s[start..end.min(len)].to_string();
+        let r = s[start..end.min(len)].to_string();
+        SUBSTR_NANOS.fetch_add(__t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        return r;
     }
-    s.chars()
+    SUBSTR_SLOW_CALLS.fetch_add(1, Ordering::Relaxed);
+    SUBSTR_CHARS_WALKED.fetch_add(end as u64, Ordering::Relaxed);
+    let r = s
+        .chars()
         .skip(start)
         .take(end.saturating_sub(start))
-        .collect()
+        .collect();
+    SUBSTR_NANOS.fetch_add(__t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+    r
 }
 
 pub fn string_contains(s: &str, sub: String) -> bool {

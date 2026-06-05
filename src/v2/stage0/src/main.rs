@@ -342,6 +342,7 @@ fn main() {
                     );
                     let t2 = Instant::now();
                     eprintln!("PROFILE: emit_resolved_for_target = {:?}", t2 - t1);
+                    v2_compiler::v2_rt::dump_rt_profile();
                     result
                 } else {
                     v2_compiler_compile::compile_sources(
