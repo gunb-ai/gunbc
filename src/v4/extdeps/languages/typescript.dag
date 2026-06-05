@@ -1565,8 +1565,8 @@ data ts_target_atom_realization_catalog: List<TargetAtomRealization> = [
 fn ts_sg2_type_expr_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      xs: ts_wave1_lex_rules().rules,
-      ys: [
+      left: ts_wave1_lex_rules().rules,
+      right: [
         ts_lex_rule(token_class: ts_token_lt, text: "<"),
         ts_lex_rule(token_class: ts_token_gt, text: ">"),
         ts_lex_rule(token_class: ts_token_pipe, text: " | "),
