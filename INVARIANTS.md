@@ -478,7 +478,7 @@ A model, function, type, or field is written ahead of anything that uses it — 
 
 #### Reviewer's three questions (operationalizes [E-10](#e-10))
 
-[E-10](#e-10) states the principle and the consumer test; this is the cheap, every-time check that enforces it. The proof burden is on the **author** — the evidence lives *in the PR*. The reviewer does not investigate: a missing answer is a "no," and a "no" defaults to deny or route-to-archive, never the benefit of the doubt. (A *stated* gate that needs judgment or effort gets skipped under throughput pressure — so each question is checkable from the PR alone.)
+[E-10](#e-10) states the principle and the consumer test; this is the cheap, every-time check that enforces it. The proof burden is on the **author** — the evidence lives *in the PR*. The reviewer does not investigate: a missing answer is a "no," and a "no" defaults to deny or route-to-experimental, never the benefit of the doubt. (A *stated* gate that needs judgment or effort gets skipped under throughput pressure — so each question is checkable from the PR alone.)
 
 1. **Consumer?** — is there something that breaks if this behavior is wrong — *not* a typecheck, *not* a grep/`.contains()`? (This is E-10's consumer test.) **No → route the code to `src/v4/experimental/`.** It can land as experimental; it does not enter the active tree and is not "done." This is E-10's block-*from-the-active-tree*, not a rejection of the work.
 2. **Green by execution, shown?** — does the PR contain the consumer *run* — command + output — rather than "typechecks," "merged," or "looks right"? **No → the done / merge-to-main claim is denied.** Merged ≠ runs.
