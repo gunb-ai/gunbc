@@ -20,6 +20,13 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
+  # Opt every JavaScript action (checkout, upload-artifact, cache, setup-rust-toolchain) onto
+  # Node.js 24 ahead of GitHub forcing it 2026-06-16 and removing Node 20 from the runner
+  # 2026-09-16. Workflow-level so it covers ALL jobs/actions uniformly without chasing each
+  # action's individually-Node24-compatible major version (which can change behavior). Quoted so
+  # it parses as the string "true" (an unquoted bare `true` is a YAML bool). Drop this once every
+  # pinned action ships a Node24 default. Ref: github.blog/changelog/2025-09-19-deprecation-of-node-20.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 # Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness + M1 rust+dag emit + DAG parity)
 # Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness, M1 rust+dag emit, DAG parity receipt.
 jobs:
