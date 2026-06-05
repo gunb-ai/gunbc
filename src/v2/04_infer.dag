@@ -4910,7 +4910,15 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
   let fname = authored_name_at(source_indices: source_indices, node: formal)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
   if f_bare && (generic_names |> any(g => g == fname)) {
-    map_insert(acc, fname, actual)
+    // Fail-closed on conflict: bind a generic ONCE (first occurrence wins); never
+    // silently overwrite. A later occurrence that disagrees is not papered over by
+    // a fresh binding here — it is caught when that arg is inferred against the
+    // formal already substituted with the first binding (a typed mismatch at the
+    // arg), so inference cannot proceed with a silent unstated choice.
+    match map_get(acc, fname) {
+      None => map_insert(acc, fname, actual)
+      Some { value: _ } => acc
+    }
   } else if formal.children |> count == 1 && actual.children |> count == 1 {
     match formal.children |> first {
       Some { value: fc } =>
