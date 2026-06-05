@@ -1293,20 +1293,21 @@ fn rust_scalar_is_copy(scalar: RustScalar) -> Bool {
   }
 }
 
-// Value-semantics carrier atom identities = the scalar inhabitants whose RustScalar
-// is Copy. These are exactly the scalar inhabitants rust_declared_inhabitants_root
-// enumerates, MINUS str (the sole non-Copy scalar per rust_scalar_is_copy).
-// [CONCESSION, flagged: expressed as the inhabitant-identity list rather than a
-// walk over a (RustScalar, inhabitant-id) table because the model has no co-indexed
-// scalar↔inhabitant-id mapping; rust_scalar_is_copy remains the single Copy
+// Value-semantics carrier atom identities = the SURFACE-SPELLING symbols of the
+// scalars whose RustScalar is Copy (the use-site-ownership carrier is keyed by
+// surface spelling, e.g. rust_surface_spelling_i32). These are exactly rust's
+// scalar surface spellings MINUS str (the sole non-Copy scalar per
+// rust_scalar_is_copy). [CONCESSION, flagged: a surface-spelling list rather than
+// a walk over a (RustScalar, surface-spelling) table because the model has no
+// co-indexed scalar↔spelling mapping; rust_scalar_is_copy stays the single Copy
 // authority and str is the one deliberate exclusion below.]
 fn rust_value_semantics_carrier_atoms() -> List<Symbol> {
   [
-    rust_inhabitant_i8, rust_inhabitant_i16, rust_inhabitant_i32, rust_inhabitant_i64, rust_inhabitant_i128,
-    rust_inhabitant_u8, rust_inhabitant_u16, rust_inhabitant_u32, rust_inhabitant_u64, rust_inhabitant_u128,
-    rust_inhabitant_isize, rust_inhabitant_usize,
-    rust_inhabitant_f32, rust_inhabitant_f64,
-    rust_inhabitant_bool, rust_inhabitant_char, rust_inhabitant_unit, rust_inhabitant_never
+    rust_surface_spelling_i8, rust_surface_spelling_i16, rust_surface_spelling_i32, rust_surface_spelling_i64, rust_surface_spelling_i128,
+    rust_surface_spelling_u8, rust_surface_spelling_u16, rust_surface_spelling_u32, rust_surface_spelling_u64, rust_surface_spelling_u128,
+    rust_surface_spelling_isize, rust_surface_spelling_usize,
+    rust_surface_spelling_f32, rust_surface_spelling_f64,
+    rust_surface_spelling_bool, rust_surface_spelling_char, rust_surface_spelling_unit, rust_surface_spelling_never
   ]
 }
 
