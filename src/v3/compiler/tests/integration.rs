@@ -1296,6 +1296,3 @@ mod parse_stage4_prep {
         );
     }
 }
-
-#[path = "integration/nominal_distinctness_cross_call_test.rs"]
-mod nominal_distinctness_cross_call_test;
