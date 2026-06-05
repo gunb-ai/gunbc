@@ -11,6 +11,7 @@ pub use crate::v2_compiler_infer_env::{
     lookup_type, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v2_compiler_infer_method::type_variable_node;
 pub use crate::v2_compiler_infer_types::{
     child_type_node, node_is_keyed_collection, resolved_type,
 };
@@ -32,13 +33,13 @@ pub use crate::v2_std_core::{
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
-    is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
-    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
+    is_container_type, is_kernel_type, is_local_transport, is_type_variable_name, kernel_span,
+    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
+    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
+    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
+    resource_use_name_at, resource_use_resource, string_type, transport_request_body, unit_type,
     with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
@@ -1243,49 +1244,51 @@ pub fn resolve_node_bounded(
                                             })
                                         }
                                         None => {
-                                            let n_is_error = if (n.inferred.clone() != None) {
-                                                is_compiler_error(
-                                                    n.inferred.clone().clone().unwrap(),
-                                                )
-                                            } else {
-                                                false
-                                            };
-                                            let n_is_callable =
-                                                ((n.params.clone().len() as i64) > 0);
-                                            let n_is_type_var = if (n.inferred.clone() != None) {
-                                                is_type_variable(
-                                                    n.inferred.clone().clone().unwrap(),
-                                                )
-                                            } else {
-                                                false
-                                            };
-                                            if (((is_kernel_type(authored_name(
-                                                env.clone(),
-                                                n.clone(),
-                                            )) || n_is_type_var)
-                                                || n_is_error)
-                                                || n_is_callable)
-                                            {
+                                            let name = authored_name(env.clone(), n.clone());
+                                            if is_type_variable_name(name.clone()) {
                                                 Rc::new(NodeResolveResult {
-                                                    resolved: n.clone(),
+                                                    resolved: type_variable_node(name.clone()),
                                                     diagnostics: Rc::new(vec![]),
                                                 })
                                             } else {
-                                                Rc::new(NodeResolveResult {
-                                                    resolved: n.clone(),
-                                                    diagnostics: Rc::new(vec![make_error_node(
-                                                        Rc::new(
-                                                            CompilerDiagnostic::UnresolvedType {
-                                                                name: authored_name(
-                                                                    env.clone(),
-                                                                    n.clone(),
-                                                                ),
-                                                                span: n.span.clone(),
-                                                            },
-                                                        ),
-                                                        module_name.clone(),
-                                                    )]),
-                                                })
+                                                {
+                                                    let n_is_error = if (n.inferred.clone() != None)
+                                                    {
+                                                        is_compiler_error(
+                                                            n.inferred.clone().clone().unwrap(),
+                                                        )
+                                                    } else {
+                                                        false
+                                                    };
+                                                    let n_is_callable =
+                                                        ((n.params.clone().len() as i64) > 0);
+                                                    let n_is_type_var =
+                                                        if (n.inferred.clone() != None) {
+                                                            is_type_variable(
+                                                                n.inferred.clone().clone().unwrap(),
+                                                            )
+                                                        } else {
+                                                            false
+                                                        };
+                                                    if (((is_kernel_type(name.clone())
+                                                        || n_is_type_var)
+                                                        || n_is_error)
+                                                        || n_is_callable)
+                                                    {
+                                                        Rc::new(NodeResolveResult {
+                                                            resolved: n.clone(),
+                                                            diagnostics: Rc::new(vec![]),
+                                                        })
+                                                    } else {
+                                                        Rc::new(NodeResolveResult {
+    resolved: n.clone(),
+    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {
+    name: name.clone(),
+    span: n.span.clone(),
+}), module_name.clone())]),
+})
+                                                    }
+                                                }
                                             }
                                         }
                                     }

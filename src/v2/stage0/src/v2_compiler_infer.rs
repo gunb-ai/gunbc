@@ -132,15 +132,15 @@ pub use crate::v2_std_core::{
     if_condition, if_else_branch, if_then_branch, import_is_all, index_base, index_expr, int_type,
     intern, intern_str, is_child_accessor_in_model, is_compiler_error, is_container_type,
     is_error_diagnostic, is_kernel_type, is_property_contraction, is_tree_size_reducing,
-    kernel_type_set, lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_span, make_text_part_node, make_transport_node,
-    map_children, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, module_node, no_span, node_name_span, none_type,
-    param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
+    is_type_variable_name, kernel_type_set, lambda_body, lambda_param_names_at,
+    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
+    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node, make_span,
+    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
+    node_name_span, none_type, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
+    string_type, unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -10143,14 +10143,6 @@ pub fn infer_items(
         }
         __result
     })
-}
-
-pub fn is_type_variable_name(name: String) -> bool {
-    (((((name.clone().as_str() == "T".to_string().as_str())
-        || (name.clone().as_str() == "K".to_string().as_str()))
-        || (name.clone().as_str() == "V".to_string().as_str()))
-        || (name.clone().as_str() == "MappedElement".to_string().as_str()))
-        || (name.clone().as_str() == "FoldAccumulator".to_string().as_str()))
 }
 
 pub fn collect_parent_bindings_filtered(
