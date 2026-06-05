@@ -1108,8 +1108,7 @@ fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure()
 #[test]
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let _module = parse_module(CI_DAG, CI_DAG_PATH);
-    const CORPUS_EVAL_STEP: &str =
-        "T-22 TestClaim corpus eval (tracked-expectation drift gate)";
+    const CORPUS_EVAL_STEP: &str = "T-22 TestClaim corpus eval (tracked-expectation drift gate)";
     assert!(
         CI_DAG.contains("data testclaim_corpus_eval_ci_live_workflow_signal"),
         "{CI_DAG_PATH}: corpus eval must model the live-workflow signal ledger row"
@@ -1271,7 +1270,9 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
     );
 
     // no-new-shell ratchet (§11.7.1 #5) — bidirectional bijection between the REQUIRED
-    // `.github/ci-floor/*.sh` invocations in ci.yml and the table's rows.
+    // `.github/ci-floor/*.sh` invocations on the Class-A floor jobs (`ci_floor`, `ci_floor_emit`)
+    // and the table's rows. Transport wrappers under `.github/ci-floor/` that run only in
+    // non-floor jobs (e.g. `with-sccache-retry.sh` in `affected`) are out of §11.7.5 scope.
     //
     // Build the live invocation set FIRST, comment-safe, and reuse it for BOTH the row-liveness
     // (cond 1) and the bijection — never raw `CI_YML.contains(...)`, which a comment could satisfy.
@@ -1279,8 +1280,22 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
     // `run: |` body such as `        bash .github/ci-floor/foo.sh` cannot evade the gate by its
     // YAML spelling, while a commented-out `# bash .github/ci-floor/foo.sh` is NOT counted as live
     // (openai-pro #4284: skip comment-only lines + strip inline ` # …` trailers).
+    let ci_floor_live_yml: String = [
+        CI_YML
+            .split("  ci_floor:")
+            .nth(1)
+            .and_then(|rest| rest.split("\n  ci_floor_emit:").next()),
+        CI_YML
+            .split("  ci_floor_emit:")
+            .nth(1)
+            .and_then(|rest| rest.split("\n  ci:").next()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("\n");
     let mut ci_floor_scripts: Vec<String> = Vec::new();
-    for raw in CI_YML.lines() {
+    for raw in ci_floor_live_yml.lines() {
         let line = raw.trim_start();
         if line.starts_with('#') {
             continue;
@@ -1748,8 +1763,8 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         "{CI_YML_PATH}: legacy parallel lanes dissolved"
     );
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation]"),
-        "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
+        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation, ci_corpus_eval]"),
+        "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt, `ci_floor`, `ci_corpus_eval`, and the `infra_isolation` de-priv guard"
     );
     assert!(
         CI_YML.contains("  affected:") && !CI_YML.contains("  affected:\n    if: github.event.pull_request.draft != true\n    continue-on-error: true"),
@@ -2015,8 +2030,9 @@ fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
 #[test]
 fn v4_workflow_ci_wave3_node_selection_still_shadow_while_component_receipt_live() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation]")
-            && CI_YML.contains("needs.affected.result"),
+        CI_YML.contains(
+            "needs: [affected, ci_floor, ci_floor_emit, infra_isolation, ci_corpus_eval]"
+        ) && CI_YML.contains("needs.affected.result"),
         "{CI_YML_PATH}: component affected-set receipt must be live"
     );
     let ci_floor_block = CI_YML
@@ -2106,7 +2122,6 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "type TestClaimCorpusVerdictSurfaceAuthority",
         "module_path: ci_testclaim_corpus_module_manual_roster_path",
         "module_path: ci_testclaim_corpus_module_runner_path",
-        "module_path: ci_testclaim_corpus_module_eval_path",
         "ci_testclaim_corpus_module_manual_roster_path: Symbol = v4_test_claim_manual_manual_corpus_roster",
         "ci_testclaim_corpus_module_runner_path: Symbol = v4_test_claim_workflow_testclaim_corpus_runner",
         "ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval",
@@ -2122,6 +2137,7 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally",
         "scripts/v4-testclaim-corpus-eval.sh",
         "ci_upsert_file_set_input(segment: \"scripts/v4-testclaim-corpus-eval.sh\")",
+        "ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval",
         "ci_testclaim_corpus_module_eval_expected_path: Symbol = v4_test_claim_workflow_manual_corpus_eval_expected",
         "ci_testclaim_corpus_decl_manual_testclaim_subject_roster_family_receipt_name: Symbol = manual_testclaim_subject_roster_family_receipt",
         "fn ci_testclaim_corpus_eval_command() -> CiCommand",

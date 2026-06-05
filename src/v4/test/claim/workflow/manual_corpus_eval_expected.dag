@@ -15,7 +15,7 @@ import v4.compiler.eval {
 import v4.std.collection { List }
 import v4.std.diagnostic { Rejected }
 import v4.std.logic { Bool }
-import v4.std.nat { length }
+import v4.std.algebra { length }
 import v4.std.node { Node, Symbol }
 import v4.std.runtime { RuntimeValue }
 import v4.std.text { String }
@@ -169,8 +169,8 @@ fn corpus_eval_observation_arm_matches(
   match actual {
     ExecutedPass => match expected {
       ExecutedPass => true
-      ExecutedFail { .. } => false
-      ExecutedDeferred { .. } => false
+      ExecutedFail => false
+      ExecutedDeferred => false
       HostRejected => false
     }
     ExecutedFail => match expected {
@@ -182,14 +182,14 @@ fn corpus_eval_observation_arm_matches(
     ExecutedDeferred => match expected {
       ExecutedDeferred => true
       ExecutedPass => false
-      ExecutedFail { .. } => false
+      ExecutedFail => false
       HostRejected => false
     }
     HostRejected => match expected {
       HostRejected => true
       ExecutedPass => false
-      ExecutedFail { .. } => false
-      ExecutedDeferred { .. } => false
+      ExecutedFail => false
+      ExecutedDeferred => false
     }
   }
 }

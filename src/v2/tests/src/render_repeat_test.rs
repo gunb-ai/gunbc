@@ -25,7 +25,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 #[test]
 fn repeat_string_and_indent_text_semantics_via_interpreter() {
     let src = r#"module test.repeat_string_regression
-import std.render { repeat_string }
+import std.render_repeat_string_bootstrap { repeat_string }
 fn repeat_string_returns_n_copies() -> String { repeat_string(s: "x", n: 3) }
 // Same shape as indent_text's pad + text, without string interpolation (interpreter
 // does not expand `"{pad}{text}"` templates yet).

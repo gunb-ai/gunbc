@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 292704393bf0b8f60979fd78ab2f93c96163e2c515e89174a479b05a34aa2aee
+// Source-SHA256(.github/workflows/ci.yml): e8206aa8f5b5671fb1aaa2acbf74c20348ccabd3215d60969902c9a0cd140ee9
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -234,6 +234,86 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       continue_on_error: false,
       concurrency: none
     }, {
+      id: "ci_corpus_eval",
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+      steps: [RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Checkout" },
+          id: none,
+          uses: { owner: "actions", repo: "checkout", ref: "v5" },
+          with: { "fetch-depth": "0" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Rust" },
+          id: none,
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          with: { "cache": "false", "rustflags": "" },
+          env: { "HOME": "${{ runner.temp }}" },
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Cache gunbc binary (v4 floor)" },
+          id: Some { value: "v4-v2-bin" },
+          uses: { owner: "actions", repo: "cache", ref: "v5" },
+          with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-\n" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Build v2 compiler (v4 floor)" },
+          id: none,
+          run: "cargo build -p v2-compiler --release",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "steps.v4-v2-bin.outputs.cache-hit != 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "T-22 TestClaim corpus eval (tracked-expectation drift gate)" },
+          id: none,
+          run: "bash scripts/v4-testclaim-corpus-eval.sh",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: Some { value: 40 }
+        }],
+      needs: ["affected", "ci_floor", "ci_floor_emit"],
+      env: none,
+      outputs: none,
+      if_condition: Some { value: "github.event.pull_request.draft != true && needs.affected.outputs.testclaim_corpus == 'true'" },
+      strategy: none,
+      timeout_minutes: Some { value: 45 },
+      continue_on_error: false,
+      concurrency: none
+    }, {
       id: "ci_floor",
       name: none,
       runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
@@ -439,86 +519,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 60 },
-      continue_on_error: false,
-      concurrency: none
-    }, {
-      id: "ci_corpus_eval",
-      name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
-      steps: [RunStep {
-          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
-          id: none,
-          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, UsesStep {
-          name: Some { value: "Checkout" },
-          id: none,
-          uses: { owner: "actions", repo: "checkout", ref: "v5" },
-          with: { "fetch-depth": "0" },
-          env: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, UsesStep {
-          name: Some { value: "Setup Rust" },
-          id: none,
-          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
-          with: { "cache": "false", "rustflags": "" },
-          env: { "HOME": "${{ runner.temp }}" },
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
-          id: none,
-          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, UsesStep {
-          name: Some { value: "Cache gunbc binary (v4 floor)" },
-          id: Some { value: "v4-v2-bin" },
-          uses: { owner: "actions", repo: "cache", ref: "v5" },
-          with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-\n" },
-          env: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "Build v2 compiler (v4 floor)" },
-          id: none,
-          run: "cargo build -p v2-compiler --release",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: Some { value: "steps.v4-v2-bin.outputs.cache-hit != 'true'" },
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "T-22 TestClaim corpus eval (tracked-expectation drift gate)" },
-          id: none,
-          run: "bash scripts/v4-testclaim-corpus-eval.sh",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: Some { value: 40 }
-        }],
-      needs: ["affected", "ci_floor", "ci_floor_emit"],
-      env: none,
-      outputs: none,
-      if_condition: Some { value: "github.event.pull_request.draft != true && needs.affected.outputs.testclaim_corpus == 'true'" },
-      strategy: none,
-      timeout_minutes: Some { value: 45 },
       continue_on_error: false,
       concurrency: none
     }, {
