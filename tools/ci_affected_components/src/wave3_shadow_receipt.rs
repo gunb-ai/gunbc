@@ -14,8 +14,8 @@
 //! **Typed carrier (P3 / CODING).** Construction goes through the typed [`ShadowEmit`] /
 //! [`GitReadStatus`] carriers, not best-effort JSON re-parsing: a fail-closed git read carries its
 //! diagnostic `detail` into BOTH the JSON envelope (`git_diff_read_failed` + `git_diff_read_detail`)
-//! and the GitHub notice (`git_read=FAIL-CLOSED(...)`), so a fail-closed read can never collapse to
-//! the same visible summary as a successful empty diff.
+//! and the status log line (`git_read=FAIL-CLOSED(...)`), so a fail-closed read can never collapse
+//! to the same visible summary as a successful empty diff.
 //!
 //! Wired as a non-blocking (Class C) step in the `affected` job (`.github/workflows/ci.yml`),
 //! mirrored in the pinned carrier `dsl/gunbc/ci_github_actions_workflow.dag`.
@@ -37,14 +37,14 @@ pub const MODELED_RECEIPT_AUTHORITY: &str = "v4.workflow.ci.CiSelectionReceipt";
 pub const EMIT_STEP_NAME: &str = "emit-ci-wave3-shadow-receipt";
 
 /// Typed host git-read outcome. A fail-closed read keeps its diagnostic `detail` so the boundary
-/// state survives into the envelope + notice (no fabricated plausible "empty diff" output; P3).
+/// state survives into the envelope + log line (no fabricated plausible "empty diff" output; P3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GitReadStatus {
     Ok,
     FailClosed { detail: String },
 }
 
-/// Typed transport-emit summary. Single source for both the JSON envelope and the GitHub notice,
+/// Typed transport-emit summary. Single source for both the JSON envelope and the status log line,
 /// so they cannot diverge and the fail-closed state is always surfaced.
 #[derive(Debug, Clone)]
 pub struct ShadowEmit {
@@ -129,7 +129,7 @@ pub fn write_receipt_json(path: &str, receipt: &Value) -> io::Result<()> {
 /// receipt is transport diagnostics that belong in the job log, not the PR Annotations panel (it
 /// fired on every run and read as a standing warning). Drop the `::notice title=…::` prefix and it
 /// is a normal log line — still greppable in the step output, no annotation noise.
-pub fn github_notice_line(emit: &ShadowEmit) -> String {
+pub fn shadow_status_log_line(emit: &ShadowEmit) -> String {
     let git_read = match &emit.git_read {
         GitReadStatus::Ok => "git_read=ok".to_string(),
         GitReadStatus::FailClosed { detail } => format!("git_read=FAIL-CLOSED({detail})"),
@@ -200,7 +200,7 @@ mod tests {
         assert_eq!(receipt["component_affected"]["v4"], true);
 
         // The notice must distinguish fail-closed from a successful empty diff (the reviewed gap).
-        let notice = github_notice_line(&emit);
+        let notice = shadow_status_log_line(&emit);
         assert!(notice.contains("git_read=FAIL-CLOSED("));
         assert!(notice.contains("exited 128"));
         assert!(!notice.contains("git_read=ok"));
@@ -215,7 +215,7 @@ mod tests {
                 paths: vec![],
             },
         );
-        let notice = github_notice_line(&emit);
+        let notice = shadow_status_log_line(&emit);
         // A real empty diff reads ok with zero paths — and is NOT labeled fail-closed.
         assert!(notice.contains("git_read=ok"));
         assert!(notice.contains("changed_paths=0"));
