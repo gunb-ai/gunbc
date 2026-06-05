@@ -10,7 +10,7 @@
 module v4.test.claim.manual.refinement_brand_disjointness_is_sugar
 
 
-import v4.compiler.eval { run_test_claim_assert }
+import v4.compiler.eval { TestClaimEvalSubject, run_test_claim_assert }
 import v4.std.diagnostic {
   Accepted,
   Locus,
@@ -222,7 +222,7 @@ fn claim1_verdict_for_agreement(
   claim: TestClaim,
   refinement_accepts: Bool,
   desugared_accepts: Bool
-) -> Verdict<TestClaim, Node> {
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   run_test_claim_assert(
     claim: claim,
     actual: claim1_actual_for_agreement(
@@ -234,7 +234,7 @@ fn claim1_verdict_for_agreement(
 }
 
 
-data verdict_refinement_brand_disjointness_cross_brand_is_sugar: Verdict<TestClaim, Node> =
+data verdict_refinement_brand_disjointness_cross_brand_is_sugar: Verdict<TestClaimEvalSubject<Node>, Node> =
   claim1_verdict_for_agreement(
     claim: claim_refinement_brand_disjointness_cross_brand_is_sugar,
     refinement_accepts: refinement_accepts_cross_brand(),
@@ -242,7 +242,7 @@ data verdict_refinement_brand_disjointness_cross_brand_is_sugar: Verdict<TestCla
   )
 
 
-data verdict_refinement_brand_disjointness_same_brand_is_sugar: Verdict<TestClaim, Node> =
+data verdict_refinement_brand_disjointness_same_brand_is_sugar: Verdict<TestClaimEvalSubject<Node>, Node> =
   claim1_verdict_for_agreement(
     claim: claim_refinement_brand_disjointness_same_brand_is_sugar,
     refinement_accepts: refinement_accepts_same_brand(),
@@ -250,7 +250,7 @@ data verdict_refinement_brand_disjointness_same_brand_is_sugar: Verdict<TestClai
   )
 
 
-data verdict_refinement_brand_disjointness_raw_literal_is_sugar: Verdict<TestClaim, Node> =
+data verdict_refinement_brand_disjointness_raw_literal_is_sugar: Verdict<TestClaimEvalSubject<Node>, Node> =
   claim1_verdict_for_agreement(
     claim: claim_refinement_brand_disjointness_raw_literal_is_sugar,
     refinement_accepts: refinement_accepts_raw_literal(),

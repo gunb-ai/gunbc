@@ -1,0 +1,130 @@
+// src/v4/test/claim/workflow/refinement_brand_disjointness_is_sugar_eval.dag
+// Scope: Claim #1 tracked-red corpus eval — verdicts computed, not just parsed.
+// Status: cross-brand + raw-literal rows expected Fail until brand desugars;
+//         same-brand row expected Pass. Does not gate manual_corpus_eval (zero-fail).
+
+module v4.test.claim.workflow.refinement_brand_disjointness_is_sugar_eval
+
+
+import v4.compiler.eval { TestClaimEvalSubject }
+import v4.std.algebra { Cons, Empty }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.nat { Nat, Zero }
+import v4.std.node { Node }
+import v4.std.verdict {
+  Fail,
+  Pass,
+  Verdict,
+  VerdictTally,
+  verdict_tally_add,
+  verdict_tally_empty
+}
+import v4.test.claim.manual.refinement_brand_disjointness_is_sugar {
+  verdict_refinement_brand_disjointness_cross_brand_is_sugar,
+  verdict_refinement_brand_disjointness_raw_literal_is_sugar,
+  verdict_refinement_brand_disjointness_same_brand_is_sugar
+}
+
+
+type Claim1CorpusEntry {
+  verdict: Verdict<TestClaimEvalSubject<Node>, Node>
+}
+
+
+type Claim1CorpusReport {
+  entries: List<Claim1CorpusEntry>
+}
+
+
+fn claim1_corpus_entry(v: Verdict<TestClaimEvalSubject<Node>, Node>) -> Claim1CorpusEntry {
+  Claim1CorpusEntry { verdict: v }
+}
+
+
+fn claim1_corpus_entries() -> List<Claim1CorpusEntry> {
+  [
+    claim1_corpus_entry(v: verdict_refinement_brand_disjointness_cross_brand_is_sugar),
+    claim1_corpus_entry(v: verdict_refinement_brand_disjointness_same_brand_is_sugar),
+    claim1_corpus_entry(v: verdict_refinement_brand_disjointness_raw_literal_is_sugar)
+  ]
+}
+
+
+fn claim1_corpus_report_tally(r: Claim1CorpusReport) -> VerdictTally {
+  fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
+    verdict_tally_add(t: acc, v: e.verdict)
+  })
+}
+
+
+fn claim1_corpus_report() -> Claim1CorpusReport {
+  Claim1CorpusReport { entries: claim1_corpus_entries() }
+}
+
+
+fn claim1_verdict_is_pass(v: Verdict<TestClaimEvalSubject<Node>, Node>) -> Bool {
+  match v {
+    Pass => true
+    Fail { actual: _, falsification: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+
+fn claim1_verdict_is_fail(v: Verdict<TestClaimEvalSubject<Node>, Node>) -> Bool {
+  match v {
+    Pass => false
+    Fail { actual: _, falsification: _ } => true
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+
+// Tracked-red lock: two known-gap rows Fail, one control row Pass.
+fn claim1_tracked_red_lock_holds(report: Claim1CorpusReport) -> Bool {
+  let tally = claim1_corpus_report_tally(r: report)
+  (tally.pass == 1) && (tally.fail == 2) && (tally.deferred == Zero)
+}
+
+
+fn claim1_cross_brand_is_red(report: Claim1CorpusReport) -> Bool {
+  match report.entries {
+    Cons { head: e, tail: _ } => claim1_verdict_is_fail(v: e.verdict)
+    Empty => false
+  }
+}
+
+
+fn claim1_same_brand_is_green(report: Claim1CorpusReport) -> Bool {
+  match report.entries {
+    Cons { head: _, tail: Cons { head: e, tail: _ } } =>
+      claim1_verdict_is_pass(v: e.verdict)
+    _ => false
+  }
+}
+
+
+fn claim1_raw_literal_is_red(report: Claim1CorpusReport) -> Bool {
+  match report.entries {
+    Cons { head: _, tail: Cons { head: _, tail: Cons { head: e, tail: Empty } } } =>
+      claim1_verdict_is_fail(v: e.verdict)
+    _ => false
+  }
+}
+
+
+data witness_claim1_refinement_brand_disjointness_tracked_red_lock: Bool =
+  claim1_tracked_red_lock_holds(report: claim1_corpus_report())
+
+
+data witness_claim1_cross_brand_corpus_verdict_is_fail: Bool =
+  claim1_cross_brand_is_red(report: claim1_corpus_report())
+
+
+data witness_claim1_same_brand_corpus_verdict_is_pass: Bool =
+  claim1_same_brand_is_green(report: claim1_corpus_report())
+
+
+data witness_claim1_raw_literal_corpus_verdict_is_fail: Bool =
+  claim1_raw_literal_is_red(report: claim1_corpus_report())

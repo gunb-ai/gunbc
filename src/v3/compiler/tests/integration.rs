@@ -147,8 +147,6 @@ mod m1_lens_structural_resolution_test;
 mod m1_substrate_test;
 #[path = "integration/m2_feature_parity_test.rs"]
 mod m2_feature_parity_test;
-#[path = "integration/refinement_brand_disjointness_is_sugar_claim_test.rs"]
-mod refinement_brand_disjointness_is_sugar_claim_test;
 #[path = "integration/m2_field_access_binding_test.rs"]
 mod m2_field_access_binding_test;
 #[path = "integration/m2_lens_cost_migration_test.rs"]
@@ -217,6 +215,8 @@ mod r3_substrate_gap_reflection_closure_test;
 mod r3_v3_self_host_demonstration_dag_test;
 #[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
 mod r3_verification_l4_l7_l5_skeleton_test;
+#[path = "integration/refinement_brand_disjointness_is_sugar_claim_test.rs"]
+mod refinement_brand_disjointness_is_sugar_claim_test;
 #[path = "integration/services_carrier_shape_test.rs"]
 mod services_carrier_shape_test;
 #[path = "integration/sg0_census_test.rs"]

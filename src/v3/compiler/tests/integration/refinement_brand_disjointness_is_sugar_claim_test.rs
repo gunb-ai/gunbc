@@ -88,8 +88,7 @@ fn assert_refinement_matches_desugared(
     desugared_accepts: bool,
 ) {
     assert_eq!(
-        refinement_accepts,
-        desugared_accepts,
+        refinement_accepts, desugared_accepts,
         "Claim #1 refinement_brand_disjointness_is_sugar: `{program}` — \
          refinement sugar accepts={refinement_accepts}, \
          hand-desugared accepts={desugared_accepts}; \
