@@ -10261,7 +10261,14 @@ pub fn unify_generics(
             }
             __found
         }) {
-            break v2_rt::rc_map_insert(acc, fname.clone(), actual.clone());
+            match v2_rt::map_get(&acc, fname.clone()) {
+                None => {
+                    break v2_rt::rc_map_insert(acc.clone(), fname.clone(), actual.clone());
+                }
+                Some(_) => {
+                    break acc.clone();
+                }
+            }
         } else {
             if (((formal.children.clone().len() as i64) == 1)
                 && ((actual.children.clone().len() as i64) == 1))
@@ -10276,15 +10283,15 @@ pub fn unify_generics(
                             continue;
                         }
                         None => {
-                            break acc;
+                            break acc.clone();
                         }
                     },
                     None => {
-                        break acc;
+                        break acc.clone();
                     }
                 }
             } else {
-                break acc;
+                break acc.clone();
             }
         }
     }

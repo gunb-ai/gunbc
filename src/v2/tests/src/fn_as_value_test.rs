@@ -104,7 +104,9 @@ fn use_it() -> Int { apply_rec(x: Rec { v: 7 }, g: fn(r) { r.v }) }
         .expect("graph after successful resolve");
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "use_it") {
         Ok(Value::Int(7)) => {}
-        other => panic!("expected Int(7) (T bound to Rec from x, lambda r: Rec, r.v read), got {other:?}"),
+        other => panic!(
+            "expected Int(7) (T bound to Rec from x, lambda r: Rec, r.v read), got {other:?}"
+        ),
     }
 }
 
