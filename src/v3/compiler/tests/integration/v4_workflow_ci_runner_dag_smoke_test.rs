@@ -940,7 +940,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         ) && CI_DAG.contains(
             "data m1_rust_emit_probe_shared_dag_log_env: String = \"V4_M1_DAG_EMIT_LOG\""
         ) && CI_DAG.contains(
-            "data m1_rust_dag_emit_parity_receipt_test: String = \"cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet\""
+            "data m1_rust_dag_emit_parity_receipt_test: String = \"cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet\""
         ),
         "{CI_DAG_PATH}: shared M1/bootstrap closure env names must be modeled"
     );
@@ -1014,7 +1014,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     let parity_step = workflow_step_block(CI_YML, "v2 DAG emit parity receipt (shared closure)");
     assert!(
         parity_step.contains(
-            "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet"
+            "cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet"
         ),
         "{CI_YML_PATH}: bootstrap reuse must be preceded by the v2 DAG emit parity receipt"
     );
@@ -1527,7 +1527,7 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor, infra_isolation]"),
+        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation]"),
         "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
     );
     assert!(
@@ -1740,7 +1740,7 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         "{CI_YML_PATH}: legacy parallel lanes dissolved"
     );
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor, infra_isolation]"),
+        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation]"),
         "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
     );
     assert!(
@@ -1769,9 +1769,14 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
         "{CI_WORKFLOW_DAG_PATH}: regen artifact must model `ci_floor`"
     );
     assert!(
+        CI_WORKFLOW_DAG.contains("id: \"ci_floor_emit\""),
+        "{CI_WORKFLOW_DAG_PATH}: regen artifact must model the parallel `ci_floor_emit` job (M1 emit probe split out of `ci_floor`)"
+    );
+    assert!(
         CI_WORKFLOW_DAG.contains("id: \"ci\"")
-            && CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_floor\", \"infra_isolation\"]"),
-        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
+            && CI_WORKFLOW_DAG
+                .contains("needs: [\"affected\", \"ci_floor\", \"ci_floor_emit\", \"infra_isolation\"]"),
+        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt, `ci_floor`, the parallel `ci_floor_emit` lane, and the `infra_isolation` de-priv guard"
     );
     let affected_dag = workflow_dag_job_block(CI_WORKFLOW_DAG, "affected");
     assert!(
@@ -2003,7 +2008,7 @@ fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
 #[test]
 fn v4_workflow_ci_wave3_node_selection_still_shadow_while_component_receipt_live() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor, infra_isolation]")
+        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation]")
             && CI_YML.contains("needs.affected.result"),
         "{CI_YML_PATH}: component affected-set receipt must be live"
     );

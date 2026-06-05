@@ -22,7 +22,9 @@ use crate::std_syntax::BinOp::{And, Eq, Ge, Gt, Le, Lt, Ne, NullCoalesce, Or};
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{container_expected_arity, container_param_name, is_container_type};
+pub use crate::std_types::{
+    container_expected_arity, container_param_name, container_template_algebra, is_container_type,
+};
 use crate::v2_rt;
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
@@ -129,6 +131,19 @@ pub fn node_is_set_collection(
     (node_is_element_collection(n.clone(), source_indices.clone())
         && (authored_name_at(source_indices.clone(), n.clone()).as_str()
             == "Set".to_string().as_str()))
+}
+
+pub fn canonical_template_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let nm = authored_name_at(source_indices, n);
+        match container_template_algebra(nm.clone()) {
+            Some(algebra) => algebra.clone(),
+            None => nm.clone(),
+        }
+    }
 }
 
 pub fn is_product_type(n: Rc<Node>) -> bool {
@@ -1764,33 +1779,81 @@ pub fn node_type_compatible(
                                 }
                             }
                         } else {
-                            if (left_opt.clone() && right_opt.clone()) {
-                                let left_inner = with_required_cardinality(left.clone());
-                                let right_inner = with_required_cardinality(right.clone());
-                                let left_inner_is_unit = is_unit_like(left_inner.clone());
-                                let right_inner_is_unit = is_unit_like(right_inner.clone());
-                                if (left_inner_is_unit || right_inner_is_unit) {
-                                    break true;
-                                } else {
-                                    {
-                                        let __tco_0 = left_inner.clone();
-                                        let __tco_1 = right_inner.clone();
-                                        left = __tco_0;
-                                        right = __tco_1;
-                                        continue;
+                            if ((((canonical_template_name(left.clone(), source_indices.clone())
+                                .as_str()
+                                == canonical_template_name(
+                                    right.clone(),
+                                    source_indices.clone(),
+                                )
+                                .as_str())
+                                && (authored_name_at(source_indices.clone(), left.clone())
+                                    .as_str()
+                                    != authored_name_at(source_indices.clone(), right.clone())
+                                        .as_str()))
+                                && ((left.children.clone().len() as i64) == 1))
+                                && ((right.children.clone().len() as i64) == 1))
+                            {
+                                match left.children.clone().first().cloned() {
+                                    Some(left_ch) => {
+                                        match right.children.clone().first().cloned() {
+                                            Some(right_ch) => {
+                                                let left_el = child_type_node(left_ch.clone());
+                                                let right_el = child_type_node(right_ch.clone());
+                                                if (is_unit_like(left_el.clone())
+                                                    || is_unit_like(right_el.clone()))
+                                                {
+                                                    break true;
+                                                } else {
+                                                    {
+                                                        let __tco_0 = left_el.clone();
+                                                        let __tco_1 = right_el.clone();
+                                                        left = __tco_0;
+                                                        right = __tco_1;
+                                                        continue;
+                                                    }
+                                                }
+                                            }
+                                            None => {
+                                                break true;
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        break true;
                                     }
                                 }
                             } else {
-                                if (left_opt.clone() || right_opt.clone()) {
-                                    break false;
+                                if (left_opt.clone() && right_opt.clone()) {
+                                    let left_inner = with_required_cardinality(left.clone());
+                                    let right_inner = with_required_cardinality(right.clone());
+                                    let left_inner_is_unit = is_unit_like(left_inner.clone());
+                                    let right_inner_is_unit = is_unit_like(right_inner.clone());
+                                    if (left_inner_is_unit || right_inner_is_unit) {
+                                        break true;
+                                    } else {
+                                        {
+                                            let __tco_0 = left_inner.clone();
+                                            let __tco_1 = right_inner.clone();
+                                            left = __tco_0;
+                                            right = __tco_1;
+                                            continue;
+                                        }
+                                    }
                                 } else {
-                                    break (authored_name_at(source_indices.clone(), left.clone())
-                                        .as_str()
-                                        == authored_name_at(
+                                    if (left_opt.clone() || right_opt.clone()) {
+                                        break false;
+                                    } else {
+                                        break (authored_name_at(
                                             source_indices.clone(),
-                                            right.clone(),
+                                            left.clone(),
                                         )
-                                        .as_str());
+                                        .as_str()
+                                            == authored_name_at(
+                                                source_indices.clone(),
+                                                right.clone(),
+                                            )
+                                            .as_str());
+                                    }
                                 }
                             }
                         }

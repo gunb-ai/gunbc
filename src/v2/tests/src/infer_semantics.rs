@@ -8,7 +8,7 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, is_fully_resolved, node_is_keyed_collection, resolved_type,
+    bare_map_node, is_fully_resolved, node_is_keyed_collection, node_type_compatible, resolved_type,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::NewlineIndex;
@@ -889,5 +889,44 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         outputs.is_empty(),
         "fail-closed gate: Conj with error child must produce 0 outputs, got {}",
         outputs.len()
+    );
+}
+
+// ── List ↔ FreeMonoid alias transparency (node_type_compatible) ──────────
+// `type List<T> = FreeMonoid<T>` (collection.dag) — but List is a container
+// (kept unexpanded as Container(List)) while FreeMonoid resolves to Node(FreeMonoid),
+// so the two declared-alias spellings reach type-comparison structurally distinct.
+// node_type_compatible canonicalizes container-template names via the existing
+// container_template_algebra authority so the aliases compare transparently —
+// element types still checked (red-when-wrong below).
+
+#[test]
+fn list_and_freemonoid_compatible_same_element() {
+    let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
+    let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
+    assert!(
+        node_type_compatible(list_sym, fm_sym, empty_source_indices()),
+        "List<Symbol> and FreeMonoid<Symbol> are declared aliases — must be compatible at type-comparison"
+    );
+}
+
+#[test]
+fn list_and_freemonoid_incompatible_different_element() {
+    // Red-when-wrong: canonicalize-at-compare must NOT collapse element types.
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    let fm_string = container_node("FreeMonoid".to_string(), leaf_node("String".to_string()));
+    assert!(
+        !node_type_compatible(list_int, fm_string, empty_source_indices()),
+        "List<Int> vs FreeMonoid<String> differ in element type — must stay incompatible"
+    );
+}
+
+#[test]
+fn list_freemonoid_compat_is_symmetric() {
+    let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
+    let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
+    assert!(
+        node_type_compatible(fm_sym, list_sym, empty_source_indices()),
+        "alias compatibility must hold in both argument orders"
     );
 }
