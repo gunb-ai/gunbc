@@ -2592,7 +2592,7 @@ pub fn infer_expr(
                     {
                         let value_params = Rc::new({
                             let mut __result = Vec::new();
-                            for p in sig_params.iter().cloned() {
+                            for p in sig_params.clone().iter().cloned() {
                                 if !param_is_generic_decl(
                                     p.clone(),
                                     scope.type_env.clone().source_indices.clone(),
@@ -2602,21 +2602,30 @@ pub fn infer_expr(
                             }
                             __result
                         });
-                        if std::env::var("GUNBC_DBG_CASCADE").is_ok()
-                            && func_name.clone() == "bind_outcome".to_string()
-                        {
-                            let vnames: Vec<String> = value_params
-                                .iter()
-                                .map(|p| param_node_type_expr(p.clone()).name.clone())
-                                .collect();
-                            eprintln!(
-                                "DBG_VP fn={:?} nsig={} nval={} val_types={:?}",
-                                func_name,
-                                sig_params.len(),
-                                value_params.len(),
-                                vnames
-                            );
-                        }
+                        let generic_names = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in Rc::new({
+                                let mut __result = Vec::new();
+                                for p in sig_params.clone().iter().cloned() {
+                                    if param_is_generic_decl(
+                                        p.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ) {
+                                        __result.push(p);
+                                    }
+                                }
+                                __result
+                            })
+                            .iter()
+                            .cloned()
+                            {
+                                __result.push(authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    param_node_type_expr(p.clone()),
+                                ));
+                            }
+                            __result
+                        });
                         let final_state = Rc::new(
                             call_args
                                 .clone()
@@ -2668,6 +2677,7 @@ pub fn infer_expr(
                                     unify_generics(
                                         formal_raw.clone(),
                                         resolved_type(ar.typed.clone()),
+                                        generic_names.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                         st.subst.clone(),
                                     )
@@ -10225,6 +10235,7 @@ pub fn param_is_generic_decl(
 pub fn unify_generics(
     mut formal: Rc<Node>,
     mut actual: Rc<Node>,
+    mut generic_names: Rc<Vec<String>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
@@ -10232,7 +10243,16 @@ pub fn unify_generics(
         let fname = authored_name_at(source_indices.clone(), formal.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
             && (formal.connective.clone() == Connective::NoConnective));
-        if (f_bare && is_type_variable_name(fname.clone())) {
+        if (f_bare && {
+            let mut __found = false;
+            for g in generic_names.clone().iter().cloned() {
+                if (g.clone().as_str() == fname.clone().as_str()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) {
             break v2_rt::rc_map_insert(acc, fname.clone(), actual.clone());
         } else {
             if (((formal.children.clone().len() as i64) == 1)
