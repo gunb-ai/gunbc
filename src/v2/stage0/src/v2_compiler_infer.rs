@@ -2602,6 +2602,21 @@ pub fn infer_expr(
                             }
                             __result
                         });
+                        if std::env::var("GUNBC_DBG_CASCADE").is_ok()
+                            && func_name.clone() == "bind_outcome".to_string()
+                        {
+                            let vnames: Vec<String> = value_params
+                                .iter()
+                                .map(|p| param_node_type_expr(p.clone()).name.clone())
+                                .collect();
+                            eprintln!(
+                                "DBG_VP fn={:?} nsig={} nval={} val_types={:?}",
+                                func_name,
+                                sig_params.len(),
+                                value_params.len(),
+                                vnames
+                            );
+                        }
                         let final_state = Rc::new(
                             call_args
                                 .clone()

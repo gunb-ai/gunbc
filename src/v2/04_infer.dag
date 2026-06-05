@@ -1343,6 +1343,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         // f: fn(T) -> ... so the lambda param binds to the concrete success
         // type. A single left-to-right fold infers each arg exactly once.
         let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
+        let generic_names = sig_params
+          |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
+          |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: param_node_type_expr(n: p)))
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
           let formal_lookup = value_params |> skip(pair.first) |> first
@@ -1357,7 +1360,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let next_subst = if (is_lambda_expr(e: arg_value(n: a)) || !has_formal) {
             st.subst
           } else {
-            unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), source_indices: scope.type_env.source_indices, acc: st.subst)
+            unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
           }
           ArgGenericFoldState {
             results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
@@ -4896,16 +4899,16 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 // single-type-parameter container (Outcome<T> vs Outcome<Concrete>) recurses
 // into its one type-arg. Multi-generic / nested / arrow unification is the
 // deferred roadmap (A) — added only when a witness forces it.
-fn unify_generics(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let fname = authored_name_at(source_indices: source_indices, node: formal)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
-  if f_bare && is_type_variable_name(name: fname) {
+  if f_bare && (generic_names |> any(g => g == fname)) {
     map_insert(acc, fname, actual)
   } else if formal.children |> count == 1 && actual.children |> count == 1 {
     match formal.children |> first {
       Some { value: fc } =>
         match actual.children |> first {
-          Some { value: ac } => unify_generics(formal: fc, actual: ac, source_indices: source_indices, acc: acc)
+          Some { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
           None => acc
         }
       None => acc
