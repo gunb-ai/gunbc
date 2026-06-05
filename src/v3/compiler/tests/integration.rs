@@ -147,6 +147,8 @@ mod m1_lens_structural_resolution_test;
 mod m1_substrate_test;
 #[path = "integration/m2_feature_parity_test.rs"]
 mod m2_feature_parity_test;
+#[path = "integration/brand_probe_temp_test.rs"]
+mod brand_probe_temp_test;
 #[path = "integration/m2_field_access_binding_test.rs"]
 mod m2_field_access_binding_test;
 #[path = "integration/m2_lens_cost_migration_test.rs"]
