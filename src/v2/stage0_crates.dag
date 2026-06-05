@@ -4,8 +4,10 @@
 // `render_stage0_*` constants and renderers in
 // `src/v2/stage0/src/bin/regen_stage0.rs`. It declares, as data, which
 // generated stage0 modules form each split support crate, that crate's
-// Cargo dependencies, and the root shims it carries -- then emits the exact
-// `Cargo.toml` and `lib.rs` wrapper files `regen_stage0` writes and verifies.
+// Cargo dependencies, and whether it carries the root `NonEmpty*` wrappers --
+// then emits the exact `Cargo.toml` and `lib.rs` wrapper files `regen_stage0`
+// writes and verifies. The wrapper bodies themselves are emitted from the
+// existing single source `v2.compiler.emit_rust.emit_non_empty_wrappers`.
 //
 // Authority migration only: the emitted bytes are byte-for-byte identical to
 // the files PR #4429 rendered from Rust. `regen_stage0` keeps its
@@ -18,6 +20,7 @@
 module v2.compiler.stage0_crates
 
 import v2.std.core { TextFile }
+import v2.compiler.emit_rust { emit_non_empty_wrappers }
 
 // =========================================================================
 // Crate-boundary model
@@ -27,13 +30,6 @@ import v2.std.core { TextFile }
 type Stage0CrateKind
   = CoreCrate
   | EmitCoreCrate
-
-// Root-level newtype shims a crate carries directly in its lib root because
-// generated modules address them as `crate::NonEmptyVec` / `crate::NonEmptyBTreeSet`.
-// These are generated-crate support, not semantic compiler logic.
-type Stage0RootShim
-  = NonEmptyVecShim
-  | NonEmptyBTreeSetShim
 
 // A single `[dependencies]` entry, faithful to the three forms #4429 uses.
 type Stage0CrateDep
@@ -52,7 +48,11 @@ type Stage0CrateSpec {
   header_doc: String
   modules: List<String>
   dependencies: List<Stage0CrateDep>
-  root_shims: List<Stage0RootShim>
+  // Whether this crate defines the `NonEmpty*` newtype wrappers at its lib
+  // root. The wrapper bodies are NOT modeled here -- they are emitted from the
+  // single source `v2.compiler.emit_rust.emit_non_empty_wrappers`, the same
+  // function that produces them for the monolithic stage0 lib.
+  carries_non_empty_wrappers: Bool
 }
 
 type Stage0CratePlan {
@@ -106,58 +106,6 @@ fn stage0_emit_core_header_doc() -> String {
   ] |> join(separator: "\n")
 }
 
-// Root shim impl block, ending at the closing brace (no trailing newline).
-fn render_stage0_root_shim(shim: Stage0RootShim) -> String {
-  match shim {
-    NonEmptyVecShim =>
-      [
-        "#[derive(Debug, Clone, PartialEq)]",
-        "pub struct NonEmptyVec<T>(Vec<T>);",
-        "",
-        "impl<T> NonEmptyVec<T> {",
-        "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {",
-        "        if items.is_empty() {",
-        "            Err(\"NonEmptyVec requires at least one element\")",
-        "        } else {",
-        "            Ok(Self(items))",
-        "        }",
-        "    }",
-        "",
-        "    pub fn as_slice(&self) -> &[T] {",
-        "        &self.0",
-        "    }",
-        "",
-        "    pub fn into_vec(self) -> Vec<T> {",
-        "        self.0",
-        "    }",
-        "}"
-      ] |> join(separator: "\n")
-    NonEmptyBTreeSetShim =>
-      [
-        "#[derive(Debug, Clone, PartialEq)]",
-        "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);",
-        "",
-        "impl<T: Ord> NonEmptyBTreeSet<T> {",
-        "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {",
-        "        if items.is_empty() {",
-        "            Err(\"NonEmptyBTreeSet requires at least one element\")",
-        "        } else {",
-        "            Ok(Self(items))",
-        "        }",
-        "    }",
-        "",
-        "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {",
-        "        &self.0",
-        "    }",
-        "",
-        "    pub fn into_set(self) -> std::collections::BTreeSet<T> {",
-        "        self.0",
-        "    }",
-        "}"
-      ] |> join(separator: "\n")
-  }
-}
-
 // =========================================================================
 // Manifest emission
 // =========================================================================
@@ -189,18 +137,22 @@ fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> TextFile {
 // lib.rs emission
 // =========================================================================
 
-// CoreCrate: `#[path]`-include each module, then carry the root shims inline.
+// CoreCrate: `#[path]`-include each module, then carry the root wrappers.
+// The wrapper bodies come from emit_rust's single source, not copied here.
 fn render_stage0_core_lib(spec: Stage0CrateSpec) -> String {
   let includes = spec.modules
     |> map(m => concat("#[path = \"../../stage0/src/", m, ".rs\"]\npub mod ", m, ";"))
     |> join(separator: "\n")
-  let shims = spec.root_shims |> map(render_stage0_root_shim) |> join(separator: "\n\n")
-  concat(
+  let head = concat(
     spec.header_doc, "\n\n",
     stage0_crate_allow_block(), "\n\n",
-    includes, "\n\n",
-    shims, "\n"
+    includes
   )
+  if spec.carries_non_empty_wrappers {
+    concat(head, "\n\n", emit_non_empty_wrappers(), "\n")
+  } else {
+    concat(head, "\n")
+  }
 }
 
 // EmitCoreCrate: re-export each module from v2-stage0-core, import the root
@@ -281,7 +233,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           VersionDep { name: "serde", version: "1", features: ["derive", "rc"] },
           VersionDep { name: "serde_json", version: "1", features: [] }
         ],
-        root_shims: [NonEmptyVecShim, NonEmptyBTreeSetShim]
+        carries_non_empty_wrappers: true
       },
       Stage0CrateSpec {
         package_name: "v2-stage0-emit-core",
@@ -302,7 +254,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           VersionDep { name: "serde", version: "1", features: ["derive", "rc"] },
           PathDep { name: "v2-stage0-core", path: "../stage0_core" }
         ],
-        root_shims: []
+        carries_non_empty_wrappers: false
       }
     ]
   }
