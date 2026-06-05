@@ -535,16 +535,15 @@ fn tokenizer_text_lookup_flat_in_file_size() {
 
 // ── Name / span text lookup (authored_name_at → source_text_at) ─────────
 //
-// RED until `source_text_at` stops routing through O(pos) `v2_rt::substring` on
-// the raw file buffer. Tokenizer `source_chars` indexing is already green
-// (`tokenizer_text_lookup_flat_in_file_size` above); name lookup still walks
-// from offset zero on non-ASCII sources today (~30x tail/head on 02_parse.dag).
-// Tracked-red lock (Claim #4449 pattern): `#[ignore]` keeps cargo green; rerun
-// with `cargo test -p v2-compiler-tests source_text_at_lookup -- --ignored`.
+// Tracked-red-by-measurement: always-run locks pin today's O(offset) char-walk
+// cost via deterministic chars-walked counters. Tokenizer indexing is already
+// flat (`tokenizer_text_lookup_flat_in_file_size` above).
+//
+// DISSOLUTION: when char->byte offset table lands, flip each lock to assert FLAT
+// (O(1) / O(K*name_len)) — a reintroduced char-walk then fails the guard.
 
 #[test]
-#[ignore = "RED: source_text_at is O(file offset) via substring — enable when span slice is flat"]
-fn source_text_at_lookup_flat_in_file_size() {
+fn source_text_at_lookup_tracked_red_not_flat_in_file_size() {
     let source = read_v2_file("src/v2/02_parse.dag");
     assert!(
         !source.is_ascii(),
@@ -566,24 +565,22 @@ fn source_text_at_lookup_flat_in_file_size() {
     const LOOKUPS: usize = 200;
     let head_walked = source_text_at_chars_walked(&index, &head_span, LOOKUPS);
     let tail_walked = source_text_at_chars_walked(&index, &tail_span, LOOKUPS);
-    let ratio = tail_walked as f64 / head_walked.max(1) as f64;
 
     eprintln!(
-        "source_text_at chars walked: head={head_walked} tail={tail_walked} ratio={ratio:.1}x ({}B)",
+        "source_text_at chars walked: head={head_walked} tail={tail_walked} ({}B, {LOOKUPS} lookups each)",
         source.len(),
     );
 
-    const FLAT_MARGIN: f64 = 4.0;
-    assert!(
-        ratio < FLAT_MARGIN,
-        "source_text_at tail lookup walked {tail_walked} chars vs head {head_walked} — expected < {:.1}x (O(offset) regression)",
-        FLAT_MARGIN,
+    // Pins today's O(offset) substring walk on 02_parse.dag (262970B).
+    assert_eq!(head_walked, 800, "head span 0..4 × {LOOKUPS} lookups");
+    assert_eq!(
+        tail_walked, 52_594_000,
+        "tail span near EOF × {LOOKUPS} lookups — scales with file offset today"
     );
 }
 
 #[test]
-#[ignore = "RED: padded name lookups should cost O(K * name_len), not O(file_len)"]
-fn source_text_at_lookup_flat_across_name_padding() {
+fn source_text_at_lookup_tracked_red_scales_with_file_padding() {
     const K: usize = 8;
     const SMALL_PAD: usize = 32;
     const LARGE_PAD: usize = SMALL_PAD * 10;
@@ -605,17 +602,16 @@ fn source_text_at_lookup_flat_across_name_padding() {
         total_source_text_at_chars_walked(&small_index, &small_spans, LOOKUPS_PER_SPAN);
     let large_walked =
         total_source_text_at_chars_walked(&large_index, &large_spans, LOOKUPS_PER_SPAN);
-    let ratio = large_walked as f64 / small_walked.max(1) as f64;
 
     eprintln!(
-        "source_text_at K={K} names: small {small_len}B walked={small_walked} | large {large_len}B walked={large_walked} | ratio {ratio:.1}x"
+        "source_text_at K={K} names: small {small_len}B walked={small_walked} | large {large_len}B walked={large_walked}"
     );
 
-    const PADDING_FLAT_MARGIN: f64 = 3.0;
-    assert!(
-        ratio < PADDING_FLAT_MARGIN,
-        "name lookup walked {large_walked} vs {small_walked} for 10x padding — expected < {:.1}x (scales with file length)",
-        PADDING_FLAT_MARGIN,
+    // Pins today's padding-sensitive walk (10× filler → ~7.8× walked on K=8 fixture).
+    assert_eq!(small_walked, 118_600, "K={K} names, pad={SMALL_PAD}");
+    assert_eq!(
+        large_walked, 925_000,
+        "K={K} names, pad={LARGE_PAD} — walked scales with file length today"
     );
 }
 
