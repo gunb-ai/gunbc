@@ -86,6 +86,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_resolve.rs",
     "v2_compiler_runtime_go.rs",
     "v2_compiler_runtime_rust.rs",
+    "v2_compiler_stage0_crates.rs",
     "v2_compiler_tokenize.rs",
     "v2_compiler_trace.rs",
     "v2_rt.rs",
