@@ -1076,13 +1076,10 @@ const WORKSPACE_MEMBERS_REGEN_HINT: &str =
     "Run `cargo run -p v2-compiler --bin regen_stage0` to regenerate.";
 
 fn workspace_members_markers_and_region() -> (String, String, String) {
-    // BOOTSTRAP-PASS-A TEMP: literals matching v2.compiler.workspace_members.
-    // Reverted to the generated-module calls in pass B once the module is in
-    // the seed.
     (
-        "    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v2.compiler.workspace_members)".to_string(),
-        "    # END generated stage0 crate members".to_string(),
-        "    \"src/v2/stage0_core\",\n    \"src/v2/stage0_emit_core\",".to_string(),
+        v2_compiler::v2_compiler_workspace_members::workspace_members_region_begin_marker(),
+        v2_compiler::v2_compiler_workspace_members::workspace_members_region_end_marker(),
+        v2_compiler::v2_compiler_workspace_members::stage0_workspace_member_region(),
     )
 }
 
