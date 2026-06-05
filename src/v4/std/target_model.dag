@@ -3111,32 +3111,15 @@ fn target_use_site_ownership_catalog_lookup_step(
   }
 }
 
-// Value-semantics discrimination: a carrier whose atom identity is in the
-// target-provided value-semantics (Copy) set. Atom-identity-keyed to match how
-// the reference-ownership catalog matches carriers.
-fn target_carrier_is_value_semantics(source_carrier: Node, value_semantics_carriers: List<Symbol>) -> Bool {
-  match source_carrier.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      value_semantics_carriers |> any(c => c == id)
-    _ => false
-  }
-}
-
-fn target_use_site_ownership_lookup_in_catalog_node(
+// Reference-ownership catalog lookup (SG-RC): consult the per-carrier catalog for a
+// reference realization. A carrier with no row is a fail-closed miss. Extracted so
+// the value-semantics discrimination can live inline at the lookup authority below
+// without a standalone is_* predicate (modeling-discipline Practice 10).
+fn target_use_site_ownership_reference_catalog_lookup(
   catalog: Node,
-  value_semantics_carriers: List<Symbol>,
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<TargetCarrierOwnership> {
-  // NAMED value-semantics branch at the authority. A value-semantics (Copy)
-  // carrier owns by value (Copy ⇒ by-value default) — short-circuit before the
-  // reference catalog so it does not (wrongly) miss for lacking an SG-RC row.
-  // Reference-semantics carriers fall through to the catalog; a reference carrier
-  // with no row is still a fail-closed miss. The lookup encapsulates the
-  // discrimination — call sites just call it.
-  if target_carrier_is_value_semantics(source_carrier: source_carrier, value_semantics_carriers: value_semantics_carriers) {
-    outcome_accepted(CarrierOwnershipByValue)
-  } else {
   match catalog.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -3171,6 +3154,38 @@ fn target_use_site_ownership_lookup_in_catalog_node(
         )
       )
   }
+}
+
+fn target_use_site_ownership_lookup_in_catalog_node(
+  catalog: Node,
+  value_semantics_carriers: List<Symbol>,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<TargetCarrierOwnership> {
+  // Discrimination AT THE AUTHORITY (no standalone is_* predicate): a value-semantics
+  // (Copy) carrier — a bare atom whose identity is in the target's value-semantics set
+  // — owns BY VALUE (Copy ⇒ by-value default), short-circuiting before the SG-RC
+  // reference catalog so it does not wrongly miss for lacking a row. Every other
+  // carrier (an atom not in the set, or a composite) falls through to the reference
+  // catalog; a reference carrier with no row is still a fail-closed miss. Call sites
+  // just call this lookup.
+  match source_carrier.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if value_semantics_carriers |> any(c => c == id) {
+        outcome_accepted(CarrierOwnershipByValue)
+      } else {
+        target_use_site_ownership_reference_catalog_lookup(
+          catalog: catalog,
+          source_carrier: source_carrier,
+          use_site: use_site
+        )
+      }
+    _ =>
+      target_use_site_ownership_reference_catalog_lookup(
+        catalog: catalog,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
   }
 }
 
