@@ -77,6 +77,7 @@ pub mod v2_compiler_runtime_rust;
 pub mod v2_compiler_stage0_crates;
 pub mod v2_compiler_tokenize;
 pub mod v2_compiler_trace;
+pub mod v2_compiler_workspace_members;
 pub mod v2_interpreter;
 pub mod v2_rt;
 pub mod v2_std_core;
