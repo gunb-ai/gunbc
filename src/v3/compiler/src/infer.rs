@@ -589,6 +589,17 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                             resolved_arms.push((*ty, name.clone()));
                             Ok(*ty)
                         }
+                        None if bare_pattern_label_resolves_to_symbol_data(dag, name) => {
+                            Err(Diagnostic::ResolveError {
+                                name: format!(
+                                    "bare Symbol constant `{name}` cannot be used as a match pattern; use explicit equality dispatch before this match"
+                                ),
+                                span: span.clone(),
+                                correction: Correction::deferred_for_diagnostic_class(
+                                    "InferenceDiagnostic",
+                                ),
+                            })
+                        }
                         None => Err(Diagnostic::ResolveError {
                             name: format!(
                                 "variant `{name}` is not a constructor of this match's scrutinee type"
@@ -705,6 +716,14 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
         }
     }
     changed
+}
+
+fn bare_pattern_label_resolves_to_symbol_data(dag: &Dag, name: &str) -> bool {
+    let Some(symbol_decl) = dag.declaration_by_name("Symbol") else {
+        return false;
+    };
+    dag.declaration_by_name(name)
+        .is_some_and(|decl| decl.inhabits == Some(symbol_decl.id))
 }
 
 fn branch_output_example_source(dag: &Dag, output_port: PortId, arm_outputs: &[PortId]) -> String {
@@ -7344,5 +7363,137 @@ mod bool_logical_operator_arrow_tests {
         )
         .is_none());
         assert_eq!(dag.declarations().len(), before);
+    }
+
+    #[test]
+    fn bare_symbol_const_branch_pattern_fails_closed_before_variant_fallback() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("symbol-const-pattern-unit.dag", 0, 1);
+
+        let symbol = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: symbol,
+            name: Some("Symbol".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(
+                "Symbol".to_string(),
+            )),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let symbol_const = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: symbol_const,
+            name: Some("match_symbol_axis".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByName(symbol)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: Some(symbol),
+            value_body: Some(crate::dag::ValueBody::Scalar(LiteralBits::String(
+                "match_symbol_axis".to_string(),
+            ))),
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let left_variant = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: left_variant,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByName(symbol)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let right_variant = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: right_variant,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByName(symbol)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let sum = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: sum,
+            name: Some("TinySum".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Left".to_string(),
+                        ty: left_variant,
+                    },
+                    Field {
+                        label: "Right".to_string(),
+                        ty: right_variant,
+                    },
+                ],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let branch_id = dag.alloc_node_id();
+        let input = dag.alloc_port(None);
+        dag.set_port_type(input, TypeShape::new(sum));
+        let arm_output = dag.alloc_port(None);
+        let branch_output = dag.alloc_port(Some(branch_id));
+        dag.push_node(Behavior::Branch(crate::dag::BranchNode {
+            id: branch_id,
+            input,
+            paths: vec![crate::dag::Path {
+                body: branch_id,
+                output: arm_output,
+                pattern: crate::dag::BranchPattern::UnresolvedVariant {
+                    name: "match_symbol_axis".to_string(),
+                    span: span.clone(),
+                },
+                binding: None,
+            }],
+            output: branch_output,
+            span: span.clone(),
+            emit_participation: None,
+        }));
+
+        assert!(resolve_branch_patterns(&mut dag));
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("bare Symbol constant `match_symbol_axis` cannot be used as a match pattern")
+            )),
+            "expected bare Symbol constant branch-pattern diagnostic, got {:?}",
+            dag.diagnostics()
+        );
     }
 }

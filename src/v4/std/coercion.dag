@@ -179,7 +179,7 @@ fn coercion_find_witness_reason_unmapped_diagnostic(
 }
 fn find_witness_rejection_kind_from_reason(
   source: CanonicalGrounding,
-  reason: Symbol,
+  reason: Symbol
 ) -> Outcome<FindWitnessRejectionKind> {
   if reason == find_witness_reason_no_candidate {
     Accepted { value: FindWitnessNoCandidate, diagnostics: None }

@@ -66,6 +66,10 @@
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
 
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceType, TypeAngleArg,
@@ -74,6 +78,8 @@ use v3_compiler::tokenize_for_test;
 
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
 const FIND_WITNESS_PATH: &str = "src/v4/std/find_witness.dag";
+const COERCION_DAG: &str = include_str!("../../../../v4/std/coercion.dag");
+const COERCION_PATH: &str = "src/v4/std/coercion.dag";
 const MVP_INT_CROSS_TARGET_COERCION_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp_int_cross_target_coercion.dag");
 const MVP_INT_CROSS_TARGET_COERCION_CLAIM_PATH: &str =
@@ -101,6 +107,18 @@ const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
 const KOTLIN_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/kotlin.dag");
 const KOTLIN_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/kotlin.dag";
+const ECMASCRIPT_LANGUAGE_DAG: &str =
+    include_str!("../../../../v4/extdeps/languages/ecmascript.dag");
+const ECMASCRIPT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/ecmascript.dag";
+const LEAN_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/lean.dag");
+const LEAN_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/lean.dag";
+const LLVM_IR_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/llvm_ir.dag");
+const LLVM_IR_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/llvm_ir.dag";
+const MACHINE_CODE_LANGUAGE_DAG: &str =
+    include_str!("../../../../v4/extdeps/languages/machine_code.dag");
+const MACHINE_CODE_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/machine_code.dag";
+const SQL_FORMAT_DAG: &str = include_str!("../../../../v4/extdeps/formats/sql.dag");
+const SQL_FORMAT_PATH: &str = "src/v4/extdeps/formats/sql.dag";
 const DAG_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/dag.dag");
 const DAG_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/dag.dag";
 const MVP1_CLAIM_DAG: &str =
@@ -147,6 +165,206 @@ fn v4_find_witness_dag_declares_find_witness_entrypoint() {
     assert!(
         surface_declares_fn(&module, "find_witness"),
         "{FIND_WITNESS_PATH}: must declare find_witness primitive"
+    );
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreservationRuleDispatch {
+    ConstraintSatisfaction,
+    ExactStructuralEqualityZipFold,
+    RefinementWidening,
+    NotRealized,
+}
+
+fn preservation_rule_dispatch(rule: &str) -> PreservationRuleDispatch {
+    if rule == "preservation_rule_constraint_satisfaction" {
+        PreservationRuleDispatch::ConstraintSatisfaction
+    } else if rule == "preservation_rule_exact_structural_equality_zip_fold" {
+        PreservationRuleDispatch::ExactStructuralEqualityZipFold
+    } else if rule == "preservation_rule_refinement_widening" {
+        PreservationRuleDispatch::RefinementWidening
+    } else {
+        PreservationRuleDispatch::NotRealized
+    }
+}
+
+#[test]
+fn v4_find_witness_symbol_rule_dispatch_is_discriminating_and_fail_closed() {
+    let module = parse_module(FIND_WITNESS_DAG, FIND_WITNESS_PATH);
+    assert!(
+        fn_external_body_contains(
+            &module,
+            FIND_WITNESS_DAG,
+            "preservation_predicate_holds",
+            "if predicate.preservation_rule == preservation_rule_constraint_satisfaction"
+        ) && fn_external_body_contains(
+            &module,
+            FIND_WITNESS_DAG,
+            "preservation_predicate_holds",
+            "} else if predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold {"
+        ) && fn_external_body_contains(
+            &module,
+            FIND_WITNESS_DAG,
+            "preservation_predicate_holds",
+            "} else if predicate.preservation_rule == preservation_rule_refinement_widening {"
+        ) && fn_external_body_contains(
+            &module,
+            FIND_WITNESS_DAG,
+            "preservation_predicate_holds",
+            "} else {\n    false\n  }"
+        ),
+        "{FIND_WITNESS_PATH}: preservation_predicate_holds must use explicit Symbol equality dispatch with a fail-closed else"
+    );
+    assert_eq!(
+        preservation_rule_dispatch("preservation_rule_exact_structural_equality_zip_fold"),
+        PreservationRuleDispatch::ExactStructuralEqualityZipFold,
+        "discriminating second-arm input must not take the first preservation rule"
+    );
+    assert_eq!(
+        preservation_rule_dispatch("unbound_preservation_rule"),
+        PreservationRuleDispatch::NotRealized,
+        "unknown preservation rules must fail closed"
+    );
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FindWitnessReasonDispatch {
+    NoCandidate,
+    AmbiguousCandidate,
+    NotRealized,
+    InvalidWitness,
+    Unmapped,
+}
+
+fn find_witness_reason_dispatch(reason: &str) -> FindWitnessReasonDispatch {
+    if reason == "find_witness_reason_no_candidate" {
+        FindWitnessReasonDispatch::NoCandidate
+    } else if reason == "find_witness_reason_ambiguous_candidate" {
+        FindWitnessReasonDispatch::AmbiguousCandidate
+    } else if reason == "find_witness_reason_not_realized" {
+        FindWitnessReasonDispatch::NotRealized
+    } else if reason == "find_witness_reason_invalid_witness" {
+        FindWitnessReasonDispatch::InvalidWitness
+    } else {
+        FindWitnessReasonDispatch::Unmapped
+    }
+}
+
+#[test]
+fn v4_coercion_find_witness_reason_dispatch_is_discriminating_and_fail_closed() {
+    assert!(
+        COERCION_DAG.contains("if reason == find_witness_reason_no_candidate")
+            && COERCION_DAG.contains("} else if reason == find_witness_reason_ambiguous_candidate {")
+            && COERCION_DAG.contains("} else if reason == find_witness_reason_not_realized {")
+            && COERCION_DAG.contains("} else if reason == find_witness_reason_invalid_witness {")
+            && COERCION_DAG.contains("coercion_find_witness_reason_unmapped_diagnostic(source: source)"),
+        "{COERCION_PATH}: find_witness reason mapping must use explicit Symbol equality dispatch with an unmapped fail-closed else"
+    );
+    assert_eq!(
+        find_witness_reason_dispatch("find_witness_reason_ambiguous_candidate"),
+        FindWitnessReasonDispatch::AmbiguousCandidate,
+        "discriminating second-arm reason must not map to the first rejection kind"
+    );
+    assert_eq!(
+        find_witness_reason_dispatch("not_a_find_witness_reason"),
+        FindWitnessReasonDispatch::Unmapped,
+        "unknown find_witness reasons must fail closed"
+    );
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrimitiveFactAxisDispatch {
+    SurfaceSpelling,
+    Width,
+    Encoding,
+    OverflowDisposition,
+    Unbound,
+}
+
+fn primitive_fact_axis_dispatch(axis: &str) -> PrimitiveFactAxisDispatch {
+    if axis == "primitive_fact_axis_surface_spelling" {
+        PrimitiveFactAxisDispatch::SurfaceSpelling
+    } else if axis == "primitive_fact_axis_width" {
+        PrimitiveFactAxisDispatch::Width
+    } else if axis == "primitive_fact_axis_encoding" {
+        PrimitiveFactAxisDispatch::Encoding
+    } else if axis == "primitive_fact_axis_overflow_disposition" {
+        PrimitiveFactAxisDispatch::OverflowDisposition
+    } else {
+        PrimitiveFactAxisDispatch::Unbound
+    }
+}
+
+#[test]
+fn v4_extdeps_primitive_fact_axis_dispatch_is_discriminating_and_fail_closed() {
+    let affected_sources = [
+        (ECMASCRIPT_LANGUAGE_DAG, ECMASCRIPT_LANGUAGE_PATH, 12usize),
+        (KOTLIN_LANGUAGE_DAG, KOTLIN_LANGUAGE_PATH, 12),
+        (CPP_LANGUAGE_DAG, CPP_LANGUAGE_PATH, 11),
+        (JAVA_LANGUAGE_DAG, JAVA_LANGUAGE_PATH, 9),
+        (WASM_LANGUAGE_DAG, WASM_LANGUAGE_PATH, 8),
+        (TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH, 7),
+        (LEAN_LANGUAGE_DAG, LEAN_LANGUAGE_PATH, 6),
+        (SQL_FORMAT_DAG, SQL_FORMAT_PATH, 5),
+        (MACHINE_CODE_LANGUAGE_DAG, MACHINE_CODE_LANGUAGE_PATH, 5),
+        (LLVM_IR_LANGUAGE_DAG, LLVM_IR_LANGUAGE_PATH, 5),
+    ];
+    for (source, path, minimum_axis_comparisons) in affected_sources {
+        let _module = parse_module(source, path);
+        assert!(
+            !source.contains("match axis {"),
+            "{path}: primitive fact lookup must not dispatch on bare Symbol constants in match patterns"
+        );
+        assert!(
+            source.matches("if axis ==").count() >= minimum_axis_comparisons,
+            "{path}: migrated primitive fact lookup must retain explicit equality checks for all former Symbol arms"
+        );
+        assert!(
+            source.contains("primitive_fact_axis_unbound_diagnostic(axis: axis)"),
+            "{path}: primitive fact lookup must retain unbound-axis fail-closed behavior"
+        );
+    }
+    assert_eq!(
+        primitive_fact_axis_dispatch("primitive_fact_axis_width"),
+        PrimitiveFactAxisDispatch::Width,
+        "discriminating second-arm axis must not return the first surface-spelling fact"
+    );
+    assert_eq!(
+        primitive_fact_axis_dispatch("primitive_fact_axis_encoding"),
+        PrimitiveFactAxisDispatch::Encoding,
+        "encoding axis must dispatch independently from width/surface-spelling"
+    );
+    assert_eq!(
+        primitive_fact_axis_dispatch("not_a_primitive_fact_axis"),
+        PrimitiveFactAxisDispatch::Unbound,
+        "unknown primitive fact axes must fail closed"
+    );
+}
+
+#[test]
+fn v4_symbol_const_match_pattern_census_is_zero() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let mut dag_files = Vec::new();
+    collect_dag_files(&repo_root.join("src"), &mut dag_files);
+    collect_dag_files(&repo_root.join("dsl"), &mut dag_files);
+
+    let mut symbol_consts = BTreeSet::new();
+    let mut sources = Vec::new();
+    for path in &dag_files {
+        let source = fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("{}: read failed: {e}", path.display()));
+        symbol_consts.extend(symbol_const_names(&source));
+        sources.push((path.clone(), source));
+    }
+
+    let mut offenders = Vec::new();
+    for (path, source) in &sources {
+        offenders.extend(bare_symbol_const_match_arms(path, source, &symbol_consts));
+    }
+    assert!(
+        offenders.is_empty(),
+        "bare Symbol constants in match-pattern position must fail the migration census:\n{}",
+        offenders.join("\n")
     );
 }
 
@@ -2126,6 +2344,72 @@ fn source_span_string_literal_eq(
 
 fn dag_string_literal(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn collect_dag_files(root: &Path, out: &mut Vec<PathBuf>) {
+    if !root.exists() {
+        return;
+    }
+    for entry in
+        fs::read_dir(root).unwrap_or_else(|e| panic!("{}: read_dir failed: {e}", root.display()))
+    {
+        let entry = entry.unwrap_or_else(|e| panic!("{}: dir entry failed: {e}", root.display()));
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "dag") {
+            out.push(path);
+        }
+    }
+}
+
+fn symbol_const_names(source: &str) -> BTreeSet<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim_start();
+            let rest = trimmed.strip_prefix("data ")?;
+            let name = rest
+                .split(|c: char| c.is_whitespace() || c == ':')
+                .next()
+                .filter(|name| !name.is_empty())?;
+            if rest.contains(": Symbol") {
+                Some(name.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn bare_symbol_const_match_arms(
+    path: &Path,
+    source: &str,
+    symbol_consts: &BTreeSet<String>,
+) -> Vec<String> {
+    source
+        .lines()
+        .enumerate()
+        .filter_map(|(idx, line)| {
+            let trimmed = line.trim_start();
+            let (candidate, _) = trimmed.split_once("=>")?;
+            let candidate = candidate.trim();
+            if is_bare_ident(candidate) && symbol_consts.contains(candidate) {
+                Some(format!("{}:{}: {trimmed}", path.display(), idx + 1))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn is_bare_ident(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 fn expr_string_literal_eq(expr: &SurfaceExpr, expected: &str) -> bool {
