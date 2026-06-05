@@ -259,7 +259,7 @@ type CiCommand
   | V4T15SelfHostFixedPointCommand
   | M1RustEmitProbeCommand
   | LeafModelGoVerifyCommand
-  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1); verdict_surface must name the T-22 manual CorpusEvalReport surface (`manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed`) plus `manual_testclaim_subject_roster_family_receipt` using declaration-qualified authorities so per-row TestClaimEvalSubject -> run_test_claim -> TestClaimRun verdict facts are projected, not replaced by host-owned strings. Forbidden: bypassing narrowing to run full corpus unconditionally or reporting corpus status outside the modeled TestClaimRun roster.
+  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1); verdict_surface must name the tracked-expectation pin surface (`manual_corpus_eval_expected_pins` -> `witness_corpus_eval_tracked_expectation_closed`) plus `manual_testclaim_subject_roster_family_receipt` using declaration-qualified authorities so per-row TestClaimRun verdict facts are projected, not replaced by host-owned strings. Host transport: `.github/ci-floor/v4-testclaim-corpus-eval.sh` (drift gate; all-red-but-pinned == PASS). Forbidden: bypassing narrowing to run full corpus unconditionally or reporting corpus status outside the modeled TestClaimRun roster.
   | TestClaimCorpusEvalCommand { selection_fn: Symbol, verdict_surface: TestClaimCorpusVerdictSurfaceAuthority }
   // T-38B family receipt — lens_ownership subjects are rostered in `src/v4/test/claim/lens_ownership/subject_roster.dag` and evaluated by `workflow/lens_ownership_family_eval.dag` through run_test_claim.
   | LensOwnershipFamilyEvalCommand { verdict_surface: LensOwnershipFamilyVerdictSurfaceAuthority }
@@ -516,6 +516,7 @@ data ci_always_run_carveouts: List<CiCarveout> = [
 type CiSafetyFloorItem
   = FmtCheck
   | OneRustEmitProbe
+  | TestClaimCorpusEval
   | CiDagStructuralReceipt
   | NoNewShellRatchet
 
@@ -536,6 +537,7 @@ type CiShellExceptionRow {
 // Dissolution `what` atoms — the runtime-authority emission substrate whose arrival deletes the
 // row (does NOT yet exist; standard `ModelMissingSubstrate` naming, like `ci_gate_run_policy_*`).
 data ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority: Symbol = ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority
+data ci_testclaim_corpus_eval_step_emitted_from_upsert_runtime_authority: Symbol = ci_testclaim_corpus_eval_step_emitted_from_upsert_runtime_authority
 
 data ci_class_a_shell_exceptions: List<CiShellExceptionRow> = [
   CiShellExceptionRow {
@@ -548,6 +550,18 @@ data ci_class_a_shell_exceptions: List<CiShellExceptionRow> = [
     replacement_upsert: ci_upsert_m1_rust_emit_probe_execution,
     dissolution_target: ModelMissingSubstrate {
       what: ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority
+    }
+  },
+  CiShellExceptionRow {
+    step_id: JobStep {
+      job: testclaim_corpus_eval_execution,
+      step: testclaim_corpus_eval_execution
+    },
+    shell_owner: ".github/ci-floor/v4-testclaim-corpus-eval.sh",
+    protects_floor: TestClaimCorpusEval,
+    replacement_upsert: ci_upsert_testclaim_corpus_eval_execution,
+    dissolution_target: ModelMissingSubstrate {
+      what: ci_testclaim_corpus_eval_step_emitted_from_upsert_runtime_authority
     }
   }
 ]
@@ -911,6 +925,14 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
     emit_preconditions_block_required_path: true
     rustc_residuals_block_required_path: false
   }
+}
+
+data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal = CiLiveWorkflowStepSignal {
+  step_name: "T-22 TestClaim corpus eval (tracked-expectation drift gate)"
+  host_script: ShellScript { path: ".github/ci-floor/v4-testclaim-corpus-eval.sh" }
+  non_blocking: false
+  timeout_minutes: 40
+  strict_env_binding: NoStrictEnvBinding
 }
 
 data m1_rust_emit_probe_shared_dag_out_env: String = "V4_M1_DAG_EMIT_OUT"
@@ -1387,17 +1409,23 @@ data witness_lens_ownership_family_gate_closed: Symbol = witness_lens_ownership_
 
 data v4_test_claim_manual_manual_corpus_roster: Symbol = v4_test_claim_manual_manual_corpus_roster
 data v4_test_claim_workflow_manual_corpus_eval: Symbol = v4_test_claim_workflow_manual_corpus_eval
+data v4_test_claim_workflow_manual_corpus_eval_expected: Symbol = v4_test_claim_workflow_manual_corpus_eval_expected
 data manual_corpus_node_subject_rows: Symbol = manual_corpus_node_subject_rows
 data corpus_report_tally: Symbol = corpus_report_tally
 data witness_manual_corpus_gate_closed: Symbol = witness_manual_corpus_gate_closed
+data manual_corpus_eval_expected_pins: Symbol = manual_corpus_eval_expected_pins
+data witness_corpus_eval_tracked_expectation_closed: Symbol = witness_corpus_eval_tracked_expectation_closed
 data manual_testclaim_subject_roster_family_receipt: Symbol = manual_testclaim_subject_roster_family_receipt
 data ci_testclaim_corpus_module_manual_roster_path: Symbol = v4_test_claim_manual_manual_corpus_roster
 data ci_testclaim_corpus_module_runner_path: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
 data ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval
+data ci_testclaim_corpus_module_eval_expected_path: Symbol = v4_test_claim_workflow_manual_corpus_eval_expected
 data ci_testclaim_corpus_decl_manual_corpus_node_subject_rows_name: Symbol = manual_corpus_node_subject_rows
 data ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: Symbol = run_manual_testclaim_corpus_eval
 data ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally
 data ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: Symbol = witness_manual_corpus_gate_closed
+data ci_testclaim_corpus_decl_manual_corpus_eval_expected_pins_name: Symbol = manual_corpus_eval_expected_pins
+data ci_testclaim_corpus_decl_witness_tracked_expectation_closed_name: Symbol = witness_corpus_eval_tracked_expectation_closed
 data ci_testclaim_corpus_decl_manual_testclaim_subject_roster_family_receipt_name: Symbol = manual_testclaim_subject_roster_family_receipt
 
 fn ci_testclaim_corpus_declaration_authority(
@@ -1447,8 +1475,8 @@ fn ci_testclaim_corpus_verdict_surface_authority() -> TestClaimCorpusVerdictSurf
       declaration_name: ci_testclaim_corpus_decl_corpus_report_tally_name
     ),
     gate_witness: ci_testclaim_corpus_declaration_authority(
-      module_path: ci_testclaim_corpus_module_eval_path,
-      declaration_name: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name
+      module_path: ci_testclaim_corpus_module_eval_expected_path,
+      declaration_name: ci_testclaim_corpus_decl_witness_tracked_expectation_closed_name
     ),
     family_receipt: ci_testclaim_corpus_declaration_authority(
       module_path: ci_testclaim_corpus_module_runner_path,
@@ -1467,7 +1495,9 @@ fn ci_testclaim_corpus_eval_command() -> CiCommand {
 data ci_upsert_testclaim_corpus_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/manual/**"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"),
-  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval.dag")
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval_expected.dag"),
+  ci_upsert_file_set_input(segment: ".github/ci-floor/v4-testclaim-corpus-eval.sh")
 ]
 
 // #4091 §1.2 — M1 rust emit is upstream compile authority (forbidden: host-owned `gunbc compile --target rust` in corpus eval transport).
@@ -3485,6 +3515,10 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     path == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
   } else if segment == "src/v4/test/claim/workflow/manual_corpus_eval.dag" {
     path == "src/v4/test/claim/workflow/manual_corpus_eval.dag"
+  } else if segment == "src/v4/test/claim/workflow/manual_corpus_eval_expected.dag" {
+    path == "src/v4/test/claim/workflow/manual_corpus_eval_expected.dag"
+  } else if segment == ".github/ci-floor/v4-testclaim-corpus-eval.sh" {
+    path == ".github/ci-floor/v4-testclaim-corpus-eval.sh"
   } else if segment == "src/v4/compiler/source_authority.dag" {
     path == "src/v4/compiler/source_authority.dag"
   } else if segment == "src/v4/test/claim/round_trip/source_authority_contract.dag" {

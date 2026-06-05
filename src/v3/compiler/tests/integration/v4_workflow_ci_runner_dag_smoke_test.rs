@@ -1108,11 +1108,11 @@ fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure()
 #[test]
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let _module = parse_module(CI_DAG, CI_DAG_PATH);
-    const DEMOTED_CORPUS_EVAL_STEP: &str =
-        "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)";
+    const CORPUS_EVAL_STEP: &str =
+        "T-22 TestClaim corpus eval (tracked-expectation drift gate)";
     assert!(
-        !CI_DAG.contains("data testclaim_corpus_eval_ci_live_workflow_signal"),
-        "{CI_DAG_PATH}: demoted Class-C gate must not retain a live-workflow signal ledger row"
+        CI_DAG.contains("data testclaim_corpus_eval_ci_live_workflow_signal"),
+        "{CI_DAG_PATH}: corpus eval must model the live-workflow signal ledger row"
     );
     assert!(
         CI_DAG.contains("ci_upsert_testclaim_corpus_eval_upstream_inputs")
@@ -1124,12 +1124,20 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: testclaim corpus eval must declare M1 in needs for selector needs-closure (I8)"
     );
     assert!(
-        !CI_YML.contains(&format!("- name: {DEMOTED_CORPUS_EVAL_STEP}")),
-        "{CI_YML_PATH}: Wave 1 §11.7.1 — corpus eval demoted from required path (Class C)"
+        CI_YML.contains(&format!("- name: {CORPUS_EVAL_STEP}")),
+        "{CI_YML_PATH}: tracked-expectation corpus eval must be on the required path"
+    );
+    assert!(
+        CI_YML.contains("bash .github/ci-floor/v4-testclaim-corpus-eval.sh"),
+        "{CI_YML_PATH}: corpus eval host transport must invoke the ci-floor shell"
+    );
+    assert!(
+        CI_YML.contains("ci_corpus_eval:"),
+        "{CI_YML_PATH}: must declare the `ci_corpus_eval` job"
     );
     assert!(
         !CI_YML.contains("v4-testclaim-corpus-gate.sh"),
-        "{CI_YML_PATH}: shell bridge script must be absent from workflow"
+        "{CI_YML_PATH}: legacy shell bridge script must be absent from workflow"
     );
 }
 
@@ -1219,17 +1227,19 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         .next()
         .expect("ci_class_a_shell_exceptions table must terminate with `]`");
 
-    // Exactly one Class-A shell-owned floor step remains: M1 rust+dag emit. Bootstrap artifact
-    // existence is now checked inside that script, not by a second ci-floor script.
+    // Class-A shell-owned floor steps: M1 rust+dag emit + T-22 corpus eval drift gate.
     assert_eq!(
         table.matches("CiShellExceptionRow {").count(),
-        1,
-        "{CI_DAG_PATH}: §11.7.5 carries exactly one Class-A shell exception (M1)"
+        2,
+        "{CI_DAG_PATH}: §11.7.5 carries M1 + corpus-eval Class-A shell exceptions"
     );
     for needle in [
         "job: m1_rust_emit_probe_execution",
         ".github/ci-floor/v4-m1-rust-emit-probe.sh",
         "protects_floor: OneRustEmitProbe",
+        "job: testclaim_corpus_eval_execution",
+        ".github/ci-floor/v4-testclaim-corpus-eval.sh",
+        "protects_floor: TestClaimCorpusEval",
     ] {
         assert!(
             table.contains(needle),
@@ -1527,8 +1537,8 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation]"),
-        "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
+        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation, ci_corpus_eval]"),
+        "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt, `ci_floor`, `ci_corpus_eval`, and the `infra_isolation` de-priv guard"
     );
     assert!(
         CI_YML.contains("needs.affected.result"),
@@ -1751,7 +1761,6 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         "check-pr-sg0-net-shrink-discipline.sh",
         "determinism_test",
         "self_host_fixed_point",
-        "v4-testclaim-corpus-eval.sh",
         "v4-mvp1-e2e-gate.sh",
         "v4-phase1-nat-semiring-rung-gate.sh",
     ] {
@@ -1775,7 +1784,7 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     assert!(
         CI_WORKFLOW_DAG.contains("id: \"ci\"")
             && CI_WORKFLOW_DAG
-                .contains("needs: [\"affected\", \"ci_floor\", \"ci_floor_emit\", \"infra_isolation\"]"),
+                .contains("needs: [\"affected\", \"ci_floor\", \"ci_floor_emit\", \"infra_isolation\", \"ci_corpus_eval\"]"),
         "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt, `ci_floor`, the parallel `ci_floor_emit` lane, and the `infra_isolation` de-priv guard"
     );
     let affected_dag = workflow_dag_job_block(CI_WORKFLOW_DAG, "affected");
