@@ -19,6 +19,7 @@ import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
   coercion_candidate_set_from_declared_inhabitants,
+  declared_inhabitant_candidates,
   coercion_fold,
   coercion_fold_with_declared_priority
 }
