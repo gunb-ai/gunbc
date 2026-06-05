@@ -166,6 +166,16 @@ predicted), `manual/refinement_authoritative_constants` (6 witnesses),
 `manual/rust_wave2_grammar_structure`. These hit the import-closure perf wall —
 they belong to the keystone's perf track, not this map's findings.
 
+**Known limitation — the cap can mask a slow RED as PERF.** The mechanical 60 s
+cap classifies a witness that is *both slow and false* as PERF, hiding the red.
+Confirmed: `spine_translate_accepts_mvp1_inferred_tree` runs ~83 s and returns
+**`false`** — it is a RED (the most basic mvp1-translate witness is executed-and-
+wrong), not a perf-bound green. So PERF is an *upper bound on slow-greens*: some of
+these 11 are likely hidden reds. A full uncapped re-classification of the PERF
+bucket is the pending correction; until then treat PERF as "did not finish under
+cap," not "would pass with more time." This makes the substrate's true green rate
+slightly *lower* than the headline, not higher.
+
 ## Recommended sequence (materiality ordering; lanes per the routing section above)
 
 This is a *priority ordering*, not a re-classification — lane assignment is the
