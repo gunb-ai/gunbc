@@ -54,7 +54,10 @@ fn median_code_point_lookup_secs(source: &Rc<SourceRef>, pos: i64) -> f64 {
     samples[RUNS / 2]
 }
 
-fn median_source_text_at_secs(index: &Rc<v2_compiler::v2_std_core::NewlineIndex>, span: &Rc<SourceSpan>) -> f64 {
+fn median_source_text_at_secs(
+    index: &Rc<v2_compiler::v2_std_core::NewlineIndex>,
+    span: &Rc<SourceSpan>,
+) -> f64 {
     const RUNS: usize = 5;
     const LOOKUPS_PER_RUN: usize = 2_000;
     let mut samples = Vec::with_capacity(RUNS);
@@ -67,6 +70,45 @@ fn median_source_text_at_secs(index: &Rc<v2_compiler::v2_std_core::NewlineIndex>
     }
     samples.sort_by(|a, b| a.total_cmp(b));
     samples[RUNS / 2]
+}
+
+/// Fixture with `k` named bindings separated by `pad` non-ASCII filler bytes.
+fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSpan>>) {
+    let filler = "§".repeat(pad);
+    let mut source = String::from("module pad_test\n");
+    let mut spans = Vec::with_capacity(k);
+    let file = "pad_test.dag".to_string();
+    for i in 0..k {
+        if i > 0 {
+            source.push_str(&filler);
+            source.push('\n');
+        }
+        let name = format!("fn_{i}");
+        let start = source.len() as i64;
+        source.push_str(&name);
+        let end = source.len() as i64;
+        spans.push(Rc::new(SourceSpan {
+            file: file.clone(),
+            start,
+            end,
+        }));
+        source.push_str(": Int = 0\n");
+    }
+    (source, spans)
+}
+
+fn total_source_text_at_secs(
+    index: &Rc<v2_compiler::v2_std_core::NewlineIndex>,
+    spans: &[Rc<SourceSpan>],
+    lookups_per_span: usize,
+) -> f64 {
+    let t0 = Instant::now();
+    for _ in 0..lookups_per_span {
+        for span in spans {
+            let _ = source_text_at(index.clone(), span.clone());
+        }
+    }
+    t0.elapsed().as_secs_f64()
 }
 
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
@@ -479,26 +521,6 @@ fn tokenizer_non_ascii_performance_regression() {
 }
 
 #[test]
-fn probe_source_text_at_lookup_cost() {
-    let source = read_v2_file("src/v2/02_parse.dag");
-    let index = build_newline_index("probe.dag".to_string(), source.clone());
-    let tail = (source.len() as i64) - 4;
-    let head_span = Rc::new(SourceSpan {
-        file: "probe.dag".to_string(),
-        start: 0,
-        end: 4,
-    });
-    let tail_span = Rc::new(SourceSpan {
-        file: "probe.dag".to_string(),
-        start: tail,
-        end: tail + 4,
-    });
-    let head = median_source_text_at_secs(&index, &head_span);
-    let tail_t = median_source_text_at_secs(&index, &tail_span);
-    eprintln!("source_text_at probe: head={head:.4}s tail={tail_t:.4}s ratio={:.1}x", tail_t / head.max(1e-9));
-}
-
-#[test]
 fn tokenizer_text_lookup_flat_in_file_size() {
     // Recurrence guard: each scan step does O(1) codepoint lookup regardless of
     // absolute offset. Tail lookups must not pay O(pos) string walking.
@@ -528,6 +550,93 @@ fn tokenizer_text_lookup_flat_in_file_size() {
         "text lookup at tail is {:.1}x slower than at head — expected < {:.1}x (O(pos) regression)",
         ratio,
         FLAT_MARGIN,
+    );
+}
+
+// ── Name / span text lookup (authored_name_at → source_text_at) ─────────
+//
+// RED until `source_text_at` stops routing through O(pos) `v2_rt::substring` on
+// the raw file buffer. Tokenizer `source_chars` indexing is already green
+// (`tokenizer_text_lookup_flat_in_file_size` above); name lookup still walks
+// from offset zero on non-ASCII sources today (~30x tail/head on 02_parse.dag).
+// Tracked-red lock (Claim #4449 pattern): `#[ignore]` keeps cargo green; rerun
+// with `cargo test -p v2-compiler-tests source_text_at_lookup -- --ignored`.
+
+#[test]
+#[ignore = "RED: source_text_at is O(file offset) via substring — enable when span slice is flat"]
+fn source_text_at_lookup_flat_in_file_size() {
+    let source = read_v2_file("src/v2/02_parse.dag");
+    assert!(
+        !source.is_ascii(),
+        "fixture must include non-ASCII so substring takes the slow char-walk path"
+    );
+    let index = build_newline_index("lookup_flat.dag".to_string(), source.clone());
+    let tail = (source.len() as i64) - 4;
+    let head_span = Rc::new(SourceSpan {
+        file: "lookup_flat.dag".to_string(),
+        start: 0,
+        end: 4,
+    });
+    let tail_span = Rc::new(SourceSpan {
+        file: "lookup_flat.dag".to_string(),
+        start: tail,
+        end: tail + 4,
+    });
+
+    let head_time = median_source_text_at_secs(&index, &head_span);
+    let tail_time = median_source_text_at_secs(&index, &tail_span);
+    let ratio = tail_time / head_time.max(1e-9);
+
+    eprintln!(
+        "source_text_at flat: head {:.6}s | tail {:.6}s | ratio {:.1}x ({}B)",
+        head_time,
+        tail_time,
+        ratio,
+        source.len(),
+    );
+
+    const FLAT_MARGIN: f64 = 4.0;
+    assert!(
+        ratio < FLAT_MARGIN,
+        "source_text_at tail lookup is {:.1}x slower than head — expected < {:.1}x (O(offset) regression)",
+        ratio,
+        FLAT_MARGIN,
+    );
+}
+
+#[test]
+#[ignore = "RED: padded name lookups should cost O(K * name_len), not O(file_len)"]
+fn source_text_at_lookup_flat_across_name_padding() {
+    const K: usize = 8;
+    const SMALL_PAD: usize = 32;
+    const LARGE_PAD: usize = SMALL_PAD * 10;
+
+    let (small_source, small_spans) = name_lookup_padding_fixture(K, SMALL_PAD);
+    let (large_source, large_spans) = name_lookup_padding_fixture(K, LARGE_PAD);
+    let small_len = small_source.len();
+    let large_len = large_source.len();
+    assert!(
+        large_len > small_len * 5,
+        "large fixture should be >> small (got {large_len} vs {small_len} bytes)"
+    );
+
+    let small_index = build_newline_index("small_pad.dag".to_string(), small_source);
+    let large_index = build_newline_index("large_pad.dag".to_string(), large_source);
+
+    let small_time = total_source_text_at_secs(&small_index, &small_spans, 200);
+    let large_time = total_source_text_at_secs(&large_index, &large_spans, 200);
+    let ratio = large_time / small_time.max(1e-9);
+
+    eprintln!(
+        "source_text_at K={K} names: small {small_len}B {small_time:.4}s | large {large_len}B {large_time:.4}s | ratio {ratio:.1}x"
+    );
+
+    const PADDING_FLAT_MARGIN: f64 = 3.0;
+    assert!(
+        ratio < PADDING_FLAT_MARGIN,
+        "name lookup work grew {:.1}x for 10x padding — expected < {:.1}x (scales with file length)",
+        ratio,
+        PADDING_FLAT_MARGIN,
     );
 }
 
