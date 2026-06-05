@@ -96,3 +96,6 @@ out.txt
 # --- Python bytecode (local script runs) ---
 __pycache__/
 *.pyc
+
+# v4 claim-corpus execution-map output (regenerable via scripts/v4-claim-corpus-execution-map.sh)
+.claim-map/
