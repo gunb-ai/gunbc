@@ -3,7 +3,7 @@
 
 use self::Stage0CrateDep::*;
 use self::Stage0CrateKind::*;
-use self::Stage0RootShim::*;
+pub use crate::v2_compiler_emit_rust::emit_non_empty_wrappers;
 use crate::v2_rt;
 pub use crate::v2_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
@@ -19,15 +19,6 @@ use std::rc::Rc;
 pub enum Stage0CrateKind {
     CoreCrate,
     EmitCoreCrate,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum Stage0RootShim {
-    NonEmptyVecShim,
-    NonEmptyBTreeSetShim,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -60,7 +51,7 @@ pub struct Stage0CrateSpec {
     pub header_doc: String,
     pub modules: Rc<Vec<String>>,
     pub dependencies: Rc<Vec<Rc<Stage0CrateDep>>>,
-    pub root_shims: Rc<Vec<Stage0RootShim>>,
+    pub carries_non_empty_wrappers: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -114,58 +105,6 @@ pub fn stage0_emit_core_header_doc() -> String {
         "//! through `v2-stage0-core`, avoiding copied Rust semantics.".to_string(),
     ])
     .join(&"\n".to_string())
-}
-
-pub fn render_stage0_root_shim(shim: Stage0RootShim) -> String {
-    match shim {
-        Stage0RootShim::NonEmptyVecShim => Rc::new(vec![
-            "#[derive(Debug, Clone, PartialEq)]".to_string(),
-            "pub struct NonEmptyVec<T>(Vec<T>);".to_string(),
-            "".to_string(),
-            "impl<T> NonEmptyVec<T> {".to_string(),
-            "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {".to_string(),
-            "        if items.is_empty() {".to_string(),
-            "            Err(\"NonEmptyVec requires at least one element\")".to_string(),
-            "        } else {".to_string(),
-            "            Ok(Self(items))".to_string(),
-            "        }".to_string(),
-            "    }".to_string(),
-            "".to_string(),
-            "    pub fn as_slice(&self) -> &[T] {".to_string(),
-            "        &self.0".to_string(),
-            "    }".to_string(),
-            "".to_string(),
-            "    pub fn into_vec(self) -> Vec<T> {".to_string(),
-            "        self.0".to_string(),
-            "    }".to_string(),
-            "}".to_string(),
-        ])
-        .join(&"\n".to_string()),
-        Stage0RootShim::NonEmptyBTreeSetShim => Rc::new(vec![
-            "#[derive(Debug, Clone, PartialEq)]".to_string(),
-            "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);".to_string(),
-            "".to_string(),
-            "impl<T: Ord> NonEmptyBTreeSet<T> {".to_string(),
-            "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {"
-                .to_string(),
-            "        if items.is_empty() {".to_string(),
-            "            Err(\"NonEmptyBTreeSet requires at least one element\")".to_string(),
-            "        } else {".to_string(),
-            "            Ok(Self(items))".to_string(),
-            "        }".to_string(),
-            "    }".to_string(),
-            "".to_string(),
-            "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {".to_string(),
-            "        &self.0".to_string(),
-            "    }".to_string(),
-            "".to_string(),
-            "    pub fn into_set(self) -> std::collections::BTreeSet<T> {".to_string(),
-            "        self.0".to_string(),
-            "    }".to_string(),
-            "}".to_string(),
-        ])
-        .join(&"\n".to_string()),
-    }
 }
 
 pub fn render_stage0_crate_dep(dep: Rc<Stage0CrateDep>) -> String {
@@ -269,34 +208,27 @@ pub fn render_stage0_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
             __result
         })
         .join(&"\n".to_string());
-        let shims = Rc::new(
-            spec.root_shims
-                .clone()
-                .iter()
-                .cloned()
-                .map(render_stage0_root_shim)
-                .collect::<Vec<_>>(),
-        )
-        .join(&"\n\n".to_string());
-        v2_rt::concat(
+        let head = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
-                    v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
-                                stage0_crate_allow_block(),
-                            ),
-                            "\n\n".to_string(),
-                        ),
-                        includes,
-                    ),
-                    "\n\n".to_string(),
+                    v2_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
+                    stage0_crate_allow_block(),
                 ),
-                shims,
+                "\n\n".to_string(),
             ),
-            "\n".to_string(),
-        )
+            includes,
+        );
+        if spec.carries_non_empty_wrappers.clone() {
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(head, "\n\n".to_string()),
+                    emit_non_empty_wrappers(),
+                ),
+                "\n".to_string(),
+            )
+        } else {
+            v2_rt::concat(head, "\n".to_string())
+        }
     }
 }
 
@@ -398,10 +330,7 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                         features: Rc::new(vec![]),
                     }),
                 ]),
-                root_shims: Rc::new(vec![
-                    Stage0RootShim::NonEmptyVecShim,
-                    Stage0RootShim::NonEmptyBTreeSetShim,
-                ]),
+                carries_non_empty_wrappers: true,
             }),
             Rc::new(Stage0CrateSpec {
                 package_name: "v2-stage0-emit-core".to_string(),
@@ -433,7 +362,7 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                         path: "../stage0_core".to_string(),
                     }),
                 ]),
-                root_shims: Rc::new(vec![]),
+                carries_non_empty_wrappers: false,
             }),
         ]),
     })

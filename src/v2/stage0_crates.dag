@@ -20,7 +20,7 @@
 module v2.compiler.stage0_crates
 
 import v2.std.core { TextFile }
-import v2.compiler.emit_rust { emit_non_empty_wrappers }
+import v2.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
 
 // =========================================================================
 // Crate-boundary model
@@ -64,6 +64,13 @@ type Stage0CratePlan {
 // =========================================================================
 
 // The crate-level `#![allow(...)]` block both wrapper libs open with.
+//
+// This is the same lint set `emit_lib_rs_from_files` puts on the monolith lib,
+// but it is NOT shared with that inline literal: the monolith's output is
+// rustfmt'd before its freshness compare, so it can emit the single-line form;
+// the split-crate wrappers are compared raw by `verify_stage0_split_crate_boundaries`,
+// so this must be the rustfmt-stable multi-line form. One helper cannot satisfy
+// both verify paths byte-for-byte.
 fn stage0_crate_allow_block() -> String {
   [
     "#![allow(",
@@ -110,15 +117,13 @@ fn stage0_emit_core_header_doc() -> String {
 // Manifest emission
 // =========================================================================
 
+// Version deps delegate to the existing single source `emit_cargo_dep`
+// (same renderer the compiler uses for its own Cargo manifests). Only the
+// path-dep form, which `emit_cargo_dep` does not cover, is rendered here.
 fn render_stage0_crate_dep(dep: Stage0CrateDep) -> String {
   match dep {
     VersionDep { name: name, version: version, features: features } =>
-      if features |> count > 0 {
-        let feat_strs = features |> map(f => concat("\"", f, "\""))
-        concat(name, " = { version = \"", version, "\", features = [", feat_strs |> join(separator: ", "), "] }\n")
-      } else {
-        concat(name, " = \"", version, "\"\n")
-      }
+      emit_cargo_dep(name: name, version: version, features: features)
     PathDep { name: name, path: path } =>
       concat(name, " = { path = \"", path, "\" }\n")
   }
