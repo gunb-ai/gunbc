@@ -2544,50 +2544,53 @@ pub fn infer_expr(
                     Some(fi) => resolved_type(arg_value(fi.typed_arg.clone())),
                     None => error_type(),
                 };
-                let arg_infer_results = if ((has_lambda && ((call_args.clone().len() as i64) >= 2))
+                let arg_call = if ((has_lambda && ((call_args.clone().len() as i64) >= 2))
                     && (sig.clone() == None))
                 {
-                    match call_args.clone().first().cloned() {
-                        Some(first_arg) => {
-                            let first_result =
-                                infer_expr(arg_value(first_arg.clone()), scope.clone(), None);
-                            let first_type = resolved_type(first_result.typed.clone());
-                            let elem_type = for_each_element_type_node(
-                                first_type,
-                                scope.type_env.clone().source_indices.clone(),
-                            );
-                            let call_elem_provenance = derive_element_provenance(
-                                first_result.typed.clone(),
-                                elem_type.clone(),
-                                scope.clone(),
-                            );
-                            let remaining_results = infer_method_args_with_fold(
-                                call_method_name.clone(),
-                                call_method_args.clone(),
-                                call_fold_info.clone(),
-                                call_fold_acc_type.clone(),
-                                elem_type.clone(),
-                                call_elem_provenance,
-                                scope.clone(),
-                            );
-                            v2_rt::concat(
-                                Rc::new(vec![Rc::new(ArgInferResult {
-                                    typed_arg: make_arg_node(
-                                        arg_name_at(
-                                            first_arg.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
+                    Rc::new(ArgGenericFoldState {
+                        subst: v2_rt::rc_empty_map::<String, Rc<Node>>(),
+                        results: match call_args.clone().first().cloned() {
+                            Some(first_arg) => {
+                                let first_result =
+                                    infer_expr(arg_value(first_arg.clone()), scope.clone(), None);
+                                let first_type = resolved_type(first_result.typed.clone());
+                                let elem_type = for_each_element_type_node(
+                                    first_type,
+                                    scope.type_env.clone().source_indices.clone(),
+                                );
+                                let call_elem_provenance = derive_element_provenance(
+                                    first_result.typed.clone(),
+                                    elem_type.clone(),
+                                    scope.clone(),
+                                );
+                                let remaining_results = infer_method_args_with_fold(
+                                    call_method_name.clone(),
+                                    call_method_args.clone(),
+                                    call_fold_info.clone(),
+                                    call_fold_acc_type.clone(),
+                                    elem_type.clone(),
+                                    call_elem_provenance,
+                                    scope.clone(),
+                                );
+                                v2_rt::concat(
+                                    Rc::new(vec![Rc::new(ArgInferResult {
+                                        typed_arg: make_arg_node(
+                                            arg_name_at(
+                                                first_arg.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
+                                            first_result.typed.clone(),
+                                            first_arg.span.clone(),
+                                            first_arg.span.clone(),
                                         ),
-                                        first_result.typed.clone(),
-                                        first_arg.span.clone(),
-                                        first_arg.span.clone(),
-                                    ),
-                                    diagnostics: first_result.diagnostics.clone(),
-                                })]),
-                                remaining_results,
-                            )
-                        }
-                        None => Rc::new(vec![]),
-                    }
+                                        diagnostics: first_result.diagnostics.clone(),
+                                    })]),
+                                    remaining_results,
+                                )
+                            }
+                            None => Rc::new(vec![]),
+                        },
+                    })
                 } else {
                     {
                         let value_params = Rc::new({
@@ -2702,9 +2705,11 @@ pub fn infer_expr(
                                 })
                             },
                         );
-                        final_state.results.clone()
+                        final_state
                     }
                 };
+                let arg_infer_results = arg_call.results.clone();
+                let call_subst = arg_call.subst.clone();
                 let typed_args = Rc::new({
                     let mut __result = Vec::new();
                     for air in arg_infer_results.clone().iter().cloned() {
@@ -2723,7 +2728,11 @@ pub fn infer_expr(
                 if (sig.clone() != None) {
                     {
                         let resolved_type = match sig.clone() {
-                            Some(s) => s.inferred.clone(),
+                            Some(s) => substitute_generics(
+                                s.inferred.clone(),
+                                call_subst,
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
                             None => error_type(),
                         };
                         Rc::new(InferResult {

@@ -1701,25 +1701,6 @@ pub fn node_type_compatible(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        if std::env::var("GUNBC_DBG_LF").is_ok() {
-            let ln = authored_name_at(source_indices.clone(), left.clone());
-            let rn = authored_name_at(source_indices.clone(), right.clone());
-            if ln == "List".to_string()
-                || rn == "List".to_string()
-                || ln == "FreeMonoid".to_string()
-                || rn == "FreeMonoid".to_string()
-            {
-                eprintln!(
-                    "DBG_LF left[name={:?} nch={} canon={:?}] right[name={:?} nch={} canon={:?}]",
-                    ln,
-                    left.children.len(),
-                    canonical_template_name(left.clone(), source_indices.clone()),
-                    rn,
-                    right.children.len(),
-                    canonical_template_name(right.clone(), source_indices.clone())
-                );
-            }
-        }
         let left_err = if (left.inferred.clone() != None) {
             is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
