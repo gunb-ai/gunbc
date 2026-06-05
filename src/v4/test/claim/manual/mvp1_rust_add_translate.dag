@@ -21,6 +21,7 @@ import v4.compiler.eval {
   test_claim_typed_input_node
 }
 import v4.compiler.translate {
+  coerce_grounded_node,
   target_serialize_source_from_model,
   translate,
   translate_target_bundle_malformed
@@ -65,6 +66,12 @@ import v4.test.claim.manual.infer_ground_add_mvp {
 }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { Map, empty_map }
+import v4.std.coercion {
+  CoercionQuality,
+  Exact,
+  Identity,
+  Widened
+}
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -463,6 +470,40 @@ fn mvp1_compile_inferred_claim_outcome() -> Outcome<Node> {
   }
 }
 
+fn mvp1_coercion_quality_is_exact(q: CoercionQuality) -> Bool {
+  match q {
+    Exact => true
+    Identity => false
+    Widened => false
+  }
+}
+
+
+fn mvp1_coerce_grounded_node_exact_structural_claim_outcome() -> Outcome<Node> {
+  match coerce_grounded_node(
+    source: mvp1_rust_emitted_root,
+    tree: mvp1_rust_inferred_tree,
+    target: mvp1_rust_target_model
+  ) {
+    Accepted { value: r, diagnostics: d } =>
+      if (r.target == rust_mvp1_fixture_emitted_add_fn)
+        && mvp1_coercion_quality_is_exact(q: r.quality) {
+        Accepted { value: r.target, diagnostics: d }
+      } else {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: Diagnostic {
+              reason: mvp1_emit_source_mismatch,
+              at: node_locus(node: mvp1_rust_emitted_root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
 
 data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/mvp1: anchor_mvp1_emit_accepts Accepted with canonical rust_mvp1 add-fn source",
@@ -475,6 +516,15 @@ data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
 
 data claim_mvp1_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/mvp1: compile_inferred emits canonical rust_mvp1 add-fn source through grammar inverse",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: mvp1_rust_emitted_root,
+  expected_value: mvp1_rust_emitted_root,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_mvp1_coerce_grounded_node_exact_structural_accepts: TestClaim = CompilesClaim {
+  label: "manual/mvp1: coerce_grounded_node accepts rust_mvp1 add-fn through exact-structural find_witness",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: mvp1_rust_emitted_root,
   expected_value: mvp1_rust_emitted_root,
@@ -500,6 +550,27 @@ data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   verdict: run_test_claim_assert(
     claim: claim_mvp1_emit_add_fn_accepts,
     actual: mvp1_emit_claim_outcome(),
+    at: mvp1_rust_emitted_root
+  )
+}
+
+
+data subject_mvp1_coerce_grounded_node_exact_structural_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_mvp1_coerce_grounded_node_exact_structural_accepts,
+  context: infer_receipt_context(),
+  tree: mvp1_rust_inferred_tree,
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_rust_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
+}
+
+
+data run_mvp1_coerce_grounded_node_exact_structural_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_mvp1_coerce_grounded_node_exact_structural_accepts),
+  verdict: run_test_claim_assert(
+    claim: claim_mvp1_coerce_grounded_node_exact_structural_accepts,
+    actual: mvp1_coerce_grounded_node_exact_structural_claim_outcome(),
     at: mvp1_rust_emitted_root
   )
 }

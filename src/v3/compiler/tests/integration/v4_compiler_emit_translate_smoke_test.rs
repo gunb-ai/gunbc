@@ -225,6 +225,14 @@ fn v4_find_witness_symbol_rule_dispatch_is_discriminating_and_fail_closed() {
         PreservationRuleDispatch::NotRealized,
         "unknown preservation rules must fail closed"
     );
+    assert!(
+        MVP1_CLAIM_DAG.contains("coerce_grounded_node(\n    source: mvp1_rust_emitted_root")
+            && MVP1_CLAIM_DAG.contains("target: mvp1_rust_target_model")
+            && MVP1_CLAIM_DAG.contains("mvp1_coercion_quality_is_exact(q: r.quality)")
+            && MVP1_CLAIM_DAG
+                .contains("run_mvp1_coerce_grounded_node_exact_structural_accepts"),
+        "{MVP1_CLAIM_PATH}: find_witness exact-structural discriminating coverage must include the R2 emit-fn-add coerce_grounded_node receipt"
+    );
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
