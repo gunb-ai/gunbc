@@ -121,16 +121,21 @@ pub fn write_receipt_json(path: &str, receipt: &Value) -> io::Result<()> {
     std::fs::write(path, format!("{body}\n"))
 }
 
-/// GitHub Actions `::notice` line, rendered from the TYPED summary (not best-effort JSON). A
-/// fail-closed git read renders `git_read=FAIL-CLOSED(<detail>)`, distinct from `git_read=ok`, so
-/// it can never look like a successful empty diff. Pure — the bin prints it (impurity at the edge).
+/// Plain stdout status line, rendered from the TYPED summary (not best-effort JSON). A fail-closed
+/// git read renders `git_read=FAIL-CLOSED(<detail>)`, distinct from `git_read=ok`, so it can never
+/// look like a successful empty diff. Pure — the bin prints it (impurity at the edge).
+///
+/// Deliberately NOT a GitHub Actions `::notice` workflow command: a Class-C non-blocking shadow
+/// receipt is transport diagnostics that belong in the job log, not the PR Annotations panel (it
+/// fired on every run and read as a standing warning). Drop the `::notice title=…::` prefix and it
+/// is a normal log line — still greppable in the step output, no annotation noise.
 pub fn github_notice_line(emit: &ShadowEmit) -> String {
     let git_read = match &emit.git_read {
         GitReadStatus::Ok => "git_read=ok".to_string(),
         GitReadStatus::FailClosed { detail } => format!("git_read=FAIL-CLOSED({detail})"),
     };
     format!(
-        "::notice title=Wave 3 shadow receipt (Class C)::ci_selection_receipt_status=queued {git_read} changed_paths={} debt={WAVE3_LIVE_EVAL_DEBT} — transport status only; modeled CiSelectionReceipt (incl. fail-closed roster superset) constructed by the queued live eval",
+        "Wave 3 shadow receipt (Class C): ci_selection_receipt_status=queued {git_read} changed_paths={} debt={WAVE3_LIVE_EVAL_DEBT} — transport status only; modeled CiSelectionReceipt (incl. fail-closed roster superset) constructed by the queued live eval",
         emit.changed_paths.len()
     )
 }
