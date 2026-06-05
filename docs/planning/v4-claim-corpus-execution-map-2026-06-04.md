@@ -80,7 +80,11 @@ plus 1 new RED — `infer_bounded_lattice_completeness_anchor`):
 `ClassifiedDependencyView` fold, TS `left`) account for ~49 of the 107 errors and
 are exactly what E-10 should surface — load-bearing lens families (affected_set,
 ownership, structural_resolution) whose witnesses are specification-only because the
-interpreter can't yet run the predicate they call. The two key gaps are concrete:
+predicate they call doesn't yet run. The three have *different* fix locations,
+detailed in the routing section below — `contains` is an interpreter builtin,
+`ClassifiedDependencyView` is a `.dag` missing match-arm, TS `left` is in the
+translate serialize path — so "top three by fan-out" is not "three fixes in one
+place." The two interpreter-side gaps are concrete:
 
 - `contains`/`has` only handles String (substring) and Set (membership)
   receivers — `src/v2/stage0/src/v2_interpreter.rs:1723`; a List/Variant/Record
@@ -162,18 +166,25 @@ predicted), `manual/refinement_authoritative_constants` (6 witnesses),
 `manual/rust_wave2_grammar_structure`. These hit the import-closure perf wall —
 they belong to the keystone's perf track, not this map's findings.
 
-## Routing (by materiality, not "fix everything")
+## Recommended sequence (materiality ordering; lanes per the routing section above)
 
-1. **Three interpreter/builtin fixes** — `contains` List/Variant/Record support
-   (`v2_interpreter.rs:1723`), `ClassifiedDependencyView` fold exhaustiveness, the
-   TS `left` helper — unblock ~49 witnesses across load-bearing lens families.
-   Biggest lever; real substrate gaps. (Interpreter is load-bearing — these go
-   through model-before-implement, not a spot patch.)
-2. **`method 'lookup'` + remaining non-exhaustive folds** — T-22 interpreter-gap family.
-3. **`error type cascade` (9)** — re-run after the primaries; likely auto-resolves.
-4. **RED investigation** — start with `test_claim_cache_digest_sensitivity` (8,
+This is a *priority ordering*, not a re-classification — lane assignment is the
+"Routing by WHERE the fix lives" section above; do not re-route here.
+
+1. **Keystone-lane interpreter builtins (~28)** — `contains` List/Variant/Record
+   support (`v2_interpreter.rs:1723`) + `method 'lookup'` (5) + `atom_identity_hash`
+   arity (1). Highest single-fix fan-out; load-bearing interpreter, so
+   model-before-implement, not a spot patch.
+2. **Clean-parallel `.dag` missing arms (~50)** — `ClassifiedDependencyView` fold
+   arms (14) in `src/v4/lens/*.dag`, plus component-path (10), `EqualsClaim` (5),
+   `prefix_sym`/`zip_eq` (8), grammar surfaces (3), misc folds (10). Off the
+   keystone path → parallelizable now, independent of lane 1.
+3. **Keystone-lane translate path (17)** — TS `left`/`p`/`node` via
+   `06_translate.dag` serialize path (exact origin to be pinned by that owner).
+4. **`error type cascade` (9)** — re-run after lane 1; likely auto-resolves.
+5. **RED investigation** — start with `test_claim_cache_digest_sensitivity` (8,
    possible digest bug) and `model_core_wave1_anchor` (4).
-5. **PERF (11)** → keystone perf track.
+6. **PERF (11)** → keystone perf track.
 
 ## Reproduce
 
