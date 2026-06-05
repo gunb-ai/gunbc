@@ -177,6 +177,8 @@ fn nominal_distinct_compile_accepted_miss_diagnostic(at: Node) -> Diagnostic {
 }
 
 
+// Fail-closed: if compile wrongly Accepts, expected stays Rejected (must-reject anchor)
+// while runtime returns Accepted — DiagnosticClaim fails (not fail-open miss synthesis).
 fn nominal_distinct_records_expected_rejection() -> NonEmptyDiagnostics {
   match nominal_distinct_records_compile_receipt {
     Rejected { diagnostics: r } => r
