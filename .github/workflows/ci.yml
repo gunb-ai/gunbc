@@ -89,6 +89,14 @@ jobs:
         components: rustfmt
         cache: false
         rustflags: ''
+      # Shared-$HOME self-hosted runners: rustup-init's default modify-path appends
+      # `. "$CARGO_HOME/env"` to ~/.bashrc and ~/.profile. With CARGO_HOME isolated to the
+      # per-job $RUNNER_TEMP (step above), that path is wiped post-job, leaving a dangling source
+      # line that errors on every interactive login and accumulates one per runner slot. Scope HOME
+      # to throwaway $RUNNER_TEMP for just this step so those writes never touch the real shared
+      # $HOME (the git-auth scrub step runs under the real HOME and is unaffected).
+      env:
+        HOME: ${{ runner.temp }}
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
@@ -141,6 +149,14 @@ jobs:
       with:
         cache: false
         rustflags: ''
+      # Shared-$HOME self-hosted runners: rustup-init's default modify-path appends
+      # `. "$CARGO_HOME/env"` to ~/.bashrc and ~/.profile. With CARGO_HOME isolated to the
+      # per-job $RUNNER_TEMP (step above), that path is wiped post-job, leaving a dangling source
+      # line that errors on every interactive login and accumulates one per runner slot. Scope HOME
+      # to throwaway $RUNNER_TEMP for just this step so those writes never touch the real shared
+      # $HOME (the git-auth scrub step runs under the real HOME and is unaffected).
+      env:
+        HOME: ${{ runner.temp }}
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Fetch main for diff base
@@ -209,6 +225,14 @@ jobs:
         components: rustfmt
         cache: false
         rustflags: ''
+      # Shared-$HOME self-hosted runners: rustup-init's default modify-path appends
+      # `. "$CARGO_HOME/env"` to ~/.bashrc and ~/.profile. With CARGO_HOME isolated to the
+      # per-job $RUNNER_TEMP (step above), that path is wiped post-job, leaving a dangling source
+      # line that errors on every interactive login and accumulates one per runner slot. Scope HOME
+      # to throwaway $RUNNER_TEMP for just this step so those writes never touch the real shared
+      # $HOME (the git-auth scrub step runs under the real HOME and is unaffected).
+      env:
+        HOME: ${{ runner.temp }}
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     # INTERIM transport repair (operator 2026-06-01, "stop the bleeding"). Authority for the
