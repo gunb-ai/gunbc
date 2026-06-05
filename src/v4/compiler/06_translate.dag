@@ -19,6 +19,7 @@ import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
   coercion_candidate_set_from_declared_inhabitants,
+  declared_inhabitant_candidates,
   coercion_fold,
   coercion_fold_with_declared_priority
 }
@@ -2220,6 +2221,60 @@ fn project_type_expression_node(
     projection: projection
   )
 }
+// Is this node one of the target's DECLARED INHABITANTS? Consults the existing
+// declared_inhabitants authority (the same set coercion uses), so recognition is
+// language-agnostic — the projection does not hardcode any language's inhabitant
+// field labels. Inhabitant nodes are pure data, so structural `==` is the membership.
+fn translate_node_is_declared_inhabitant(node: Node, target: TargetModel) -> Bool {
+  match target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants) {
+    Accepted { value: inhabitants_root, diagnostics: _ } =>
+      declared_inhabitant_candidates(inhabitants_root: inhabitants_root)
+        |> any(c => c == node)
+    Rejected { diagnostics: _ } => false
+  }
+}
+// The VALUE/SURFACE content of an inhabitant is its bare-atom child (the surface
+// identity); every other child (the facts record) is type-declaration METADATA,
+// which is BANNED from projection. Returns the surface atom node.
+fn translate_inhabitant_surface_atom_node(node: Node) -> Outcome<Node> {
+  fold(
+    node.children,
+    init: outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node)),
+    f: fn(acc, e) {
+      match acc {
+        Accepted { value: _, diagnostics: _ } => acc
+        Rejected { diagnostics: _ } =>
+          match e.target.kind {
+            TypeNode { connective: Atom { identity: _ } } => outcome_accepted(e.target)
+            _ => acc
+          }
+      }
+    }
+  )
+}
+// INVARIANT: type-declaration metadata is never projected. A declared inhabitant
+// projects its VALUE/SURFACE content, EXCLUDING its metadata facts. For a SCALAR
+// inhabitant the value content IS its surface atom (→ surface token); the generic
+// metadata-exclusion seam generalizes to composite inhabitants later (value fields
+// minus metadata) without re-architecting.
+fn translate_project_declared_inhabitant_surface(
+  remaining: Int,
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_inhabitant_surface_atom_node(node: node),
+    f: fn(surface_atom) {
+      project_type_expression_node_bounded(
+        remaining: remaining - 1,
+        node: surface_atom,
+        target: target,
+        projection: projection
+      )
+    }
+  )
+}
 fn project_type_expression_node_bounded(
   remaining: Int,
   node: Node,
@@ -2294,6 +2349,17 @@ fn project_type_expression_node_bounded(
         )
       }
     TypeNode { connective: Conj } =>
+      if translate_node_is_declared_inhabitant(node: node, target: target) {
+        // Metadata banned: a declared inhabitant projects its surface/value content,
+        // NOT its facts record (which the generic field_slots path would descend,
+        // applying use-site ownership to type-declaration metadata sub-atoms).
+        translate_project_declared_inhabitant_surface(
+          remaining: remaining,
+          node: node,
+          target: target,
+          projection: projection
+        )
+      } else {
       bind_outcome(
         o: project_type_expression_conj_fields(
           remaining: remaining - 1,
@@ -2308,6 +2374,7 @@ fn project_type_expression_node_bounded(
           }
         }
       )
+      }
     TypeNode { connective: Disj } =>
       bind_outcome(
         o: project_type_expression_disj_variants(
