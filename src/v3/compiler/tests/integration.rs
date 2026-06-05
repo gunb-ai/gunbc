@@ -1297,5 +1297,5 @@ mod parse_stage4_prep {
     }
 }
 
-#[path = "integration/_transient_nominal_distinctness_measurement_test.rs"]
-mod transient_nominal_distinctness_measurement_test;
+#[path = "integration/nominal_distinctness_cross_call_test.rs"]
+mod nominal_distinctness_cross_call_test;
