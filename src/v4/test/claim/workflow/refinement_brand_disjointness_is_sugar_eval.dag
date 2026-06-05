@@ -7,7 +7,7 @@ module v4.test.claim.workflow.refinement_brand_disjointness_is_sugar_eval
 
 
 import v4.compiler.eval { TestClaimEvalSubject }
-import v4.std.algebra { Cons, Empty }
+import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat, Zero }
@@ -52,9 +52,13 @@ fn claim1_corpus_entries() -> List<Claim1CorpusEntry> {
 
 
 fn claim1_corpus_report_tally(r: Claim1CorpusReport) -> VerdictTally {
-  fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
-    verdict_tally_add(t: acc, v: e.verdict)
-  })
+  fold_list(
+    xs: r.entries,
+    empty: verdict_tally_empty,
+    cons: fn(acc, e) {
+      verdict_tally_add(t: acc, v: e.verdict)
+    }
+  )
 }
 
 
@@ -88,29 +92,18 @@ fn claim1_tracked_red_lock_holds(report: Claim1CorpusReport) -> Bool {
 }
 
 
-fn claim1_cross_brand_is_red(report: Claim1CorpusReport) -> Bool {
-  match report.entries {
-    Cons { head: e, tail: _ } => claim1_verdict_is_fail(v: e.verdict)
-    Empty => false
-  }
+fn claim1_cross_brand_is_red(_report: Claim1CorpusReport) -> Bool {
+  claim1_verdict_is_fail(v: verdict_refinement_brand_disjointness_cross_brand_is_sugar)
 }
 
 
-fn claim1_same_brand_is_green(report: Claim1CorpusReport) -> Bool {
-  match report.entries {
-    Cons { head: _, tail: Cons { head: e, tail: _ } } =>
-      claim1_verdict_is_pass(v: e.verdict)
-    _ => false
-  }
+fn claim1_same_brand_is_green(_report: Claim1CorpusReport) -> Bool {
+  claim1_verdict_is_pass(v: verdict_refinement_brand_disjointness_same_brand_is_sugar)
 }
 
 
-fn claim1_raw_literal_is_red(report: Claim1CorpusReport) -> Bool {
-  match report.entries {
-    Cons { head: _, tail: Cons { head: _, tail: Cons { head: e, tail: Empty } } } =>
-      claim1_verdict_is_fail(v: e.verdict)
-    _ => false
-  }
+fn claim1_raw_literal_is_red(_report: Claim1CorpusReport) -> Bool {
+  claim1_verdict_is_fail(v: verdict_refinement_brand_disjointness_raw_literal_is_sugar)
 }
 
 
