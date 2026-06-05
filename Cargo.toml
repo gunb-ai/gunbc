@@ -3,6 +3,7 @@ resolver = "2"
 exclude = [".stage1"]
 members = [
     "src/v2/stage0",
+    "src/v2/stage0_core",
     "src/v2/stage0_emit_core",
     "src/v2/tests",
     "src/v3/compiler",

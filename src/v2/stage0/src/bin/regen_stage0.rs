@@ -99,6 +99,54 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_interpreter.rs",
 ];
 
+const STAGE0_CORE_MODULES: &[&str] = &[
+    "extdeps_languages_dag_emit",
+    "extdeps_languages_dag_syntax",
+    "extdeps_languages_dag_types",
+    "extdeps_languages_go_emit",
+    "extdeps_languages_go_syntax",
+    "extdeps_languages_go_types",
+    "extdeps_languages_python_emit",
+    "extdeps_languages_python_syntax",
+    "extdeps_languages_python_types",
+    "extdeps_languages_rust_emit",
+    "extdeps_languages_rust_syntax",
+    "extdeps_languages_rust_types",
+    "std_algebra",
+    "std_coercion",
+    "std_computation",
+    "std_effects",
+    "std_error_primitives",
+    "std_graph",
+    "std_http_path",
+    "std_induction",
+    "std_iteration",
+    "std_node",
+    "std_syntax",
+    "std_termination",
+    "std_types",
+    "v2_compiler_artifact",
+    "v2_compiler_infer_emit_info",
+    "v2_compiler_infer_env",
+    "v2_compiler_infer_items",
+    "v2_compiler_infer_service",
+    "v2_compiler_infer_sigs",
+    "v2_compiler_infer_types",
+    "v2_compiler_languages",
+    "v2_rt",
+    "v2_std_core",
+];
+
+const STAGE0_EMIT_CORE_REEXPORT_MODULES: &[&str] = &[
+    "v2_compiler_artifact",
+    "v2_compiler_infer_items",
+    "v2_compiler_infer_service",
+    "v2_compiler_infer_types",
+    "v2_compiler_languages",
+    "v2_rt",
+    "v2_std_core",
+];
+
 const BOOTSTRAP_DAG_COLLECT_USE: &str = r#"pub use crate::v2_compiler_dag_collect::{
     collect_dag_nodes, dag_collect_from_module, dag_collect_insert, dag_collect_inferred,
     dag_collect_match_pattern, dag_collect_node_tree, dag_collect_nodes_list,
@@ -271,6 +319,26 @@ fn run() -> Result<(), String> {
             let _ = fs::remove_dir_all(&fresh_dir);
             return Err(message);
         }
+        if let Err(message) =
+            time_phase(&mut phases, "verify_stage0_split_crate_boundaries", || {
+                verify_stage0_split_crate_boundaries(&workspace)
+            })
+        {
+            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+                path: &receipt_path,
+                workspace: &workspace,
+                manifest_dir: &manifest_dir,
+                verify_only,
+                status: "failed_stage0_split_crate_stale",
+                generated_file_count: GENERATED_STAGE0_FILES.len(),
+                emitted_file_count: emitted.len(),
+                phases,
+                elapsed_ms: elapsed_ms(run_started),
+                changed_generated_files: Vec::new(),
+            })?;
+            let _ = fs::remove_dir_all(&fresh_dir);
+            return Err(message);
+        }
         write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
             path: &receipt_path,
             workspace: &workspace,
@@ -291,6 +359,9 @@ fn run() -> Result<(), String> {
     let changed_generated_files = changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
     time_phase(&mut phases, "write_registered_outputs", || {
         write_registered_outputs(&fresh_dir.join("src"), &stage0_src)
+    })?;
+    time_phase(&mut phases, "write_stage0_split_crate_boundaries", || {
+        write_stage0_split_crate_boundaries(&workspace)
     })?;
     time_phase(&mut phases, "rustfmt_workspace", || {
         rustfmt_workspace(&manifest_dir)
@@ -972,6 +1043,204 @@ fn rustfmt_workspace(manifest_dir: &Path) -> Result<(), String> {
             String::from_utf8_lossy(&output.stderr)
         ))
     }
+}
+
+fn stage0_split_crate_boundaries(workspace: &Path) -> Vec<(PathBuf, String)> {
+    vec![
+        (
+            workspace.join("src/v2/stage0_core/Cargo.toml"),
+            render_stage0_core_manifest(),
+        ),
+        (
+            workspace.join("src/v2/stage0_core/src/lib.rs"),
+            render_stage0_core_lib(),
+        ),
+        (
+            workspace.join("src/v2/stage0_emit_core/Cargo.toml"),
+            render_stage0_emit_core_manifest(),
+        ),
+        (
+            workspace.join("src/v2/stage0_emit_core/src/lib.rs"),
+            render_stage0_emit_core_lib(),
+        ),
+    ]
+}
+
+fn verify_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
+    let mut mismatches = Vec::new();
+    for (path, expected) in stage0_split_crate_boundaries(workspace) {
+        let committed =
+            fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        if committed != expected {
+            mismatches.push(display_source_path(&path, workspace));
+        }
+    }
+    if mismatches.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Stage0 split crate boundary files are stale. Run `cargo run -p v2-compiler --bin regen_stage0` to regenerate. Changed file(s): {}",
+            mismatches.join(", ")
+        ))
+    }
+}
+
+fn write_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
+    for (path, contents) in stage0_split_crate_boundaries(workspace) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+        }
+        fs::write(&path, contents).map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn render_stage0_core_manifest() -> String {
+    r#"[package]
+name = "v2-stage0-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stacker = "0.1"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+"#
+    .to_string()
+}
+
+fn render_stage0_emit_core_manifest() -> String {
+    r#"[package]
+name = "v2-stage0-emit-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stacker = "0.1"
+serde = { version = "1", features = ["derive", "rc"] }
+v2-stage0-core = { path = "../stage0_core" }
+"#
+    .to_string()
+}
+
+fn render_stage0_core_lib() -> String {
+    let mut text = String::from(
+        r#"//! Generated by regen_stage0 -- do not edit.
+//!
+//! Crate boundary for generated v2 stage0 core authorities.
+//!
+//! The module bodies remain generated into `src/v2/stage0/src`. This crate
+//! exposes the lower std/runtime/artifact/language/infer support surface
+//! without copying generated module bodies. The root `NonEmpty*` wrappers are
+//! mirrored from the stage0 lib root because generated modules address them as
+//! `crate::NonEmptyVec` and `crate::NonEmptyBTreeSet`.
+
+#![allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    unreachable_patterns,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+
+"#,
+    );
+    for module in STAGE0_CORE_MODULES {
+        text.push_str(&format!(
+            "#[path = \"../../stage0/src/{module}.rs\"]\npub mod {module};\n"
+        ));
+    }
+    text.push_str(
+        r#"
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonEmptyVec<T>(Vec<T>);
+
+impl<T> NonEmptyVec<T> {
+    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
+        if items.is_empty() {
+            Err("NonEmptyVec requires at least one element")
+        } else {
+            Ok(Self(items))
+        }
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        &self.0
+    }
+
+    pub fn into_vec(self) -> Vec<T> {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
+
+impl<T: Ord> NonEmptyBTreeSet<T> {
+    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
+        if items.is_empty() {
+            Err("NonEmptyBTreeSet requires at least one element")
+        } else {
+            Ok(Self(items))
+        }
+    }
+
+    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
+        &self.0
+    }
+
+    pub fn into_set(self) -> std::collections::BTreeSet<T> {
+        self.0
+    }
+}
+"#,
+    );
+    text
+}
+
+fn render_stage0_emit_core_lib() -> String {
+    let mut text = String::from(
+        r#"//! Generated by regen_stage0 -- do not edit.
+//!
+//! Crate boundary proof for generated v2 emit core support.
+//!
+//! The semantic bodies remain generated from `src/v2/05_emit_core_support.dag`
+//! into the stage0 seed. This crate exposes that generated support surface
+//! through `v2-stage0-core`, avoiding copied Rust semantics.
+
+#![allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    unreachable_patterns,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+
+pub use v2_stage0_core::{NonEmptyBTreeSet, NonEmptyVec};
+
+"#,
+    );
+    for module in STAGE0_EMIT_CORE_REEXPORT_MODULES {
+        text.push_str(&format!(
+            "pub mod {module} {{\n    pub use v2_stage0_core::{module}::*;\n}}\n\n"
+        ));
+    }
+    text.push_str(
+        r#"#[path = "../../stage0/src/v2_compiler_emit_core_support.rs"]
+pub mod v2_compiler_emit_core_support;
+
+pub use v2_compiler_emit_core_support::*;
+"#,
+    );
+    text
 }
 
 fn assert_output_set_matches_registry(
