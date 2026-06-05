@@ -1,6 +1,7 @@
 // src/v4/test/claim/manual/nominal_distinctness_cross_call.dag
-// Scope: Stage-1 fresh-nominal-type measurement — distinct nominal records and branded
-//        aliases reject cross-call on the live v4 compile pipeline (v2-compiled).
+// Scope: Stage-1 fresh-nominal-type measurement — distinct nominal records reject
+//        cross-call on the live v4 compile pipeline (v2-compiled). Brand-desugar
+//        stand-in row uses wave-1 record syntax (no `where brand` — not in wave-1 grammar).
 // Status: T-22 manual corpus rows — replaces deleted v3 integration test.
 // Anchor: declaration-identity / template-binding (WrapA/WrapB) + brand-alias cross-call.
 
@@ -103,7 +104,9 @@ data nominal_distinct_forbidden_authority_source_text: TargetSource = "nominal_d
 data nominal_distinct_records_source: Source = "module nominal.distinct.records.probe\n\ntype WrapA {\n  value: Int\n}\n\ntype WrapB {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(b: WrapB) -> Int = expects_a(b)\n"
 
 
-data nominal_distinct_brands_source: Source = "module nominal.distinct.brands.probe\n\ntype IntentId = String where brand(\"IntentId\")\ntype IssueId = String where brand(\"IssueId\")\n\nfn expects_intent(x: IntentId) -> String = x\n\nfn call_site(i: IssueId) -> String = expects_intent(i)\n"
+// Fresh-nominal-type desugar stand-in: IntentId/IssueId as distinct nominal records
+// over String (wave-1 `type ident { field: … }` only — `where brand` is not parseable).
+data nominal_distinct_brands_source: Source = "module nominal.distinct.desugared_brands.probe\n\ntype IntentId {\n  value: String\n}\n\ntype IssueId {\n  value: String\n}\n\nfn expects_intent(x: IntentId) -> String = x.value\n\nfn call_site(i: IssueId) -> String = expects_intent(i)\n"
 
 
 data nominal_distinct_control_source: Source = "module nominal.distinct.control.probe\n\ntype WrapA {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(a: WrapA) -> Int = expects_a(a)\n"
@@ -219,7 +222,7 @@ data claim_nominal_distinct_records_cross_call_rejects: TestClaim = DiagnosticCl
 
 
 data claim_nominal_distinct_branded_aliases_cross_call_rejects: TestClaim = DiagnosticClaim {
-  label: "manual/nominal: IntentId/IssueId branded aliases reject cross-call",
+  label: "manual/nominal: IntentId/IssueId desugared nominal records reject cross-call",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: nominal_distinct_brands_input,
   expected_rejection: nominal_distinct_brands_expected_rejection(),
