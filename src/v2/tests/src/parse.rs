@@ -5,11 +5,11 @@
 //! All tests call stage0 functions directly.
 
 use std::rc::Rc;
-use std::time::Instant;
 
 use crate::helpers::*;
 use v2_compiler::std_types::SourceSpan;
 use v2_compiler::v2_compiler_tokenize::{source_code_point, source_len, SourceRef};
+use v2_compiler::v2_rt::{reset_text_lookup_chars_walked, take_text_lookup_chars_walked};
 use v2_compiler::v2_std_core::{build_newline_index, source_text_at, InferredNode, TokenShape};
 
 /// Median wall time over several tokenize passes, plus the token count from the last pass.
@@ -38,38 +38,24 @@ fn tokenizer_source_ref(source: &str) -> Rc<SourceRef> {
     })
 }
 
-/// Median wall time for many `source_code_point` lookups at one index.
-fn median_code_point_lookup_secs(source: &Rc<SourceRef>, pos: i64) -> f64 {
-    const RUNS: usize = 7;
-    const LOOKUPS_PER_RUN: usize = 50_000;
-    let mut samples = Vec::with_capacity(RUNS);
-    for _ in 0..RUNS {
-        let t0 = Instant::now();
-        for _ in 0..LOOKUPS_PER_RUN {
-            let _ = source_code_point(source.clone(), pos);
-        }
-        samples.push(t0.elapsed().as_secs_f64());
+fn source_code_point_chars_walked(source: &Rc<SourceRef>, pos: i64, lookups: usize) -> u64 {
+    reset_text_lookup_chars_walked();
+    for _ in 0..lookups {
+        let _ = source_code_point(source.clone(), pos);
     }
-    samples.sort_by(|a, b| a.total_cmp(b));
-    samples[RUNS / 2]
+    take_text_lookup_chars_walked()
 }
 
-fn median_source_text_at_secs(
+fn source_text_at_chars_walked(
     index: &Rc<v2_compiler::v2_std_core::NewlineIndex>,
     span: &Rc<SourceSpan>,
-) -> f64 {
-    const RUNS: usize = 5;
-    const LOOKUPS_PER_RUN: usize = 2_000;
-    let mut samples = Vec::with_capacity(RUNS);
-    for _ in 0..RUNS {
-        let t0 = Instant::now();
-        for _ in 0..LOOKUPS_PER_RUN {
-            let _ = source_text_at(index.clone(), span.clone());
-        }
-        samples.push(t0.elapsed().as_secs_f64());
+    lookups: usize,
+) -> u64 {
+    reset_text_lookup_chars_walked();
+    for _ in 0..lookups {
+        let _ = source_text_at(index.clone(), span.clone());
     }
-    samples.sort_by(|a, b| a.total_cmp(b));
-    samples[RUNS / 2]
+    take_text_lookup_chars_walked()
 }
 
 /// Fixture with `k` named bindings separated by `pad` non-ASCII filler bytes.
@@ -97,18 +83,18 @@ fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSp
     (source, spans)
 }
 
-fn total_source_text_at_secs(
+fn total_source_text_at_chars_walked(
     index: &Rc<v2_compiler::v2_std_core::NewlineIndex>,
     spans: &[Rc<SourceSpan>],
     lookups_per_span: usize,
-) -> f64 {
-    let t0 = Instant::now();
+) -> u64 {
+    reset_text_lookup_chars_walked();
     for _ in 0..lookups_per_span {
         for span in spans {
             let _ = source_text_at(index.clone(), span.clone());
         }
     }
-    t0.elapsed().as_secs_f64()
+    take_text_lookup_chars_walked()
 }
 
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
@@ -522,34 +508,28 @@ fn tokenizer_non_ascii_performance_regression() {
 
 #[test]
 fn tokenizer_text_lookup_flat_in_file_size() {
-    // Recurrence guard: each scan step does O(1) codepoint lookup regardless of
-    // absolute offset. Tail lookups must not pay O(pos) string walking.
+    // Recurrence guard: each `source_code_point` does one vec-index unit of work,
+    // independent of absolute offset (no substring slow-path chars walked).
+    const LOOKUPS: usize = 1_000;
     let large_source = read_v2_file("src/v2/02_parse.dag");
     let source = tokenizer_source_ref(&large_source);
     let tail_pos = source_len(source.clone()) - 1;
 
-    let _ = source_code_point(source.clone(), 0);
-    let _ = source_code_point(source.clone(), tail_pos);
-
-    let head_time = median_code_point_lookup_secs(&source, 0);
-    let tail_time = median_code_point_lookup_secs(&source, tail_pos);
-    let ratio = tail_time / head_time.max(1e-9);
+    let head_walked = source_code_point_chars_walked(&source, 0, LOOKUPS);
+    let tail_walked = source_code_point_chars_walked(&source, tail_pos, LOOKUPS);
 
     eprintln!(
-        "text lookup flat: head pos=0 {:.6}s | tail pos={} {:.6}s | ratio {:.1}x ({}B source)",
-        head_time,
-        tail_pos,
-        tail_time,
-        ratio,
+        "tokenizer lookup chars walked: head={head_walked} tail={tail_walked} ({}B source, {LOOKUPS} lookups each)",
         large_source.len(),
     );
 
-    const FLAT_MARGIN: f64 = 4.0;
-    assert!(
-        ratio < FLAT_MARGIN,
-        "text lookup at tail is {:.1}x slower than at head — expected < {:.1}x (O(pos) regression)",
-        ratio,
-        FLAT_MARGIN,
+    assert_eq!(
+        head_walked, LOOKUPS as u64,
+        "head lookups should be one index op each"
+    );
+    assert_eq!(
+        tail_walked, LOOKUPS as u64,
+        "tail lookups should be one index op each (flat in file offset)"
     );
 }
 
@@ -583,23 +563,20 @@ fn source_text_at_lookup_flat_in_file_size() {
         end: tail + 4,
     });
 
-    let head_time = median_source_text_at_secs(&index, &head_span);
-    let tail_time = median_source_text_at_secs(&index, &tail_span);
-    let ratio = tail_time / head_time.max(1e-9);
+    const LOOKUPS: usize = 200;
+    let head_walked = source_text_at_chars_walked(&index, &head_span, LOOKUPS);
+    let tail_walked = source_text_at_chars_walked(&index, &tail_span, LOOKUPS);
+    let ratio = tail_walked as f64 / head_walked.max(1) as f64;
 
     eprintln!(
-        "source_text_at flat: head {:.6}s | tail {:.6}s | ratio {:.1}x ({}B)",
-        head_time,
-        tail_time,
-        ratio,
+        "source_text_at chars walked: head={head_walked} tail={tail_walked} ratio={ratio:.1}x ({}B)",
         source.len(),
     );
 
     const FLAT_MARGIN: f64 = 4.0;
     assert!(
         ratio < FLAT_MARGIN,
-        "source_text_at tail lookup is {:.1}x slower than head — expected < {:.1}x (O(offset) regression)",
-        ratio,
+        "source_text_at tail lookup walked {tail_walked} chars vs head {head_walked} — expected < {:.1}x (O(offset) regression)",
         FLAT_MARGIN,
     );
 }
@@ -623,19 +600,21 @@ fn source_text_at_lookup_flat_across_name_padding() {
     let small_index = build_newline_index("small_pad.dag".to_string(), small_source);
     let large_index = build_newline_index("large_pad.dag".to_string(), large_source);
 
-    let small_time = total_source_text_at_secs(&small_index, &small_spans, 200);
-    let large_time = total_source_text_at_secs(&large_index, &large_spans, 200);
-    let ratio = large_time / small_time.max(1e-9);
+    const LOOKUPS_PER_SPAN: usize = 50;
+    let small_walked =
+        total_source_text_at_chars_walked(&small_index, &small_spans, LOOKUPS_PER_SPAN);
+    let large_walked =
+        total_source_text_at_chars_walked(&large_index, &large_spans, LOOKUPS_PER_SPAN);
+    let ratio = large_walked as f64 / small_walked.max(1) as f64;
 
     eprintln!(
-        "source_text_at K={K} names: small {small_len}B {small_time:.4}s | large {large_len}B {large_time:.4}s | ratio {ratio:.1}x"
+        "source_text_at K={K} names: small {small_len}B walked={small_walked} | large {large_len}B walked={large_walked} | ratio {ratio:.1}x"
     );
 
     const PADDING_FLAT_MARGIN: f64 = 3.0;
     assert!(
         ratio < PADDING_FLAT_MARGIN,
-        "name lookup work grew {:.1}x for 10x padding — expected < {:.1}x (scales with file length)",
-        ratio,
+        "name lookup walked {large_walked} vs {small_walked} for 10x padding — expected < {:.1}x (scales with file length)",
         PADDING_FLAT_MARGIN,
     );
 }
