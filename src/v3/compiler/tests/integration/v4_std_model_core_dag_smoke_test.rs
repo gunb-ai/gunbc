@@ -289,6 +289,45 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
     );
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoolFactAxisDispatch {
+    Width,
+    Encoding,
+    Unbound,
+}
+
+fn bool_fact_axis_dispatch(axis: &str) -> BoolFactAxisDispatch {
+    if axis == "primitive_fact_axis_width" {
+        BoolFactAxisDispatch::Width
+    } else if axis == "primitive_fact_axis_encoding" {
+        BoolFactAxisDispatch::Encoding
+    } else {
+        BoolFactAxisDispatch::Unbound
+    }
+}
+
+#[test]
+fn v4_std_model_core_bool_fact_lookup_is_discriminating_and_fail_closed() {
+    let _module = model_core_surface_or_panic();
+    assert!(
+        MODEL_CORE_DAG.contains("if axis == primitive_fact_axis_width {")
+            && MODEL_CORE_DAG.contains("} else if axis == primitive_fact_axis_encoding {")
+            && MODEL_CORE_DAG.contains("primitive_fact_axis_unbound_diagnostic(axis: axis)")
+            && !MODEL_CORE_DAG.contains("match axis {\n    primitive_fact_axis_width =>"),
+        "{MODEL_CORE_PATH}: bool fact lookup must use explicit Symbol equality dispatch with an unbound fail-closed else"
+    );
+    assert_eq!(
+        bool_fact_axis_dispatch("primitive_fact_axis_encoding"),
+        BoolFactAxisDispatch::Encoding,
+        "discriminating second-arm axis must not return the width fact"
+    );
+    assert_eq!(
+        bool_fact_axis_dispatch("primitive_fact_axis_signedness"),
+        BoolFactAxisDispatch::Unbound,
+        "unsupported bool fact axes must fail closed"
+    );
+}
+
 #[test]
 fn v4_std_model_core_wave1_void_constructor_present() {
     let module = model_core_surface_or_panic();

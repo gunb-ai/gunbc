@@ -485,18 +485,17 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
 fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: mc_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == primitive_fact_axis_width {
           Holds { value: mc_int_width_node(width: facts.width) }
-        primitive_fact_axis_signedness =>
+      } else if axis == primitive_fact_axis_signedness {
           Holds { value: mc_int_kind_node(kind: facts.kind) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: mc_inhabitant_atom(id: mc_repr_twos_complement) }
-        primitive_fact_axis_overflow_disposition =>
+      } else if axis == primitive_fact_axis_overflow_disposition {
           Holds { value: mc_overflow_node(overflow: facts.overflow_release) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }

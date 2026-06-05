@@ -1845,18 +1845,17 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
 fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == primitive_fact_axis_width {
           Holds { value: wasm_int_width_node(width: facts.width) }
-        primitive_fact_axis_signedness =>
+      } else if axis == primitive_fact_axis_signedness {
           Holds { value: wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: wasm_inhabitant_atom(id: wasm_repr_sign_agnostic_modular) }
-        primitive_fact_axis_overflow_disposition =>
+      } else if axis == primitive_fact_axis_overflow_disposition {
           Holds { value: wasm_inhabitant_atom(id: wasm_tag_modular_wrap) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -1868,14 +1867,13 @@ fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<Symbol, Node
 fn wasm_float_spec_facts(facts: WasmFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == primitive_fact_axis_width {
           Holds { value: wasm_float_width_node(width: facts.width) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: wasm_inhabitant_atom(id: facts.ieee754_binary) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }

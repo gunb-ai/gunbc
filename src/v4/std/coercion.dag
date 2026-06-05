@@ -179,21 +179,20 @@ fn coercion_find_witness_reason_unmapped_diagnostic(
 }
 fn find_witness_rejection_kind_from_reason(
   source: CanonicalGrounding,
-  reason: Symbol,
+  reason: Symbol
 ) -> Outcome<FindWitnessRejectionKind> {
-  match reason {
-    find_witness_reason_no_candidate =>
-      Accepted { value: FindWitnessNoCandidate, diagnostics: None }
-    find_witness_reason_ambiguous_candidate =>
-      Accepted { value: FindWitnessAmbiguousCandidate, diagnostics: None }
-    find_witness_reason_not_realized =>
-      Accepted { value: FindWitnessNotRealized, diagnostics: None }
-    find_witness_reason_invalid_witness =>
-      Accepted { value: FindWitnessInvalidWitness, diagnostics: None }
-    _ =>
-      outcome_rejected(
-        coercion_find_witness_reason_unmapped_diagnostic(source: source)
-      )
+  if reason == find_witness_reason_no_candidate {
+    Accepted { value: FindWitnessNoCandidate, diagnostics: None }
+  } else if reason == find_witness_reason_ambiguous_candidate {
+    Accepted { value: FindWitnessAmbiguousCandidate, diagnostics: None }
+  } else if reason == find_witness_reason_not_realized {
+    Accepted { value: FindWitnessNotRealized, diagnostics: None }
+  } else if reason == find_witness_reason_invalid_witness {
+    Accepted { value: FindWitnessInvalidWitness, diagnostics: None }
+  } else {
+    outcome_rejected(
+      coercion_find_witness_reason_unmapped_diagnostic(source: source)
+    )
   }
 }
 fn coercion_mismatch_kind_for_find_witness_rejection_kind(
