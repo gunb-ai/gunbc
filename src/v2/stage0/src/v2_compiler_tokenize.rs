@@ -88,8 +88,10 @@ pub fn source_char(source: Rc<SourceRef>, pos: i64) -> String {
 }
 
 pub fn source_code_point(source: Rc<SourceRef>, pos: i64) -> i64 {
-    let _ = v2_rt::record_source_chars_index_lookup();
-    source.source_chars.clone()[(pos) as usize].clone()
+    {
+        let _ = record_source_chars_index_lookup();
+        source.source_chars.clone()[(pos) as usize].clone()
+    }
 }
 
 pub fn source_len(source: Rc<SourceRef>) -> i64 {
