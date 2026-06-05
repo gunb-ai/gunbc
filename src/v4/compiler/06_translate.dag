@@ -2376,6 +2376,18 @@ fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
     node: node
   )
 }
+// A use-site carrier's identity. Ownership attaches to CARRIERS, each asked ONCE by
+// its OWN identity: a bare-atom carrier (e.g. a scalar inhabitant `rust_inhabitant_i32`)
+// IS its own identity, so take it directly via node_atom_identity. A composite/wrapper
+// carrier presents the identity as its single positional sub-atom, so fall through to
+// type_expr_atom_binding. The wrapper-only decoder must not be asked of a bare atom —
+// it would read for a positional sub-child the carrier lacks and fail shape-closed.
+fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } => node_atom_identity(node: node)
+    _ => type_expr_atom_binding(node: node)
+  }
+}
 fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<TargetSource> {
   bind_outcome(
     o: type_expr_atom_binding(node: node),
@@ -3401,7 +3413,7 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
       match wire.kind {
         TargetTypeExprAtom =>
           bind_outcome(
-            o: type_expr_atom_binding(node: source_for_binding),
+            o: type_expr_carrier_identity(node: source_for_binding),
             f: fn(binding) {
               translate_apply_use_site_ownership_to_projected_type(
                 projected: projected,
