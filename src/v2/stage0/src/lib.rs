@@ -13,6 +13,7 @@
 )]
 
 pub mod cli_run;
+pub mod extdeps_cargo;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;
 pub mod extdeps_languages_dag_types;
@@ -73,6 +74,7 @@ pub mod v2_compiler_parse;
 pub mod v2_compiler_resolve;
 pub mod v2_compiler_runtime_go;
 pub mod v2_compiler_runtime_rust;
+pub mod v2_compiler_stage0_crates;
 pub mod v2_compiler_tokenize;
 pub mod v2_compiler_trace;
 pub mod v2_interpreter;
