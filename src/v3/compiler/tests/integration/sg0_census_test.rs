@@ -768,6 +768,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 §1.8 gate #39 (`no_coercion_cost_dimension`, T-CostLens-Composition):
     // `.dag` substrate ratchet — no parallel `CoercionCost` token outside comments.
     "src/v3/compiler/tests/integration/no_coercion_cost_dimension_ratchet_test.rs",
+    // Stage-1 fresh-nominal-type desugar: execution witnesses that distinct named
+    // records reject cross-call via declaration-identity (WrapA/WrapB) and branded
+    // aliases reject via refinement discharge (IntentId/IssueId).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // `EXPECTED_HAND_AUTHORED_TEST` 177 → 178; explicit deferral **ROADMAP.md**
+    // `### Nine lanes` row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+    // (ROADMAP.md:43); dissolves when `.dag` TestClaim runners execute the same facts.
+    "src/v3/compiler/tests/integration/nominal_distinctness_cross_call_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     // R3 row 85 / PB #1560 Gap 4: focused acceptance for the
     // `pb_method_template_projection` consumer hook. Stays hand-Rust

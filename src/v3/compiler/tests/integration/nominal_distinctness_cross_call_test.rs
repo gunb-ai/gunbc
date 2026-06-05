@@ -4,37 +4,38 @@
 //! Confirms declaration-identity / template-binding machinery rejects
 //! `WrapA` at a `WrapB` call site (records) and branded aliases reject via
 //! refinement discharge (IntentId/IssueId). Control: same-type call compiles.
+//!
+//! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+//! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:43); Stage-1 fresh-nominal-type
+//! disjointness witnesses until `.dag` `TestClaim` coverage executes the same
+//! cross-call rejection facts directly. Dissolves when refinement-desugar Stage-2+
+//! claim runners replace this hand-Rust harness.
 
 use v3_compiler::dag::{Behavior, PortState};
 use v3_compiler::diagnostics::Diagnostic;
-use v3_compiler::{compile_to_dag, CompileError};
+use v3_compiler::{compile_to_dag, CompileError, Dag};
 
-fn cross_call_rejects(source: &str, file: &str) -> (bool, Vec<String>) {
-    let dag = match compile_to_dag(source, file) {
-        Ok(dag) => {
-            let diags: Vec<String> = dag
-                .diagnostics()
-                .iter()
-                .map(|(_, d)| format!("{d:?}"))
-                .collect();
-            return (false, diags);
-        }
+fn semantic_dag(source: &str, file: &str) -> Dag {
+    match compile_to_dag(source, file) {
+        Ok(dag) => dag,
         Err(CompileError::Semantic(dag)) => dag,
-        Err(other) => return (true, vec![format!("CompileError: {other:?}")]),
-    };
+        Err(other) => panic!("expected parse+lower to reach infer (Semantic), got {other:?}"),
+    }
+}
 
+fn cross_call_rejects_semantically(source: &str, file: &str) -> Vec<String> {
+    let dag = semantic_dag(source, file);
     let messages: Vec<String> = dag
         .diagnostics()
         .iter()
         .map(|(_, d)| format!("{d:?}"))
         .collect();
 
-    let has_reject_diag = dag.diagnostics().iter().any(|(_, d)| {
-        matches!(
-            d,
-            Diagnostic::TypeMismatch { .. } | Diagnostic::ResolveError { .. }
-        )
-    });
+    let has_resolve_error = dag
+        .diagnostics()
+        .iter()
+        .any(|(_, d)| matches!(d, Diagnostic::ResolveError { .. }));
 
     let call_unresolved = dag.nodes().iter().any(|node| {
         let Behavior::Transform(t) = node else {
@@ -44,7 +45,11 @@ fn cross_call_rejects(source: &str, file: &str) -> (bool, Vec<String>) {
             && dag.diagnostics().get(t.output).is_some()
     });
 
-    (has_reject_diag || call_unresolved, messages)
+    assert!(
+        has_resolve_error || call_unresolved,
+        "cross-call must fail closed with ResolveError or unresolved call port; diags={messages:?}"
+    );
+    messages
 }
 
 #[test]
@@ -62,16 +67,16 @@ fn expects_a(x: WrapA) -> Int = x.value
 
 fn call_site(b: WrapB) -> Int = expects_a(b)
 "#;
-    let (rejected, diags) = cross_call_rejects(source, "nominal_distinct_records.v3");
-    assert!(
-        rejected,
-        "distinct named records WrapA/WrapB must reject cross-call; diags={diags:?}"
-    );
+    let diags = cross_call_rejects_semantically(source, "nominal_distinct_records.v3");
     assert!(
         diags
             .iter()
             .any(|d| d.contains("WrapA") && d.contains("WrapB")),
         "rejection must name both carriers; diags={diags:?}"
+    );
+    assert!(
+        diags.iter().any(|d| d.contains("ResolveError")),
+        "records cross-call must surface ResolveError; diags={diags:?}"
     );
 }
 
@@ -85,10 +90,20 @@ fn expects_intent(x: IntentId) -> String = x
 
 fn call_site(i: IssueId) -> String = expects_intent(i)
 "#;
-    let (rejected, diags) = cross_call_rejects(source, "nominal_distinct_brands.v3");
+    let diags = cross_call_rejects_semantically(source, "nominal_distinct_brands.v3");
     assert!(
-        rejected,
-        "branded aliases IntentId/IssueId must reject cross-call; diags={diags:?}"
+        diags.iter().any(|d| d.contains("ResolveError")),
+        "brand-alias cross-call must surface ResolveError (not parser failure); diags={diags:?}"
+    );
+    assert!(
+        diags.iter().any(|d| d.contains("expects_intent")),
+        "rejection must name the callee; diags={diags:?}"
+    );
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.contains("where") && d.contains("refinement")),
+        "brand-alias rejection must be refinement discharge, not unrelated failure; diags={diags:?}"
     );
 }
 
