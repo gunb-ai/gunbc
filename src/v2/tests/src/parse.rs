@@ -8,8 +8,9 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use crate::helpers::*;
+use v2_compiler::std_types::SourceSpan;
 use v2_compiler::v2_compiler_tokenize::{source_code_point, source_len, SourceRef};
-use v2_compiler::v2_std_core::{InferredNode, TokenShape};
+use v2_compiler::v2_std_core::{build_newline_index, source_text_at, InferredNode, TokenShape};
 
 /// Median wall time over several tokenize passes, plus the token count from the last pass.
 /// Stabilizes `large_time / small_time` when the small baseline is only a few milliseconds
@@ -46,6 +47,21 @@ fn median_code_point_lookup_secs(source: &Rc<SourceRef>, pos: i64) -> f64 {
         let t0 = Instant::now();
         for _ in 0..LOOKUPS_PER_RUN {
             let _ = source_code_point(source.clone(), pos);
+        }
+        samples.push(t0.elapsed().as_secs_f64());
+    }
+    samples.sort_by(|a, b| a.total_cmp(b));
+    samples[RUNS / 2]
+}
+
+fn median_source_text_at_secs(index: &Rc<v2_compiler::v2_std_core::NewlineIndex>, span: &Rc<SourceSpan>) -> f64 {
+    const RUNS: usize = 5;
+    const LOOKUPS_PER_RUN: usize = 2_000;
+    let mut samples = Vec::with_capacity(RUNS);
+    for _ in 0..RUNS {
+        let t0 = Instant::now();
+        for _ in 0..LOOKUPS_PER_RUN {
+            let _ = source_text_at(index.clone(), span.clone());
         }
         samples.push(t0.elapsed().as_secs_f64());
     }
@@ -460,6 +476,26 @@ fn tokenizer_non_ascii_performance_regression() {
         "tokenize took {:.3}s — budget is 2s for ~270KB file",
         non_ascii_time.as_secs_f64(),
     );
+}
+
+#[test]
+fn probe_source_text_at_lookup_cost() {
+    let source = read_v2_file("src/v2/02_parse.dag");
+    let index = build_newline_index("probe.dag".to_string(), source.clone());
+    let tail = (source.len() as i64) - 4;
+    let head_span = Rc::new(SourceSpan {
+        file: "probe.dag".to_string(),
+        start: 0,
+        end: 4,
+    });
+    let tail_span = Rc::new(SourceSpan {
+        file: "probe.dag".to_string(),
+        start: tail,
+        end: tail + 4,
+    });
+    let head = median_source_text_at_secs(&index, &head_span);
+    let tail_t = median_source_text_at_secs(&index, &tail_span);
+    eprintln!("source_text_at probe: head={head:.4}s tail={tail_t:.4}s ratio={:.1}x", tail_t / head.max(1e-9));
 }
 
 #[test]
