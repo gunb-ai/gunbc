@@ -3,15 +3,18 @@
 // Status: kept lock — brand where-sugar vs hand-desugared nominal wrappers must
 //         accept/reject identical programs; divergence = fork/shelve.
 //         Expected RED until brand enforces nominal disjointness.
-// Companion: v3-compiler integration test
-//   refinement_brand_disjointness_is_sugar_claim_test.rs (compile-time matrix).
+// Companion evidence: v3-compiler integration test
+//   refinement_brand_disjointness_is_sugar_claim_test.rs (compile facts + #[ignore] lock reruns).
+// Corpus eval: v4.test.claim.workflow.refinement_brand_disjointness_is_sugar_eval
 
 module v4.test.claim.manual.refinement_brand_disjointness_is_sugar
 
 
+import v4.compiler.eval { run_test_claim_assert }
 import v4.std.diagnostic {
   Accepted,
   Locus,
+  None,
   Outcome,
   Rejected,
   Textual,
@@ -27,6 +30,7 @@ import v4.std.refinement {
   refined_vacuous_oracle_terminal,
   vacuous_admits_marker
 }
+import v4.std.verdict { Fail, Pass, Verdict }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -196,3 +200,59 @@ data claim_refinement_brand_disjointness_raw_literal_is_sugar: TestClaim = Equal
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+
+fn claim1_actual_for_agreement(
+  refinement_accepts: Bool,
+  desugared_accepts: Bool
+) -> Outcome<Node> {
+  Accepted {
+    value: claim1_input(
+      ok: claim1_programs_agree(
+        refinement_accepts: refinement_accepts,
+        desugared_accepts: desugared_accepts
+      )
+    ),
+    diagnostics: None
+  }
+}
+
+
+fn claim1_verdict_for_agreement(
+  claim: TestClaim,
+  refinement_accepts: Bool,
+  desugared_accepts: Bool
+) -> Verdict<TestClaim, Node> {
+  run_test_claim_assert(
+    claim: claim,
+    actual: claim1_actual_for_agreement(
+      refinement_accepts: refinement_accepts,
+      desugared_accepts: desugared_accepts
+    ),
+    at: stub_empty_conj
+  )
+}
+
+
+data verdict_refinement_brand_disjointness_cross_brand_is_sugar: Verdict<TestClaim, Node> =
+  claim1_verdict_for_agreement(
+    claim: claim_refinement_brand_disjointness_cross_brand_is_sugar,
+    refinement_accepts: refinement_accepts_cross_brand(),
+    desugared_accepts: desugared_accepts_cross_brand()
+  )
+
+
+data verdict_refinement_brand_disjointness_same_brand_is_sugar: Verdict<TestClaim, Node> =
+  claim1_verdict_for_agreement(
+    claim: claim_refinement_brand_disjointness_same_brand_is_sugar,
+    refinement_accepts: refinement_accepts_same_brand(),
+    desugared_accepts: desugared_accepts_same_brand()
+  )
+
+
+data verdict_refinement_brand_disjointness_raw_literal_is_sugar: Verdict<TestClaim, Node> =
+  claim1_verdict_for_agreement(
+    claim: claim_refinement_brand_disjointness_raw_literal_is_sugar,
+    refinement_accepts: refinement_accepts_raw_literal(),
+    desugared_accepts: desugared_accepts_raw_literal()
+  )
