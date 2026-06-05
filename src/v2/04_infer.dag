@@ -4927,6 +4927,12 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
 // (not children), so a formal like fn(T) -> Outcome<U> needs the input T
 // replaced for the lambda param to bind concretely.
 fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
+  // No bindings ⇒ identity. Critical: the rebuild below allocates a fresh Node,
+  // which would duplicate a type's canonical declaration in the nodes table and
+  // change identity for downstream consumers. Returning n unchanged keeps every
+  // non-generic call (and any generic call that bound nothing) a true no-op.
+  if (map_keys(subst) |> count) == 0 { n }
+  else {
   let nm = authored_name_at(source_indices: source_indices, node: n)
   let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
   if is_bare {
@@ -4949,6 +4955,7 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
       is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
       match_pattern: n.match_pattern, expr_data: n.expr_data
     }
+  }
   }
 }
 
