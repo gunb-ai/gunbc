@@ -2221,18 +2221,6 @@ fn project_type_expression_node(
     projection: projection
   )
 }
-// Is this node one of the target's DECLARED INHABITANTS? Consults the existing
-// declared_inhabitants authority (the same set coercion uses), so recognition is
-// language-agnostic — the projection does not hardcode any language's inhabitant
-// field labels. Inhabitant nodes are pure data, so structural `==` is the membership.
-fn translate_node_is_declared_inhabitant(node: Node, target: TargetModel) -> Bool {
-  match target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants) {
-    Accepted { value: inhabitants_root, diagnostics: _ } =>
-      declared_inhabitant_candidates(inhabitants_root: inhabitants_root)
-        |> any(c => c == node)
-    Rejected { diagnostics: _ } => false
-  }
-}
 // The VALUE/SURFACE content of an inhabitant is its bare-atom child (the surface
 // identity); every other child (the facts record) is type-declaration METADATA,
 // which is BANNED from projection. Returns the surface atom node.
@@ -2251,6 +2239,41 @@ fn translate_inhabitant_surface_atom_node(node: Node) -> Outcome<Node> {
       }
     }
   )
+}
+// An inhabitant's surface IDENTITY: the Symbol of its bare-atom (value/surface) child.
+// Absent for a node with no bare-atom child (not a surface-bearing inhabitant).
+fn translate_inhabitant_surface_identity(node: Node) -> Optional<Symbol> {
+  match translate_inhabitant_surface_atom_node(node: node) {
+    Accepted { value: atom, diagnostics: _ } =>
+      match atom.kind {
+        TypeNode { connective: Atom { identity: id } } => Present { value: id }
+        _ => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+// Is this node one of the target's DECLARED INHABITANTS? Consults the existing
+// declared_inhabitants authority (the same set coercion uses), so recognition is
+// language-agnostic — the projection does not hardcode any language's inhabitant
+// field labels. Matches on the inhabitant's SURFACE-ATOM IDENTITY (a Symbol), not
+// full-node `==`: the node reaching projection has been through the pipeline
+// (content_hash child canonicalization can reorder a Conj's edges), so structural
+// equality against the raw declared node is unreliable; the surface identity is stable.
+fn translate_node_is_declared_inhabitant(node: Node, target: TargetModel) -> Bool {
+  match translate_inhabitant_surface_identity(node: node) {
+    Present { value: node_surface } =>
+      match target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants) {
+        Accepted { value: inhabitants_root, diagnostics: _ } =>
+          declared_inhabitant_candidates(inhabitants_root: inhabitants_root)
+            |> any(c =>
+              match translate_inhabitant_surface_identity(node: c) {
+                Present { value: c_surface } => c_surface == node_surface
+                Absent => false
+              })
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
 }
 // INVARIANT: type-declaration metadata is never projected. A declared inhabitant
 // projects its VALUE/SURFACE content, EXCLUDING its metadata facts. For a SCALAR
@@ -2452,7 +2475,15 @@ fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
 fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } => node_atom_identity(node: node)
-    _ => type_expr_atom_binding(node: node)
+    _ =>
+      // Composite carrier: its identity is its bare-atom SURFACE child — an inhabitant's
+      // value/surface atom (a Named edge) or a wrapper's positional atom. Both are found
+      // by the surface-atom extractor; only when there is no bare-atom child do we fall
+      // back to the positional-only decoder.
+      match translate_inhabitant_surface_atom_node(node: node) {
+        Accepted { value: surface_atom, diagnostics: _ } => node_atom_identity(node: surface_atom)
+        Rejected { diagnostics: _ } => type_expr_atom_binding(node: node)
+      }
   }
 }
 fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<TargetSource> {
