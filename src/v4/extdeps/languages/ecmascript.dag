@@ -532,12 +532,11 @@ fn ecmascript_singleton_facts_node(facts: EcmascriptSingletonPrimitiveFacts) -> 
 fn ecmascript_number_spec_facts(facts: EcmascriptNumberPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: ecmascript_inhabitant_atom(id: facts.machine_representation) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -549,12 +548,11 @@ fn ecmascript_number_spec_facts(facts: EcmascriptNumberPrimitiveFacts) -> Map<Sy
 fn ecmascript_bigint_spec_facts(facts: EcmascriptBigIntPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -566,12 +564,11 @@ fn ecmascript_bigint_spec_facts(facts: EcmascriptBigIntPrimitiveFacts) -> Map<Sy
 fn ecmascript_boolean_spec_facts(facts: EcmascriptBooleanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -583,12 +580,11 @@ fn ecmascript_boolean_spec_facts(facts: EcmascriptBooleanPrimitiveFacts) -> Map<
 fn ecmascript_symbol_spec_facts(facts: EcmascriptSymbolPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -600,12 +596,11 @@ fn ecmascript_symbol_spec_facts(facts: EcmascriptSymbolPrimitiveFacts) -> Map<Sy
 fn ecmascript_string_spec_facts(facts: EcmascriptStringPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -617,12 +612,11 @@ fn ecmascript_string_spec_facts(facts: EcmascriptStringPrimitiveFacts) -> Map<Sy
 fn ecmascript_singleton_spec_facts(facts: EcmascriptSingletonPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: ecmascript_inhabitant_atom(id: ecmascript_repr_singleton_sole_inhabitant) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }

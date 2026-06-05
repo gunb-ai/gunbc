@@ -779,14 +779,13 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
 fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == primitive_fact_axis_width {
           Holds { value: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: llvm_inhabitant_atom(id: llvm_repr_sign_agnostic_integer) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -798,12 +797,11 @@ fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node
 fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: llvm_wave1_float_kind_node(kind: facts.kind) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }

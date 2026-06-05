@@ -183,15 +183,14 @@ fn model_core_wave1_atom(id: Symbol) -> Node {
 
 
 fn model_core_wave1_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witness<Node> {
-  match axis {
-    primitive_fact_axis_width =>
-      Holds { value: bool_width_fact_node(width: facts.width) }
-    primitive_fact_axis_encoding =>
-      Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
-    _ =>
-      Violates {
-        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-      }
+  if axis == primitive_fact_axis_width {
+    Holds { value: bool_width_fact_node(width: facts.width) }
+  } else if axis == primitive_fact_axis_encoding {
+    Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
+  } else {
+    Violates {
+      diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+    }
   }
 }
 

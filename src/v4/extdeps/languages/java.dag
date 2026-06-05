@@ -1897,16 +1897,15 @@ fn java_language_model_canonical_symbols() -> Set<Symbol> {
 fn java_integer_spec_facts(facts: JavaIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == primitive_fact_axis_width {
           Holds { value: java_int_width_node(width: facts.width) }
-        primitive_fact_axis_signedness =>
+      } else if axis == primitive_fact_axis_signedness {
           Holds { value: java_int_kind_node(kind: facts.signedness) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: java_integer_encoding_fact(facts: facts) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -1918,14 +1917,13 @@ fn java_integer_spec_facts(facts: JavaIntegerPrimitiveFacts) -> Map<Symbol, Node
 fn java_float_spec_facts(facts: JavaFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_width =>
+      } else if axis == primitive_fact_axis_width {
           Holds { value: java_float_width_node(width: facts.width) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: java_inhabitant_atom(id: facts.ieee754_binary) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
@@ -1937,12 +1935,11 @@ fn java_float_spec_facts(facts: JavaFloatPrimitiveFacts) -> Map<Symbol, Node> {
 fn java_noninteger_spec_facts(facts: JavaNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_surface_spelling =>
+      if axis == primitive_fact_axis_surface_spelling {
           Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
-        primitive_fact_axis_encoding =>
+      } else if axis == primitive_fact_axis_encoding {
           Holds { value: java_inhabitant_atom(id: facts.representation) }
-        _ =>
+      } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
           }
