@@ -940,7 +940,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         ) && CI_DAG.contains(
             "data m1_rust_emit_probe_shared_dag_log_env: String = \"V4_M1_DAG_EMIT_LOG\""
         ) && CI_DAG.contains(
-            "data m1_rust_dag_emit_parity_receipt_test: String = \"cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet\""
+            "data m1_rust_dag_emit_parity_receipt_test: String = \"cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet\""
         ),
         "{CI_DAG_PATH}: shared M1/bootstrap closure env names must be modeled"
     );
@@ -1014,7 +1014,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     let parity_step = workflow_step_block(CI_YML, "v2 DAG emit parity receipt (shared closure)");
     assert!(
         parity_step.contains(
-            "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet"
+            "cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet"
         ),
         "{CI_YML_PATH}: bootstrap reuse must be preceded by the v2 DAG emit parity receipt"
     );
