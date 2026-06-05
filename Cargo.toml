@@ -3,8 +3,10 @@ resolver = "2"
 exclude = [".stage1"]
 members = [
     "src/v2/stage0",
+    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v2.compiler.workspace_members)
     "src/v2/stage0_core",
     "src/v2/stage0_emit_core",
+    # END generated stage0 crate members
     "src/v2/tests",
     "src/v3/compiler",
     "tools/ci_affected_components",

@@ -90,6 +90,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_stage0_crates.rs",
     "v2_compiler_tokenize.rs",
     "v2_compiler_trace.rs",
+    "v2_compiler_workspace_members.rs",
     "v2_rt.rs",
     "v2_std_core.rs",
 ];
