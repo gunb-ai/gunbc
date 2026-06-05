@@ -18,8 +18,11 @@
 #   1. Run the command. On success, exit 0.
 #   2. On failure, ONLY if captured stderr matches the sccache transport
 #      signature: restart the server and retry (RETRIES attempts total).
-#   3. If the signature persists after the last attempt, run ONCE more with
-#      RUSTC_WRAPPER unset (cold -- uncached but correct).
+#   3. If the signature persists after the last attempt, FAIL the build
+#      (exit nonzero). We deliberately do NOT fall back to an uncached cold
+#      build: a repeatedly-unreachable sccache server is an infra regression
+#      we want surfaced loudly (ci-spot-rerun.yml will retry the whole job),
+#      not papered over by a silent slow build that hides the problem.
 #   4. A failure that is NOT the transport signature (a real compile error)
 #      exits immediately with the original code: no retry, no masking.
 #
@@ -66,6 +69,8 @@ while [ "$attempt" -le "$RETRIES" ]; do
   attempt=$((attempt + 1))
 done
 
-# Persistent transport failure: last-resort cold build -- correct, just uncached.
-echo "::warning::sccache still unhealthy after ${RETRIES} attempts; building cold (RUSTC_WRAPPER unset)"
-exec env RUSTC_WRAPPER= "$@"
+# Persistent transport failure: fail the build LOUD rather than silently
+# building cold. rc holds the last attempt's exit code (nonzero -- we only
+# reach here after a transport-signature failure); guard to 1 just in case.
+echo "::error::sccache unreachable after ${RETRIES} attempts (transport failure persists); failing the build instead of building cold"
+exit "$(( rc != 0 ? rc : 1 ))"
