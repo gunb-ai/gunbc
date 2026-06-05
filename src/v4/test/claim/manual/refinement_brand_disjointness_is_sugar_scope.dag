@@ -1,11 +1,12 @@
 // src/v4/test/claim/manual/refinement_brand_disjointness_is_sugar_scope.dag
 // Scope: Claim #1 honesty receipt — NOT a measurement.
-// Status: v4 frontend is not in the measurement loop today. No corpus primitive
-//         compiles branded v3 `where brand(...)` programs and observes accept/reject
-//         through v4's own checker. Authoritative lock: v3 `compile_to_dag` harness
-//         (`refinement_brand_disjointness_is_sugar_claim_test.rs`).
-// Follow-up: when v4 self-hosts branded-program compile+reject observation, add a
-//            separate measured claim row — not a vacuous-oracle constant.
+// Status: v3 integration tests are frozen (comparison baseline only); v3
+//         `compile_to_dag` is not an acceptable measurement surface for Claim #1.
+//         v4 frontend is not in the measurement loop today — no corpus primitive
+//         compiles branded programs and observes accept/reject through v4's own checker.
+//         Brand-enforcement measurement is re-scoped to the v2/v4 path (v4 TestClaim).
+// Follow-up: land a real v4 measured claim when the v2/gunbc compile path can observe
+//            branded-program accept/reject — not a vacuous-oracle constant.
 
 module v4.test.claim.manual.refinement_brand_disjointness_is_sugar_scope
 
