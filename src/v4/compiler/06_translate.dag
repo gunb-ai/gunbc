@@ -3930,44 +3930,44 @@ fn translate_apply_use_site_ownership_to_value_expression(
   ) {
     Accepted { value: false, diagnostics: _ } => outcome_accepted(expr)
     Accepted { value: true, diagnostics: _ } =>
-  bind_outcome(
-    o: translate_reference_layer_tokens_from_target(target: target),
-    f: fn(tokens) {
       bind_outcome(
-        o: translate_use_site_ownership_catalog_from_model(
-          target: target,
-          source_carrier: source_carrier
-        ),
-        f: fn(catalog) {
+        o: translate_reference_layer_tokens_from_target(target: target),
+        f: fn(tokens) {
           bind_outcome(
-            o: translate_value_semantics_carriers_from_model(target: target),
-            f: fn(value_semantics_carriers) {
-          match target_use_site_ownership_lookup_in_catalog_node(
-            catalog: catalog,
-            value_semantics_carriers: value_semantics_carriers,
-            source_carrier: source_carrier,
-            use_site: use_site
-          ) {
-            Accepted { value: ownership, diagnostics: d } =>
-              match ownership {
-                CarrierOwnershipByValue => outcome_accepted(expr)
-                CarrierOwnershipByReference { realization: row } =>
-              outcome_accepted(
-                target_reference_layer_apply_value_expression(
-                  inner: expr,
-                  layer: row.reference_layer,
-                  tokens: tokens
-                )
+            o: translate_use_site_ownership_catalog_from_model(
+              target: target,
+              source_carrier: source_carrier
+            ),
+            f: fn(catalog) {
+              bind_outcome(
+                o: translate_value_semantics_carriers_from_model(target: target),
+                f: fn(value_semantics_carriers) {
+                  match target_use_site_ownership_lookup_in_catalog_node(
+                    catalog: catalog,
+                    value_semantics_carriers: value_semantics_carriers,
+                    source_carrier: source_carrier,
+                    use_site: use_site
+                  ) {
+                    Accepted { value: ownership, diagnostics: d } =>
+                      match ownership {
+                        CarrierOwnershipByValue => outcome_accepted(expr)
+                        CarrierOwnershipByReference { realization: row } =>
+                          outcome_accepted(
+                            target_reference_layer_apply_value_expression(
+                              inner: expr,
+                              layer: row.reference_layer,
+                              tokens: tokens
+                            )
+                          )
+                      }
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  }
+                }
               )
-              }
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          }
             }
           )
         }
       )
-    }
-  )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
