@@ -3,7 +3,7 @@
 
 use self::Stage0CrateDep::*;
 use self::Stage0CrateKind::*;
-pub use crate::v2_compiler_emit_rust::emit_non_empty_wrappers;
+pub use crate::v2_compiler_emit_rust::{emit_cargo_dep, emit_non_empty_wrappers};
 use crate::v2_rt;
 pub use crate::v2_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
@@ -114,43 +114,7 @@ pub fn render_stage0_crate_dep(dep: Rc<Stage0CrateDep>) -> String {
             version,
             features,
             ..
-        } => {
-            if ((features.clone().len() as i64) > 0) {
-                {
-                    let feat_strs = Rc::new({
-                        let mut __result = Vec::new();
-                        for f in features.clone().iter().cloned() {
-                            __result.push(v2_rt::concat(
-                                v2_rt::concat("\"".to_string(), f.clone()),
-                                "\"".to_string(),
-                            ));
-                        }
-                        __result
-                    });
-                    v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(
-                                    v2_rt::concat(name.clone(), " = { version = \"".to_string()),
-                                    version.clone(),
-                                ),
-                                "\", features = [".to_string(),
-                            ),
-                            feat_strs.join(&", ".to_string()),
-                        ),
-                        "] }\n".to_string(),
-                    )
-                }
-            } else {
-                v2_rt::concat(
-                    v2_rt::concat(
-                        v2_rt::concat(name.clone(), " = \"".to_string()),
-                        version.clone(),
-                    ),
-                    "\"\n".to_string(),
-                )
-            }
-        }
+        } => emit_cargo_dep(name.clone(), version.clone(), features.clone()),
         Stage0CrateDep::PathDep { name, path, .. } => v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(name.clone(), " = { path = \"".to_string()),
