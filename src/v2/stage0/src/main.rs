@@ -327,10 +327,28 @@ fn main() {
             };
 
             if render_targets.len() == 1 {
-                let result = v2_compiler_compile::compile_sources(
-                    Rc::new(sources),
-                    render_targets[0].1.clone(),
-                );
+                let result = if std::env::var("GUNBC_PROFILE").is_ok() {
+                    use std::time::Instant;
+                    let t0 = Instant::now();
+                    let resolved = v2_compiler_compile::compile_to_resolved(Rc::new(sources));
+                    let t1 = Instant::now();
+                    eprintln!(
+                        "PROFILE: compile_to_resolved (frontend+normalize+reconcile+ownership) = {:?}",
+                        t1 - t0
+                    );
+                    let result = v2_compiler_compile::emit_resolved_for_target(
+                        resolved,
+                        render_targets[0].1.clone(),
+                    );
+                    let t2 = Instant::now();
+                    eprintln!("PROFILE: emit_resolved_for_target = {:?}", t2 - t1);
+                    result
+                } else {
+                    v2_compiler_compile::compile_sources(
+                        Rc::new(sources),
+                        render_targets[0].1.clone(),
+                    )
+                };
                 write_output_files(&output_dir, &result);
                 eprintln!(
                     "compiled: {} files emitted, {} diagnostics",
