@@ -5,8 +5,10 @@
 //! All tests call stage0 functions directly.
 
 use std::rc::Rc;
+use std::time::Instant;
 
 use crate::helpers::*;
+use v2_compiler::v2_compiler_tokenize::{source_code_point, source_len, SourceRef};
 use v2_compiler::v2_std_core::{InferredNode, TokenShape};
 
 /// Median wall time over several tokenize passes, plus the token count from the last pass.
@@ -24,6 +26,31 @@ fn median_tokenize_secs(source: &str) -> (f64, usize) {
     }
     samples.sort_by(|a, b| a.total_cmp(b));
     (samples[RUNS / 2], last_len)
+}
+
+fn tokenizer_source_ref(source: &str) -> Rc<SourceRef> {
+    let chars = Rc::new(source.chars().map(|c| c as i64).collect::<Vec<_>>());
+    Rc::new(SourceRef {
+        file: "tokenizer_lookup_flat.v3".to_string(),
+        text: source.to_string(),
+        source_chars: chars,
+    })
+}
+
+/// Median wall time for many `source_code_point` lookups at one index.
+fn median_code_point_lookup_secs(source: &Rc<SourceRef>, pos: i64) -> f64 {
+    const RUNS: usize = 7;
+    const LOOKUPS_PER_RUN: usize = 50_000;
+    let mut samples = Vec::with_capacity(RUNS);
+    for _ in 0..RUNS {
+        let t0 = Instant::now();
+        for _ in 0..LOOKUPS_PER_RUN {
+            let _ = source_code_point(source.clone(), pos);
+        }
+        samples.push(t0.elapsed().as_secs_f64());
+    }
+    samples.sort_by(|a, b| a.total_cmp(b));
+    samples[RUNS / 2]
 }
 
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
@@ -382,12 +409,12 @@ fn shared_primitives_parses_strict() {
 
 // ── Phase 1b: tokenizer non-ASCII regression ───────────────────────────
 //
-// The tokenizer's source_substring calls v2_rt::substring, which has an
-// is_ascii() fast path (O(1) byte slice) and a slow path (O(pos) char
-// iteration). A single non-ASCII byte in a file disables the fast path
-// for ALL substring calls, making tokenization O(n²). This test catches
-// that regression by requiring that non-ASCII content doesn't blow up
-// tokenize time relative to ASCII-only content of the same size.
+// Tokenizer hot-path text lookup must stay flat in file size: `source_chars`
+// is precomputed once (O(n) at entry) and indexed in O(1). Regressions that
+// route per-token lookup through `v2_rt::substring` / `chars().nth(pos)` on
+// the raw `String` reintroduce O(pos) work per lookup and can make scanning
+// O(n²) on non-ASCII input. `tokenizer_text_lookup_flat_in_file_size` locks
+// the O(1) lookup contract; this test catches the composed end-to-end blow-up.
 
 #[test]
 fn tokenizer_non_ascii_performance_regression() {
@@ -432,6 +459,39 @@ fn tokenizer_non_ascii_performance_regression() {
         non_ascii_time.as_secs_f64() < 2.0,
         "tokenize took {:.3}s — budget is 2s for ~270KB file",
         non_ascii_time.as_secs_f64(),
+    );
+}
+
+#[test]
+fn tokenizer_text_lookup_flat_in_file_size() {
+    // Recurrence guard: each scan step does O(1) codepoint lookup regardless of
+    // absolute offset. Tail lookups must not pay O(pos) string walking.
+    let large_source = read_v2_file("src/v2/02_parse.dag");
+    let source = tokenizer_source_ref(&large_source);
+    let tail_pos = source_len(source.clone()) - 1;
+
+    let _ = source_code_point(source.clone(), 0);
+    let _ = source_code_point(source.clone(), tail_pos);
+
+    let head_time = median_code_point_lookup_secs(&source, 0);
+    let tail_time = median_code_point_lookup_secs(&source, tail_pos);
+    let ratio = tail_time / head_time.max(1e-9);
+
+    eprintln!(
+        "text lookup flat: head pos=0 {:.6}s | tail pos={} {:.6}s | ratio {:.1}x ({}B source)",
+        head_time,
+        tail_pos,
+        tail_time,
+        ratio,
+        large_source.len(),
+    );
+
+    const FLAT_MARGIN: f64 = 4.0;
+    assert!(
+        ratio < FLAT_MARGIN,
+        "text lookup at tail is {:.1}x slower than at head — expected < {:.1}x (O(pos) regression)",
+        ratio,
+        FLAT_MARGIN,
     );
 }
 
