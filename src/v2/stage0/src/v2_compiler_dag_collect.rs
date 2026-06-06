@@ -8,17 +8,50 @@ use crate::v2_compiler_dag_collect_support::{
 };
 use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v2_rt;
-use crate::v2_std_core::module_imports;
 use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::Resolved;
-use crate::v2_std_core::{InferredNode, MatchPattern, Node};
+use crate::v2_std_core::{import_is_all, Connective, ExprData, InferredNode, MatchPattern, Node};
 use std::rc::Rc;
+
+// 🟡 predicate dissolution — mirrors compile.dag disposition (T-37-dag-collect-identity-anchor).
+fn is_import_slot_node(n: Rc<Node>) -> bool {
+    import_is_all(n.clone())
+        || ((((n.params.clone().len() as i64) == 0) && (n.ident_span.is_some()))
+            && (n.body.is_none())
+            && (*n.expr_data == ExprData::NoExprData))
+}
+
+// 🟡 predicate dissolution — mirrors compile.dag disposition (T-37-dag-collect-identity-anchor).
+fn is_module_shell_node(n: Rc<Node>) -> bool {
+    n.inferred.is_none()
+        && (*n.expr_data == ExprData::NoExprData)
+        && (n.connective == Connective::NoConnective)
+        && n.body.is_none()
+        && n.transport.is_none()
+        && ((n.uses.clone().len() as i64) == 0)
+        && {
+            let mut all_import_slots = true;
+            for p in n.params.clone().iter().cloned() {
+                if !is_import_slot_node(p) {
+                    all_import_slots = false;
+                    break;
+                }
+            }
+            all_import_slots
+        }
+}
 
 // 🟡 predicate dissolution — mirrors compile.dag disposition (T-37-dag-collect-identity-anchor).
 pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
     match (*node.expr_data).clone() {
         NoExprData => match node.inferred.clone().as_deref().cloned() {
-            Some(Resolved { node: _, .. }) => true,
+            Some(Resolved { node: _, .. }) => {
+                // Type/import back-links only — never peel nodes that carry structure.
+                node.body.is_none()
+                    && node.transport.is_none()
+                    && node.children.is_empty()
+                    && node.params.is_empty()
+            }
             _ => false,
         },
         _ => false,
@@ -116,7 +149,11 @@ pub fn dag_collect_match_pattern(
 
 pub fn dag_collect_node_tree(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
     let acc = dag_collect_nodes_list(node.children.clone(), acc);
-    let acc = dag_collect_nodes_list(node.params.clone(), acc);
+    let acc = if is_module_shell_node(node.clone()) {
+        acc
+    } else {
+        dag_collect_nodes_list(node.params.clone(), acc)
+    };
     let acc = dag_collect_nodes_list(node.uses.clone(), acc);
     let acc = dag_collect_optional_node(node.body.clone(), acc);
     let acc = dag_collect_optional_node(node.transport.clone(), acc);
@@ -171,7 +208,6 @@ pub fn dag_collect_from_module(
     acc: Rc<DagCollectAcc>,
 ) -> Rc<DagCollectAcc> {
     let acc = dag_collect_insert(module.module.clone(), acc);
-    let acc = dag_collect_nodes_list(module_imports(module.module.clone()), acc);
     module
         .items
         .clone()

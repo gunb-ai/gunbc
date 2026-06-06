@@ -1,5 +1,6 @@
 //! **Layer:** integration
 //!
+//! PR-A relocation — host ratchet (ci.yml binding, mirror parity, grep assertions).
 //! T-21/T-24 Wave-0: `src/v4/workflow/ci.dag` (`v4.workflow.ci`) exposes affected-set-driven
 //! `TestClaim` roster selection over `RerunNodeSet` (kernel `filter`/`any`/`contains`;
 //! evaluation-node projection in `verification.dag`). Receipt
@@ -77,36 +78,34 @@
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
-use v3_compiler::parse_for_test;
+use ci_workflow_ratchet::support::parse_for_test;
+use ci_workflow_ratchet::support::tokenize_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceLiteral, SurfaceRecordField};
-use v3_compiler::tokenize_for_test;
 
-const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
+const CI_DAG: &str = include_str!("../../../src/v4/workflow/ci.dag");
 const CI_DAG_PATH: &str = "src/v4/workflow/ci.dag";
-const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
+const CI_YML: &str = include_str!("../../../.github/workflows/ci.yml");
 const CI_YML_PATH: &str = ".github/workflows/ci.yml";
-const CI_WORKFLOW_DAG: &str =
-    include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
+const CI_WORKFLOW_DAG: &str = include_str!("../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
-const SHARED_CLOSURE_WORKSHEET: &str = include_str!(
-    "../../../../../docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md"
-);
+const SHARED_CLOSURE_WORKSHEET: &str =
+    include_str!("../../../docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md");
 const SHARED_CLOSURE_WORKSHEET_PATH: &str =
     "docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
-    include_str!("../../../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
+    include_str!("../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
 const T15_SELF_HOST_STEP_NAME: &str = "T-15 self-host fixed-point harness (stage1==stage2)";
 const CLAIM_DAG: &str =
-    include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
+    include_str!("../../../src/v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
 const WAVE3_ROSTER_DAG: &str =
-    include_str!("../../../../v4/test/claim/workflow/wave3_shadow_roster.dag");
+    include_str!("../../../src/v4/test/claim/workflow/wave3_shadow_roster.dag");
 const WAVE3_ROSTER_PATH: &str = "src/v4/test/claim/workflow/wave3_shadow_roster.dag";
 const TESTCLAIM_CORPUS_RUNNER_DAG: &str =
-    include_str!("../../../../v4/test/claim/workflow/testclaim_corpus_runner.dag");
+    include_str!("../../../src/v4/test/claim/workflow/testclaim_corpus_runner.dag");
 const TESTCLAIM_CORPUS_RUNNER_PATH: &str = "src/v4/test/claim/workflow/testclaim_corpus_runner.dag";
 const MANUAL_CORPUS_ROSTER_DAG: &str =
-    include_str!("../../../../v4/test/claim/manual/manual_corpus_roster.dag");
+    include_str!("../../../src/v4/test/claim/manual/manual_corpus_roster.dag");
 const MANUAL_CORPUS_ROSTER_PATH: &str = "src/v4/test/claim/manual/manual_corpus_roster.dag";
 // A.1.5a (RR-A §4 R7): in-process `TestClaimRun` equivalence claim — harness path
 // (corpus-runner machinery) must produce the same runs as direct `run_test_claim`
@@ -114,7 +113,7 @@ const MANUAL_CORPUS_ROSTER_PATH: &str = "src/v4/test/claim/manual/manual_corpus_
 // harness; `pb_rust_tests_outside_residual_zero`. Dissolve-on: `.dag` TestClaim
 // execution exercises `inprocess_equivalence` without this hand-Rust parse ratchet.
 const INPROCESS_EQUIVALENCE_DAG: &str =
-    include_str!("../../../../v4/test/claim/workflow/inprocess_equivalence.dag");
+    include_str!("../../../src/v4/test/claim/workflow/inprocess_equivalence.dag");
 const INPROCESS_EQUIVALENCE_PATH: &str = "src/v4/test/claim/workflow/inprocess_equivalence.dag";
 // F.12a recursive-flex THIN: a T-38 inspection receipt over `v4.workflow.ci` +
 // `v4.workflow.bootstrap`, scoped to the A.1.5a slice (#4313) ONLY — it imports/
@@ -128,12 +127,12 @@ const INPROCESS_EQUIVALENCE_PATH: &str = "src/v4/test/claim/workflow/inprocess_e
 // self-host loop (F.12b). SG-0 delta 0 — same-path expansion in this v4 CI smoke
 // harness; `pb_rust_tests_outside_residual_zero`.
 const RECURSIVE_FLEX_INSPECTION_DAG: &str =
-    include_str!("../../../../v4/test/claim/workflow/recursive_flex_inspection.dag");
+    include_str!("../../../src/v4/test/claim/workflow/recursive_flex_inspection.dag");
 const RECURSIVE_FLEX_INSPECTION_PATH: &str =
     "src/v4/test/claim/workflow/recursive_flex_inspection.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
-    include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
-const ROADMAP: &str = include_str!("../../../../../ROADMAP.md");
+    include_str!("../../../tools/ci_affected_components/src/lib.rs");
+const ROADMAP: &str = include_str!("../../../ROADMAP.md");
 const ROADMAP_PATH: &str = "ROADMAP.md";
 
 const CI_CHANGED_PATH_AFFECTS_FNS: &[&str] = &[
@@ -222,6 +221,15 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
     },
     CiAffectedFixture {
         path: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+        v2: false,
+        v3: false,
+        v4: false,
+        testclaim_corpus: true,
+        workflow_policy: false,
+        release_distribution: false,
+    },
+    CiAffectedFixture {
+        path: "scripts/v4-testclaim-corpus-eval.sh",
         v2: false,
         v3: false,
         v4: false,
@@ -1108,11 +1116,10 @@ fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure()
 #[test]
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let _module = parse_module(CI_DAG, CI_DAG_PATH);
-    const DEMOTED_CORPUS_EVAL_STEP: &str =
-        "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)";
+    const CORPUS_EVAL_STEP: &str = "T-22 TestClaim corpus eval (tracked-expectation drift gate)";
     assert!(
-        !CI_DAG.contains("data testclaim_corpus_eval_ci_live_workflow_signal"),
-        "{CI_DAG_PATH}: demoted Class-C gate must not retain a live-workflow signal ledger row"
+        CI_DAG.contains("data testclaim_corpus_eval_ci_live_workflow_signal"),
+        "{CI_DAG_PATH}: corpus eval must model the live-workflow signal ledger row"
     );
     assert!(
         CI_DAG.contains("ci_upsert_testclaim_corpus_eval_upstream_inputs")
@@ -1124,12 +1131,20 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: testclaim corpus eval must declare M1 in needs for selector needs-closure (I8)"
     );
     assert!(
-        !CI_YML.contains(&format!("- name: {DEMOTED_CORPUS_EVAL_STEP}")),
-        "{CI_YML_PATH}: Wave 1 §11.7.1 — corpus eval demoted from required path (Class C)"
+        CI_YML.contains(&format!("- name: {CORPUS_EVAL_STEP}")),
+        "{CI_YML_PATH}: tracked-expectation corpus eval must be on the required path"
+    );
+    assert!(
+        CI_YML.contains("bash scripts/v4-testclaim-corpus-eval.sh"),
+        "{CI_YML_PATH}: corpus eval host transport must invoke scripts/v4-testclaim-corpus-eval.sh (outside §11.7.5 ci-floor ratchet)"
+    );
+    assert!(
+        CI_YML.contains("ci_corpus_eval:"),
+        "{CI_YML_PATH}: must declare the `ci_corpus_eval` job"
     );
     assert!(
         !CI_YML.contains("v4-testclaim-corpus-gate.sh"),
-        "{CI_YML_PATH}: shell bridge script must be absent from workflow"
+        "{CI_YML_PATH}: legacy shell bridge script must be absent from workflow"
     );
 }
 
@@ -1219,8 +1234,8 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         .next()
         .expect("ci_class_a_shell_exceptions table must terminate with `]`");
 
-    // Exactly one Class-A shell-owned floor step remains: M1 rust+dag emit. Bootstrap artifact
-    // existence is now checked inside that script, not by a second ci-floor script.
+    // Exactly one Class-A shell-owned floor step remains: M1 rust+dag emit. Corpus eval uses
+    // scripts/v4-testclaim-corpus-eval.sh (outside the §11.7.5 ci-floor ratchet).
     assert_eq!(
         table.matches("CiShellExceptionRow {").count(),
         1,
@@ -1263,7 +1278,9 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
     );
 
     // no-new-shell ratchet (§11.7.1 #5) — bidirectional bijection between the REQUIRED
-    // `.github/ci-floor/*.sh` invocations in ci.yml and the table's rows.
+    // `.github/ci-floor/*.sh` invocations on the Class-A floor jobs (`ci_floor`, `ci_floor_emit`)
+    // and the table's rows. Transport wrappers under `.github/ci-floor/` that run only in
+    // non-floor jobs (e.g. `with-sccache-retry.sh` in `affected`) are out of §11.7.5 scope.
     //
     // Build the live invocation set FIRST, comment-safe, and reuse it for BOTH the row-liveness
     // (cond 1) and the bijection — never raw `CI_YML.contains(...)`, which a comment could satisfy.
@@ -1271,8 +1288,22 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
     // `run: |` body such as `        bash .github/ci-floor/foo.sh` cannot evade the gate by its
     // YAML spelling, while a commented-out `# bash .github/ci-floor/foo.sh` is NOT counted as live
     // (openai-pro #4284: skip comment-only lines + strip inline ` # …` trailers).
+    let ci_floor_live_yml: String = [
+        CI_YML
+            .split("  ci_floor:")
+            .nth(1)
+            .and_then(|rest| rest.split("\n  ci_floor_emit:").next()),
+        CI_YML
+            .split("  ci_floor_emit:")
+            .nth(1)
+            .and_then(|rest| rest.split("\n  ci:").next()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("\n");
     let mut ci_floor_scripts: Vec<String> = Vec::new();
-    for raw in CI_YML.lines() {
+    for raw in ci_floor_live_yml.lines() {
         let line = raw.trim_start();
         if line.starts_with('#') {
             continue;
@@ -1362,46 +1393,6 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
 #[test]
 fn v4_workflow_affected_set_ci_runner_claim_dag_tokenizes_and_parses() {
     let _module = parse_module(CLAIM_DAG, CLAIM_PATH);
-}
-
-#[test]
-fn v4_workflow_affected_set_ci_runner_claim_wiring() {
-    let module = parse_module(CLAIM_DAG, CLAIM_PATH);
-    assert_eq!(
-        module_paths(&module),
-        vec![vec![
-            "v4",
-            "test",
-            "claim",
-            "workflow",
-            "affected_set_ci_runner"
-        ]],
-        "{CLAIM_PATH}: module authority path"
-    );
-    for name in ["ci_select_from_rerun_nodes", "ci_select_from_affected_set"] {
-        assert!(
-            import_includes_name(&module, &["v4", "workflow", "ci"], name),
-            "{CLAIM_PATH}: must import {name} from canonical workflow/ci authority"
-        );
-    }
-    for claim in [
-        "ci_runner_narrow_selection_claim",
-        "ci_runner_fail_closed_superset_claim",
-        "ci_runner_shape_collision_claim",
-        "ci_runner_inner_frontier_claim",
-    ] {
-        assert!(
-            surface_declares_test_claim_data(&module, claim),
-            "{CLAIM_PATH}: must declare structural receipt `{claim}`"
-        );
-    }
-    assert!(
-        surface_declares_fn(&module, "ci_runner_narrow_selection_holds")
-            && surface_declares_fn(&module, "ci_runner_fail_closed_superset_holds")
-            && surface_declares_fn(&module, "ci_runner_shape_collision_holds")
-            && surface_declares_fn(&module, "ci_runner_inner_frontier_holds"),
-        "{CLAIM_PATH}: receipt predicates must exercise ci selection entrypoints"
-    );
 }
 
 #[test]
@@ -1527,8 +1518,8 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation]"),
-        "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
+        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation, ci_corpus_eval]"),
+        "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt, `ci_floor`, `ci_corpus_eval`, and the `infra_isolation` de-priv guard"
     );
     assert!(
         CI_YML.contains("needs.affected.result"),
@@ -1600,43 +1591,6 @@ fn v4_workflow_ci_bankruptcy_tier0_ci_v4_job_if_matches_generated_workflow() {
 }
 
 #[test]
-fn v4_workflow_ci_bankruptcy_tier0_release_distribution_mask_axes_modeled() {
-    assert!(
-        CI_DAG.contains("release_distribution && affected.release_distribution"),
-        "{CI_DAG_PATH}: ci_component_mask_intersects must include release_distribution axis"
-    );
-    assert!(
-        CI_DAG.contains("testclaim_corpus && affected.testclaim_corpus"),
-        "{CI_DAG_PATH}: ci_component_mask_intersects must include testclaim_corpus axis (I8 / IRT-1)"
-    );
-    let fail_closed_body = extract_fn_body(CI_DAG, "ci_component_affected_is_fail_closed");
-    for axis in [
-        "affected.v2",
-        "affected.v3",
-        "affected.v4",
-        "affected.testclaim_corpus",
-        "affected.workflow_policy",
-        "affected.release_distribution",
-    ] {
-        assert!(
-            fail_closed_body.contains(axis),
-            "{CI_DAG_PATH}: ci_component_affected_is_fail_closed must require axis `{axis}`"
-        );
-    }
-    assert!(
-        CI_DAG.contains(
-            "BootstrapStageCompile { produces: _ } =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true"
-        ),
-        "{CI_DAG_PATH}: BootstrapStageCompile mask must not select on v2-only (I2 is ci_integration; gunbc build is ci_v4 v4-axis)"
-    );
-    assert!(
-        CI_DAG.contains("fn ci_job_component_mask_row(")
-            && CI_DAG.contains("release_distribution_only: false"),
-        "{CI_DAG_PATH}: job masks must populate release_distribution_only (P2 carrier completeness)"
-    );
-}
-
-#[test]
 fn v4_workflow_ci_bankruptcy_tier0_upsert_slice_registers_tier0_jobs() {
     assert!(
         CI_DAG.contains("data ci_upsert_steps_bankruptcy_tier0_slice_step_ids:")
@@ -1690,20 +1644,6 @@ fn v4_workflow_ci_bankruptcy_tier0_v2_build_step_includes_main_push() {
 }
 
 #[test]
-fn v4_workflow_ci_bankruptcy_tier0_needs_closure_is_bounded_and_skips_unresolved() {
-    assert!(
-        CI_DAG.contains("fn ci_select_ci_jobs_needs_closure_pass("),
-        "{CI_DAG_PATH}: needs closure must be bounded (P4) — not unbounded recursion on unresolved needs"
-    );
-    assert!(
-        CI_DAG.contains(
-            "ci_symbol_resolves(s: n, jobs: jobs) && ci_symbol_not_in_ids(s: n, ids: selected_ids)"
-        ),
-        "{CI_DAG_PATH}: needs closure must ignore unresolved need symbols"
-    );
-}
-
-#[test]
 fn v4_workflow_ci_bankruptcy_tier0_lens_ci_mask_matches_ci_yml() {
     assert!(
         CI_DAG.contains(
@@ -1740,8 +1680,8 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         "{CI_YML_PATH}: legacy parallel lanes dissolved"
     );
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation]"),
-        "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
+        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation, ci_corpus_eval]"),
+        "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt, `ci_floor`, `ci_corpus_eval`, and the `infra_isolation` de-priv guard"
     );
     assert!(
         CI_YML.contains("  affected:") && !CI_YML.contains("  affected:\n    if: github.event.pull_request.draft != true\n    continue-on-error: true"),
@@ -1751,7 +1691,6 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         "check-pr-sg0-net-shrink-discipline.sh",
         "determinism_test",
         "self_host_fixed_point",
-        "v4-testclaim-corpus-eval.sh",
         "v4-mvp1-e2e-gate.sh",
         "v4-phase1-nat-semiring-rung-gate.sh",
     ] {
@@ -1775,7 +1714,7 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     assert!(
         CI_WORKFLOW_DAG.contains("id: \"ci\"")
             && CI_WORKFLOW_DAG
-                .contains("needs: [\"affected\", \"ci_floor\", \"ci_floor_emit\", \"infra_isolation\"]"),
+                .contains("needs: [\"affected\", \"ci_floor\", \"ci_floor_emit\", \"infra_isolation\", \"ci_corpus_eval\"]"),
         "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt, `ci_floor`, the parallel `ci_floor_emit` lane, and the `infra_isolation` de-priv guard"
     );
     let affected_dag = workflow_dag_job_block(CI_WORKFLOW_DAG, "affected");
@@ -2008,8 +1947,9 @@ fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
 #[test]
 fn v4_workflow_ci_wave3_node_selection_still_shadow_while_component_receipt_live() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor, ci_floor_emit, infra_isolation]")
-            && CI_YML.contains("needs.affected.result"),
+        CI_YML.contains(
+            "needs: [affected, ci_floor, ci_floor_emit, infra_isolation, ci_corpus_eval]"
+        ) && CI_YML.contains("needs.affected.result"),
         "{CI_YML_PATH}: component affected-set receipt must be live"
     );
     let ci_floor_block = CI_YML
@@ -2086,9 +2026,9 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
          as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
     );
     assert!(
-        CI_DAG.contains("manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed")
+        CI_DAG.contains("manual_corpus_eval_expected_pins` -> `witness_corpus_eval_tracked_expectation_closed")
             && CI_DAG.contains("manual_testclaim_subject_roster_family_receipt"),
-        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind the per-row TestClaimRun verdict surface and family receipt"
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind tracked-expectation pins and family receipt"
     );
     assert!(
         CI_DAG.contains("fn_name == ci_testclaim_corpus_selection_fn"),
@@ -2099,18 +2039,23 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "type TestClaimCorpusVerdictSurfaceAuthority",
         "module_path: ci_testclaim_corpus_module_manual_roster_path",
         "module_path: ci_testclaim_corpus_module_runner_path",
-        "module_path: ci_testclaim_corpus_module_eval_path",
         "ci_testclaim_corpus_module_manual_roster_path: Symbol = v4_test_claim_manual_manual_corpus_roster",
         "ci_testclaim_corpus_module_runner_path: Symbol = v4_test_claim_workflow_testclaim_corpus_runner",
         "ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval",
         "declaration_name: ci_testclaim_corpus_decl_manual_corpus_node_subject_rows_name",
         "declaration_name: ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name",
         "declaration_name: ci_testclaim_corpus_decl_corpus_report_tally_name",
-        "declaration_name: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name",
+        "declaration_name: ci_testclaim_corpus_decl_witness_tracked_expectation_closed_name",
+        "module_path: ci_testclaim_corpus_module_eval_expected_path",
+        "ci_testclaim_corpus_decl_manual_corpus_eval_expected_pins_name: Symbol = manual_corpus_eval_expected_pins",
+        "ci_testclaim_corpus_decl_witness_tracked_expectation_closed_name: Symbol = witness_corpus_eval_tracked_expectation_closed",
         "ci_testclaim_corpus_decl_manual_corpus_node_subject_rows_name: Symbol = manual_corpus_node_subject_rows",
         "ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: Symbol = run_manual_testclaim_corpus_eval",
         "ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally",
-        "ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: Symbol = witness_manual_corpus_gate_closed",
+        "scripts/v4-testclaim-corpus-eval.sh",
+        "ci_upsert_file_set_input(segment: \"scripts/v4-testclaim-corpus-eval.sh\")",
+        "ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval",
+        "ci_testclaim_corpus_module_eval_expected_path: Symbol = v4_test_claim_workflow_manual_corpus_eval_expected",
         "ci_testclaim_corpus_decl_manual_testclaim_subject_roster_family_receipt_name: Symbol = manual_testclaim_subject_roster_family_receipt",
         "fn ci_testclaim_corpus_eval_command() -> CiCommand",
         "verdict_surface: ci_testclaim_corpus_verdict_surface_authority()",
@@ -2204,6 +2149,202 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
 /// `data run_*: TestClaimRun = run_test_claim(...)` row (RR-A §6 forbids that authoring-time
 /// co-authority); runtime execution + roster wiring is the A.1 harness lane.
 /// SG-0 delta 0 (same-path expansion; `pb_rust_tests_outside_residual_zero`).
+#[test]
+fn v4_workflow_ci_source_authority_receipt_consumes_h72_claims() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &[
+                "v4",
+                "test",
+                "claim",
+                "round_trip",
+                "source_authority_contract"
+            ],
+            "claim_source_authority_contract_compiles"
+        ) && import_includes_name(
+            &module,
+            &[
+                "v4",
+                "test",
+                "claim",
+                "round_trip",
+                "source_authority_contract"
+            ],
+            "claim_bmin_canonical_dag_source_parse_print_law"
+        ),
+        "{CI_DAG_PATH}: F.11b must import H.7.2 source-authority claim declarations directly"
+    );
+    for needle in [
+        "| SourceAuthorityReceiptEvalCommand { claims: List<Symbol> }",
+        "data ci_source_authority_receipt_claim_ids: List<Symbol> = [",
+        "claim_source_authority_contract_compiles",
+        "claim_bmin_canonical_dag_source_parse_print_law",
+        "fn ci_source_authority_receipt_eval_command() -> CiCommand",
+        "SourceAuthorityReceiptEvalCommand { claims: ci_source_authority_receipt_claim_ids }",
+        "id: source_authority_receipt_eval_execution",
+        "command: ci_source_authority_receipt_eval_command()",
+        "id: source_authority_receipt_eval_signal",
+        "job: source_authority_receipt_eval_execution",
+        "claims == ci_source_authority_receipt_claim_ids",
+        "ci_cache_cmd_source_authority_receipt_eval_tag",
+        "ci_projection_command_claim_ids_edge",
+        "ci_symbol_list_projection_node(xs: claims)",
+        "ci_upsert_file_set_input(segment: \"src/v4/compiler/source_authority.dag\")",
+        "ci_upsert_file_set_input(segment: \"src/v4/test/claim/round_trip/source_authority_contract.dag\")",
+        "segment == \"src/v4/compiler/source_authority.dag\"",
+        "path == \"src/v4/compiler/source_authority.dag\"",
+        "segment == \"src/v4/test/claim/round_trip/source_authority_contract.dag\"",
+        "path == \"src/v4/test/claim/round_trip/source_authority_contract.dag\"",
+        "ci_upsert_upstream_job_input(job: v2_compile_src_v4)",
+        "ci_upsert_source_authority_receipt_eval_claim_ref_inputs",
+        "ci_upsert_test_claim_ref_input(claim_id: claim_id)",
+        "step: ci_upsert_source_authority_receipt_eval_execution",
+        "step: ci_upsert_source_authority_receipt_eval_signal",
+        "JobStep {\n    job: source_authority_receipt_eval_execution,\n    step: source_authority_receipt_eval_execution",
+        "GateStep {\n    job: source_authority_receipt_eval_execution,\n    gate: source_authority_receipt_eval_signal",
+        "SourceAuthorityReceiptEvalCommand { claims: _ } =>\n      ci_job_component_mask_row(",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: F.11b source-authority CI receipt consumption must carry `{needle}`"
+        );
+    }
+    assert!(
+        !CI_DAG.contains("dag-artifact.json") && !CI_DAG.contains("--target dag"),
+        "{CI_DAG_PATH}: F.11b CI receipt consumption must not use JSON IR as source authority"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_upsert_node_projection_substrate() {
+    assert!(
+        ROADMAP.contains("### Nine lanes")
+            && ROADMAP.contains("| **T-PB-B** | `pb_rust_tests_outside_residual_zero`")
+            && ROADMAP.contains("T-PB-B / `pb_rust_tests_outside_residual_zero`"),
+        "{ROADMAP_PATH}: F.11a P5 deferral must bind to checkable T-PB-B authority (Nine lanes + Public Operational Lanes)"
+    );
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        import_includes_name(&module, &["v4", "std", "patterns"], "Upsert"),
+        "{CI_DAG_PATH}: F.11a must import `Upsert` from `v4.std.patterns` (P2 single-authority)"
+    );
+    for needle in [
+        "fn ci_upsert_projection_edges<T>(",
+        "fn ci_upsert_projection_node<T>(upsert: Upsert<T>) -> Node",
+        "fn ci_upsert_cache_digest<T>(upsert: Upsert<T>) -> Hash",
+        "fn ci_upsert_step_projection_node<T>(step: CiUpsertStep<T>) -> Node",
+        "fn ci_upsert_input_ref_projection_node(input_ref: UpsertInputRef) -> Node",
+        "fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash",
+        "content_hash(n: ci_upsert_step_projection_node(step: step))",
+        "ci_upsert_projection_edges(",
+        "ci_projection_upsert_verify_edge",
+        "ci_projection_upsert_create_edge",
+        "ci_projection_upsert_resolve_edge",
+        "ci_upsert_cache_digest_create_sensitivity_witness_holds",
+        "Structural consumer of `v4.std.patterns.Upsert<T>`",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: F.11a Upsert<T> Node projection substrate must carry `{needle}`"
+        );
+    }
+}
+
+// PR-A substitute/extract: relocated as-is from frozen integration (zero coverage gap).
+// .dag fold-witness upgrades for these checks are ctrl#1467-style tracked follow-up.
+
+#[test]
+fn v4_workflow_affected_set_ci_runner_claim_wiring() {
+    let module = parse_module(CLAIM_DAG, CLAIM_PATH);
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "workflow",
+            "affected_set_ci_runner"
+        ]],
+        "{CLAIM_PATH}: module authority path"
+    );
+    for name in ["ci_select_from_rerun_nodes", "ci_select_from_affected_set"] {
+        assert!(
+            import_includes_name(&module, &["v4", "workflow", "ci"], name),
+            "{CLAIM_PATH}: must import {name} from canonical workflow/ci authority"
+        );
+    }
+    for claim in [
+        "ci_runner_narrow_selection_claim",
+        "ci_runner_fail_closed_superset_claim",
+        "ci_runner_shape_collision_claim",
+        "ci_runner_inner_frontier_claim",
+    ] {
+        assert!(
+            surface_declares_test_claim_data(&module, claim),
+            "{CLAIM_PATH}: must declare structural receipt `{claim}`"
+        );
+    }
+    assert!(
+        surface_declares_fn(&module, "ci_runner_narrow_selection_holds")
+            && surface_declares_fn(&module, "ci_runner_fail_closed_superset_holds")
+            && surface_declares_fn(&module, "ci_runner_shape_collision_holds")
+            && surface_declares_fn(&module, "ci_runner_inner_frontier_holds"),
+        "{CLAIM_PATH}: receipt predicates must exercise ci selection entrypoints"
+    );
+}
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_release_distribution_mask_axes_modeled() {
+    assert!(
+        CI_DAG.contains("release_distribution && affected.release_distribution"),
+        "{CI_DAG_PATH}: ci_component_mask_intersects must include release_distribution axis"
+    );
+    assert!(
+        CI_DAG.contains("testclaim_corpus && affected.testclaim_corpus"),
+        "{CI_DAG_PATH}: ci_component_mask_intersects must include testclaim_corpus axis (I8 / IRT-1)"
+    );
+    let fail_closed_body = extract_fn_body(CI_DAG, "ci_component_affected_is_fail_closed");
+    for axis in [
+        "affected.v2",
+        "affected.v3",
+        "affected.v4",
+        "affected.testclaim_corpus",
+        "affected.workflow_policy",
+        "affected.release_distribution",
+    ] {
+        assert!(
+            fail_closed_body.contains(axis),
+            "{CI_DAG_PATH}: ci_component_affected_is_fail_closed must require axis `{axis}`"
+        );
+    }
+    assert!(
+        CI_DAG.contains(
+            "BootstrapStageCompile { produces: _ } =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true"
+        ),
+        "{CI_DAG_PATH}: BootstrapStageCompile mask must not select on v2-only (I2 is ci_integration; gunbc build is ci_v4 v4-axis)"
+    );
+    assert!(
+        CI_DAG.contains("fn ci_job_component_mask_row(")
+            && CI_DAG.contains("release_distribution_only: false"),
+        "{CI_DAG_PATH}: job masks must populate release_distribution_only (P2 carrier completeness)"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_needs_closure_is_bounded_and_skips_unresolved() {
+    assert!(
+        CI_DAG.contains("fn ci_select_ci_jobs_needs_closure_pass("),
+        "{CI_DAG_PATH}: needs closure must be bounded (P4) — not unbounded recursion on unresolved needs"
+    );
+    assert!(
+        CI_DAG.contains(
+            "ci_symbol_resolves(s: n, jobs: jobs) && ci_symbol_not_in_ids(s: n, ids: selected_ids)"
+        ),
+        "{CI_DAG_PATH}: needs closure must ignore unresolved need symbols"
+    );
+}
+
 #[test]
 fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
     let module = parse_module(INPROCESS_EQUIVALENCE_DAG, INPROCESS_EQUIVALENCE_PATH);
@@ -2307,6 +2448,7 @@ fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
 /// (RR-A §6) and is the THIN slice — the full self-host loop is F.12b, named as deferred.
 /// SG-0 delta 0 (same-path expansion of this census-listed v4 CI smoke harness — see #4313
 /// A.1.5a, same shape; `pb_rust_tests_outside_residual_zero`; ROADMAP T-PB-B).
+
 #[test]
 fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
     let module = parse_module(
@@ -2423,109 +2565,6 @@ fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
         RECURSIVE_FLEX_INSPECTION_DAG.contains("F.12b"),
         "{RECURSIVE_FLEX_INSPECTION_PATH}: must name the deferred full self-host loop (F.12b) as out of scope"
     );
-}
-
-#[test]
-fn v4_workflow_ci_source_authority_receipt_consumes_h72_claims() {
-    let module = parse_module(CI_DAG, CI_DAG_PATH);
-    assert!(
-        import_includes_name(
-            &module,
-            &[
-                "v4",
-                "test",
-                "claim",
-                "round_trip",
-                "source_authority_contract"
-            ],
-            "claim_source_authority_contract_compiles"
-        ) && import_includes_name(
-            &module,
-            &[
-                "v4",
-                "test",
-                "claim",
-                "round_trip",
-                "source_authority_contract"
-            ],
-            "claim_bmin_canonical_dag_source_parse_print_law"
-        ),
-        "{CI_DAG_PATH}: F.11b must import H.7.2 source-authority claim declarations directly"
-    );
-    for needle in [
-        "| SourceAuthorityReceiptEvalCommand { claims: List<Symbol> }",
-        "data ci_source_authority_receipt_claim_ids: List<Symbol> = [",
-        "claim_source_authority_contract_compiles",
-        "claim_bmin_canonical_dag_source_parse_print_law",
-        "fn ci_source_authority_receipt_eval_command() -> CiCommand",
-        "SourceAuthorityReceiptEvalCommand { claims: ci_source_authority_receipt_claim_ids }",
-        "id: source_authority_receipt_eval_execution",
-        "command: ci_source_authority_receipt_eval_command()",
-        "id: source_authority_receipt_eval_signal",
-        "job: source_authority_receipt_eval_execution",
-        "claims == ci_source_authority_receipt_claim_ids",
-        "ci_cache_cmd_source_authority_receipt_eval_tag",
-        "ci_projection_command_claim_ids_edge",
-        "ci_symbol_list_projection_node(xs: claims)",
-        "ci_upsert_file_set_input(segment: \"src/v4/compiler/source_authority.dag\")",
-        "ci_upsert_file_set_input(segment: \"src/v4/test/claim/round_trip/source_authority_contract.dag\")",
-        "segment == \"src/v4/compiler/source_authority.dag\"",
-        "path == \"src/v4/compiler/source_authority.dag\"",
-        "segment == \"src/v4/test/claim/round_trip/source_authority_contract.dag\"",
-        "path == \"src/v4/test/claim/round_trip/source_authority_contract.dag\"",
-        "ci_upsert_upstream_job_input(job: v2_compile_src_v4)",
-        "ci_upsert_source_authority_receipt_eval_claim_ref_inputs",
-        "ci_upsert_test_claim_ref_input(claim_id: claim_id)",
-        "step: ci_upsert_source_authority_receipt_eval_execution",
-        "step: ci_upsert_source_authority_receipt_eval_signal",
-        "JobStep {\n    job: source_authority_receipt_eval_execution,\n    step: source_authority_receipt_eval_execution",
-        "GateStep {\n    job: source_authority_receipt_eval_execution,\n    gate: source_authority_receipt_eval_signal",
-        "SourceAuthorityReceiptEvalCommand { claims: _ } =>\n      ci_job_component_mask_row(",
-    ] {
-        assert!(
-            CI_DAG.contains(needle),
-            "{CI_DAG_PATH}: F.11b source-authority CI receipt consumption must carry `{needle}`"
-        );
-    }
-    assert!(
-        !CI_DAG.contains("dag-artifact.json") && !CI_DAG.contains("--target dag"),
-        "{CI_DAG_PATH}: F.11b CI receipt consumption must not use JSON IR as source authority"
-    );
-}
-
-#[test]
-fn v4_workflow_ci_upsert_node_projection_substrate() {
-    assert!(
-        ROADMAP.contains("### Nine lanes")
-            && ROADMAP.contains("| **T-PB-B** | `pb_rust_tests_outside_residual_zero`")
-            && ROADMAP.contains("T-PB-B / `pb_rust_tests_outside_residual_zero`"),
-        "{ROADMAP_PATH}: F.11a P5 deferral must bind to checkable T-PB-B authority (Nine lanes + Public Operational Lanes)"
-    );
-    let module = parse_module(CI_DAG, CI_DAG_PATH);
-    assert!(
-        import_includes_name(&module, &["v4", "std", "patterns"], "Upsert"),
-        "{CI_DAG_PATH}: F.11a must import `Upsert` from `v4.std.patterns` (P2 single-authority)"
-    );
-    for needle in [
-        "fn ci_upsert_projection_edges<T>(",
-        "fn ci_upsert_projection_node<T>(upsert: Upsert<T>) -> Node",
-        "fn ci_upsert_cache_digest<T>(upsert: Upsert<T>) -> Hash",
-        "fn ci_upsert_step_projection_node<T>(step: CiUpsertStep<T>) -> Node",
-        "fn ci_upsert_input_ref_projection_node(input_ref: UpsertInputRef) -> Node",
-        "fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash",
-        "content_hash(n: ci_upsert_step_projection_node(step: step))",
-        "ci_upsert_projection_edges(",
-        "ci_projection_upsert_verify_edge",
-        "ci_projection_upsert_create_edge",
-        "ci_projection_upsert_resolve_edge",
-        "ci_upsert_cache_digest_create_sensitivity_witness_holds",
-        "Structural consumer of `v4.std.patterns.Upsert<T>`",
-    ] {
-        assert!(
-            CI_DAG.contains(needle),
-            "{CI_DAG_PATH}: F.11a Upsert<T> Node projection substrate must carry `{needle}`"
-        );
-    }
 }
 
 #[test]
