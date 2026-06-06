@@ -1859,11 +1859,17 @@ fn rust_mvp1_target_model_core_edges() -> List<Edge> {
       target: target_value_semantics_carriers_node(
         atoms: rust_value_semantics_carrier_atoms()
       )
-    ),
-    rust_named_edge(
-      name: target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
     )
+    // NOTE (R2 / SG-2 decoupling): the mvp1 bundle intentionally does NOT carry
+    // target_model_edge_type_expression_projection. With it present, translate_node
+    // selects the SG-2 projection path (translate_node_with_projection), whose
+    // per-node (mode-2) serialize is not yet complete for type expressions. Without
+    // it, translate_node takes the ProjectionAbsent interim path (translate_node_mvp1,
+    // structure-preserving) whose raw output whole-node-matches the grammar relation
+    // reference — the working path that emits correct source today. The edge was added
+    // incidentally in #4452 (for the ownership-lift boundary) and prematurely flipped
+    // mvp1 onto the incomplete SG-2 path; it is restored when SG-2 per-node serialize
+    // is completed (the gated ProjectionAbsent shim at translate_node:dissolve-on).
   ]
 }
 
