@@ -1,0 +1,26 @@
+// src/v4/test/claim/workflow/v4_std_text_pilot.dag
+// Scope: Exemplar E1 v4.std.text smoke→witness migration — claim-run roster.
+// Status: additive only (frozen smoke + SG-0 census unchanged); host transport reads row names.
+
+module v4.test.claim.workflow.v4_std_text_pilot
+
+
+import v4.std.logic { Bool }
+import v4.std.text { String }
+
+
+data v4_std_text_pilot_entry: String = "src/v4/test/claim/std_text/carrier_claims.dag"
+
+data v4_std_text_pilot_freemonoid_carrier_fn: String = "text_string_freemonoid_carrier_holds"
+data v4_std_text_pilot_roundtrip_fn: String = "text_host_string_roundtrip_holds"
+data v4_std_text_pilot_empty_roundtrip_fn: String = "text_host_string_empty_roundtrip_holds"
+data v4_std_text_pilot_field_text_fn: String = "text_host_string_field_text_holds"
+
+
+fn witness_v4_std_text_pilot_declares_rows() -> Bool {
+  v4_std_text_pilot_entry == "src/v4/test/claim/std_text/carrier_claims.dag"
+    && v4_std_text_pilot_freemonoid_carrier_fn == "text_string_freemonoid_carrier_holds"
+    && v4_std_text_pilot_roundtrip_fn == "text_host_string_roundtrip_holds"
+    && v4_std_text_pilot_empty_roundtrip_fn == "text_host_string_empty_roundtrip_holds"
+    && v4_std_text_pilot_field_text_fn == "text_host_string_field_text_holds"
+}
