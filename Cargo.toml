@@ -11,6 +11,7 @@ members = [
     "src/v3/compiler",
     "tools/ci_affected_components",
     "tools/ci_workflow_ratchet",
+    "tools/compile_host_runner",
     "tools/emit_host_runner",
     "src/v3/grounding_pilot",
     "src/v3/grounding_engine",
