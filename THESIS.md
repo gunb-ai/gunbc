@@ -60,7 +60,7 @@ See [docs/thesis/the-substrate-two-coordinated-shapes.md](docs/thesis/the-substr
 
 Lower layers should provide declared facts without leaking storage choices or forcing downstream reinterpretation.
 
-See [docs/thesis/compositional-layering.md](docs/thesis/compositional-layering.md).
+See [docs/thesis/compositional-layering.md](docs/thesis/compositional-layering.md). Current-state audit — how close v4 is to this principle, concept by concept (the "touch-once contract"): [docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md](docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md).
 
 ### Self-inspection: the substrate is its own subject
 
@@ -206,7 +206,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 **Substrate shape (two coordinated substrates — must not be flattened):**
 - Types are Node trees with six connectives: `Atom | Conj | Disj | Arrow | Cardinality | Instantiation`. `service`, `fn`, `type`, `operation` are surface sugar over this layer (`MODELING.md` §"Composition layer"). `Instantiation` matches C++ template-instantiation vocabulary and is ONLY used for type parameterization; value construction (`transport shell { argv: [...] }`) uses plain Conj with an optional inhabits tag.
 - Computation is five L1 behaviors: `Value | Transform | Branch | Loop | Bind`. Validated by M0 under three reviewer rounds; the stop signal never fired.
-- Composition: Transform holds a FunctionRef to an Arrow declaration in the type substrate; the Arrow's body is a sub-DAG of L1 behaviors (for user functions) or a realization declaration in `extdeps/` (for primitives).
+- Composition: Transform holds a FunctionRef to an Arrow declaration in the type substrate; the Arrow's body is a sub-DAG of L1 behaviors (for user functions) or a realization declaration in `dsl/extdeps/` (for primitives).
 - Substrate extension is a C1-class stop signal (seventh connective or sixth behavior) — all four dissolution patterns from §"Structural decompression" must fail with structural arguments before extension is allowed.
 - Future candidate (NOT committed): unified substrate dissolving the five behaviors into patterns over Node. Recorded for future consideration only; revisiting requires new failure pressure, not aesthetic preference.
 
@@ -229,7 +229,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - See [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Two shapes of omni-emission" for the full Shape A vs Shape B treatment, including the per-target cost structure and the load-bearing reason the distinction must not be blurred.
 
 **Meta-process modeling:**
-- Bootstrap, CI, and build orchestration modeled as .dag workflows (`workflow/bootstrap.dag`, `workflow/ci.dag`). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
+- Bootstrap, CI, and build orchestration modeled as .dag workflows (`src/v4/workflow/bootstrap.dag`, `src/v4/workflow/ci.dag`). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
 - `dag run` is the primary execution path.
 - Adding a CI gate, a Node field, or a target language requires editing one .dag file.
 
@@ -265,8 +265,8 @@ Self-hosting is not one capability; it's four. All four are targets.
 
 4. **Recursive-flex / self-application.** gunbc applies its own correctness/
    cost/parallelism lenses to its own **build/CI pipeline**, which
-   is modeled as `.dag` data (`workflow/bootstrap.dag`,
-   `workflow/ci.dag`). The same lens framework users get for their own
+   is modeled as `.dag` data (`src/v4/workflow/bootstrap.dag`,
+   `src/v4/workflow/ci.dag`). The same lens framework users get for their own
    programs applies recursively to gunbc's own build/CI behavior —
    typed lenses for cost / complexity / parallelism over the
    pipeline that produces gunbc itself. (Timing is a projection of the
@@ -301,7 +301,7 @@ per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md)
 (LIVE 2026-04-25; supersedes the prior ≤5-floor framing in
 `docs/design-pure-bootstrap.md`).
 The live *count* of currently hand-authored files is tracked per-generation:
-v2 authority: `src/v2/compiler/` stage0 census (~97%; 2 hand-maintained of 62 stage0 files).
+v2 authority: `src/v2/` stage0 census (~97%; 2 hand-maintained of 62 stage0 files).
 v3 authority (historical — v3 is frozen): SG-0 census in
 `src/v3/compiler/tests/integration/sg0_census_test.rs` tracked hand-authored
 non-test and test subsets shrinking toward 0; that campaign is frozen
@@ -337,7 +337,7 @@ continues as substrate stages complete.
 **Adoption model — economics, not enforcement:**
 - The thesis claims every program gets complexity, effects, termination,
   idempotency, and ownership for free — by construction, not by opt-in.
-  This is structurally true (see §"Substrate shape" + `epistemic-stacking.md`):
+  This is structurally true (see §"Substrate shape" + `docs/thesis/epistemic-stacking.md`):
   the language vocabulary is the six type connectives and five behaviors;
   every program decomposes through them; lenses are folds over that
   decomposition. There is no in-language way to author a program the lenses
@@ -350,7 +350,7 @@ continues as substrate stages complete.
   does not need to — gunbc's lenses are folds over *our* primitives, so
   they don't apply to a different compiler's outputs by construction
   (until those outputs are grounded back into `.dag`). See
-  `epistemic-stacking.md` §"Positive corollary."
+  `docs/thesis/epistemic-stacking.md` §"Positive corollary."
 - Adoption is therefore gated by **economics, not enforcement**: low cost
   of entry (one composition layer, no annotation surface, surface syntax
   is sugar over six connectives) × high free value (every lens applies to

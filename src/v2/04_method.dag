@@ -84,6 +84,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "substring", string_type)
   let m = map_insert(m, "from_code_point", string_type)
   let m = map_insert(m, "chars_to_string", string_type)
+  let m = map_insert(m, "record_source_chars_index_lookup", unit_type)
   let m = map_insert(m, "to_string", string_type)
   let m = map_insert(m, "concat", string_type)
   let m = map_insert(m, "map_insert", map_of_type_variables())

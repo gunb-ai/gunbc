@@ -215,6 +215,46 @@ jobs:
         name: affected-set-ci-receipt
         path: ${{ runner.temp }}/affected-set-ci-receipt.json
         if-no-files-found: warn
+  # T-22 TestClaim manual-corpus eval — tracked-expectation drift gate (operator GO 2026-06-05).
+  # Executes the 5-row manual roster via per-claim `gunbc run`; FAIL only on drift from
+  # `manual_corpus_eval_expected_pins` (all-red-but-pinned == PASS). Authority:
+  # v4.workflow.ci TestClaimCorpusEvalCommand + scripts/v4-testclaim-corpus-eval.sh.
+  # Operator re-promotion from Wave-1 §11.7.1 Class-C demotion. scripts/ is outside §11.7.5.
+  ci_corpus_eval:
+    if: github.event.pull_request.draft != true && needs.affected.outputs.testclaim_corpus == 'true'
+    needs: [affected, ci_floor, ci_floor_emit]
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 45
+    steps:
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache gunbc binary (v4 floor)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        path: target/release/gunbc
+        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 floor)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: cargo build -p v2-compiler --release
+    - name: T-22 TestClaim corpus eval (tracked-expectation drift gate)
+      timeout-minutes: 40
+      run: bash scripts/v4-testclaim-corpus-eval.sh
   # §11.7.1 Class A safety floor -- stage0 freshness + bootstrap dag parity. The M1 rust+dag emit
   # probe runs in the parallel `ci_floor_emit` job (split for concurrency; see gunb-ai/ctrl#1458).
   ci_floor:
@@ -436,7 +476,7 @@ jobs:
       run: bash .github/ci-floor/v4-m1-rust-emit-probe.sh
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
-    needs: [affected, ci_floor, ci_floor_emit, infra_isolation]
+    needs: [affected, ci_floor, ci_floor_emit, infra_isolation, ci_corpus_eval]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -459,7 +499,11 @@ jobs:
           echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness + DAG parity in ci_floor + M1 rust+dag emit in ci_floor_emit; infra_isolation de-priv guard green)"
+        if [[ "${{ needs.ci_corpus_eval.result }}" == "failure" ]]; then
+          echo "::error::ci_corpus_eval job failed (result=${{ needs.ci_corpus_eval.result }}); tracked-expectation drift gate failed."
+          exit 1
+        fi
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness + DAG parity in ci_floor + M1 rust+dag emit in ci_floor_emit; infra_isolation de-priv guard green; ci_corpus_eval skipped or green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness + DAG parity) + ci_floor_emit (M1 rust+dag emit)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness + DAG parity) + ci_floor_emit (M1 rust+dag emit) + ci_corpus_eval when testclaim_corpus affected"
