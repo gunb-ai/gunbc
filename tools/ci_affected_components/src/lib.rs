@@ -2,7 +2,7 @@
 //!
 //! **Modeled authority:** `src/v4/workflow/ci.dag` (`ci_component_affected_from_git_diff` and
 //! `ci_changed_path_affects_*`). This crate is an interim Rust mirror of those predicates for
-//! the CI runner (not `.dag` eval yet); keep aligned via `v4_workflow_ci_runner_dag_smoke_test`
+//! the CI runner (not `.dag` eval yet); keep aligned via `tools/ci_workflow_ratchet`
 //! set-equality + behavioral fixture parity (not substring presence). Lives outside `v3-compiler`
 //! so the affected job can emit `v3=false` without compiling the frozen v3 package first
 //! (INVARIANTS P3 fail-closed boundary).

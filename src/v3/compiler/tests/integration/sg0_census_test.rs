@@ -905,7 +905,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // retirement back to the `NotYetImplemented` shell trips here. Wider
     // pass/fail-closed receipts live in `m1_5_verification_test.rs`.
     "src/v3/compiler/tests/integration/symbolic_cost_expr_equals_executable_ratchet_test.rs",
-    "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
     // §1.8 gate #106 (`show_correct_code_diagnostic_coverage`): structural bootstrap locks on
     // `Correction` / substrate `Diagnostic` + one live-correction roundtrip anchor (`compile_to_dag`
     // → `apply_correction_and_reparse` → clean recompile). **P5 receipt:** matching INVARIANTS.md
@@ -1129,9 +1128,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
     // T-16-A+ TaskManager omni fixture: compile_to_dag smoke + SQL DDL projection receipt.
     "src/v3/compiler/tests/integration/v4_test_fixture_task_manager_demo_smoke_test.rs",
-    // T-21/T-24: `workflow/ci.dag` Wave-0 selection consumes `RerunNodeSet` for TestClaim roster narrowing.
-    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim harness replaces probe.
-    "src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs",
     // RELEASE_TODO §5 Phase 1a: `workflow/release.dag` + hand-synced release.yml (install.dag Phase 1b).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when YamlStatic emission replaces host probes.
     "src/v3/compiler/tests/integration/v4_workflow_release_dag_smoke_test.rs",
