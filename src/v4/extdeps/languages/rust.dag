@@ -3989,6 +3989,35 @@ fn rust_sg2_rc_foobar_xy_emitted() -> Node {
   )
 }
 
+fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_foobar } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_x } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_y } },
+          children: []
+        }
+      }
+    ]
+  }
+}
+
 fn rust_sg2_instantiation_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
@@ -4002,35 +4031,15 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
       },
       Edge {
         label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Instantiation },
-          children: [
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_foobar } },
-                children: []
-              }
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_x } },
-                children: []
-              }
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_y } },
-                children: []
-              }
-            }
-          ]
-        }
+        target: rust_sg2_foobar_xy_inner_instantiation_node()
       }
     ]
   }
+}
+
+// Perturbed twin: same inner apply without outer Rc — discriminates mode-2 emit text.
+fn rust_sg2_foobar_xy_no_rc_source_type_node() -> Node {
+  rust_sg2_foobar_xy_inner_instantiation_node()
 }
 
 fn rust_sg2_atom_node(binding: Symbol) -> Node {
@@ -4134,6 +4143,18 @@ fn rust_sg2_sum_xy_emitted() -> Node {
         )
       }
     ]
+  )
+}
+
+// GAP-2 prep: intentionally absent from rust_sg2_binding_spellings — mode-2 atom serialize must
+// resolve via projection atom_form.ident_token lex class, not map_get(binding_spellings).
+data rust_binding_sg2_lex_only_atom: Symbol = rust_binding_sg2_lex_only_atom
+data rust_sg2_lex_only_atom_spelling: String = "LexOnlyProbe"
+
+fn rust_sg2_lex_only_atom_emitted() -> Node {
+  target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_lex_only_atom
   )
 }
 
