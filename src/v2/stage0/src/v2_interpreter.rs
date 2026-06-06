@@ -1546,7 +1546,12 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let idx = eval_expr(&index_expr(node.clone()), env, ctx)?;
 
     match (&base, &idx) {
-        (base_val, Value::Int(i)) if free_monoid_to_vec(base_val).is_some() => {
+        // Exclude Value::Str: a String IS a FreeMonoid<Char>, but indexing must keep its
+        // dedicated Str arm (returns a one-char Str, not a char-list element via the
+        // chokepoint) (ctrl#1476 B1; same Str-representation rule as concat/contains/slice).
+        (base_val, Value::Int(i))
+            if !matches!(base_val, Value::Str(_)) && free_monoid_to_vec(base_val).is_some() =>
+        {
             let items = expect_list(base_val, "index")?;
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
@@ -1579,7 +1584,12 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let end = eval_expr(&slice_end(node.clone()), env, ctx)?;
 
     match (&base, &start, &end) {
-        (base_val, Value::Int(s), Value::Int(e)) if free_monoid_to_vec(base_val).is_some() => {
+        // Exclude Value::Str: slicing a String must return a substring (Str) via its
+        // dedicated arm below, not a char-list via the FreeMonoid chokepoint
+        // (ctrl#1476 B1; same Str-representation rule as concat/contains).
+        (base_val, Value::Int(s), Value::Int(e))
+            if !matches!(base_val, Value::Str(_)) && free_monoid_to_vec(base_val).is_some() =>
+        {
             let items = expect_list(base_val, "slice")?;
             let s = *s as usize;
             let e = (*e as usize).min(items.len());
