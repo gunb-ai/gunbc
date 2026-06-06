@@ -4,6 +4,9 @@
 //! `grammar_relation_tokens_node` (fold_list_node named-cons spine), not positional-Conj
 //! `fold_list` edge builders.
 
+use v3_compiler::parse_for_test;
+use v3_compiler::tokenize_for_test;
+
 const EMIT_PATH_DAGS: &[(&str, &str)] = &[
     (
         "src/v4/extdeps/languages/cpp.dag",
@@ -95,6 +98,22 @@ fn emit_path_language_models_do_not_define_positional_conj_fold_list_builders() 
 }
 
 const GRAMMAR_DAG: &str = include_str!("../../../../v4/std/grammar.dag");
+const GRAMMAR_PATH: &str = "src/v4/std/grammar.dag";
+
+/// Positive-side ratchet: emit-path language models must tokenize and parse (catches import-list
+/// syntax regressions invisible to substring-only detection).
+#[test]
+fn emit_path_language_models_tokenize_and_parse() {
+    for (path, source) in EMIT_PATH_DAGS {
+        let tokens = tokenize_for_test(source, path)
+            .unwrap_or_else(|e| panic!("{path}: tokenize failed: {e:?}"));
+        parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse failed: {e:?}"));
+    }
+    let tokens = tokenize_for_test(GRAMMAR_DAG, GRAMMAR_PATH)
+        .unwrap_or_else(|e| panic!("{GRAMMAR_PATH}: tokenize failed: {e:?}"));
+    parse_for_test(&tokens, GRAMMAR_PATH)
+        .unwrap_or_else(|e| panic!("{GRAMMAR_PATH}: parse failed: {e:?}"));
+}
 
 #[test]
 fn grammar_dag_exports_relation_tokens_node_chokepoint() {
