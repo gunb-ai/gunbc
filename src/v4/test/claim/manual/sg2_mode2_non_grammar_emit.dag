@@ -1,22 +1,12 @@
 // src/v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag
 // Scope: SG-2 mode-2 own cert — emit greens non-grammar-matched type-expression subtrees.
-// Status: prep/cert-harness (#4465) + T-22 runner substrate (PR #4468). TestClaimRun
-// subjects/runs declared here; manual_corpus_roster wiring deferred until gunbc-run
-// interpreter supports Map.lookup / target_bundle_child (prep predicates re-evaluate
-// at run time today). Gate/dissolve claims stay compile-only until A (#4462) lands.
+// Status: prep/cert-harness (#4465). Compile-time CompilesClaim predicates live here;
+// corpus runner subjects/runs are in sg2_mode2_corpus_runtime.dag (runtime-isolated).
+// Gate/dissolve claims stay compile-only until A (#4462) lands.
 
 module v4.test.claim.manual.sg2_mode2_non_grammar_emit
 
 import v4.compiler.emit { emit }
-import v4.compiler.eval {
-  EvalContext,
-  TestClaimEvalSubject,
-  TestClaimRun,
-  eval_context_with_semantics,
-  eval_diagnostic,
-  eval_test_claim_subject,
-  run_test_claim
-}
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetModel }
 import v4.compiler.translate {
