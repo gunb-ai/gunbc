@@ -1,6 +1,6 @@
 // src/v4/test/claim/workflow/v4_grounding_typescript_pilot.dag
-// Scope: Wave-A grounding_typescript pilot promotions — ordinary named claim-run witnesses.
-// Status: route-through-v2 pilot row; host transport is thin and reads these row names.
+// Scope: Wave-A grounding_typescript partial additive named tests — claim-run witnesses.
+// Status: additive only (frozen smoke + SG-0 census unchanged); host transport reads row names.
 
 module v4.test.claim.workflow.v4_grounding_typescript_pilot
 

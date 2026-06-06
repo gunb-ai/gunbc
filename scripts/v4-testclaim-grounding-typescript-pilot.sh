@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/v4-testclaim-grounding-typescript-pilot.sh
 #
-# Wave-A grounding_typescript pilot transport. Authority for promoted rows lives in
+# Wave-A grounding_typescript partial additive transport. Authority for named test rows lives in
 # src/v4/test/claim/workflow/v4_grounding_typescript_pilot.dag; this shell only reads
 # the modeled entry/function names and invokes v2 claim-run.
 

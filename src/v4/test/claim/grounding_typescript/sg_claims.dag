@@ -350,7 +350,7 @@ data run_ts_g2_sg5_collection_absence: TestClaimRun<Node, RuntimeValue> = run_te
 )
 
 
-// Wave-A route-through-v2 pilot: discriminating claim-run witnesses (E-10 consumer).
+// Wave-A route-through-v2 partial additive named tests: discriminating claim-run witnesses (E-10).
 // Positive narrow resolution — symbol SG-1 evidence targets the canonical symbol kernel.
 fn ts_g2_sg1_symbol_carrier_holds() -> Bool {
   ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
