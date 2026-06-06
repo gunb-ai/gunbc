@@ -775,6 +775,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // reflected-Dag structural assertions over std/ row authorities.
     "src/v3/compiler/tests/integration/pb_method_template_projection_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    // ctrl#1476 B5: positional-Conj fold_list-by-construction detection on emit-path language models.
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+    // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
+    // dissolves when modeled `TestClaim` exercises emit-path grammar-relation token encode without
+    // this hand-Rust substring/parse ratchet.
+    "src/v3/compiler/tests/integration/positional_conj_fold_list_emit_path_test.rs",
     // Prereq-X (call-on-field-access) blocker ratchet for fold_lens<C>
     // consumer wiring (Prereq-3b dispatch on inbox #1141; audit at
     // docs/design-prereq-x-ho-field-call.md / PR #1264). Pins the parser

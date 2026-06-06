@@ -29,7 +29,8 @@ import v4.std.grammar {
   Sequence,
   Terminal,
   grammar_empty_sync_tokens,
-  grammar_production_to_node
+  grammar_production_to_node,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -695,25 +696,7 @@ fn wasm_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn wasm_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
-  Edge {
-    label: Positional,
-    target: wasm_concrete_token_node(token: token)
-  }
-}
 
-fn wasm_mvp1_positional_edges_from_token_classes() -> List<Edge> {
-  fold_list(
-    xs: wasm_mvp1_concrete_tokens(),
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: wasm_mvp1_positional_token_edge(token: token)
-      )
-    }
-  )
-}
 
 fn wasm_mvp1_serialize_source_prefix_edges() -> List<Edge> {
   Cons {
@@ -734,7 +717,15 @@ fn wasm_mvp1_serialize_source_prefix_edges() -> List<Edge> {
 fn wasm_mvp1_serialize_source_children() -> List<Edge> {
   list_append(
     left: wasm_mvp1_serialize_source_prefix_edges(),
-    right: wasm_mvp1_positional_edges_from_token_classes()
+    right: [
+      wasm_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: wasm_mvp1_concrete_tokens(),
+          token_to_node: wasm_concrete_token_node
+        )
+      )
+    ]
   )
 }
 
@@ -813,18 +804,6 @@ fn wasm_mvp1_grammar_relation_row() -> WasmGrammarRelationRow {
   }
 }
 
-fn wasm_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: wasm_mvp1_positional_token_edge(token: token)
-      )
-    }
-  )
-}
 
 fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
   Node {
@@ -837,10 +816,10 @@ fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
       wasm_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       wasm_named_edge(
         name: grammar_relation_field_tokens,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: wasm_relation_token_edges(tokens: row.tokens)
-        }
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: wasm_concrete_token_node
+        )
       )
     ]
   }

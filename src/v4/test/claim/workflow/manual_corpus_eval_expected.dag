@@ -2,10 +2,8 @@
 // Scope: T-38 tracked-expectation pins for the manual corpus roster (verdict arm + primary reason).
 // Status: drift gate authority — host transport mirrors `manual_corpus_eval_expected_pins` +
 // `manual_corpus_eval_host_run_specs` (single authority; no parallel bash claim-list).
-// HostRejected CDV rows: pin alignment is `corpus_eval_host_rejected_transport_gate`.
-// Transport observes `corpus_eval_cdv_host_rejection_stderr_marker` when the B1 (#4476) substrate
-// precondition holds; when absent, scripts/v4-testclaim-corpus-eval.sh records honest tracked-red
-// (see `corpus_eval_cdv_tracked_red_until_b1`) without fail-closing — pin table unchanged.
+// Executed-row drift gates project TestClaimRun verdict+reason via modeled witnesses (--claim-run).
+// HostRejected arm retained for future pre-TestClaimRun transport rows (none in the 5-row roster today).
 // 🟡 gated — feature:t38-testclaim-corpus-eval — bind tracked-expectation gate design (operator GO 2026-06-05).
 
 module v4.test.claim.workflow.manual_corpus_eval_expected
@@ -30,35 +28,29 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   run_rust_language_model_emit_mechanical_reverification_claim,
   run_rust_language_model_emit_subsumption_reverifies
 }
+import v4.test.claim.lens_effect.effect_depends_on {
+  claim_lens_effect_depends_on_runtime_verdict,
+  run_lens_effect_depends_on_runtime_verdict
+}
+import v4.test.claim.lens_parallelism.data_dependency {
+  claim_parallelism_data_dependency_run_test_claim_receipt,
+  run_parallelism_data_dependency_receipt
+}
 import v4.test.claim.manual.eval_runtime_mvp {
   claim_eval_mvp2_test_claim_route,
   run_eval_mvp2_test_claim_route
 }
 
-// CDV-row claim symbol atoms only — do NOT import parallelism/effect modules here; loading those
-// modules evaluates `run_test_claim` receipts and crashes before per-row transport gates.
-data claim_parallelism_data_dependency_run_test_claim_receipt: Symbol = claim_parallelism_data_dependency_run_test_claim_receipt
-data claim_lens_effect_depends_on_runtime_verdict: Symbol = claim_lens_effect_depends_on_runtime_verdict
 data run_eval_mvp2_test_claim_route_sym: Symbol = run_eval_mvp2_test_claim_route_sym
 data run_parallelism_data_dependency_receipt_sym: Symbol = run_parallelism_data_dependency_receipt_sym
 data run_lens_effect_depends_on_runtime_verdict_sym: Symbol = run_lens_effect_depends_on_runtime_verdict_sym
 data run_rust_language_model_emit_mechanical_reverification_claim_sym: Symbol = run_rust_language_model_emit_mechanical_reverification_claim_sym
 data run_rust_language_model_emit_subsumption_reverifies_sym: Symbol = run_rust_language_model_emit_subsumption_reverifies_sym
 
-// Host-transport rejection carrier for pre-TestClaimRun interpreter failures (CDV fold site).
-data interpreter_classified_dependency_view_non_exhaustive: Symbol = interpreter_classified_dependency_view_non_exhaustive
-
-// CDV stderr marker when B1 (#4476) substrate precondition holds (eager-moth-810 dissolution target).
-// Absent marker ⇒ tracked-red transport arm (not drift); pin alignment unchanged until B1 lands.
-data corpus_eval_cdv_host_rejection_stderr_marker: String = "non-exhaustive pattern match on: ClassifiedDependencyView"
-
-data corpus_eval_cdv_tracked_red_until_b1: String = "4476"
-
 // Pass-arm sentinel for `corpus_eval_row_primary_reason` (named constant, not a bare literal).
 data corpus_eval_verdict_pass_reason: Symbol = corpus_eval_verdict_pass_reason
 
 // Per-row dissolution targets (flip pin to must-pass-green when substrate lands).
-data dissolution_target_cdv_eager_moth_810: Symbol = dissolution_target_cdv_eager_moth_810
 data dissolution_target_transform_eval: Symbol = dissolution_target_transform_eval
 data dissolution_target_subsumption_tree_eval: Symbol = dissolution_target_subsumption_tree_eval
 
@@ -125,15 +117,15 @@ data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
   },
   CorpusEvalExpectedPin {
     claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
-    observation: HostRejected,
-    primary_reason: interpreter_classified_dependency_view_non_exhaustive,
-    dissolution_target: dissolution_target_cdv_eager_moth_810
+    observation: ExecutedFail,
+    primary_reason: eval_rejected_invalid_node,
+    dissolution_target: dissolution_target_transform_eval
   },
   CorpusEvalExpectedPin {
     claim_id: claim_lens_effect_depends_on_runtime_verdict,
-    observation: HostRejected,
-    primary_reason: interpreter_classified_dependency_view_non_exhaustive,
-    dissolution_target: dissolution_target_cdv_eager_moth_810
+    observation: ExecutedFail,
+    primary_reason: eval_rejected_invalid_node,
+    dissolution_target: dissolution_target_transform_eval
   },
   CorpusEvalExpectedPin {
     claim_id: claim_rust_language_model_emit_mechanical_reverification,
@@ -159,8 +151,7 @@ fn corpus_eval_expected_pins_match_host_run_specs() -> Bool {
 }
 
 
-// Cardinality must match `manual_corpus_node_subject_rows` (ci.dag run_roster authority). Do not
-// import/evaluate that roster here — CDV rows crash `gunbc run` before per-row transport gates.
+// Cardinality must match `manual_corpus_node_subject_rows` (ci.dag run_roster authority).
 data manual_corpus_eval_tracked_expectation_row_count: Int = 5
 
 fn corpus_eval_expected_pins_match_roster_frontier() -> Bool {
@@ -288,15 +279,6 @@ fn corpus_eval_executed_row_runtime_gate(
 }
 
 
-fn corpus_eval_host_rejected_transport_gate(pin: CorpusEvalExpectedPin) -> Bool {
-  corpus_eval_observation_matches_pin(
-    actual: HostRejected,
-    actual_reason: interpreter_classified_dependency_view_non_exhaustive,
-    pin: pin
-  )
-}
-
-
 fn corpus_eval_executed_row_runtime_gate_for_claim(
   run: TestClaimRun<Node, RuntimeValue>,
   claim_id: Symbol
@@ -304,15 +286,6 @@ fn corpus_eval_executed_row_runtime_gate_for_claim(
   match corpus_eval_expected_pin_lookup(claim_id: claim_id) {
     CorpusEvalPinLookupFound { pin: pin } =>
       corpus_eval_executed_row_runtime_gate(run: run, pin: pin)
-    CorpusEvalPinLookupMissing => false
-  }
-}
-
-
-fn corpus_eval_host_rejected_transport_gate_for_claim(claim_id: Symbol) -> Bool {
-  match corpus_eval_expected_pin_lookup(claim_id: claim_id) {
-    CorpusEvalPinLookupFound { pin: pin } =>
-      corpus_eval_host_rejected_transport_gate(pin: pin)
     CorpusEvalPinLookupMissing => false
   }
 }
@@ -346,14 +319,16 @@ fn witness_corpus_eval_row_subsumption_reverifies_runtime_gate() -> Bool {
   )
 }
 
-fn witness_corpus_eval_row_parallelism_host_rejected_gate() -> Bool {
-  corpus_eval_host_rejected_transport_gate_for_claim(
+fn witness_corpus_eval_row_parallelism_runtime_gate() -> Bool {
+  corpus_eval_executed_row_runtime_gate_for_claim(
+    run: run_parallelism_data_dependency_receipt,
     claim_id: claim_parallelism_data_dependency_run_test_claim_receipt
   )
 }
 
-fn witness_corpus_eval_row_effect_host_rejected_gate() -> Bool {
-  corpus_eval_host_rejected_transport_gate_for_claim(
+fn witness_corpus_eval_row_effect_runtime_gate() -> Bool {
+  corpus_eval_executed_row_runtime_gate_for_claim(
+    run: run_lens_effect_depends_on_runtime_verdict,
     claim_id: claim_lens_effect_depends_on_runtime_verdict
   )
 }

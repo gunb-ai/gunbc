@@ -29,7 +29,8 @@ import v4.std.grammar {
   Sequence,
   Terminal,
   VoidGrammar,
-  grammar_carries_symbol
+  grammar_carries_symbol,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   BlockCommentTextChar,
@@ -428,15 +429,6 @@ fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
 }
 
 
-fn emit_relation_token_edges(tokens: List<Node>) -> List<Edge> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: dag_positional_edge(target: token))
-    }
-  )
-}
 
 
 fn emit_grammar_relation_row(
@@ -457,10 +449,10 @@ fn emit_grammar_relation_row(
       ),
       dag_named_edge(
         name: grammar_relation_field_tokens,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: emit_relation_token_edges(tokens: tokens)
-        }
+        target: grammar_relation_tokens_node(
+          tokens: tokens,
+          token_to_node: fn(token) { token }
+        )
       )
     ]
   }
