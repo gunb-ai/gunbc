@@ -1,8 +1,9 @@
 // src/v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag
 // Scope: SG-2 mode-2 own cert — emit greens non-grammar-matched type-expression subtrees.
-// Status: prep/cert-harness (#4465) + T-22 runner wiring (PR #4468). Prep-tier claims
-// execute green now; gate/dissolve claims stay compile-only until A (#4462) lands and
-// 06_translate mode-2 edits green them (see design-closure doc).
+// Status: prep/cert-harness (#4465) + T-22 runner substrate (PR #4468). TestClaimRun
+// subjects/runs declared here; manual_corpus_roster wiring deferred until gunbc-run
+// interpreter supports Map.lookup / target_bundle_child (prep predicates re-evaluate
+// at run time today). Gate/dissolve claims stay compile-only until A (#4462) lands.
 
 module v4.test.claim.manual.sg2_mode2_non_grammar_emit
 
@@ -73,13 +74,16 @@ import v4.std.witness { Violates, Witness }
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
+  ComputationNode,
   Conj,
   Edge,
   Instantiation,
+  Named,
   Node,
   Positional,
   Symbol,
   TypeNode,
+  Value,
   content_hash
 }
 import v4.std.target_model {
@@ -92,6 +96,7 @@ import v4.std.target_model {
   target_type_expr_emitted_kind
 }
 import v4.std.text { String }
+import v4.std.verdict { Pass }
 import v4.std.verification {
   CompilesClaim,
   EqualsClaim,
@@ -114,17 +119,34 @@ data sg2_mode2_expected_conj_text: String = " { X, Y }"
 data sg2_mode2_expected_sum_text: String = "X | Y"
 data sg2_mode2_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 
+fn sg2_mode2_symbol_node(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
+  }
+}
+
 fn sg2_mode2_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg2_mode2_pass_sym } },
-    children: []
+    kind: ComputationNode { behavior: Value },
+    children: [
+      Edge {
+        label: Named { name: sg2_mode2_pass_sym },
+        target: sg2_mode2_symbol_node(sym: sg2_mode2_pass_sym)
+      }
+    ]
   }
 }
 
 fn sg2_mode2_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg2_mode2_fail_sym } },
-    children: []
+    kind: ComputationNode { behavior: Value },
+    children: [
+      Edge {
+        label: Named { name: sg2_mode2_fail_sym },
+        target: sg2_mode2_symbol_node(sym: sg2_mode2_fail_sym)
+      }
+    ]
   }
 }
 
@@ -564,3 +586,30 @@ data subject_sg2_mode2_gap2_lex_only_rejects_binding_spellings: TestClaimEvalSub
 data run_sg2_mode2_gap2_lex_only_rejects_binding_spellings: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_sg2_mode2_gap2_lex_only_rejects_binding_spellings
 )
+
+fn sg2_mode2_run_verdict_passes(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Pass => true
+    _ => false
+  }
+}
+
+fn witness_sg2_mode2_translation_rules_empty_runtime_gate() -> Bool {
+  sg2_mode2_run_verdict_passes(run: run_sg2_mode2_translation_rules_empty)
+}
+
+fn witness_sg2_mode2_emitted_non_grammar_matched_runtime_gate() -> Bool {
+  sg2_mode2_run_verdict_passes(run: run_sg2_mode2_emitted_non_grammar_matched)
+}
+
+fn witness_sg2_mode2_wire_kind_authority_runtime_gate() -> Bool {
+  sg2_mode2_run_verdict_passes(run: run_sg2_mode2_wire_kind_authority)
+}
+
+fn witness_sg2_mode2_gap2_lex_only_prep_runtime_gate() -> Bool {
+  sg2_mode2_run_verdict_passes(run: run_sg2_mode2_gap2_lex_only_prep)
+}
+
+fn witness_sg2_mode2_gap2_lex_only_rejects_binding_spellings_runtime_gate() -> Bool {
+  sg2_mode2_run_verdict_passes(run: run_sg2_mode2_gap2_lex_only_rejects_binding_spellings)
+}

@@ -17,13 +17,6 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   subject_rust_language_model_emit_subsumption_reverifies
 }
 import v4.test.claim.manual.eval_runtime_mvp { subject_eval_mvp2_test_claim_route }
-import v4.test.claim.manual.sg2_mode2_non_grammar_emit {
-  subject_sg2_mode2_emitted_non_grammar_matched,
-  subject_sg2_mode2_gap2_lex_only_prep,
-  subject_sg2_mode2_gap2_lex_only_rejects_binding_spellings,
-  subject_sg2_mode2_translation_rules_empty,
-  subject_sg2_mode2_wire_kind_authority
-}
 import v4.test.claim.lens_effect.effect_depends_on {
   subject_lens_effect_depends_on_runtime_verdict
 }
@@ -34,10 +27,5 @@ data manual_corpus_node_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_parallelism_data_dependency_receipt,
   subject_lens_effect_depends_on_runtime_verdict,
   subject_rust_language_model_emit_mechanical_reverification_claim,
-  subject_rust_language_model_emit_subsumption_reverifies,
-  subject_sg2_mode2_translation_rules_empty,
-  subject_sg2_mode2_emitted_non_grammar_matched,
-  subject_sg2_mode2_wire_kind_authority,
-  subject_sg2_mode2_gap2_lex_only_prep,
-  subject_sg2_mode2_gap2_lex_only_rejects_binding_spellings
+  subject_rust_language_model_emit_subsumption_reverifies
 ]
