@@ -31,6 +31,7 @@ import v4.std.grammar {
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
   grammar_production_to_node
+  grammar_relation_tokens_node,
 }
 import v4.std.lexing {
   CharClassPattern,

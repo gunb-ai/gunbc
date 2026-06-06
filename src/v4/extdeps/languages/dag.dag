@@ -29,7 +29,8 @@ import v4.std.grammar {
   Sequence,
   Terminal,
   VoidGrammar,
-  grammar_carries_symbol
+  grammar_carries_symbol,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   BlockCommentTextChar,

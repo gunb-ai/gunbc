@@ -19,6 +19,7 @@ import v4.std.grammar {
   Sequence,
   Terminal,
   grammar_production_to_node
+  grammar_relation_tokens_node,
 }
 import v4.std.lexing {
   LexRule,
