@@ -9,6 +9,13 @@ import v4.std.logic { Bool }
 import v4.std.text { String }
 
 
+// Row one: the R2 add-emit cert — first promoted-green named test (non-gated).
+// emit(add) produces EXACTLY "fn add(x: i32, y: i32) -> i32 { x + y }" (keystone, #4462).
+data v4_roster_pilot_r2_emit_add_entry: String = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag"
+
+data v4_roster_pilot_r2_emit_add_fn: String = "mvp1_rust_emit_add_fn_accepts_holds"
+
+
 data v4_roster_pilot_edit_locus_entry: String = "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
 
 data v4_roster_pilot_edit_locus_narrow_resolution_fn: String = "edit_locus_narrow_resolution_holds"
@@ -16,7 +23,9 @@ data v4_roster_pilot_edit_locus_fail_closed_fn: String = "edit_locus_fail_closed
 
 
 fn witness_v4_roster_pilot_declares_edit_locus_rows() -> Bool {
-  v4_roster_pilot_edit_locus_entry == "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
+  v4_roster_pilot_r2_emit_add_entry == "src/v4/test/claim/manual/mvp1_rust_add_translate.dag"
+    && v4_roster_pilot_r2_emit_add_fn == "mvp1_rust_emit_add_fn_accepts_holds"
+    && v4_roster_pilot_edit_locus_entry == "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
     && v4_roster_pilot_edit_locus_narrow_resolution_fn == "edit_locus_narrow_resolution_holds"
     && v4_roster_pilot_edit_locus_fail_closed_fn == "edit_locus_fail_closed_holds"
 }

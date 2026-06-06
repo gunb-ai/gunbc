@@ -44,6 +44,18 @@ fi
   --function witness_v4_roster_pilot_declares_edit_locus_rows \
   --claim-run
 
+# Row one: the R2 add-emit cert (promoted-green, non-gated).
+r2_emit_add_entry="$(dag_string_data v4_roster_pilot_r2_emit_add_entry)"
+if [[ -z "$r2_emit_add_entry" ]]; then
+  echo "error: missing v4_roster_pilot_r2_emit_add_entry in $roster" >&2
+  exit 2
+fi
+
+claim_run \
+  "R2 add-emit cert (fn add -> i32)" \
+  "$r2_emit_add_entry" \
+  "$(dag_string_data v4_roster_pilot_r2_emit_add_fn)"
+
 claim_run \
   "edit-locus narrow resolution" \
   "$roster_entry" \
@@ -53,4 +65,4 @@ claim_run \
   "$roster_entry" \
   "$(dag_string_data v4_roster_pilot_edit_locus_fail_closed_fn)"
 
-echo "::notice title=v4 roster pilot::edit_locus resolver witnesses passed"
+echo "::notice title=v4 roster pilot::R2 add-emit cert + edit_locus resolver witnesses passed"
