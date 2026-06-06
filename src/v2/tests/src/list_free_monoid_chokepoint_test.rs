@@ -134,3 +134,49 @@ fn lacks_substring() -> Bool {
         other => panic!("expected Bool(false) from \"abcd\".contains(\"xy\"), got {other:?}"),
     }
 }
+
+/// List append must not explode a Str argument into char elements via the chokepoint.
+#[test]
+fn list_append_str_arg_stays_single_element() {
+    let src = r#"module test.append_str
+fn two_elements() -> Int {
+  let xs = [1]
+  xs.append("ab").length()
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "two_elements") {
+        Ok(Value::Int(2)) => {}
+        other => panic!("expected Int(2) from [1].append(\"ab\"), got {other:?}"),
+    }
+}
+
+/// flat_map flattening applies to Cons/List chains only; a returned Str is one element.
+#[test]
+fn flat_map_str_result_not_char_exploded() {
+    let src = r#"module test.flat_map_str
+fn two_elements() -> Int {
+  let xs = [1]
+  xs.flat_map(fn(_x) { ["ab"] }).length()
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "two_elements") {
+        Ok(Value::Int(2)) => {}
+        other => panic!("expected Int(2) from flat_map returning [\"ab\"], got {other:?}"),
+    }
+}

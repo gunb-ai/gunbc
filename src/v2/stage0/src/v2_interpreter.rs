@@ -1685,9 +1685,14 @@ fn eval_algebra_method(
                 let mut result = Vec::new();
                 for item in items.iter() {
                     let mapped = apply_closure(f, &[item.clone()], env, ctx)?;
-                    match free_monoid_to_vec(&mapped) {
-                        Some(inner) => result.extend(inner),
-                        None => result.push(mapped),
+                    // Cons/List flatten only — Value::Str stays one element (ctrl#1476 B1).
+                    if matches!(&mapped, Value::Str(_)) {
+                        result.push(mapped);
+                    } else {
+                        match free_monoid_to_vec(&mapped) {
+                            Some(inner) => result.extend(inner),
+                            None => result.push(mapped),
+                        }
                     }
                 }
                 Ok(Value::List(Rc::new(result)))
@@ -1742,9 +1747,14 @@ fn eval_algebra_method(
             if let Ok(items) = expect_list(&receiver, "concat") {
                 let mut result = items.to_vec();
                 for arg in args {
-                    match free_monoid_to_vec(arg) {
-                        Some(other) => result.extend(other),
-                        None => result.push(arg.clone()),
+                    // Non-list Str args append as one element, not char-exploded (ctrl#1476 B1).
+                    if matches!(arg, Value::Str(_)) {
+                        result.push(arg.clone());
+                    } else {
+                        match free_monoid_to_vec(arg) {
+                            Some(other) => result.extend(other),
+                            None => result.push(arg.clone()),
+                        }
                     }
                 }
                 return Ok(Value::List(Rc::new(result)));
