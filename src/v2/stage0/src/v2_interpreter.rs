@@ -1719,6 +1719,16 @@ fn eval_algebra_method(
         }
 
         "concat" | "append" | "push" => {
+            // String concat preserves the String representation: a String IS a
+            // FreeMonoid<Char>, but its canonical value form is Value::Str — concat must
+            // not explode it to a char list via the FreeMonoid chokepoint (ctrl#1476 B1).
+            if let Value::Str(s) = &receiver {
+                let mut result = s.clone();
+                for arg in args {
+                    result.push_str(&format!("{}", arg));
+                }
+                return Ok(Value::Str(result));
+            }
             if let Ok(items) = expect_list(&receiver, "concat") {
                 let mut result = items.to_vec();
                 for arg in args {
@@ -1729,18 +1739,9 @@ fn eval_algebra_method(
                 }
                 return Ok(Value::List(Rc::new(result)));
             }
-            match &receiver {
-                Value::Str(s) => {
-                    let mut result = s.clone();
-                    for arg in args {
-                        result.push_str(&format!("{}", arg));
-                    }
-                    Ok(Value::Str(result))
-                }
-                _ => Err(InterpError::TypeError {
-                    msg: format!("cannot concat on {}", receiver.type_label()),
-                }),
-            }
+            Err(InterpError::TypeError {
+                msg: format!("cannot concat on {}", receiver.type_label()),
+            })
         }
 
         "length" | "count" | "size" => match free_monoid_to_vec(&receiver) {
