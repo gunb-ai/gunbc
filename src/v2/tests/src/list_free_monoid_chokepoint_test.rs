@@ -134,3 +134,50 @@ fn lacks_substring() -> Bool {
         other => panic!("expected Bool(false) from \"abcd\".contains(\"xy\"), got {other:?}"),
     }
 }
+
+/// Slicing a String must return a substring (Str), not a char-list. The FreeMonoid
+/// chokepoint would reroute the Str through the list arm and return Value::List of
+/// one-char Strs; the dedicated Str arm must win.
+#[test]
+fn string_slice_returns_substring_not_char_list() {
+    let src = r#"module test.str_slice
+fn mid() -> String {
+  "abcdef"[1..4]
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "mid") {
+        Ok(Value::Str(s)) => assert_eq!(s, "bcd"),
+        other => panic!("expected Str(\"bcd\") from \"abcdef\"[1:4], got {other:?}"),
+    }
+}
+
+/// Indexing a String must return a one-char Str via its dedicated arm, not a
+/// char-list element via the chokepoint.
+#[test]
+fn string_index_returns_one_char_str() {
+    let src = r#"module test.str_index
+fn nth() -> String {
+  "abcdef"[2]
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "nth") {
+        Ok(Value::Str(s)) => assert_eq!(s, "c"),
+        other => panic!("expected Str(\"c\") from \"abcdef\"[2], got {other:?}"),
+    }
+}

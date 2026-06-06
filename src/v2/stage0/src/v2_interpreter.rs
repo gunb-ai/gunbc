@@ -1754,12 +1754,15 @@ fn eval_algebra_method(
             })
         }
 
-        "length" | "count" | "size" => match free_monoid_to_vec(&receiver) {
-            Some(items) => Ok(Value::Int(items.len() as i64)),
-            None => match &receiver {
-                Value::Map(m) => Ok(Value::Int(m.len() as i64)),
-                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
-                _ => Err(InterpError::TypeError {
+        // Str/Map are length-counted directly (a String IS a FreeMonoid<Char>, so the
+        // chokepoint would give the same char count — but matched first to avoid
+        // allocating a one-char-per-element Vec) (ctrl#1476 B1).
+        "length" | "count" | "size" => match &receiver {
+            Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+            Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+            _ => match free_monoid_to_vec(&receiver) {
+                Some(items) => Ok(Value::Int(items.len() as i64)),
+                None => Err(InterpError::TypeError {
                     msg: format!("cannot get length of {}", receiver.type_label()),
                 }),
             },
