@@ -18,7 +18,6 @@ import v4.std.collection { List }
 import v4.std.diagnostic { Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { fold_list, length }
-import v4.std.collection { Absent, Optional, Present }
 import v4.std.node { Node, Symbol }
 import v4.std.runtime { RuntimeValue }
 import v4.std.text { String }
@@ -174,8 +173,8 @@ type CorpusEvalPinLookup
   | CorpusEvalPinLookupFound { pin: CorpusEvalExpectedPin }
 
 
-fn corpus_eval_expected_pin_lookup(claim_id: Symbol) -> Optional<CorpusEvalExpectedPin> {
-  match fold_list(
+fn corpus_eval_expected_pin_lookup(claim_id: Symbol) -> CorpusEvalPinLookup {
+  fold_list(
     xs: manual_corpus_eval_expected_pins,
     empty: CorpusEvalPinLookupMissing,
     cons: fn(acc, item) {
@@ -189,17 +188,14 @@ fn corpus_eval_expected_pin_lookup(claim_id: Symbol) -> Optional<CorpusEvalExpec
           }
       }
     }
-  ) {
-    CorpusEvalPinLookupFound { pin: p } => Present { value: p }
-    CorpusEvalPinLookupMissing => Absent
-  }
+  )
 }
 
 
 fn corpus_eval_host_run_spec_has_pin(spec: CorpusEvalHostRunSpec) -> Bool {
   match corpus_eval_expected_pin_lookup(claim_id: spec.claim_id) {
-    Present { value: _ } => true
-    Absent => false
+    CorpusEvalPinLookupFound { pin: _ } => true
+    CorpusEvalPinLookupMissing => false
   }
 }
 
@@ -294,66 +290,63 @@ fn corpus_eval_host_rejected_transport_gate(pin: CorpusEvalExpectedPin) -> Bool 
 }
 
 
+fn corpus_eval_executed_row_runtime_gate_for_claim(
+  run: TestClaimRun<Node, RuntimeValue>,
+  claim_id: Symbol
+) -> Bool {
+  match corpus_eval_expected_pin_lookup(claim_id: claim_id) {
+    CorpusEvalPinLookupFound { pin: pin } =>
+      corpus_eval_executed_row_runtime_gate(run: run, pin: pin)
+    CorpusEvalPinLookupMissing => false
+  }
+}
+
+
+fn corpus_eval_host_rejected_transport_gate_for_claim(claim_id: Symbol) -> Bool {
+  match corpus_eval_expected_pin_lookup(claim_id: claim_id) {
+    CorpusEvalPinLookupFound { pin: pin } =>
+      corpus_eval_host_rejected_transport_gate(pin: pin)
+    CorpusEvalPinLookupMissing => false
+  }
+}
+
+
 // Authoring-time witness: pin table frontier + host-run spec alignment.
 fn witness_corpus_eval_tracked_expectation_closed() -> Bool {
   corpus_eval_tracked_expectation_pins_well_formed()
 }
 
 // Runtime drift gates (projected by scripts/v4-testclaim-corpus-eval.sh via --claim-run).
+// Pins are projected from `manual_corpus_eval_expected_pins` — no duplicate inline literals.
 fn witness_corpus_eval_row_eval_mvp2_runtime_gate() -> Bool {
-  corpus_eval_executed_row_runtime_gate(
-  run: run_eval_mvp2_test_claim_route,
-  pin: CorpusEvalExpectedPin {
-    claim_id: claim_eval_mvp2_test_claim_route,
-    observation: ExecutedFail,
-    primary_reason: eval_rejected_invalid_node,
-    dissolution_target: dissolution_target_transform_eval
-  }
+  corpus_eval_executed_row_runtime_gate_for_claim(
+    run: run_eval_mvp2_test_claim_route,
+    claim_id: claim_eval_mvp2_test_claim_route
   )
 }
 
 fn witness_corpus_eval_row_mechanical_reverification_runtime_gate() -> Bool {
-  corpus_eval_executed_row_runtime_gate(
-  run: run_rust_language_model_emit_mechanical_reverification_claim,
-  pin: CorpusEvalExpectedPin {
-    claim_id: claim_rust_language_model_emit_mechanical_reverification,
-    observation: ExecutedFail,
-    primary_reason: eval_rejected_invalid_node,
-    dissolution_target: dissolution_target_transform_eval
-  }
+  corpus_eval_executed_row_runtime_gate_for_claim(
+    run: run_rust_language_model_emit_mechanical_reverification_claim,
+    claim_id: claim_rust_language_model_emit_mechanical_reverification
   )
 }
 
 fn witness_corpus_eval_row_subsumption_reverifies_runtime_gate() -> Bool {
-  corpus_eval_executed_row_runtime_gate(
-  run: run_rust_language_model_emit_subsumption_reverifies,
-  pin: CorpusEvalExpectedPin {
-    claim_id: claim_rust_language_model_emit_subsumption_reverifies,
-    observation: ExecutedFail,
-    primary_reason: eval_rejected_type_node,
-    dissolution_target: dissolution_target_subsumption_tree_eval
-  }
+  corpus_eval_executed_row_runtime_gate_for_claim(
+    run: run_rust_language_model_emit_subsumption_reverifies,
+    claim_id: claim_rust_language_model_emit_subsumption_reverifies
   )
 }
 
 fn witness_corpus_eval_row_parallelism_host_rejected_gate() -> Bool {
-  corpus_eval_host_rejected_transport_gate(
-  pin: CorpusEvalExpectedPin {
-    claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
-    observation: HostRejected,
-    primary_reason: interpreter_classified_dependency_view_non_exhaustive,
-    dissolution_target: dissolution_target_cdv_eager_moth_810
-  }
+  corpus_eval_host_rejected_transport_gate_for_claim(
+    claim_id: claim_parallelism_data_dependency_run_test_claim_receipt
   )
 }
 
 fn witness_corpus_eval_row_effect_host_rejected_gate() -> Bool {
-  corpus_eval_host_rejected_transport_gate(
-    pin: CorpusEvalExpectedPin {
-      claim_id: claim_lens_effect_depends_on_runtime_verdict,
-      observation: HostRejected,
-      primary_reason: interpreter_classified_dependency_view_non_exhaustive,
-      dissolution_target: dissolution_target_cdv_eager_moth_810
-    }
+  corpus_eval_host_rejected_transport_gate_for_claim(
+    claim_id: claim_lens_effect_depends_on_runtime_verdict
   )
 }
