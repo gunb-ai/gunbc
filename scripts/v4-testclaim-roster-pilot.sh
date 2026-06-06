@@ -53,4 +53,21 @@ claim_run \
   "$roster_entry" \
   "$(dag_string_data v4_roster_pilot_edit_locus_fail_closed_fn)"
 
-echo "::notice title=v4 roster pilot::edit_locus resolver witnesses passed"
+generator_entry="$(dag_string_data v4_roster_pilot_generator_provenance_entry)"
+if [[ -z "$generator_entry" ]]; then
+  echo "error: missing v4_roster_pilot_generator_provenance_entry in $roster" >&2
+  exit 2
+fi
+
+"$bin" run \
+  --source-root src/v4 \
+  --entry "$roster" \
+  --function witness_v4_roster_pilot_declares_generator_provenance_row \
+  --claim-run
+
+claim_run \
+  "generator provenance" \
+  "$generator_entry" \
+  "$(dag_string_data v4_roster_pilot_generator_provenance_fn)"
+
+echo "::notice title=v4 roster pilot::edit_locus + generator_provenance witnesses passed"

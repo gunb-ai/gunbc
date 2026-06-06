@@ -22,8 +22,8 @@
 //! F.2-P1/F.2-P2 same-path tests expand inside this harness only. Explicit deferral:
 //! **ROADMAP.md** **T-PB-B** / `pb_rust_tests_outside_residual_zero`
 //! (`ROADMAP.md:43` Public Operational Lanes, `ROADMAP.md:63` Nine lanes); dissolve when T-22 runs
-//! `lens_testgen/generator_provenance.dag` + `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim`
-//! end-to-end. PR #4265 added T-38B `lens_effect/effect_depends_on` pins the same way.
+//! `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` end-to-end (`generator_provenance` promoted
+//! to roster pilot via ctrl#1476 B3). PR #4265 added T-38B `lens_effect/effect_depends_on` pins the same way.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
@@ -47,10 +47,6 @@ const LENS_TESTGEN_DAG_INPUT_SURFACE_PATH: &str =
 const LENS_EFFECT_DEPENDS_ON_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_effect/effect_depends_on.dag");
 const LENS_EFFECT_DEPENDS_ON_PATH: &str = "src/v4/test/claim/lens_effect/effect_depends_on.dag";
-const LENS_TESTGEN_GENERATOR_PROVENANCE_DAG: &str =
-    include_str!("../../../../v4/test/claim/lens_testgen/generator_provenance.dag");
-const LENS_TESTGEN_GENERATOR_PROVENANCE_PATH: &str =
-    "src/v4/test/claim/lens_testgen/generator_provenance.dag";
 const LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_testgen/shadow_ci_receipt.dag");
 const LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH: &str =
@@ -215,35 +211,6 @@ fn v4_lens_testgen_generator_carries_provenance_and_profile_fields() {
         !TESTGEN_DAG.contains("type GeneratorProvenance")
             && !TESTGEN_DAG.contains("type GeneratorId"),
         "GeneratorProvenance/GeneratorId are authored in v4.std.artifact; testgen only consumes them"
-    );
-}
-
-#[test]
-fn v4_lens_testgen_generator_provenance_claim_parses_and_pins_witness() {
-    let module = parse_module(
-        LENS_TESTGEN_GENERATOR_PROVENANCE_DAG,
-        LENS_TESTGEN_GENERATOR_PROVENANCE_PATH,
-    );
-    assert_eq!(
-        module_paths(&module),
-        vec![vec![
-            "v4",
-            "test",
-            "claim",
-            "lens_testgen",
-            "generator_provenance"
-        ]],
-        "provenance claim module should stay under recursive T-22 discovery"
-    );
-    assert!(
-        LENS_TESTGEN_GENERATOR_PROVENANCE_DAG.contains(
-            "import v4.lens.testgen { scheduled_generators_carry_provenance }"
-        ) && LENS_TESTGEN_GENERATOR_PROVENANCE_DAG.contains(
-            "data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = EqualsClaim"
-        ) && LENS_TESTGEN_GENERATOR_PROVENANCE_DAG.contains(
-            "data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()"
-        ),
-        "{LENS_TESTGEN_GENERATOR_PROVENANCE_PATH}: must pin the testgen provenance witness via EqualsClaim + green Bool routed through the lens helper"
     );
 }
 
