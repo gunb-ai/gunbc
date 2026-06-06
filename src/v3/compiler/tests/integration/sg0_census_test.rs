@@ -1116,6 +1116,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
     // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
     "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
+    // Boundary Discipline guard for `src/v4/std/text.dag`: the type-ABSENCE assertion (text
+    // module must not redeclare ByteString/FileBody/FileContent/TargetSource) — the one
+    // non-behavioral check retained host-side when the parse-surface smoke folded into
+    // discriminating .dag witnesses (src/v4/test/claim/std_text/carrier_claims.dag).
+    // Dissolves when a .dag/host mechanism asserts a module's declared-type set as data.
+    "src/v3/compiler/tests/integration/v4_std_text_boundary_carrier_guard_test.rs",
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
