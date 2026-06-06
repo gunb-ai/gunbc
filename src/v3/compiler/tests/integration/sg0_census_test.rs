@@ -1536,6 +1536,38 @@ fn sg0_v3_test_hand_authored_subratchet() {
     );
 }
 
+/// ctrl#1467 §6.4 — the `v4_*_dag_smoke_test.rs` parse-surface subset is **closed to
+/// growth**. These hand-authored Rust tests `parse_for_test` a v4 model file and assert
+/// structural shape against the v3 compiler's internal parse surface — a layering/opacity
+/// inversion (see `gunbc-planning/v4-testclaim-route-through-v2-not-v3-2026-06-05.md`). New
+/// v4 coverage must land as a `.dag` `TestClaim` witness under `src/v4/test/claim/`, run
+/// through **v2** (`dag run --claim-run`), **not** as a new `EXPECTED_HAND_AUTHORED_TEST`
+/// entry. This subset may only **shrink** as smokes are re-homed as witnesses; it must never
+/// grow. Lowering the ceiling on retirement is the normal path; raising it is the regression
+/// this guard fails closed on.
+#[test]
+fn v4_parse_surface_smoke_roster_is_closed_to_growth() {
+    // Pinned to the count at ctrl#1467 §6.4 ratification. Retirements lower this; nothing raises it.
+    const V4_DAG_SMOKE_CEILING: usize = 18;
+    let v4_dag_smokes: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
+        .iter()
+        .copied()
+        .filter(|p| {
+            p.starts_with("src/v3/compiler/tests/integration/v4_")
+                && p.ends_with("_dag_smoke_test.rs")
+        })
+        .collect();
+    assert!(
+        v4_dag_smokes.len() <= V4_DAG_SMOKE_CEILING,
+        "v4_*_dag_smoke_test.rs roster grew to {} (ceiling {V4_DAG_SMOKE_CEILING}). \
+         ctrl#1467 §6.4: new v4 coverage must be a `.dag` `TestClaim` witness under \
+         src/v4/test/claim/ run through v2 — not a new hand-authored v3 parse-surface smoke. \
+         This subset is closed to growth; it may only shrink as smokes are re-homed as witnesses.\n\
+         Offending roster: {v4_dag_smokes:#?}",
+        v4_dag_smokes.len(),
+    );
+}
+
 #[test]
 fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
     let mut by_class: BTreeMap<TestsAsDataMigrationClass, Vec<&str>> = BTreeMap::new();
