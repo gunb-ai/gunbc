@@ -35,9 +35,7 @@ fn record_match_pattern_includes_value_record_arm() {
         .expect("match_pattern should exist in v2_interpreter.rs");
     let match_pattern_body = &source[match_pattern_start..];
     assert!(
-        match_pattern_body.contains(
-            "// Records build as Value::Record (no parent enum), so a VariantPattern whose"
-        ) && match_pattern_body.contains("Value::Record { type_name, fields } =>"),
+        match_pattern_body.contains("Value::Record { type_name, fields } =>"),
         "Generator/record destructuring must route through match_pattern Value::Record arm \
          (ctrl#1476 B3 Gap-1)."
     );
