@@ -1845,11 +1845,9 @@ fn eval_algebra_method(
                 Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
             }
             other => {
-                let key = args
-                    .first()
-                    .ok_or_else(|| InterpError::TypeError {
-                        msg: "get requires a key argument".to_string(),
-                    })?;
+                let key = args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "get requires a key argument".to_string(),
+                })?;
                 raw_map_lookup(other, key, env, ctx)
             }
         },
@@ -3078,10 +3076,7 @@ fn raw_map_lookup(
         }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup = fields.get("lookup").ok_or_else(|| InterpError::TypeError {
-                msg: format!(
-                    "raw_map_lookup expects Map, got {}",
-                    map.type_label()
-                ),
+                msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
             })?;
             match lookup {
                 Value::Closure { .. } => apply_closure(lookup, &[key.clone()], env, ctx),
