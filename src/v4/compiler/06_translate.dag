@@ -826,7 +826,13 @@ fn grammar_serialize_source_matches_row(
             bind_outcome(
               o: conj_positional_targets(parent: tokens_root),
               f: fn(row_targets) {
-                Accepted { value: serialize_source, diagnostics: None }
+                if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
+                  Accepted { value: serialize_source, diagnostics: None }
+                } else {
+                  outcome_rejected(
+                    translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
+                  )
+                }
               }
             )
           }
