@@ -136,6 +136,29 @@ fn lacks_substring() -> Bool {
     }
 }
 
+/// BinOp::Add list concat must match .append: Str operand stays one element.
+#[test]
+fn list_add_str_operand_stays_single_element() {
+    let src = r#"module test.add_str
+fn two_elements() -> Int {
+  let xs = [1]
+  (xs + "ab").length()
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "two_elements") {
+        Ok(Value::Int(2)) => {}
+        other => panic!("expected Int(2) from [1] + \"ab\", got {other:?}"),
+    }
+}
+
 /// List append must not explode a Str argument into char elements via the chokepoint.
 #[test]
 fn list_append_str_arg_stays_single_element() {

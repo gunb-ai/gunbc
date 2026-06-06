@@ -804,12 +804,30 @@ fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
         }
     }
 
-    // List concatenation — List<T> IS FreeMonoid<T>; flatten both operands (Option-B chokepoint).
+    // List concatenation — List<T> IS FreeMonoid<T>; flatten operands (Option-B chokepoint).
+    // Str operands stay atomic when mixed with lists (ctrl#1476 B1; same as .append/.concat).
     if matches!(op, BinOp::Add) {
-        if let (Some(a), Some(b)) = (free_monoid_to_vec(&left), free_monoid_to_vec(&right)) {
-            let mut result = a;
-            result.extend(b);
-            return Ok(Value::List(Rc::new(result)));
+        match (&left, &right) {
+            (l, Value::Str(s)) => {
+                if let Some(mut result) = free_monoid_to_vec(l) {
+                    result.push(Value::Str(s.clone()));
+                    return Ok(Value::List(Rc::new(result)));
+                }
+            }
+            (Value::Str(s), r) => {
+                if let Some(result) = free_monoid_to_vec(r) {
+                    let mut out = vec![Value::Str(s.clone())];
+                    out.extend(result);
+                    return Ok(Value::List(Rc::new(out)));
+                }
+            }
+            _ => {
+                if let (Some(mut a), Some(b)) = (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
+                {
+                    a.extend(b);
+                    return Ok(Value::List(Rc::new(a)));
+                }
+            }
         }
     }
 
@@ -1777,7 +1795,6 @@ fn eval_algebra_method(
             Some(items) => Ok(Value::Int(items.len() as i64)),
             None => match &receiver {
                 Value::Map(m) => Ok(Value::Int(m.len() as i64)),
-                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
                 _ => Err(InterpError::TypeError {
                     msg: format!("cannot get length of {}", receiver.type_label()),
                 }),
@@ -2774,17 +2791,30 @@ fn eval_builtin(
                 return Ok(Some(Value::Str(result)));
             }
             match positional.as_slice() {
-                [a, b] => {
-                    if let (Some(a_items), Some(b_items)) =
-                        (free_monoid_to_vec(a), free_monoid_to_vec(b))
-                    {
-                        let mut result = a_items;
-                        result.extend(b_items);
-                        Ok(Some(Value::List(Rc::new(result))))
-                    } else {
-                        Ok(None)
-                    }
-                }
+                [a, b] => match (a, b) {
+                    (l, Value::Str(s)) => match free_monoid_to_vec(l) {
+                        Some(mut result) => {
+                            result.push(Value::Str(s.clone()));
+                            Ok(Some(Value::List(Rc::new(result))))
+                        }
+                        None => Ok(None),
+                    },
+                    (Value::Str(s), r) => match free_monoid_to_vec(r) {
+                        Some(result) => {
+                            let mut out = vec![Value::Str(s.clone())];
+                            out.extend(result);
+                            Ok(Some(Value::List(Rc::new(out))))
+                        }
+                        None => Ok(None),
+                    },
+                    _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+                        (Some(mut a_items), Some(b_items)) => {
+                            a_items.extend(b_items);
+                            Ok(Some(Value::List(Rc::new(a_items))))
+                        }
+                        _ => Ok(None),
+                    },
+                },
                 _ => Ok(None),
             }
         }
