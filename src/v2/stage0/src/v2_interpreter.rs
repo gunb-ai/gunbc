@@ -2783,7 +2783,16 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
-        "map_get" | "lookup" => match positional.as_slice() {
+        // `lookup` is the low-level raw map probe (present -> value, missing -> Null); the
+        // pattern bridge (Null->None, value->Some) lets the std `map_get` (v4.std.collection,
+        // Outcome<Optional<V>>) wrap it. `map_get` is NOT handled here on purpose: the builtin
+        // arm previously SHADOWED the typed std map_get (eval_builtin wins over user fns at
+        // eval_call), so `map_get(...)` returned the RAW value and any `match { Accepted; Rejected }`
+        // consumer crashed non-exhaustively (B-LOOKUP-1). Dropping `map_get` here routes it to the
+        // typed v4.std.collection authority. [List=FreeMonoid/Option-alias recurrence: the bridge
+        // is honored per-operation (matching, ==, zip_eq, lookup) rather than once at the
+        // representation — tracked for the post-R2 representation-level dissolution.]
+        "lookup" => match positional.as_slice() {
             [Value::Map(m), Value::Str(k)] => {
                 Ok(Some(m.get(k.as_str()).cloned().unwrap_or(Value::Null)))
             }
