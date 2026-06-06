@@ -2,6 +2,8 @@
 // Scope: T-38 tracked-expectation pins for the manual corpus roster (verdict arm + primary reason).
 // Status: drift gate authority — host transport mirrors `manual_corpus_eval_expected_pins` +
 // `manual_corpus_eval_host_run_specs` (single authority; no parallel bash claim-list).
+// HostRejected CDV rows: transport observes `corpus_eval_cdv_host_rejection_stderr_marker`
+// (interim pre-TestClaimRun precondition); pin alignment is `corpus_eval_host_rejected_transport_gate`.
 // 🟡 gated — feature:t38-testclaim-corpus-eval — bind tracked-expectation gate design (operator GO 2026-06-05).
 
 module v4.test.claim.workflow.manual_corpus_eval_expected
@@ -43,6 +45,11 @@ data run_rust_language_model_emit_subsumption_reverifies_sym: Symbol = run_rust_
 
 // Host-transport rejection carrier for pre-TestClaimRun interpreter failures (CDV fold site).
 data interpreter_classified_dependency_view_non_exhaustive: Symbol = interpreter_classified_dependency_view_non_exhaustive
+
+// Interim transport precondition (eager-moth-810): host must observe this stderr substring before
+// invoking HostRejected witnesses — TestClaimRun is unreachable on CDV rows. Pinned here so bash
+// projects the marker; it is NOT the drift gate (pin alignment is `corpus_eval_host_rejected_transport_gate`).
+data corpus_eval_cdv_host_rejection_stderr_marker: String = "non-exhaustive pattern match on: ClassifiedDependencyView"
 
 // Pass-arm sentinel for `corpus_eval_row_primary_reason` (named constant, not a bare literal).
 data corpus_eval_verdict_pass_reason: Symbol = corpus_eval_verdict_pass_reason
