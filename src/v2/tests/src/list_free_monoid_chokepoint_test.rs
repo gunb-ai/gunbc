@@ -76,8 +76,13 @@ fn three_len() -> Int {
 
 #[test]
 fn freemonoid_cons_chain_length_routes_through_chokepoint() {
+    // Declare the FreeMonoid Empty/Cons coproduct inline: the v2 test harness only
+    // indexes src/v2 + dsl, so v4.std.algebra is unreachable here. The interpreter's
+    // `free_monoid_to_vec` chokepoint matches the variant *names* "Empty"/"Cons", so an
+    // inline declaration exercises the identical FreeMonoid<->List bridge (ctrl#1476 B1).
     let src = r#"module test.fm_cons_len
-fn cons_three() -> List<Int> {
+type IntList = Empty | Cons { head: Int, tail: IntList }
+fn cons_three() -> IntList {
   Cons { head: 1, tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } } }
 }
 fn cons_len() -> Int {
