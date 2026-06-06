@@ -1623,9 +1623,11 @@ fn eval_algebra_method(
         // `map_get` (v4.std.collection, Outcome<Optional<V>>) wrap it; the bootstrap otherwise
         // only resolves `.lookup` on the record-form `Map { lookup: fn }`, not native maps.
         "lookup" => match (&receiver, args) {
-            (Value::Map(m), [Value::Str(k)]) => Ok(m.get(k.as_str()).cloned().unwrap_or(Value::Null)),
+            (Value::Map(m), [Value::Str(k)]) => {
+                Ok(m.get(k.as_str()).cloned().unwrap_or(Value::Null))
+            }
             _ => Err(InterpError::Unimplemented {
-                what: format!("method 'lookup' on non-map receiver"),
+                what: "method 'lookup' on non-map receiver".to_string(),
             }),
         },
 
