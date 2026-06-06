@@ -804,11 +804,11 @@ fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
         }
     }
 
-    // List concatenation
+    // List concatenation — List<T> IS FreeMonoid<T>; flatten both operands (Option-B chokepoint).
     if matches!(op, BinOp::Add) {
-        if let (Value::List(a), Value::List(b)) = (&left, &right) {
-            let mut result: Vec<Value> = a.to_vec();
-            result.extend(b.iter().cloned());
+        if let (Some(a), Some(b)) = (free_monoid_to_vec(&left), free_monoid_to_vec(&right)) {
+            let mut result = a;
+            result.extend(b);
             return Ok(Value::List(Rc::new(result)));
         }
     }
@@ -1393,14 +1393,14 @@ fn eval_field_access(
         Some(FieldAccessStyle::TupleFirst) => {
             // Map entry: (key, value).first → key
             // Or list: first element
-            match &base_val {
-                Value::List(items) => Ok(items.first().cloned().unwrap_or(Value::Null)),
-                _ => extract_field(&base_val, &field_name),
+            match expect_list(&base_val, "tuple.first") {
+                Ok(items) => Ok(items.first().cloned().unwrap_or(Value::Null)),
+                Err(_) => extract_field(&base_val, &field_name),
             }
         }
-        Some(FieldAccessStyle::TupleSecond) => match &base_val {
-            Value::List(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
-            _ => extract_field(&base_val, &field_name),
+        Some(FieldAccessStyle::TupleSecond) => match expect_list(&base_val, "tuple.second") {
+            Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
+            Err(_) => extract_field(&base_val, &field_name),
         },
         Some(FieldAccessStyle::OptionalUnwrap) => {
             // .value on Optional — unwrap or return Null
@@ -1528,19 +1528,13 @@ fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpR
     let collection = eval_expr(&foreach_collection(node.clone()), env, ctx)?;
     let body_node = foreach_body(node.clone());
 
-    match collection {
-        Value::List(items) => {
-            let mut results = Vec::with_capacity(items.len());
-            for item in items.iter() {
-                let iter_env = Env::with_binding(env, var_name.clone(), item.clone());
-                results.push(eval_expr(&body_node, &iter_env, ctx)?);
-            }
-            Ok(Value::List(Rc::new(results)))
-        }
-        _ => Err(InterpError::TypeError {
-            msg: format!("foreach expects a list, got {}", collection.type_label()),
-        }),
+    let items = expect_list(&collection, "foreach")?;
+    let mut results = Vec::with_capacity(items.len());
+    for item in items.iter() {
+        let iter_env = Env::with_binding(env, var_name.clone(), item.clone());
+        results.push(eval_expr(&body_node, &iter_env, ctx)?);
     }
+    Ok(Value::List(Rc::new(results)))
 }
 
 // ---------------------------------------------------------------------------
@@ -1552,7 +1546,8 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let idx = eval_expr(&index_expr(node.clone()), env, ctx)?;
 
     match (&base, &idx) {
-        (Value::List(items), Value::Int(i)) => {
+        (base_val, Value::Int(i)) if free_monoid_to_vec(base_val).is_some() => {
+            let items = expect_list(base_val, "index")?;
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
         }
@@ -1584,7 +1579,8 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let end = eval_expr(&slice_end(node.clone()), env, ctx)?;
 
     match (&base, &start, &end) {
-        (Value::List(items), Value::Int(s), Value::Int(e)) => {
+        (base_val, Value::Int(s), Value::Int(e)) if free_monoid_to_vec(base_val).is_some() => {
+            let items = expect_list(base_val, "slice")?;
             let s = *s as usize;
             let e = (*e as usize).min(items.len());
             Ok(Value::List(Rc::new(items[s..e].to_vec())))
@@ -1679,9 +1675,9 @@ fn eval_algebra_method(
                 let mut result = Vec::new();
                 for item in items.iter() {
                     let mapped = apply_closure(f, &[item.clone()], env, ctx)?;
-                    match mapped {
-                        Value::List(inner) => result.extend(inner.iter().cloned()),
-                        _ => result.push(mapped),
+                    match free_monoid_to_vec(&mapped) {
+                        Some(inner) => result.extend(inner),
+                        None => result.push(mapped),
                     }
                 }
                 Ok(Value::List(Rc::new(result)))
@@ -1722,36 +1718,40 @@ fn eval_algebra_method(
             })
         }
 
-        "concat" | "append" | "push" => match &receiver {
-            Value::List(items) => {
+        "concat" | "append" | "push" => {
+            if let Ok(items) = expect_list(&receiver, "concat") {
                 let mut result = items.to_vec();
                 for arg in args {
-                    match arg {
-                        Value::List(other) => result.extend(other.iter().cloned()),
-                        _ => result.push(arg.clone()),
+                    match free_monoid_to_vec(arg) {
+                        Some(other) => result.extend(other),
+                        None => result.push(arg.clone()),
                     }
                 }
-                Ok(Value::List(Rc::new(result)))
+                return Ok(Value::List(Rc::new(result)));
             }
-            Value::Str(s) => {
-                let mut result = s.clone();
-                for arg in args {
-                    result.push_str(&format!("{}", arg));
+            match &receiver {
+                Value::Str(s) => {
+                    let mut result = s.clone();
+                    for arg in args {
+                        result.push_str(&format!("{}", arg));
+                    }
+                    Ok(Value::Str(result))
                 }
-                Ok(Value::Str(result))
+                _ => Err(InterpError::TypeError {
+                    msg: format!("cannot concat on {}", receiver.type_label()),
+                }),
             }
-            _ => Err(InterpError::TypeError {
-                msg: format!("cannot concat on {}", receiver.type_label()),
-            }),
-        },
+        }
 
-        "length" | "count" | "size" => match &receiver {
-            Value::List(items) => Ok(Value::Int(items.len() as i64)),
-            Value::Map(m) => Ok(Value::Int(m.len() as i64)),
-            Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
-            _ => Err(InterpError::TypeError {
-                msg: format!("cannot get length of {}", receiver.type_label()),
-            }),
+        "length" | "count" | "size" => match free_monoid_to_vec(&receiver) {
+            Some(items) => Ok(Value::Int(items.len() as i64)),
+            None => match &receiver {
+                Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+                _ => Err(InterpError::TypeError {
+                    msg: format!("cannot get length of {}", receiver.type_label()),
+                }),
+            },
         },
 
         "first" => {
@@ -1805,11 +1805,12 @@ fn eval_algebra_method(
             Ok(Value::List(Rc::new(result)))
         }
 
-        "contains" | "has" => match &receiver {
-            Value::List(items) => {
+        "contains" | "has" => match expect_list(&receiver, "contains") {
+            Ok(items) => {
                 let target = args.first().cloned().unwrap_or(Value::Null);
                 Ok(Value::Bool(items.iter().any(|item| *item == target)))
             }
+            Err(_) => match &receiver {
             Value::Map(m) => {
                 let key = expect_str(args.first(), "contains")?;
                 Ok(Value::Bool(m.contains_key(&key)))
@@ -1821,6 +1822,7 @@ fn eval_algebra_method(
             _ => Err(InterpError::TypeError {
                 msg: format!("contains not supported on {}", receiver.type_label()),
             }),
+            },
         },
 
         "join" => {
@@ -1835,13 +1837,11 @@ fn eval_algebra_method(
                 let key = expect_str(args.first(), "get")?;
                 Ok(m.get(&key).cloned().unwrap_or(Value::Null))
             }
-            Value::List(items) => {
+            other => {
+                let items = expect_list(other, "get")?;
                 let idx = expect_int(args.first(), "get")?;
                 Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
             }
-            _ => Err(InterpError::TypeError {
-                msg: format!("get not supported on {}", receiver.type_label()),
-            }),
         },
 
         "insert" | "map_insert" => {
@@ -2732,27 +2732,37 @@ fn eval_builtin(
                 return Ok(Some(Value::Str(result)));
             }
             match positional.as_slice() {
-                [Value::List(a), Value::List(b)] => {
-                    let mut result = a.to_vec();
-                    result.extend(b.iter().cloned());
-                    Ok(Some(Value::List(Rc::new(result))))
+                [a, b] => {
+                    if let (Some(a_items), Some(b_items)) =
+                        (free_monoid_to_vec(a), free_monoid_to_vec(b))
+                    {
+                        let mut result = a_items;
+                        result.extend(b_items);
+                        Ok(Some(Value::List(Rc::new(result))))
+                    } else {
+                        Ok(None)
+                    }
                 }
                 _ => Ok(None),
             }
         }
 
         "count" => match positional.first() {
-            Some(Value::List(items)) => Ok(Some(Value::Int(items.len() as i64))),
-            _ => Ok(None),
+            Some(v) => match free_monoid_to_vec(v) {
+                Some(items) => Ok(Some(Value::Int(items.len() as i64))),
+                None => Ok(None),
+            },
+            None => Ok(None),
         },
 
         "reverse" => match positional.first() {
-            Some(Value::List(items)) => {
+            Some(v) => {
+                let items = expect_list(v, "reverse")?;
                 let mut r = items.to_vec();
                 r.reverse();
                 Ok(Some(Value::List(Rc::new(r))))
             }
-            _ => Ok(None),
+            None => Ok(None),
         },
 
         "string_length" => {
@@ -2799,7 +2809,8 @@ fn eval_builtin(
         }
 
         "list_push" | "append" => match positional.as_slice() {
-            [Value::List(items), item] => {
+            [list_val, item] => {
+                let items = expect_list(list_val, "list_push")?;
                 let mut result = items.to_vec();
                 result.push((*item).clone());
                 Ok(Some(Value::List(Rc::new(result))))
@@ -2808,9 +2819,11 @@ fn eval_builtin(
         },
 
         "list_concat" => match positional.as_slice() {
-            [Value::List(a), Value::List(b)] => {
-                let mut result = a.to_vec();
-                result.extend(b.iter().cloned());
+            [a, b] => {
+                let a_items = expect_list(a, "list_concat")?;
+                let b_items = expect_list(b, "list_concat")?;
+                let mut result = a_items.to_vec();
+                result.extend(b_items.iter().cloned());
                 Ok(Some(Value::List(Rc::new(result))))
             }
             _ => Ok(None),
