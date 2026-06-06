@@ -426,6 +426,11 @@ fn test_claim_coproduct_variant_eq(a: TestClaimCoproductVariant, b: TestClaimCop
         TestClaimEqualsClaimVariant => true
         _ => false
       }
+    TestClaimStructuralEqualsClaimVariant =>
+      match b {
+        TestClaimStructuralEqualsClaimVariant => true
+        _ => false
+      }
     TestClaimRoundTripClaimVariant =>
       match b {
         TestClaimRoundTripClaimVariant => true
@@ -1080,6 +1085,8 @@ fn impossible_bug_coverage_projection_from_claim(
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       CoverageSliceNotApplicable
     EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      CoverageSliceNotApplicable
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
       CoverageSliceNotApplicable
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       CoverageSliceNotApplicable

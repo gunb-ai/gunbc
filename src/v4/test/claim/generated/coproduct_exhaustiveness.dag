@@ -110,6 +110,11 @@ fn witness_coproduct_exhaustiveness_variant_emits(anchor: GeneratedAnchorKey) ->
                 TestClaimEqualsClaimVariant => true
                 _ => false
               }
+            TestClaimStructuralEqualsClaimVariant =>
+              match omitted_variant {
+                TestClaimStructuralEqualsClaimVariant => true
+                _ => false
+              }
             TestClaimRoundTripClaimVariant =>
               match omitted_variant {
                 TestClaimRoundTripClaimVariant => true

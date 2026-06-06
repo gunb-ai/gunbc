@@ -186,6 +186,7 @@ type TestClaimCoproductVariant
   = TestClaimCompilesClaimVariant
   | TestClaimDiagnosticClaimVariant
   | TestClaimEqualsClaimVariant
+  | TestClaimStructuralEqualsClaimVariant
   | TestClaimRoundTripClaimVariant
 
 
@@ -226,6 +227,20 @@ type TestClaim
       rhs: Node
       classification: TestClassification
     }
+  // StructuralEqualsClaim — `lhs` and `rhs` are compared **structurally** (admitted
+  // well-formed, then node-equality), NOT runtime-evaluated. EqualsClaim is *reductive*
+  // (lhs reduces under the interpretation to rhs — e.g. add(2,3) == 5); a structural
+  // *receipt* comparison (two type/receipt nodes that should be identical) is a distinct
+  // intent and gets a distinct variant so the harness cannot confuse the two — see
+  // `gunbc-planning/v4-testclaim-route-through-v2-not-v3-2026-06-05.md` §6.3. Same fields as
+  // EqualsClaim; the discrimination is the variant tag, evaluated by `run_test_claim`.
+  | StructuralEqualsClaim {
+      label: String
+      anchor: ClaimAnchorKey
+      lhs: Node
+      rhs: Node
+      classification: TestClassification
+    }
   | RoundTripClaim {
       label: String
       anchor: ClaimAnchorKey
@@ -239,6 +254,7 @@ fn test_claim_input(c: TestClaim) -> Node {
     CompilesClaim { input: n, label: _, anchor: _, expected_value: _, classification: _ } => n
     DiagnosticClaim { input: n, label: _, anchor: _, expected_rejection: _, classification: _ } => n
     EqualsClaim { lhs: n, label: _, anchor: _, rhs: _, classification: _ } => n
+    StructuralEqualsClaim { lhs: n, label: _, anchor: _, rhs: _, classification: _ } => n
     RoundTripClaim { input: n, label: _, anchor: _, classification: _ } => n
   }
 }
@@ -250,6 +266,7 @@ fn test_claim_label(c: TestClaim) -> String {
     CompilesClaim { label: l, anchor: _, input: _, expected_value: _, classification: _ } => l
     DiagnosticClaim { label: l, anchor: _, input: _, expected_rejection: _, classification: _ } => l
     EqualsClaim { label: l, anchor: _, lhs: _, rhs: _, classification: _ } => l
+    StructuralEqualsClaim { label: l, anchor: _, lhs: _, rhs: _, classification: _ } => l
     RoundTripClaim { label: l, anchor: _, input: _, classification: _ } => l
   }
 }
@@ -264,6 +281,8 @@ fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
       TestClaimDiagnosticClaimVariant
     EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
       TestClaimEqualsClaimVariant
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      TestClaimStructuralEqualsClaimVariant
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       TestClaimRoundTripClaimVariant
   }
@@ -318,6 +337,8 @@ fn non_empty_diagnostics_evaluation_nodes(d: NonEmptyDiagnostics) -> List<Node> 
 fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
   match c {
     EqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
+    StructuralEqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
       list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
     CompilesClaim { input: n, expected_value: e, label: _, anchor: _, classification: _ } =>
       list_snoc_item(xs: list_snoc_item(xs: Empty, item: n), item: e)
@@ -380,6 +401,7 @@ fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       false
     EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => false
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => false
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => false
   }
 }
@@ -389,6 +411,7 @@ fn test_claim_anchor(c: TestClaim) -> ClaimAnchorKey {
     CompilesClaim { anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
     DiagnosticClaim { anchor: k, label: _, input: _, expected_rejection: _, classification: _ } => k
     EqualsClaim { anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
+    StructuralEqualsClaim { anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
     RoundTripClaim { anchor: k, label: _, input: _, classification: _ } => k
   }
 }
@@ -406,6 +429,7 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
     CompilesClaim { classification: c, label: _, anchor: _, input: _, expected_value: _ } => c
     DiagnosticClaim { classification: c, label: _, anchor: _, input: _, expected_rejection: _ } => c
     EqualsClaim { classification: c, label: _, anchor: _, lhs: _, rhs: _ } => c
+    StructuralEqualsClaim { classification: c, label: _, anchor: _, lhs: _, rhs: _ } => c
     RoundTripClaim { classification: c, label: _, anchor: _, input: _ } => c
   }
 }
@@ -425,6 +449,11 @@ fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
         diagnostics: None
       }
     EqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: r, diagnostics: None },
+        diagnostics: None
+      }
+    StructuralEqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
       Accepted {
         value: Accepted { value: r, diagnostics: None },
         diagnostics: None
