@@ -979,19 +979,24 @@ fn serialize_param(param: Node, source_indices: Map<String, NewlineIndex>, key_t
     "}")
 }
 
+// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
+// Shape-filter on module shell (all params are import slots); not a semantic Module tag.
 fn is_module_shell_node(n: Node) -> Bool {
   n.inferred == none && n.expr_data == NoExprData && n.connective == NoConnective && n.body == none
     && n.transport == none && n.uses |> count == 0
     && n.params |> all(p => is_import_slot_node(p: p))
 }
 
+// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
 fn is_import_slot_node(n: Node) -> Bool {
   import_is_all(n: n) || (
     n.params |> count == 0 && n.ident_span != none && n.body == none && n.expr_data == NoExprData)
 }
 
-// Import statements live on module.params and serialize via imports (string names),
-// not nodes-table $refs — skip their children during ref validation (T-37).
+// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
+// Shape-filter for import statements (import_is_all OR specific-import name children),
+// NOT a general semantic discriminator — safe here because callers gate on traversal
+// context (dag_emit_check_node_refs on collected order nodes; module.params slots).
 fn is_import_statement_node(n: Node) -> Bool {
   import_is_all(n: n) || (
     (n.children |> count) > 0 && n.body == none && n.expr_data == NoExprData

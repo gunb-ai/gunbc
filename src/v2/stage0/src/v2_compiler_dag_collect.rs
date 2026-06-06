@@ -13,6 +13,7 @@ use crate::v2_std_core::InferredNode::Resolved;
 use crate::v2_std_core::{import_is_all, Connective, ExprData, InferredNode, MatchPattern, Node};
 use std::rc::Rc;
 
+// 🟡 predicate dissolution — mirrors compile.dag disposition (T-37-dag-collect-identity-anchor).
 fn is_import_slot_node(n: Rc<Node>) -> bool {
     import_is_all(n.clone())
         || ((((n.params.clone().len() as i64) == 0) && (n.ident_span.is_some()))
@@ -20,6 +21,7 @@ fn is_import_slot_node(n: Rc<Node>) -> bool {
             && (*n.expr_data == ExprData::NoExprData))
 }
 
+// 🟡 predicate dissolution — mirrors compile.dag disposition (T-37-dag-collect-identity-anchor).
 fn is_module_shell_node(n: Rc<Node>) -> bool {
     n.inferred.is_none()
         && (*n.expr_data == ExprData::NoExprData)
