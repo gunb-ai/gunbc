@@ -44,6 +44,8 @@ import v4.std.target_model {
   target_reference_layer_apply_type_emitted,
   target_reference_layer_apply_value_expression,
   target_reference_layer_probe_from_emitted_type,
+  target_type_expr_emitted_wire_decode,
+  target_model_node_atom_identity,
   target_type_expr_atom_emitted,
   target_value_expression_symbol_identity,
   target_value_expression_node
@@ -71,6 +73,33 @@ data sg_rc_expected_owned_node: String = "Node"
 data sg_rc_expected_box_node: String = "Box<Node>"
 data sg_rc_expected_rc_probe_heap: String = "Rc<ProbeHeap>"
 data sg_rc_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
+
+fn scratch_build_only() -> Bool {
+  let e = sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc)
+  match e.kind {
+    _ => true
+  }
+}
+
+fn scratch_probe_only() -> Bool {
+  match target_reference_layer_probe_from_emitted_type(
+    emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc),
+    projection: rust_type_expression_projection(),
+    tokens: rust_reference_layer_tokens()
+  ) {
+    _ => true
+  }
+}
+
+fn scratch_decode_only() -> Bool {
+  match target_type_expr_emitted_wire_decode(
+    node: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 fn sg_rc_pass_node() -> Node {
   Node {
