@@ -60,7 +60,7 @@ See [docs/thesis/the-substrate-two-coordinated-shapes.md](docs/thesis/the-substr
 
 Lower layers should provide declared facts without leaking storage choices or forcing downstream reinterpretation.
 
-See [docs/thesis/compositional-layering.md](docs/thesis/compositional-layering.md).
+See [docs/thesis/compositional-layering.md](docs/thesis/compositional-layering.md). Current-state audit — how close v4 is to this principle, concept by concept (the "touch-once contract"): [docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md](docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md).
 
 ### Self-inspection: the substrate is its own subject
 

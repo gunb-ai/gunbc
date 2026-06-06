@@ -103,3 +103,5 @@ src/v4/            — next substrate + compiler
 - Run `cargo test --workspace`, `cargo clippy --all-targets -- -D warnings`, and `cargo fmt --all --check` before pushing.
 
 For deep design context: [docs/architecture.md](docs/architecture.md), [docs/v3-spec.md](docs/v3-spec.md) (language surface, still relevant to v4), and essays under [docs/thesis/](docs/thesis/).
+
+Current-state audits live under [docs/audit/](docs/audit/). On information-hiding specifically — how close v4's foundational concepts are to the below-boundary opacity THESIS names (the "touch-once contract") — see [docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md](docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md): the headline is that opacity holds at substrate atoms and leaks at transparent aliases, and that v4 already has a `.dag` information-hiding primitive (`nominal_opaque`) pointed at zero foundational concepts.
