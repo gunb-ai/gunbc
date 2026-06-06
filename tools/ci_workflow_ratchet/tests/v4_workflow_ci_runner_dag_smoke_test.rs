@@ -2242,3 +2242,474 @@ fn v4_workflow_ci_upsert_node_projection_substrate() {
         );
     }
 }
+
+// PR-A substitute/extract: relocated as-is from frozen integration (zero coverage gap).
+// .dag fold-witness upgrades for these checks are ctrl#1467-style tracked follow-up.
+
+#[test]
+fn v4_workflow_affected_set_ci_runner_claim_wiring() {
+    let module = parse_module(CLAIM_DAG, CLAIM_PATH);
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "workflow",
+            "affected_set_ci_runner"
+        ]],
+        "{CLAIM_PATH}: module authority path"
+    );
+    for name in ["ci_select_from_rerun_nodes", "ci_select_from_affected_set"] {
+        assert!(
+            import_includes_name(&module, &["v4", "workflow", "ci"], name),
+            "{CLAIM_PATH}: must import {name} from canonical workflow/ci authority"
+        );
+    }
+    for claim in [
+        "ci_runner_narrow_selection_claim",
+        "ci_runner_fail_closed_superset_claim",
+        "ci_runner_shape_collision_claim",
+        "ci_runner_inner_frontier_claim",
+    ] {
+        assert!(
+            surface_declares_test_claim_data(&module, claim),
+            "{CLAIM_PATH}: must declare structural receipt `{claim}`"
+        );
+    }
+    assert!(
+        surface_declares_fn(&module, "ci_runner_narrow_selection_holds")
+            && surface_declares_fn(&module, "ci_runner_fail_closed_superset_holds")
+            && surface_declares_fn(&module, "ci_runner_shape_collision_holds")
+            && surface_declares_fn(&module, "ci_runner_inner_frontier_holds"),
+        "{CLAIM_PATH}: receipt predicates must exercise ci selection entrypoints"
+    );
+}
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_release_distribution_mask_axes_modeled() {
+    assert!(
+        CI_DAG.contains("release_distribution && affected.release_distribution"),
+        "{CI_DAG_PATH}: ci_component_mask_intersects must include release_distribution axis"
+    );
+    assert!(
+        CI_DAG.contains("testclaim_corpus && affected.testclaim_corpus"),
+        "{CI_DAG_PATH}: ci_component_mask_intersects must include testclaim_corpus axis (I8 / IRT-1)"
+    );
+    let fail_closed_body = extract_fn_body(CI_DAG, "ci_component_affected_is_fail_closed");
+    for axis in [
+        "affected.v2",
+        "affected.v3",
+        "affected.v4",
+        "affected.testclaim_corpus",
+        "affected.workflow_policy",
+        "affected.release_distribution",
+    ] {
+        assert!(
+            fail_closed_body.contains(axis),
+            "{CI_DAG_PATH}: ci_component_affected_is_fail_closed must require axis `{axis}`"
+        );
+    }
+    assert!(
+        CI_DAG.contains(
+            "BootstrapStageCompile { produces: _ } =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true"
+        ),
+        "{CI_DAG_PATH}: BootstrapStageCompile mask must not select on v2-only (I2 is ci_integration; gunbc build is ci_v4 v4-axis)"
+    );
+    assert!(
+        CI_DAG.contains("fn ci_job_component_mask_row(")
+            && CI_DAG.contains("release_distribution_only: false"),
+        "{CI_DAG_PATH}: job masks must populate release_distribution_only (P2 carrier completeness)"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_needs_closure_is_bounded_and_skips_unresolved() {
+    assert!(
+        CI_DAG.contains("fn ci_select_ci_jobs_needs_closure_pass("),
+        "{CI_DAG_PATH}: needs closure must be bounded (P4) — not unbounded recursion on unresolved needs"
+    );
+    assert!(
+        CI_DAG.contains(
+            "ci_symbol_resolves(s: n, jobs: jobs) && ci_symbol_not_in_ids(s: n, ids: selected_ids)"
+        ),
+        "{CI_DAG_PATH}: needs closure must ignore unresolved need symbols"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
+    let module = parse_module(INPROCESS_EQUIVALENCE_DAG, INPROCESS_EQUIVALENCE_PATH);
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "workflow",
+            "inprocess_equivalence"
+        ]],
+        "{INPROCESS_EQUIVALENCE_PATH}: module authority path"
+    );
+    // The fixed slice and both equivalence paths are sourced from a single subject authority.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "manual", "eval_runtime_mvp"],
+            "subject_eval_mvp2_test_claim_route"
+        ),
+        "{INPROCESS_EQUIVALENCE_PATH}: fixed slice must come from the canonical eval_mvp2 subject authority"
+    );
+    for name in &[
+        "run_node_runtime_value_subjects",
+        "corpus_entry_from_node_runtime_value_run",
+        "corpus_entries_from_node_runtime_value_runs",
+    ] {
+        assert!(
+            import_includes_name(
+                &module,
+                &["v4", "test", "claim", "workflow", "testclaim_corpus_runner"],
+                name
+            ),
+            "{INPROCESS_EQUIVALENCE_PATH}: harness path must reuse corpus-runner machinery `{name}` (no parallel runner)"
+        );
+    }
+    for fn_name in &[
+        "inprocess_equivalence_harness_entries",
+        "inprocess_equivalence_inprocess_entries",
+        "inprocess_equivalence_holds",
+    ] {
+        assert!(
+            surface_declares_fn(&module, fn_name),
+            "{INPROCESS_EQUIVALENCE_PATH}: must declare {fn_name}"
+        );
+    }
+    for needle in &[
+        // Harness path is the corpus-runner machinery applied to the fixed slice.
+        "run_node_runtime_value_subjects(subjects: inprocess_equivalence_slice)",
+        // In-process path is direct run_test_claim on the same subject.
+        "run_test_claim(subject: subject_eval_mvp2_test_claim_route)",
+        // Equivalence witness compares the two paths' rows.
+        "inprocess_equivalence_harness_entries() == inprocess_equivalence_inprocess_entries()",
+        "data witness_inprocess_equivalence: Bool = inprocess_equivalence_holds()",
+    ] {
+        assert!(
+            INPROCESS_EQUIVALENCE_DAG.contains(needle),
+            "{INPROCESS_EQUIVALENCE_PATH}: A.1.5a equivalence contract must carry `{needle}`"
+        );
+    }
+    // Tracked deferral (RR-A §6): the equivalence spec must NOT declare an authoring-time
+    // `data run_*: TestClaimRun = run_test_claim(...)` co-authority row. Runtime execution and
+    // roster/claim-id wiring belong to the A.1 harness lane, named in the file's DEFERRAL note.
+    // Structural check (substring would false-match the prose in the DEFERRAL note).
+    let declares_test_claim_run_data = module.items.iter().any(|item| {
+        use v3_compiler::parse_surface::SurfaceType;
+        matches!(
+            item,
+            SurfaceItem::Data {
+                ty: SurfaceType::Named { name, .. },
+                ..
+            } if name == "TestClaimRun"
+        )
+    });
+    assert!(
+        !declares_test_claim_run_data,
+        "{INPROCESS_EQUIVALENCE_PATH}: must not declare a `data : TestClaimRun` harness-row receipt (RR-A §6 authoring-time co-authority)"
+    );
+    assert!(
+        !surface_declares_fn(&module, "inprocess_equivalence_pass_node"),
+        "{INPROCESS_EQUIVALENCE_PATH}: equivalence spec must not carry an EqualsClaim receipt scaffold"
+    );
+    assert!(
+        INPROCESS_EQUIVALENCE_DAG.contains("DEFERRAL")
+            && INPROCESS_EQUIVALENCE_DAG.contains("A.1 harness lane"),
+        "{INPROCESS_EQUIVALENCE_PATH}: must carry the explicit harness-execution deferral note"
+    );
+}
+
+/// F.12a recursive-flex THIN (inspection receipt): the receipt must (a) tokenize/parse,
+/// (b) prove the FAIL-CLOSED load-bearing fact — every A.1.5a slice subject is in the live
+/// corpus subject roster `manual_corpus_node_subject_rows` that ci.dag's TestClaimCorpusEval
+/// job evaluates (well-typed `TestClaimEvalSubject` membership, single authority via the same
+/// `subject_eval_mvp2_test_claim_route` binding) — and (c) conjoin it with the A.1.5a
+/// `inprocess_equivalence_holds` law, a ci.dag frontier↔roster CARDINALITY consistency check
+/// (NOT per-id membership; the `TestClaim`->`Symbol` projection is intentionally absent in
+/// F.12a, so the receipt advertises only what it proves — P2/P3), and the bootstrap
+/// fixed-point hash-pin witness, into a single `witness_recursive_flex_inspection` Bool.
+/// It is import/inspect only: it must NOT declare a `data : TestClaimRun` co-authority row
+/// (RR-A §6) and is the THIN slice — the full self-host loop is F.12b, named as deferred.
+/// SG-0 delta 0 (same-path expansion of this census-listed v4 CI smoke harness — see #4313
+/// A.1.5a, same shape; `pb_rust_tests_outside_residual_zero`; ROADMAP T-PB-B).
+
+#[test]
+fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
+    let module = parse_module(
+        RECURSIVE_FLEX_INSPECTION_DAG,
+        RECURSIVE_FLEX_INSPECTION_PATH,
+    );
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "workflow",
+            "recursive_flex_inspection"
+        ]],
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: module authority path"
+    );
+    // (1) A.1.5a equivalence law — consumed from the #4313 module, no re-derivation.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "workflow", "inprocess_equivalence"],
+            "inprocess_equivalence_holds"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must consume A.1.5a `inprocess_equivalence_holds` (no re-derivation)"
+    );
+    // Single authority (P2 / facts-flow-forward): the rostering check consumes the SAME
+    // `inprocess_equivalence_slice` the A.1.5a law proves over — not a re-minted id — so the
+    // equivalence law and the rostering check cannot drift onto different subjects.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "workflow", "inprocess_equivalence"],
+            "inprocess_equivalence_slice"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: rostering must key off the A.1.5a `inprocess_equivalence_slice` authority, not a re-minted id"
+    );
+    // (2a) Well-typed subject membership over the live corpus subject roster ci.dag evaluates
+    // — `TestClaimEvalSubject<Node>` both sides, not a `TestClaim`-vs-`Symbol` cross-type compare.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "manual", "manual_corpus_roster"],
+            "manual_corpus_node_subject_rows"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must roster the slice against `manual_corpus_node_subject_rows` (well-typed subject membership)"
+    );
+    // (2b) Inspection over ci.dag — the live corpus claim-id frontier authority (cardinality cover).
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "workflow", "ci"],
+            "ci_testclaim_corpus_eval_claim_ids"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must inspect ci.dag `ci_testclaim_corpus_eval_claim_ids` frontier"
+    );
+    // (3) Inspection over bootstrap.dag — the fixed-point hash-pin projection witness.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "workflow", "bootstrap"],
+            "bootstrap_plan_accepted_hash_pins_projectable_witness"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must inspect bootstrap.dag fixed-point hash-pin witness"
+    );
+    for fn_name in &[
+        "recursive_flex_slice_rostered",
+        "recursive_flex_ci_frontier_cardinality_matches_roster",
+        "recursive_flex_inspection_holds",
+    ] {
+        assert!(
+            surface_declares_fn(&module, fn_name),
+            "{RECURSIVE_FLEX_INSPECTION_PATH}: must declare {fn_name}"
+        );
+    }
+    for needle in &[
+        // Rostering keys off the A.1.5a slice authority via for_all, probing the subject itself
+        // (well-typed `TestClaimEvalSubject` membership — no `TestClaim`-vs-`Symbol` compare).
+        "xs: inprocess_equivalence_slice",
+        "item: subject",
+        "xs: manual_corpus_node_subject_rows",
+        // ci.dag touch: frontier↔roster CARDINALITY consistency only (well-typed Int equality);
+        // NOT per-id membership — that fail-closed fact is the roster check above.
+        "length(xs: ci_testclaim_corpus_eval_claim_ids) == length(xs: manual_corpus_node_subject_rows)",
+        // The receipt conjoins the facts.
+        "inprocess_equivalence_holds()",
+        "&& recursive_flex_slice_rostered()",
+        "&& recursive_flex_ci_frontier_cardinality_matches_roster()",
+        "&& bootstrap_plan_accepted_hash_pins_projectable_witness",
+        "data witness_recursive_flex_inspection: Bool = recursive_flex_inspection_holds()",
+    ] {
+        assert!(
+            RECURSIVE_FLEX_INSPECTION_DAG.contains(needle),
+            "{RECURSIVE_FLEX_INSPECTION_PATH}: F.12a inspection receipt must carry `{needle}`"
+        );
+    }
+    // Import/inspect only — the receipt must NOT declare a `data : TestClaimRun` co-authority
+    // row (RR-A §6 authoring-time co-authority forbidden); runtime execution is F.12b.
+    let declares_test_claim_run_data = module.items.iter().any(|item| {
+        use v3_compiler::parse_surface::SurfaceType;
+        matches!(
+            item,
+            SurfaceItem::Data {
+                ty: SurfaceType::Named { name, .. },
+                ..
+            } if name == "TestClaimRun"
+        )
+    });
+    assert!(
+        !declares_test_claim_run_data,
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must not declare a `data : TestClaimRun` row (RR-A §6 co-authority); runtime loop is F.12b"
+    );
+    assert!(
+        RECURSIVE_FLEX_INSPECTION_DAG.contains("F.12b"),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must name the deferred full self-host loop (F.12b) as out of scope"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    for name in [
+        "ci_selection_receipt_persist",
+        "ci_selection_receipt_lookup",
+        "ci_selection_receipt_storage_key",
+        "ci_selection_receipt_shadow_fixture_persistence_lookup_holds",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{CI_DAG_PATH}: F.11c must declare `{name}`"
+        );
+    }
+    for (path, name) in [
+        (&["v4", "std", "change"][..], "ArtifactChanged"),
+        (&["v4", "std", "change"][..], "DependencyDependent"),
+        (&["v4", "std", "change"][..], "DependencySource"),
+        (&["v4", "std", "change"][..], "NodeAdded"),
+        (&["v4", "std", "change"][..], "NodeChanged"),
+        (&["v4", "std", "change"][..], "NodeRemoved"),
+        (&["v4", "std", "change"][..], "ProjectionChanged"),
+        (&["v4", "std", "dependency"][..], "BarrierBefore"),
+        (&["v4", "std", "dependency"][..], "BindsTo"),
+        (&["v4", "std", "dependency"][..], "BootstrapDependsOn"),
+        (&["v4", "std", "dependency"][..], "Contains"),
+        (&["v4", "std", "dependency"][..], "DataDependsOn"),
+        (&["v4", "std", "dependency"][..], "EffectDependsOn"),
+        (&["v4", "std", "dependency"][..], "GeneratedFrom"),
+        (&["v4", "std", "dependency"][..], "ModelDependsOn"),
+        (&["v4", "std", "dependency"][..], "ModuleDependsOn"),
+        (&["v4", "std", "dependency"][..], "PlacementDependsOn"),
+        (&["v4", "std", "dependency"][..], "ProjectionDependsOn"),
+        (&["v4", "std", "dependency"][..], "PromotedBy"),
+        (&["v4", "std", "dependency"][..], "ResourceDependsOn"),
+        (&["v4", "std", "dependency"][..], "TypeDependsOn"),
+        (&["v4", "std", "dependency"][..], "VerifiedBy"),
+    ] {
+        assert!(
+            import_includes_name(&module, path, name),
+            "{CI_DAG_PATH}: F.11c digest matches `{name}`, so the constructor must be explicitly imported"
+        );
+    }
+    for needle in [
+        "type CiSelectionReceiptStoreRow",
+        "receipt: CiSelectionReceipt",
+        "type CiSelectionReceiptLookup",
+        "= CiSelectionReceiptFound { receipt: CiSelectionReceipt }",
+        "| CiSelectionReceiptMissing { key: Hash }",
+        "data ci_selection_receipt_shadow_fixture_storage_key: Hash",
+        "ci_selection_receipt_storage_key(receipt: ci_selection_receipt_shadow_fixture_receipt)",
+        "data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow>",
+        "ci_selection_receipt_persist(",
+        "ci_change_set_digest(changes: receipt.pr)",
+        "ci_affected_set_digest(affected: receipt.affected)",
+        "ci_component_affected_digest(component: receipt.component_affected_comparison)",
+        "ci_digest_empty_change_set_tag",
+        "ci_digest_empty_affected_dependency_list_tag",
+        "ci_digest_empty_diagnostics_list_tag",
+        "ci_digest_empty_affected_exclusion_list_tag",
+        "ci_digest_empty_dependency_kind_list_tag",
+        "ci_digest_empty_step_selection_list_tag",
+        "ci_digest_empty_testclaim_selection_list_tag",
+        "ci_digest_empty_testgen_slot_selection_list_tag",
+        "ci_digest_empty_node_list_tag",
+        "ci_extent_whole_file_tag",
+        "ci_extent_byte_range_tag",
+        "ci_locus_textual_tag",
+        "ci_locus_node_tag",
+        "ci_locus_port_tag",
+        "byte_offset_cache_key_projection_node(i: start)",
+        "byte_offset_cache_key_projection_node(i: end)",
+        "bag_hash_digest(",
+        "xs: map(xs, diagnostic => ci_diagnostic_digest(diagnostic: diagnostic))",
+        "canonical_hash_of_connective(c: connective)",
+        "canonical_hash_of_behavior(b: behavior)",
+        "ci_no_correction_user_input_boundary_tag",
+        "ci_no_correction_ambiguous_intent_tag",
+        "ci_no_correction_external_contract_unknown_tag",
+        "ci_upsert_input_ref_list_projection_node(refs: row.inputs_consulted)",
+        "ci_affected_dependency_list_digest(xs: row.affected_intersection)",
+        "ci_symbol_digest(sym: row.reason)",
+        "ci_claim_anchor_digest(anchor: row.anchor)",
+        "ci_string_digest(s: row.label)",
+        "ci_testclaim_variant_digest(variant: row.coproduct_variant)",
+        "ci_bool_digest(value: row.selected)",
+        "ci_test_classification_digest(classification: row.generator.classification)",
+        "ci_claim_anchor_digest(anchor: row.generator.anchor)",
+        "ci_testgen_concept_digest(concept: row.generator.slot)",
+        "ci_symbol_digest(sym: row.generator.provenance.generator_id)",
+        "ci_generated_artifact_digest(artifact: row.generator.provenance.artifact)",
+        "ci_symbol_digest(sym: row.generator.profile_metadata.profile_ref)",
+        "ci_claim_anchor_digest(anchor: row.emits_claim_anchor)",
+        "receipt: ci_selection_receipt_shadow_fixture_receipt",
+        "data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup",
+        "ci_selection_receipt_lookup(",
+        "init: CiSelectionReceiptMissing { key: key }",
+        "if ci_selection_receipt_storage_key(receipt: row.receipt) == missing_key",
+        "CiSelectionReceiptFound { receipt: row.receipt }",
+        "ci_selection_receipt_storage_key(receipt: receipt) == ci_selection_receipt_shadow_fixture_storage_key",
+        "CiSelectionReceiptMissing { key: _ } => false",
+        "data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool",
+        "feature:f11c-ci-selection-receipt-persistence",
+        "caller-chosen symbols as lookup authority",
+        "Forbidden: treating transient fixture construction as persisted receipt evidence",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: F.11c receipt persistence + lookup must carry `{needle}`"
+        );
+    }
+    assert!(
+        !CI_DAG.contains("fallback: ci_wave3_shadow_fixture_fail_closed_receipt")
+            && !CI_DAG.contains("data ci_selection_receipt_shadow_fixture_storage_key: Symbol"),
+        "{CI_DAG_PATH}: F.11c lookup misses must not expose fallback receipts or caller-authored Symbol keys"
+    );
+    assert!(
+        !CI_DAG.contains("type CiSelectionReceiptStoreRow {\n  key: Hash")
+            && !CI_DAG.contains("key: ci_selection_receipt_storage_key(receipt: receipt)"),
+        "{CI_DAG_PATH}: F.11c store rows must not carry a driftable key beside the receipt"
+    );
+    assert!(
+        !CI_DAG.contains("if row.key == missing_key"),
+        "{CI_DAG_PATH}: F.11c lookup must recompute receipt keys instead of trusting store row keys"
+    );
+    for overloaded_seed in [
+        "empty: ci_symbol_digest(sym: ci_change_kind_node_changed_tag)",
+        "empty: ci_symbol_digest(sym: ci_affected_set_produced_tag)",
+        "empty: ci_symbol_digest(sym: ci_affected_set_diagnostics_tag)",
+        "empty: ci_symbol_digest(sym: ci_dependency_kind_contains_tag)",
+        "empty: ci_symbol_digest(sym: ci_selection_decision_run_tag)",
+        "empty: ci_symbol_digest(sym: ci_projection_command_claim_ids_edge)",
+        "empty: ci_symbol_digest(sym: ci_selection_testgen_slot_tag)",
+        "UserInputBoundary => ci_symbol_digest(sym: ci_receipt_inputs_fail_closed_reason)",
+        "AmbiguousIntent => ci_symbol_digest(sym: ci_workflow_receipt_unexpected_verdict)",
+        "ExternalContractUnknown => ci_symbol_digest(sym: ci_selection_shadow_reason)",
+        "WholeFile => ci_symbol_digest(sym: ci_projection_char_offset_authority_edge)",
+        "content_hash(n: ci_char_projection_node(c: start))",
+        "content_hash(n: ci_char_projection_node(c: end))",
+        "NodeLocus { anchor } => content_hash(n: anchor.at)",
+        "PortLocus { anchor } => ci_symbol_digest(sym: anchor.at)",
+        "fn ci_diagnostics_list_digest(xs: List<Diagnostic>) -> Hash {\n  fold_list(",
+    ] {
+        assert!(
+            !CI_DAG.contains(overloaded_seed),
+            "{CI_DAG_PATH}: F.11c receipt digest must not overload `{overloaded_seed}`"
+        );
+    }
+    assert!(
+        !CI_DAG.contains("let decisions_match = length(xs: receipt.decisions)")
+            && !CI_DAG.contains("let testclaims_match = length(xs: receipt.testclaim_decisions)")
+            && !CI_DAG.contains("let testgen_match = length(xs: receipt.testgen_slots)"),
+        "{CI_DAG_PATH}: F.11c persistence witness must compare canonical receipt keys, not partition lengths"
+    );
+}
