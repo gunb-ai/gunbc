@@ -5,7 +5,7 @@
 
 module v4.std.grammar
 
-import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { Cons, Empty, fold_list, fold_list_node, list_append, list_snoc_item }
 import v4.std.collection {
   Absent,
   List,
@@ -439,6 +439,17 @@ fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
       grammar_named_edge(name: grammar_relation_field_tokens, target: tokens)
     ]
   }
+}
+
+// 🟡 bootstrap-limitation interim — feature:B-POSITIONAL-CONJ-FOLD-LIST-1 — ctrl#1476 B5 Option-B
+// chokepoint: grammar-relation / serialize_source token sequences lower via fold_list_node named-cons
+// spine (not positional-Conj fold_list-by-construction); dissolve-on-arrival: emit-path consumers
+// read only this helper; forbidden: *_relation_token_edges / *_positional_edges_from_token_classes.
+fn grammar_relation_tokens_node<T>(
+  tokens: List<T>,
+  token_to_node: fn(T) -> Node
+) -> Node {
+  fold_list_node(xs: tokens, item_node: token_to_node)
 }
 
 

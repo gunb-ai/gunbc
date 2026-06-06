@@ -257,6 +257,10 @@ type TestgenConcept
 
 
 // RULING-1: 🟡 needs-more-work — scheduling generator slot until LBE = L6 form×language coproduct shape ruled.
+// 🟡 bootstrap-limitation interim — feature:B-GENERATOR-MATCH-ARM-1 — Generator<C> record
+// destructuring via v2 `match_pattern` Value::Record arm (ctrl#1476 B3 Gap-1); dissolve-on-arrival:
+// unified record/variant runtime representation so match arms need no per-type bridge; forbidden:
+// `match generator { Generator { ... } }` failing with non-exhaustive pattern on Generator.
 // F.2-P1: every generator carries its provenance (generator identity + emitted artifact,
 // bundled in v4.std.artifact.GeneratorProvenance) and its profile metadata. Bundling
 // generator_id inside `provenance` (rather than a third flat field) keeps future provenance
