@@ -47,13 +47,9 @@ import v4.std.runtime {
   ValueInterpreter
 }
 import v4.std.node {
-  Atom,
   ComputationNode,
-  Edge,
-  Named,
   Node,
   Symbol,
-  TypeNode,
   Value
 }
 import v4.std.verdict { Pass }
@@ -67,8 +63,6 @@ import v4.std.verification {
   manual_claim_anchor
 }
 
-data sg2_mode2_corpus_pass_sym: Symbol = sg2_mode2_corpus_pass_sym
-data sg2_mode2_corpus_fail_sym: Symbol = sg2_mode2_corpus_fail_sym
 data sg2_mode2_corpus_type_sym: Symbol = sg2_mode2_corpus_type_sym
 data sg2_mode2_corpus_algebra_sym: Symbol = sg2_mode2_corpus_algebra_sym
 data sg2_mode2_corpus_descent_sym: Symbol = sg2_mode2_corpus_descent_sym
@@ -81,22 +75,12 @@ data sg2_mode2_corpus_choose_branch_sym: Symbol = sg2_mode2_corpus_choose_branch
 data sg2_mode2_corpus_step_loop_sym: Symbol = sg2_mode2_corpus_step_loop_sym
 data sg2_mode2_corpus_bind_value_sym: Symbol = sg2_mode2_corpus_bind_value_sym
 
-fn sg2_mode2_corpus_symbol_node(sym: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
-    children: []
-  }
-}
-
-fn sg2_mode2_corpus_pass_node() -> Node {
+// well_formed(Value) requires zero children; legacy pass-node shells with labeled
+// edges fail eval_rejected_invalid_node at the corpus-eval runtime frontier.
+fn sg2_mode2_corpus_leaf_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Value },
-    children: [
-      Edge {
-        label: Named { name: sg2_mode2_corpus_pass_sym },
-        target: sg2_mode2_corpus_symbol_node(sym: sg2_mode2_corpus_pass_sym)
-      }
-    ]
+    children: []
   }
 }
 
@@ -190,7 +174,7 @@ fn sg2_mode2_corpus_context() -> EvalContext {
 
 fn sg2_mode2_corpus_tree() -> InferredTree {
   claim_inferred_tree(
-    root: sg2_mode2_corpus_pass_node(),
+    root: sg2_mode2_corpus_leaf_node(),
     facts: claim_inferred_facts(
       type_symbol: sg2_mode2_corpus_type_sym,
       algebra_symbol: sg2_mode2_corpus_algebra_sym,
@@ -212,8 +196,8 @@ fn sg2_mode2_corpus_run_receipt(label: String) -> TestClaim {
   EqualsClaim {
     label: label,
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    lhs: sg2_mode2_corpus_pass_node(),
-    rhs: sg2_mode2_corpus_pass_node(),
+    lhs: sg2_mode2_corpus_leaf_node(),
+    rhs: sg2_mode2_corpus_leaf_node(),
     classification: TestClassification { tier: Tier1, layer: Unit }
   }
 }
