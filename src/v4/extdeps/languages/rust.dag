@@ -3989,6 +3989,35 @@ fn rust_sg2_rc_foobar_xy_emitted() -> Node {
   )
 }
 
+fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_foobar } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_x } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_y } },
+          children: []
+        }
+      }
+    ]
+  }
+}
+
 fn rust_sg2_instantiation_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
@@ -4002,35 +4031,15 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
       },
       Edge {
         label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Instantiation },
-          children: [
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_foobar } },
-                children: []
-              }
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_x } },
-                children: []
-              }
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_y } },
-                children: []
-              }
-            }
-          ]
-        }
+        target: rust_sg2_foobar_xy_inner_instantiation_node()
       }
     ]
   }
+}
+
+// Perturbed twin: same inner apply without outer Rc — discriminates mode-2 emit text.
+fn rust_sg2_foobar_xy_no_rc_source_type_node() -> Node {
+  rust_sg2_foobar_xy_inner_instantiation_node()
 }
 
 fn rust_sg2_atom_node(binding: Symbol) -> Node {
