@@ -1467,9 +1467,22 @@ fn rust_mvp1_serialize_source_prefix_edges() -> List<Edge> {
 }
 
 fn rust_mvp1_serialize_source_children() -> List<Edge> {
+  // R2 / round-8 positional-Conj fix: the token sequence is lowered to the canonical
+  // fold_list_node named-cons encoding (Named head/tail cells) under a single named
+  // `tokens` edge, so serialize_source is an all-NAMED Conj and well_formed passes
+  // (Conj-requires-named stays strict). [Per-site patch of the positional-Conj class —
+  // tokens_root + the builders are tracked for the post-R2 authority dissolution.]
   list_append(
     left: rust_mvp1_serialize_source_prefix_edges(),
-    right: rust_mvp1_positional_edges_from_token_classes()
+    right: [
+      rust_named_edge(
+        name: grammar_relation_field_tokens,
+        target: fold_list_node(
+          xs: rust_mvp1_concrete_tokens(),
+          item_node: rust_concrete_token_node
+        )
+      )
+    ]
   )
 }
 
