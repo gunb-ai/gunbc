@@ -17,7 +17,8 @@ import v4.compiler.eval {
 import v4.std.collection { List }
 import v4.std.diagnostic { Rejected }
 import v4.std.logic { Bool }
-import v4.std.algebra { length }
+import v4.std.algebra { fold_list, length }
+import v4.std.collection { Absent, Optional, Present }
 import v4.std.node { Node, Symbol }
 import v4.std.runtime { RuntimeValue }
 import v4.std.text { String }
@@ -164,6 +165,53 @@ fn corpus_eval_expected_pins_match_roster_frontier() -> Bool {
 fn corpus_eval_tracked_expectation_pins_well_formed() -> Bool {
   corpus_eval_expected_pins_match_host_run_specs()
     && corpus_eval_expected_pins_match_roster_frontier()
+    && corpus_eval_all_host_specs_have_pins()
+}
+
+
+type CorpusEvalPinLookup
+  = CorpusEvalPinLookupMissing
+  | CorpusEvalPinLookupFound { pin: CorpusEvalExpectedPin }
+
+
+fn corpus_eval_expected_pin_lookup(claim_id: Symbol) -> Optional<CorpusEvalExpectedPin> {
+  match fold_list(
+    xs: manual_corpus_eval_expected_pins,
+    empty: CorpusEvalPinLookupMissing,
+    cons: fn(acc, item) {
+      match acc {
+        CorpusEvalPinLookupFound { pin: _ } => acc
+        CorpusEvalPinLookupMissing =>
+          if item.claim_id == claim_id {
+            CorpusEvalPinLookupFound { pin: item }
+          } else {
+            CorpusEvalPinLookupMissing
+          }
+      }
+    }
+  ) {
+    CorpusEvalPinLookupFound { pin: p } => Present { value: p }
+    CorpusEvalPinLookupMissing => Absent
+  }
+}
+
+
+fn corpus_eval_host_run_spec_has_pin(spec: CorpusEvalHostRunSpec) -> Bool {
+  match corpus_eval_expected_pin_lookup(claim_id: spec.claim_id) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+
+fn corpus_eval_all_host_specs_have_pins() -> Bool {
+  fold_list(
+    xs: manual_corpus_eval_host_run_specs,
+    empty: true,
+    cons: fn(acc, spec) {
+      acc && corpus_eval_host_run_spec_has_pin(spec: spec)
+    }
+  )
 }
 
 
