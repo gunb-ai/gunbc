@@ -1,4 +1,11 @@
-//! Regression: dsl/std/render.dag repeat_string must repeat n times (P0-A).
+//! Regression: repeat_string semantics (P0-A).
+//!
+//! Uses `std.render_repeat_string_bootstrap` — the P2 bootstrap slice of
+//! `dsl/std/render.dag` — not the full `std.render` import chain. Full render
+//! pulls `std.unicode`, whose `char_in_class` uses v3 `fn ... = expr` surface
+//! syntax that the v2 parser does not accept (`expected LBrace, found Eq`).
+//! That is intentional v3 modeling (unicode.dag PATH X comment), not a broken
+//! unicode.dag; v2 interpreter tests must use the bootstrap slice.
 
 use std::rc::Rc;
 
@@ -25,7 +32,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 #[test]
 fn repeat_string_and_indent_text_semantics_via_interpreter() {
     let src = r#"module test.repeat_string_regression
-import std.render { repeat_string }
+import std.render_repeat_string_bootstrap { repeat_string }
 fn repeat_string_returns_n_copies() -> String { repeat_string(s: "x", n: 3) }
 // Same shape as indent_text's pad + text, without string interpolation (interpreter
 // does not expand `"{pad}{text}"` templates yet).

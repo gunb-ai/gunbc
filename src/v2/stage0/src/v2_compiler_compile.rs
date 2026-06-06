@@ -434,34 +434,42 @@ pub fn dag_emit_check_node_refs(
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(
-                                Rc::new({
-                                    let mut __result = Vec::new();
-                                    for c in node.children.clone().iter().cloned() {
-                                        __result.extend(
-                                            (*dag_emit_check_ref_target(
-                                                c.clone(),
-                                                key_to_id.clone(),
-                                            ))
-                                            .iter()
-                                            .cloned(),
-                                        );
-                                    }
-                                    __result
-                                }),
-                                Rc::new({
-                                    let mut __result = Vec::new();
-                                    for p in node.params.clone().iter().cloned() {
-                                        __result.extend(
-                                            (*dag_emit_check_ref_target(
-                                                p.clone(),
-                                                key_to_id.clone(),
-                                            ))
-                                            .iter()
-                                            .cloned(),
-                                        );
-                                    }
-                                    __result
-                                }),
+                                if is_import_statement_node(node.clone()) {
+                                    Rc::new(vec![])
+                                } else {
+                                    Rc::new({
+                                        let mut __result = Vec::new();
+                                        for c in node.children.clone().iter().cloned() {
+                                            __result.extend(
+                                                (*dag_emit_check_ref_target(
+                                                    c.clone(),
+                                                    key_to_id.clone(),
+                                                ))
+                                                .iter()
+                                                .cloned(),
+                                            );
+                                        }
+                                        __result
+                                    })
+                                },
+                                if is_module_shell_node(node.clone()) {
+                                    Rc::new(vec![])
+                                } else {
+                                    Rc::new({
+                                        let mut __result = Vec::new();
+                                        for p in node.params.clone().iter().cloned() {
+                                            __result.extend(
+                                                (*dag_emit_check_ref_target(
+                                                    p.clone(),
+                                                    key_to_id.clone(),
+                                                ))
+                                                .iter()
+                                                .cloned(),
+                                            );
+                                        }
+                                        __result
+                                    })
+                                },
                             ),
                             Rc::new({
                                 let mut __result = Vec::new();
@@ -1820,6 +1828,13 @@ pub fn is_import_slot_node(n: Rc<Node>) -> bool {
         || (((((n.params.clone().len() as i64) == 0) && (n.ident_span.clone() != None))
             && (n.body.clone() == None))
             && (n.expr_data.clone() == Rc::new(ExprData::NoExprData))))
+}
+
+pub fn is_import_statement_node(n: Rc<Node>) -> bool {
+    (import_is_all(n.clone())
+        || (((((n.children.clone().len() as i64) > 0) && (n.body.clone() == None))
+            && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
+            && ((n.params.clone().len() as i64) == 0)))
 }
 
 pub fn serialize_node_params_json(
