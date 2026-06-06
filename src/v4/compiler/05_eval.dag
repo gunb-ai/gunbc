@@ -126,10 +126,12 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
+  StructuralEqualsClaim,
   TestClaim,
   TestClaimCompilesClaimVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
+  TestClaimStructuralEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
   test_claim_coproduct_variant,
   test_claim_evaluation_nodes,
@@ -555,6 +557,7 @@ data test_claim_cache_termination_non_increasing_empty_tag: Symbol = test_claim_
 data test_claim_cache_variant_compiles_tag: Symbol = test_claim_cache_variant_compiles_tag
 data test_claim_cache_variant_diagnostic_tag: Symbol = test_claim_cache_variant_diagnostic_tag
 data test_claim_cache_variant_equals_tag: Symbol = test_claim_cache_variant_equals_tag
+data test_claim_cache_variant_structural_equals_tag: Symbol = test_claim_cache_variant_structural_equals_tag
 data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_roundtrip_tag
 data test_claim_cache_interpretation_semantics_mismatch_tag: Symbol = test_claim_cache_interpretation_semantics_mismatch_tag
 data test_claim_cache_interpretation_registry_unbound_tag: Symbol = test_claim_cache_interpretation_registry_unbound_tag
@@ -720,6 +723,8 @@ fn test_claim_variant_cache_digest(c: TestClaim) -> Hash {
       test_claim_symbol_digest(sym: test_claim_cache_variant_diagnostic_tag)
     TestClaimEqualsClaimVariant =>
       test_claim_symbol_digest(sym: test_claim_cache_variant_equals_tag)
+    TestClaimStructuralEqualsClaimVariant =>
+      test_claim_symbol_digest(sym: test_claim_cache_variant_structural_equals_tag)
     TestClaimRoundTripClaimVariant =>
       test_claim_symbol_digest(sym: test_claim_cache_variant_roundtrip_tag)
   }
@@ -734,6 +739,8 @@ fn test_claim_claim_body_cache_digest(c: TestClaim) -> Hash {
     DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
       combine_hash(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
     EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      nodes_digest
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
       nodes_digest
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       nodes_digest
@@ -983,6 +990,9 @@ fn test_claim_cache_receipt(subject: TestClaimEvalSubject<Node>) -> TestClaimCac
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
 data eval_rejected_roundtrip_precondition: Symbol = eval_rejected_roundtrip_precondition
+// StructuralEqualsClaim: lhs admitted well-formed but structurally != rhs. An honest
+// value mismatch (the model produced the wrong receipt), distinct from a harness rejection.
+data eval_structural_equals_mismatch: Symbol = eval_structural_equals_mismatch
 data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 data eval_rejected_type_node: Symbol = eval_rejected_type_node
 data eval_rejected_pending_children: Symbol = eval_rejected_pending_children
@@ -1810,6 +1820,40 @@ fn run_test_claim_assert(
 }
 
 
+// StructuralEqualsClaim verdict (runtime A=RuntimeValue, mirroring the round-trip bridge).
+// `actual` is the structurally-admitted lhs (well-formed → Accepted{lhs}; malformed →
+// Rejected). Equal to rhs → Pass; well-formed but unequal → honest mismatch Fail
+// (`eval_structural_equals_mismatch`); malformed → invalid-node Fail. No runtime eval of
+// the receipt nodes — that is what wrongly rejected these claims as `eval_rejected_type_node`.
+fn run_test_claim_structural_equals_verdict(
+  actual: Outcome<Node>,
+  rhs: Node,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  match actual {
+    Rejected { diagnostics: _ } =>
+      verdict_fail(
+        actual: outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_invalid_node, node: at)
+        )
+      )
+    Accepted { value: admitted, diagnostics: _ } =>
+      if outcome_node_eq(
+        a: Accepted { value: admitted, diagnostics: None },
+        b: Accepted { value: rhs, diagnostics: None }
+      ) {
+        Pass
+      } else {
+        verdict_fail(
+          actual: outcome_rejected(
+            d: eval_diagnostic(reason: eval_structural_equals_mismatch, node: at)
+          )
+        )
+      }
+  }
+}
+
+
 fn run_test_claim_assert_decided(
   claim: TestClaim,
   actual: Outcome<Node>,
@@ -1817,6 +1861,12 @@ fn run_test_claim_assert_decided(
 ) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
+      if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
+        Pass
+      } else {
+        verdict_fail(actual: actual)
+      }
+    StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
         Pass
       } else {
@@ -1884,6 +1934,17 @@ fn run_test_claim_runtime_assert(
         verdict_fail(actual: actual)
       }
     }
+    // Unreachable in practice: `run_test_claim` routes StructuralEqualsClaim to the
+    // structural verdict and never calls the runtime assert for it. Present only so this
+    // match stays exhaustive over the TestClaim coproduct; mirrors EqualsClaim defensively.
+    StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
+      let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
+      if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
+        Pass
+      } else {
+        verdict_fail(actual: actual)
+      }
+    }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
       let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: expected))
       if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
@@ -1940,6 +2001,21 @@ fn run_test_claim(
           actual: eval_round_trip_claim_input_for_verdict(
             input: subject.input.evaluator_input
           ),
+          at: at
+        )
+      }
+    // StructuralEqualsClaim: admit lhs structurally (well-formed, NO runtime eval — the
+    // value-evaluator legitimately rejects type/receipt nodes) and compare to rhs by
+    // node-equality. A real difference reads as an honest mismatch
+    // (`eval_structural_equals_mismatch`), NOT a `eval_rejected_type_node` rejection.
+    StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
+      TestClaimRun {
+        cache: test_claim_cache_receipt_node(subject: subject),
+        verdict: run_test_claim_structural_equals_verdict(
+          actual: eval_round_trip_claim_input_for_verdict(
+            input: subject.input.evaluator_input
+          ),
+          rhs: rhs,
           at: at
         )
       }

@@ -82,5 +82,6 @@ fi
 claim_run witness_corpus_eval_row_effect_host_rejected_gate
 
 echo "::notice title=corpus eval tracked-expectation gate::all pinned rows matched (0 drift)"
+bash scripts/v4-testclaim-roster-pilot.sh
 bash scripts/v4-testclaim-grounding-typescript-pilot.sh
 exit 0
