@@ -247,6 +247,22 @@ impl PartialEq for Value {
             ) => a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
             (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
+            // List <-> FreeMonoid alias-transparency. `List<T>` IS `FreeMonoid<T>` (std), and
+            // the alias is already honored in pattern matching (the Value::List -> Empty/Cons
+            // bridge) and in every list operation (free_monoid_to_vec / expect_list accept
+            // either representation). Equality is the single site it was never honored: a list
+            // literal builds Value::List, while snoc-built sequences (list_snoc_item — e.g.
+            // Node.children rebuilt by a fold) build an Empty/Cons Variant chain. Flatten BOTH
+            // sides through the canonical free_monoid_to_vec and compare element-wise (this
+            // recurses through `==`, so nested mixed representations reconcile too). A Variant
+            // that is not a well-formed Empty/Cons chain flattens to None, so a genuine
+            // non-list Variant (e.g. Some/None) still never equals a List.
+            (Value::List(_), Value::Variant { .. }) | (Value::Variant { .. }, Value::List(_)) => {
+                match (free_monoid_to_vec(self), free_monoid_to_vec(other)) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => false,
+                }
+            }
             _ => false,
         }
     }
