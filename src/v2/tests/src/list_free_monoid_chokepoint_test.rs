@@ -186,9 +186,9 @@ fn two_elements() -> Int {
 #[test]
 fn flat_map_str_result_not_char_exploded() {
     let src = r#"module test.flat_map_str
-fn two_elements() -> Int {
+fn one_str_element() -> Int {
   let xs = [1]
-  xs.flat_map(fn(_x) { ["ab"] }).length()
+  xs.flat_map(fn(_x) { "ab" }).length()
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
@@ -199,10 +199,10 @@ fn two_elements() -> Int {
         .as_ref()
         .expect("graph after successful resolve");
 
-    match v2_interpreter::run(graph, resolved.source_indices.clone(), "two_elements") {
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "one_str_element") {
         Ok(Value::Int(1)) => {}
         other => panic!(
-            "expected Int(1) from flat_map returning [\"ab\"] (one Str element, not char-exploded), got {other:?}"
+            "expected Int(1) from flat_map returning \"ab\" (one Str element, not char-exploded), got {other:?}"
         ),
     }
 }
