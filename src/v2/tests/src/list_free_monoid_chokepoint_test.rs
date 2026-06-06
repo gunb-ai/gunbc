@@ -75,11 +75,18 @@ fn three_len() -> Int {
 }
 
 #[test]
-fn list_index_routes_through_chokepoint() {
-    let src = r#"module test.fm_index
-fn second() -> Int {
-  let xs = [10, 20, 30]
-  xs[1]
+fn freemonoid_cons_chain_length_routes_through_chokepoint() {
+    // Declare the FreeMonoid Empty/Cons coproduct inline: the v2 test harness only
+    // indexes src/v2 + dsl, so v4.std.algebra is unreachable here. The interpreter's
+    // `free_monoid_to_vec` chokepoint matches the variant *names* "Empty"/"Cons", so an
+    // inline declaration exercises the identical FreeMonoid<->List bridge (ctrl#1476 B1).
+    let src = r#"module test.fm_cons_len
+type IntList = Empty | Cons { head: Int, tail: IntList }
+fn cons_three() -> IntList {
+  Cons { head: 1, tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } } }
+}
+fn cons_len() -> Int {
+  cons_three().length()
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
@@ -90,8 +97,40 @@ fn second() -> Int {
         .as_ref()
         .expect("graph after successful resolve");
 
-    match v2_interpreter::run(graph, resolved.source_indices.clone(), "second") {
-        Ok(Value::Int(20)) => {}
-        other => panic!("expected Int(20) from list index, got {other:?}"),
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "cons_len") {
+        Ok(Value::Int(3)) => {}
+        other => panic!("expected Int(3) from Cons chain .length(), got {other:?}"),
+    }
+}
+
+/// A String IS a FreeMonoid<Char>, but `.contains` on a String means *substring*
+/// containment — the chokepoint must check the Str representation before the list path,
+/// or a multi-char query is wrongly evaluated as char-list membership (returns false).
+#[test]
+fn string_contains_multichar_substring_not_char_membership() {
+    let src = r#"module test.str_contains
+fn has_substring() -> Bool {
+  "abcd".contains("bc")
+}
+fn lacks_substring() -> Bool {
+  "abcd".contains("xy")
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    // Discriminating: char-list membership would make a multi-char substring false.
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "has_substring") {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected Bool(true) from \"abcd\".contains(\"bc\"), got {other:?}"),
+    }
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "lacks_substring") {
+        Ok(Value::Bool(false)) => {}
+        other => panic!("expected Bool(false) from \"abcd\".contains(\"xy\"), got {other:?}"),
     }
 }

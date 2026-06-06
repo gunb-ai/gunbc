@@ -1546,7 +1546,12 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let idx = eval_expr(&index_expr(node.clone()), env, ctx)?;
 
     match (&base, &idx) {
-        (base_val, Value::Int(i)) if free_monoid_to_vec(base_val).is_some() => {
+        // Exclude Value::Str: a String IS a FreeMonoid<Char>, but indexing must keep its
+        // dedicated Str arm (returns a one-char Str, not a char-list element via the
+        // chokepoint) (ctrl#1476 B1; same Str-representation rule as concat/contains/slice).
+        (base_val, Value::Int(i))
+            if !matches!(base_val, Value::Str(_)) && free_monoid_to_vec(base_val).is_some() =>
+        {
             let items = expect_list(base_val, "index")?;
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
@@ -1579,7 +1584,12 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let end = eval_expr(&slice_end(node.clone()), env, ctx)?;
 
     match (&base, &start, &end) {
-        (base_val, Value::Int(s), Value::Int(e)) if free_monoid_to_vec(base_val).is_some() => {
+        // Exclude Value::Str: slicing a String must return a substring (Str) via its
+        // dedicated arm below, not a char-list via the FreeMonoid chokepoint
+        // (ctrl#1476 B1; same Str-representation rule as concat/contains).
+        (base_val, Value::Int(s), Value::Int(e))
+            if !matches!(base_val, Value::Str(_)) && free_monoid_to_vec(base_val).is_some() =>
+        {
             let items = expect_list(base_val, "slice")?;
             let s = *s as usize;
             let e = (*e as usize).min(items.len());
@@ -1719,6 +1729,16 @@ fn eval_algebra_method(
         }
 
         "concat" | "append" | "push" => {
+            // String concat preserves the String representation: a String IS a
+            // FreeMonoid<Char>, but its canonical value form is Value::Str — concat must
+            // not explode it to a char list via the FreeMonoid chokepoint (ctrl#1476 B1).
+            if let Value::Str(s) = &receiver {
+                let mut result = s.clone();
+                for arg in args {
+                    result.push_str(&format!("{}", arg));
+                }
+                return Ok(Value::Str(result));
+            }
             if let Ok(items) = expect_list(&receiver, "concat") {
                 let mut result = items.to_vec();
                 for arg in args {
@@ -1729,18 +1749,9 @@ fn eval_algebra_method(
                 }
                 return Ok(Value::List(Rc::new(result)));
             }
-            match &receiver {
-                Value::Str(s) => {
-                    let mut result = s.clone();
-                    for arg in args {
-                        result.push_str(&format!("{}", arg));
-                    }
-                    Ok(Value::Str(result))
-                }
-                _ => Err(InterpError::TypeError {
-                    msg: format!("cannot concat on {}", receiver.type_label()),
-                }),
-            }
+            Err(InterpError::TypeError {
+                msg: format!("cannot concat on {}", receiver.type_label()),
+            })
         }
 
         "length" | "count" | "size" => match free_monoid_to_vec(&receiver) {
@@ -1805,12 +1816,11 @@ fn eval_algebra_method(
             Ok(Value::List(Rc::new(result)))
         }
 
-        "contains" | "has" => match expect_list(&receiver, "contains") {
-            Ok(items) => {
-                let target = args.first().cloned().unwrap_or(Value::Null);
-                Ok(Value::Bool(items.iter().any(|item| *item == target)))
-            }
-            Err(_) => match &receiver {
+        // String/Map membership is checked BEFORE the FreeMonoid list path: a String IS a
+        // FreeMonoid<Char>, but `.contains` on a String means substring containment, not
+        // char-list membership — exploding it to chars would break multi-char queries
+        // (ctrl#1476 B1; same Str-representation rule as `concat`).
+        "contains" | "has" => match &receiver {
             Value::Map(m) => {
                 let key = expect_str(args.first(), "contains")?;
                 Ok(Value::Bool(m.contains_key(&key)))
@@ -1819,9 +1829,14 @@ fn eval_algebra_method(
                 let sub = expect_str(args.first(), "contains")?;
                 Ok(Value::Bool(s.contains(&sub)))
             }
-            _ => Err(InterpError::TypeError {
-                msg: format!("contains not supported on {}", receiver.type_label()),
-            }),
+            _ => match expect_list(&receiver, "contains") {
+                Ok(items) => {
+                    let target = args.first().cloned().unwrap_or(Value::Null);
+                    Ok(Value::Bool(items.iter().any(|item| *item == target)))
+                }
+                Err(_) => Err(InterpError::TypeError {
+                    msg: format!("contains not supported on {}", receiver.type_label()),
+                }),
             },
         },
 
