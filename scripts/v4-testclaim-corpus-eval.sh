@@ -30,6 +30,12 @@ claim_run() {
   "$bin" run --source-root src/v4 --entry "$entry" --function "$1" --claim-run
 }
 
+sg2_claim_run() {
+  "$bin" run --source-root src/v4 \
+    --entry "src/v4/test/claim/manual/sg2_mode2_corpus_runtime.dag" \
+    --function "$1" --claim-run
+}
+
 dag_string_data() {
   local name="$1"
   grep -E "^data ${name}: String = \"" "$root/$entry" \
@@ -61,6 +67,13 @@ claim_run witness_corpus_eval_tracked_expectation_closed
 claim_run witness_corpus_eval_row_eval_mvp2_runtime_gate
 claim_run witness_corpus_eval_row_mechanical_reverification_runtime_gate
 claim_run witness_corpus_eval_row_subsumption_reverifies_runtime_gate
+
+# SG-2 prep rows: isolated runtime entry (compile predicates in sg2_mode2_non_grammar_emit.dag).
+sg2_claim_run witness_sg2_mode2_translation_rules_empty_runtime_gate
+sg2_claim_run witness_sg2_mode2_emitted_non_grammar_matched_runtime_gate
+sg2_claim_run witness_sg2_mode2_wire_kind_authority_runtime_gate
+sg2_claim_run witness_sg2_mode2_gap2_lex_only_prep_runtime_gate
+sg2_claim_run witness_sg2_mode2_gap2_lex_only_rejects_binding_spellings_runtime_gate
 
 # HostRejected rows: transport observes pinned stderr marker; modeled witness gates pin alignment.
 out="$(transport_run \

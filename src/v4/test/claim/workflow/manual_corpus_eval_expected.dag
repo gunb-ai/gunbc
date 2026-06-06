@@ -33,15 +33,25 @@ import v4.test.claim.manual.eval_runtime_mvp {
   run_eval_mvp2_test_claim_route
 }
 
-// CDV-row claim symbol atoms only — do NOT import parallelism/effect modules here; loading those
-// modules evaluates `run_test_claim` receipts and crashes before per-row transport gates.
+// CDV-row + SG-2 claim symbol atoms only — do NOT import parallelism/effect/sg2 modules here;
+// loading those modules evaluates `run_test_claim` receipts (or compile-only predicates) early.
 data claim_parallelism_data_dependency_run_test_claim_receipt: Symbol = claim_parallelism_data_dependency_run_test_claim_receipt
 data claim_lens_effect_depends_on_runtime_verdict: Symbol = claim_lens_effect_depends_on_runtime_verdict
+data claim_sg2_mode2_translation_rules_empty_corpus: Symbol = claim_sg2_mode2_translation_rules_empty_corpus
+data claim_sg2_mode2_emitted_non_grammar_matched_corpus: Symbol = claim_sg2_mode2_emitted_non_grammar_matched_corpus
+data claim_sg2_mode2_wire_kind_authority_corpus: Symbol = claim_sg2_mode2_wire_kind_authority_corpus
+data claim_sg2_mode2_gap2_lex_only_prep_corpus: Symbol = claim_sg2_mode2_gap2_lex_only_prep_corpus
+data claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings_corpus: Symbol = claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings_corpus
 data run_eval_mvp2_test_claim_route_sym: Symbol = run_eval_mvp2_test_claim_route_sym
 data run_parallelism_data_dependency_receipt_sym: Symbol = run_parallelism_data_dependency_receipt_sym
 data run_lens_effect_depends_on_runtime_verdict_sym: Symbol = run_lens_effect_depends_on_runtime_verdict_sym
 data run_rust_language_model_emit_mechanical_reverification_claim_sym: Symbol = run_rust_language_model_emit_mechanical_reverification_claim_sym
 data run_rust_language_model_emit_subsumption_reverifies_sym: Symbol = run_rust_language_model_emit_subsumption_reverifies_sym
+data run_sg2_mode2_translation_rules_empty_sym: Symbol = run_sg2_mode2_translation_rules_empty_sym
+data run_sg2_mode2_emitted_non_grammar_matched_sym: Symbol = run_sg2_mode2_emitted_non_grammar_matched_sym
+data run_sg2_mode2_wire_kind_authority_sym: Symbol = run_sg2_mode2_wire_kind_authority_sym
+data run_sg2_mode2_gap2_lex_only_prep_sym: Symbol = run_sg2_mode2_gap2_lex_only_prep_sym
+data run_sg2_mode2_gap2_lex_only_rejects_binding_spellings_sym: Symbol = run_sg2_mode2_gap2_lex_only_rejects_binding_spellings_sym
 
 // Host-transport rejection carrier for pre-TestClaimRun interpreter failures (CDV fold site).
 data interpreter_classified_dependency_view_non_exhaustive: Symbol = interpreter_classified_dependency_view_non_exhaustive
@@ -109,6 +119,31 @@ data manual_corpus_eval_host_run_specs: List<CorpusEvalHostRunSpec> = [
     claim_id: claim_rust_language_model_emit_subsumption_reverifies,
     entry_relpath: "src/v4/test/claim/manual/dissolution_subsumption_reverification.dag",
     run_fn: run_rust_language_model_emit_subsumption_reverifies_sym
+  },
+  CorpusEvalHostRunSpec {
+    claim_id: claim_sg2_mode2_translation_rules_empty_corpus,
+    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_corpus_runtime.dag",
+    run_fn: run_sg2_mode2_translation_rules_empty_sym
+  },
+  CorpusEvalHostRunSpec {
+    claim_id: claim_sg2_mode2_emitted_non_grammar_matched_corpus,
+    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_corpus_runtime.dag",
+    run_fn: run_sg2_mode2_emitted_non_grammar_matched_sym
+  },
+  CorpusEvalHostRunSpec {
+    claim_id: claim_sg2_mode2_wire_kind_authority_corpus,
+    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_corpus_runtime.dag",
+    run_fn: run_sg2_mode2_wire_kind_authority_sym
+  },
+  CorpusEvalHostRunSpec {
+    claim_id: claim_sg2_mode2_gap2_lex_only_prep_corpus,
+    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_corpus_runtime.dag",
+    run_fn: run_sg2_mode2_gap2_lex_only_prep_sym
+  },
+  CorpusEvalHostRunSpec {
+    claim_id: claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings_corpus,
+    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_corpus_runtime.dag",
+    run_fn: run_sg2_mode2_gap2_lex_only_rejects_binding_spellings_sym
   }
 ]
 
@@ -143,6 +178,36 @@ data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
     observation: ExecutedFail,
     primary_reason: eval_rejected_type_node,
     dissolution_target: dissolution_target_subsumption_tree_eval
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_sg2_mode2_translation_rules_empty_corpus,
+    observation: ExecutedPass,
+    primary_reason: corpus_eval_verdict_pass_reason,
+    dissolution_target: dissolution_target_transform_eval
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_sg2_mode2_emitted_non_grammar_matched_corpus,
+    observation: ExecutedPass,
+    primary_reason: corpus_eval_verdict_pass_reason,
+    dissolution_target: dissolution_target_transform_eval
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_sg2_mode2_wire_kind_authority_corpus,
+    observation: ExecutedPass,
+    primary_reason: corpus_eval_verdict_pass_reason,
+    dissolution_target: dissolution_target_transform_eval
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_sg2_mode2_gap2_lex_only_prep_corpus,
+    observation: ExecutedPass,
+    primary_reason: corpus_eval_verdict_pass_reason,
+    dissolution_target: dissolution_target_transform_eval
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings_corpus,
+    observation: ExecutedPass,
+    primary_reason: corpus_eval_verdict_pass_reason,
+    dissolution_target: dissolution_target_transform_eval
   }
 ]
 
@@ -154,7 +219,7 @@ fn corpus_eval_expected_pins_match_host_run_specs() -> Bool {
 
 // Cardinality must match `manual_corpus_node_subject_rows` (ci.dag run_roster authority). Do not
 // import/evaluate that roster here — CDV rows crash `gunbc run` before per-row transport gates.
-data manual_corpus_eval_tracked_expectation_row_count: Int = 5
+data manual_corpus_eval_tracked_expectation_row_count: Int = 10
 
 fn corpus_eval_expected_pins_match_roster_frontier() -> Bool {
   length(xs: manual_corpus_eval_expected_pins) == manual_corpus_eval_tracked_expectation_row_count

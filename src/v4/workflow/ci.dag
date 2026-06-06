@@ -221,6 +221,13 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_subsumption_reverifies
 }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.manual.sg2_mode2_corpus_runtime {
+  claim_sg2_mode2_emitted_non_grammar_matched_corpus,
+  claim_sg2_mode2_gap2_lex_only_prep_corpus,
+  claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings_corpus,
+  claim_sg2_mode2_translation_rules_empty_corpus,
+  claim_sg2_mode2_wire_kind_authority_corpus
+}
 import v4.test.claim.lens_parallelism.data_dependency {
   claim_parallelism_data_dependency_run_test_claim_receipt
 }
@@ -1331,7 +1338,12 @@ data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
   claim_parallelism_data_dependency_run_test_claim_receipt,
   claim_lens_effect_depends_on_runtime_verdict,
   claim_rust_language_model_emit_mechanical_reverification,
-  claim_rust_language_model_emit_subsumption_reverifies
+  claim_rust_language_model_emit_subsumption_reverifies,
+  claim_sg2_mode2_translation_rules_empty_corpus,
+  claim_sg2_mode2_emitted_non_grammar_matched_corpus,
+  claim_sg2_mode2_wire_kind_authority_corpus,
+  claim_sg2_mode2_gap2_lex_only_prep_corpus,
+  claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings_corpus
 ]
 
 data ci_lens_ownership_family_eval_claim_ids: List<Symbol> = lens_ownership_family_claim_ids
