@@ -45,7 +45,7 @@ pub use crate::v2_compiler_emit_core_support::{
 pub use crate::v2_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v2_compiler_infer::InferScope;
 pub use crate::v2_compiler_infer::{
-    build_emit_graph_info, build_params_scope, expr_span, extend_scope,
+    build_emit_graph_info, build_params_scope, expr_span, extend_scope, resolved_type_name,
 };
 use crate::v2_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v2_compiler_infer_emit_info::{
