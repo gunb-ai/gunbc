@@ -2,6 +2,11 @@
 //!
 //! Boundary Discipline guard for `v4.std.text` (host-crate structural lint).
 //!
+//! **Host-test preservation justification (W1-W4 qualifying bar — provably
+//! runtime-inexpressible):** non-behavioral: asserts type-ABSENCE of
+//! ByteString/FileBody/FileContent/TargetSource in text.dag — no runtime witness can
+//! express type-non-existence.
+//!
 //! The behavioral content of the retired `v4_std_text_dag_smoke_test.rs` migrated to
 //! discriminating claim-run witnesses in `src/v4/test/claim/std_text/carrier_claims.dag`
 //! (executed through v2, mutation-proven). One assertion in that smoke test was NOT
@@ -41,8 +46,8 @@ fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, nam
 fn v4_std_text_dag_does_not_redeclare_byte_file_target_carriers_as_text() {
     let tokens = tokenize_for_test(TEXT_DAG, TEXT_PATH)
         .unwrap_or_else(|e| panic!("{TEXT_PATH}: tokenize: {e:?}"));
-    let module = parse_for_test(&tokens, TEXT_PATH)
-        .unwrap_or_else(|e| panic!("{TEXT_PATH}: parse: {e:?}"));
+    let module =
+        parse_for_test(&tokens, TEXT_PATH).unwrap_or_else(|e| panic!("{TEXT_PATH}: parse: {e:?}"));
 
     for forbidden in ["ByteString", "FileBody", "FileContent", "TargetSource"] {
         assert!(
