@@ -2029,16 +2029,18 @@ fn rust_ident_lex_rule() -> LexRule {
 }
 
 // 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
-// most LiteralPattern.text below (e.g. "fn " not "fn"); `rust_token_plus` is layout-free
-// (`"+"`) so additive expressions tokenize with trivia. Dissolves when T-6 supplies
-// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
+// every LiteralPattern.text below (e.g. "fn " not "fn", " + " not "+") as the interim
+// trivia policy: a token carries the layout adjacent to it so `x + y` renders with the
+// spaces the reference (`rust_mvp1_source_text`) requires. Dissolves when T-6 supplies
+// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout structurally
+// (at which point these texts drop their baked spaces).
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       rust_lex_rule(token_class: rust_token_kw_fn, text: "fn "),
       rust_ident_lex_rule(),
       rust_lex_rule(token_class: rust_token_ty_i32, text: "i32"),
-      rust_lex_rule(token_class: rust_token_plus, text: "+"),
+      rust_lex_rule(token_class: rust_token_plus, text: " + "),
       rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
       rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
       rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
