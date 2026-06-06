@@ -30,7 +30,9 @@ fn probe_wire_decode_call_uses_node_and_projection_args() {
 
     // Correct call shape must be present: decode takes (node:, projection:).
     assert!(
-        live.contains("target_type_expr_emitted_wire_decode(node: emitted, projection: projection)"),
+        live.contains(
+            "target_type_expr_emitted_wire_decode(node: emitted, projection: projection)"
+        ),
         "SG-RC probe must call target_type_expr_emitted_wire_decode with (node:, projection:) \
          (ctrl#1476 B3-Gap2). target_model.dag:target_reference_layer_probe_from_emitted_type."
     );
