@@ -1224,6 +1224,7 @@ fn v4_workflow_ci_testclaim_corpus_eval_ratchet_is_asymmetric_and_modeled() {
         "claim_run_required()",
         "host_rejected_or_transport_pass_required()",
         "flip its pin PinnedRed->MustPass",
+        "TestClaimRun { verdict: Pass",
         "witness_corpus_eval_row_parallelism_transport_pass_ratchet_forward",
         "witness_corpus_eval_row_effect_transport_pass_ratchet_forward",
         "--claim-run",
@@ -1233,6 +1234,12 @@ fn v4_workflow_ci_testclaim_corpus_eval_ratchet_is_asymmetric_and_modeled() {
             "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: thin transport must surface modeled ratchet outcome `{needle}`"
         );
     }
+    assert!(
+        TESTCLAIM_CORPUS_EVAL_SCRIPT.contains(
+            "out=\"$(\"$bin\" run --source-root src/v4 --entry \"$row_entry\" --function \"$row_fn\" 2>&1)\""
+        ),
+        "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: TestClaimRun row transport must not use --claim-run; row functions return TestClaimRun, not Bool"
+    );
 }
 
 #[test]

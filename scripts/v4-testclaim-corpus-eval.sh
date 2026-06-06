@@ -63,11 +63,11 @@ dag_string_data() {
     | head -1
 }
 
-transport_claim_run() {
+transport_run() {
   local row_entry="$1" row_fn="$2"
   set +e
   local out
-  out="$("$bin" run --source-root src/v4 --entry "$row_entry" --function "$row_fn" --claim-run 2>&1)"
+  out="$("$bin" run --source-root src/v4 --entry "$row_entry" --function "$row_fn" 2>&1)"
   local ex=$?
   set -e
   printf '%s' "$out"
@@ -78,18 +78,18 @@ host_rejected_or_transport_pass_required() {
   local label="$1" target="$2" row_entry="$3" row_fn="$4" host_gate_fn="$5" pass_gate_fn="$6" pass_ratchet_fn="$7"
   set +e
   local out
-  out="$(transport_claim_run "$row_entry" "$row_fn" 2>&1)"
+  out="$(transport_run "$row_entry" "$row_fn" 2>&1)"
   local ex=$?
   set -e
   printf '%s\n' "$out"
 
-  if [[ "$ex" -eq 0 ]]; then
-    claim_run_required "$pass_gate_fn" "$pass_ratchet_fn" "$label" "$target"
+  if grep -Fq "$cdv_host_rejection_marker" <<< "$out"; then
+    claim_run "$host_gate_fn"
     return 0
   fi
 
-  if grep -Fq "$cdv_host_rejection_marker" <<< "$out"; then
-    claim_run "$host_gate_fn"
+  if grep -Fq "TestClaimRun { verdict: Pass" <<< "$out"; then
+    claim_run_required "$pass_gate_fn" "$pass_ratchet_fn" "$label" "$target"
     return 0
   fi
 
