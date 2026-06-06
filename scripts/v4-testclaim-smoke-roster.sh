@@ -31,18 +31,18 @@ claim_run() {
 # Project each V4RosterPilotClaimRunRow { label, entry, function } block from the roster DAG.
 parse_claim_run_rows() {
   awk '
-    /V4RosterPilotClaimRunRow \{/ { in_row = 1; label = ""; entry = ""; fn = "" }
-    in_row && /label:/ {
+    /= V4RosterPilotClaimRunRow \{/ { in_row = 1; label = ""; entry = ""; fn = "" }
+    in_row && /label: "/ {
       sub(/.*label: "/, "")
       sub(/".*/, "")
       label = $0
     }
-    in_row && /entry:/ {
+    in_row && /entry: "/ {
       sub(/.*entry: "/, "")
       sub(/".*/, "")
       entry = $0
     }
-    in_row && /function:/ {
+    in_row && /function: "/ {
       sub(/.*function: "/, "")
       sub(/".*/, "")
       fn = $0
