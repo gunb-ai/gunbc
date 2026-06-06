@@ -822,7 +822,8 @@ fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
                 }
             }
             _ => {
-                if let (Some(mut a), Some(b)) = (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
+                if let (Some(mut a), Some(b)) =
+                    (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
                 {
                     a.extend(b);
                     return Ok(Value::List(Rc::new(a)));
