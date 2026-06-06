@@ -3,6 +3,10 @@ name = "v2-compiler"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+text_lookup_work_counter = []
+
 [dependencies]
 stacker = "0.1"
 clap = { version = "4", features = ["derive"] }
