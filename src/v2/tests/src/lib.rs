@@ -28,6 +28,8 @@ mod fn_as_value_test;
 #[cfg(test)]
 mod infer_semantics;
 #[cfg(test)]
+mod list_free_monoid_chokepoint_test;
+#[cfg(test)]
 mod int_pow_bounded_test;
 #[cfg(test)]
 mod parse;
