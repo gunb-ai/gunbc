@@ -1866,8 +1866,16 @@ fn eval_algebra_method(
             Ok(Value::Str(strs.join(&sep)))
         }
 
+        // Map key lookup is checked BEFORE the FreeMonoid list path: a String IS a
+        // FreeMonoid<Char>, but `.get` on a String is not char-list indexing (ctrl#1476 B1;
+        // same Str-representation rule as `index` / `slice` / `contains`).
         "get" => {
-            if let Ok(items) = expect_list(&receiver, "get") {
+            if matches!(&receiver, Value::Str(_)) {
+                let key = args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "get requires a key argument".to_string(),
+                })?;
+                raw_map_lookup(&receiver, key, env, ctx)
+            } else if let Ok(items) = expect_list(&receiver, "get") {
                 let idx = expect_int(args.first(), "get")?;
                 Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
             } else {
@@ -2790,12 +2798,14 @@ fn eval_builtin(
         },
 
         "reverse" => match positional.first() {
-            Some(v) => {
-                let items = expect_list(v, "reverse")?;
-                let mut r = items.to_vec();
-                r.reverse();
-                Ok(Some(Value::List(Rc::new(r))))
-            }
+            Some(v) => match free_monoid_to_vec(v) {
+                Some(items) => {
+                    let mut r = items;
+                    r.reverse();
+                    Ok(Some(Value::List(Rc::new(r))))
+                }
+                None => Ok(None),
+            },
             None => Ok(None),
         },
 
@@ -2843,23 +2853,26 @@ fn eval_builtin(
         }
 
         "list_push" | "append" => match positional.as_slice() {
-            [list_val, item] => {
-                let items = expect_list(list_val, "list_push")?;
-                let mut result = items.to_vec();
-                result.push((*item).clone());
-                Ok(Some(Value::List(Rc::new(result))))
-            }
+            [list_val, item] => match free_monoid_to_vec(list_val) {
+                Some(items) => {
+                    let mut result = items;
+                    result.push((*item).clone());
+                    Ok(Some(Value::List(Rc::new(result))))
+                }
+                None => Ok(None),
+            },
             _ => Ok(None),
         },
 
         "list_concat" => match positional.as_slice() {
-            [a, b] => {
-                let a_items = expect_list(a, "list_concat")?;
-                let b_items = expect_list(b, "list_concat")?;
-                let mut result = a_items.to_vec();
-                result.extend(b_items.iter().cloned());
-                Ok(Some(Value::List(Rc::new(result))))
-            }
+            [a, b] => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+                (Some(a_items), Some(b_items)) => {
+                    let mut result = a_items;
+                    result.extend(b_items);
+                    Ok(Some(Value::List(Rc::new(result))))
+                }
+                _ => Ok(None),
+            },
             _ => Ok(None),
         },
 
