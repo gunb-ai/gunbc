@@ -1,0 +1,22 @@
+// src/v4/test/claim/workflow/v4_roster_pilot.dag
+// Scope: v4 smoke-roster pilot promotions — ordinary named claim-run witnesses.
+// Status: Wave-A pilot; host transport is thin and reads these row names.
+
+module v4.test.claim.workflow.v4_roster_pilot
+
+
+import v4.std.logic { Bool }
+import v4.std.text { String }
+
+
+data v4_roster_pilot_edit_locus_entry: String = "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
+
+data v4_roster_pilot_edit_locus_narrow_resolution_fn: String = "edit_locus_narrow_resolution_holds"
+data v4_roster_pilot_edit_locus_fail_closed_fn: String = "edit_locus_fail_closed_holds"
+
+
+fn witness_v4_roster_pilot_declares_edit_locus_rows() -> Bool {
+  v4_roster_pilot_edit_locus_entry == "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
+    && v4_roster_pilot_edit_locus_narrow_resolution_fn == "edit_locus_narrow_resolution_holds"
+    && v4_roster_pilot_edit_locus_fail_closed_fn == "edit_locus_fail_closed_holds"
+}
