@@ -616,7 +616,10 @@ fn source_text_at_lookup_flat_in_file_padding() {
     // FLAT: chars_to_string walks only the name widths, independent of the
     // surrounding filler — so 10× padding leaves the work identical. Names are
     // "fn_0".."fn_7" (4 chars each): K*4*LOOKUPS_PER_SPAN = 8*4*50 = 1600.
-    assert_eq!(small_walked, 1_600, "K={K} names × 4 chars × {LOOKUPS_PER_SPAN}");
+    assert_eq!(
+        small_walked, 1_600,
+        "K={K} names × 4 chars × {LOOKUPS_PER_SPAN}"
+    );
     assert_eq!(
         large_walked, small_walked,
         "10× padding must not change source_text_at work — flat in file length"
