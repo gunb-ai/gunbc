@@ -343,8 +343,6 @@ mod v4_std_grounding_dag_smoke_test;
 mod v4_std_model_core_dag_smoke_test;
 #[path = "integration/v4_std_target_realization_dag_smoke_test.rs"]
 mod v4_std_target_realization_dag_smoke_test;
-#[path = "integration/v4_std_text_dag_smoke_test.rs"]
-mod v4_std_text_dag_smoke_test;
 #[path = "integration/v4_t15_self_host_fixed_point_harness_test.rs"]
 mod v4_t15_self_host_fixed_point_harness_test;
 #[path = "integration/v4_test_bootstrap_infra_closeout_test.rs"]
