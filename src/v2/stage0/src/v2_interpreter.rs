@@ -2887,6 +2887,7 @@ fn eval_builtin(
         }
 
         "list_push" | "append" => match positional.as_slice() {
+            [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
             [list_val, item] => match free_monoid_to_vec(list_val) {
                 Some(items) => {
                     let mut result = items;
