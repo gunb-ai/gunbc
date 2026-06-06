@@ -5,7 +5,7 @@
 module v4.test.claim.workflow.v4_roster_pilot
 
 
-import v4.std.algebra { length }
+import v4.std.algebra { count_equal, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.text { String }
@@ -63,9 +63,29 @@ fn v4_roster_pilot_row_matches(
 }
 
 
+fn v4_roster_pilot_claim_run_list_contains_once(
+  row: V4RosterPilotClaimRunRow
+) -> Bool {
+  count_equal(
+    xs: v4_roster_pilot_claim_run_rows,
+    item: row,
+    eq: fn(left, right) { left == right }
+  ) == 1
+}
+
+
+fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
+  v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_narrow)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_fail_closed)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_symbol_carrier)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_absence_fail_closed)
+}
+
+
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
   (length(xs: v4_roster_pilot_claim_run_rows) == 4)
     && (v4_roster_pilot_claim_run_row_count == "4")
+    && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
       entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
