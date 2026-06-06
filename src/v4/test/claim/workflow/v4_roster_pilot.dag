@@ -56,6 +56,12 @@ data v4_roster_pilot_row_grounding_ts_absence_fail_closed: V4RosterPilotClaimRun
   function: "ts_g2_sg5_absence_fail_closed_holds"
 }
 
+data v4_roster_pilot_row_discriminant_intrinsic: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "discriminant intrinsic payload-blind arm-sharp",
+  entry: "src/v4/test/claim/manual/discriminant_intrinsic.dag",
+  function: "discriminant_intrinsic_is_payload_blind_and_arm_sharp"
+}
+
 // ctrl#1476 B3-Gap2 (SG-RC probe wire-decode call-site fix). Only the owned round-trip is
 // promoted; sg_rc_f6_round_trip_rc remains a separate tracked-red read-path bug (follow-up).
 data v4_roster_pilot_row_sg_rc_f6_owned: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
@@ -72,6 +78,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_generator_provenance,
   v4_roster_pilot_row_grounding_ts_symbol_carrier,
   v4_roster_pilot_row_grounding_ts_absence_fail_closed,
+  v4_roster_pilot_row_discriminant_intrinsic,
   v4_roster_pilot_row_sg_rc_f6_owned
 ]
 
@@ -106,6 +113,7 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_generator_provenance)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_symbol_carrier)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_absence_fail_closed)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_discriminant_intrinsic)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg_rc_f6_owned)
 }
 
@@ -145,10 +153,13 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "ts_g2_sg5_absence_fail_closed_holds"
     )
     && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_discriminant_intrinsic,
+      entry: "src/v4/test/claim/manual/discriminant_intrinsic.dag",
+      function: "discriminant_intrinsic_is_payload_blind_and_arm_sharp"
+    )
+    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_sg_rc_f6_owned,
       entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
       function: "sg_rc_f6_round_trip_owned"
     )
 }
-
-

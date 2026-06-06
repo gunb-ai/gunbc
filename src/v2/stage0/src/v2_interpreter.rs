@@ -804,12 +804,31 @@ fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
         }
     }
 
-    // List concatenation
+    // List concatenation — List<T> IS FreeMonoid<T>; flatten operands (Option-B chokepoint).
+    // Str operands stay atomic when mixed with lists (ctrl#1476 B1; same as .append/.concat).
     if matches!(op, BinOp::Add) {
-        if let (Value::List(a), Value::List(b)) = (&left, &right) {
-            let mut result: Vec<Value> = a.to_vec();
-            result.extend(b.iter().cloned());
-            return Ok(Value::List(Rc::new(result)));
+        match (&left, &right) {
+            (l, Value::Str(s)) => {
+                if let Some(mut result) = free_monoid_to_vec(l) {
+                    result.push(Value::Str(s.clone()));
+                    return Ok(Value::List(Rc::new(result)));
+                }
+            }
+            (Value::Str(s), r) => {
+                if let Some(result) = free_monoid_to_vec(r) {
+                    let mut out = vec![Value::Str(s.clone())];
+                    out.extend(result);
+                    return Ok(Value::List(Rc::new(out)));
+                }
+            }
+            _ => {
+                if let (Some(mut a), Some(b)) =
+                    (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
+                {
+                    a.extend(b);
+                    return Ok(Value::List(Rc::new(a)));
+                }
+            }
         }
     }
 
@@ -1402,14 +1421,14 @@ fn eval_field_access(
         Some(FieldAccessStyle::TupleFirst) => {
             // Map entry: (key, value).first → key
             // Or list: first element
-            match &base_val {
-                Value::List(items) => Ok(items.first().cloned().unwrap_or(Value::Null)),
-                _ => extract_field(&base_val, &field_name, env, ctx),
+            match expect_list(&base_val, "tuple.first") {
+                Ok(items) => Ok(items.first().cloned().unwrap_or(Value::Null)),
+                Err(_) => extract_field(&base_val, &field_name, env, ctx),
             }
         }
-        Some(FieldAccessStyle::TupleSecond) => match &base_val {
-            Value::List(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
-            _ => extract_field(&base_val, &field_name, env, ctx),
+        Some(FieldAccessStyle::TupleSecond) => match expect_list(&base_val, "tuple.second") {
+            Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
+            Err(_) => extract_field(&base_val, &field_name, env, ctx),
         },
         Some(FieldAccessStyle::OptionalUnwrap) => {
             // .value on Optional — unwrap or return Null
@@ -1542,19 +1561,13 @@ fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpR
     let collection = eval_expr(&foreach_collection(node.clone()), env, ctx)?;
     let body_node = foreach_body(node.clone());
 
-    match collection {
-        Value::List(items) => {
-            let mut results = Vec::with_capacity(items.len());
-            for item in items.iter() {
-                let iter_env = Env::with_binding(env, var_name.clone(), item.clone());
-                results.push(eval_expr(&body_node, &iter_env, ctx)?);
-            }
-            Ok(Value::List(Rc::new(results)))
-        }
-        _ => Err(InterpError::TypeError {
-            msg: format!("foreach expects a list, got {}", collection.type_label()),
-        }),
+    let items = expect_list(&collection, "foreach")?;
+    let mut results = Vec::with_capacity(items.len());
+    for item in items.iter() {
+        let iter_env = Env::with_binding(env, var_name.clone(), item.clone());
+        results.push(eval_expr(&body_node, &iter_env, ctx)?);
     }
+    Ok(Value::List(Rc::new(results)))
 }
 
 // ---------------------------------------------------------------------------
@@ -1566,7 +1579,13 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let idx = eval_expr(&index_expr(node.clone()), env, ctx)?;
 
     match (&base, &idx) {
-        (Value::List(items), Value::Int(i)) => {
+        // Exclude Value::Str: a String IS a FreeMonoid<Char>, but indexing must keep its
+        // dedicated Str arm (returns a one-char Str, not a char-list element via the
+        // chokepoint) (ctrl#1476 B1; same Str-representation rule as concat/contains/slice).
+        (base_val, Value::Int(i))
+            if !matches!(base_val, Value::Str(_)) && free_monoid_to_vec(base_val).is_some() =>
+        {
+            let items = expect_list(base_val, "index")?;
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
         }
@@ -1598,7 +1617,13 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     let end = eval_expr(&slice_end(node.clone()), env, ctx)?;
 
     match (&base, &start, &end) {
-        (Value::List(items), Value::Int(s), Value::Int(e)) => {
+        // Exclude Value::Str: slicing a String must return a substring (Str) via its
+        // dedicated arm below, not a char-list via the FreeMonoid chokepoint
+        // (ctrl#1476 B1; same Str-representation rule as concat/contains).
+        (base_val, Value::Int(s), Value::Int(e))
+            if !matches!(base_val, Value::Str(_)) && free_monoid_to_vec(base_val).is_some() =>
+        {
+            let items = expect_list(base_val, "slice")?;
             let s = *s as usize;
             let e = (*e as usize).min(items.len());
             Ok(Value::List(Rc::new(items[s..e].to_vec())))
@@ -1688,9 +1713,14 @@ fn eval_algebra_method(
                 let mut result = Vec::new();
                 for item in items.iter() {
                     let mapped = apply_closure(f, &[item.clone()], env, ctx)?;
-                    match mapped {
-                        Value::List(inner) => result.extend(inner.iter().cloned()),
-                        _ => result.push(mapped),
+                    // Cons/List flatten only — Value::Str stays one element (ctrl#1476 B1).
+                    if matches!(&mapped, Value::Str(_)) {
+                        result.push(mapped);
+                    } else {
+                        match free_monoid_to_vec(&mapped) {
+                            Some(inner) => result.extend(inner),
+                            None => result.push(mapped),
+                        }
                     }
                 }
                 Ok(Value::List(Rc::new(result)))
@@ -1731,36 +1761,45 @@ fn eval_algebra_method(
             })
         }
 
-        "concat" | "append" | "push" => match &receiver {
-            Value::List(items) => {
-                let mut result = items.to_vec();
-                for arg in args {
-                    match arg {
-                        Value::List(other) => result.extend(other.iter().cloned()),
-                        _ => result.push(arg.clone()),
-                    }
-                }
-                Ok(Value::List(Rc::new(result)))
-            }
-            Value::Str(s) => {
+        "concat" | "append" | "push" => {
+            // String concat preserves the String representation: a String IS a
+            // FreeMonoid<Char>, but its canonical value form is Value::Str — concat must
+            // not explode it to a char list via the FreeMonoid chokepoint (ctrl#1476 B1).
+            if let Value::Str(s) = &receiver {
                 let mut result = s.clone();
                 for arg in args {
                     result.push_str(&format!("{}", arg));
                 }
-                Ok(Value::Str(result))
+                return Ok(Value::Str(result));
             }
-            _ => Err(InterpError::TypeError {
+            if let Ok(items) = expect_list(&receiver, "concat") {
+                let mut result = items.to_vec();
+                for arg in args {
+                    // Non-list Str args append as one element, not char-exploded (ctrl#1476 B1).
+                    if matches!(arg, Value::Str(_)) {
+                        result.push(arg.clone());
+                    } else {
+                        match free_monoid_to_vec(arg) {
+                            Some(other) => result.extend(other),
+                            None => result.push(arg.clone()),
+                        }
+                    }
+                }
+                return Ok(Value::List(Rc::new(result)));
+            }
+            Err(InterpError::TypeError {
                 msg: format!("cannot concat on {}", receiver.type_label()),
-            }),
-        },
+            })
+        }
 
-        "length" | "count" | "size" => match &receiver {
-            Value::List(items) => Ok(Value::Int(items.len() as i64)),
-            Value::Map(m) => Ok(Value::Int(m.len() as i64)),
-            Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
-            _ => Err(InterpError::TypeError {
-                msg: format!("cannot get length of {}", receiver.type_label()),
-            }),
+        "length" | "count" | "size" => match free_monoid_to_vec(&receiver) {
+            Some(items) => Ok(Value::Int(items.len() as i64)),
+            None => match &receiver {
+                Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+                _ => Err(InterpError::TypeError {
+                    msg: format!("cannot get length of {}", receiver.type_label()),
+                }),
+            },
         },
 
         "first" => {
@@ -1814,11 +1853,11 @@ fn eval_algebra_method(
             Ok(Value::List(Rc::new(result)))
         }
 
+        // String/Map membership is checked BEFORE the FreeMonoid list path: a String IS a
+        // FreeMonoid<Char>, but `.contains` on a String means substring containment, not
+        // char-list membership — exploding it to chars would break multi-char queries
+        // (ctrl#1476 B1; same Str-representation rule as `concat`).
         "contains" | "has" => match &receiver {
-            Value::List(items) => {
-                let target = args.first().cloned().unwrap_or(Value::Null);
-                Ok(Value::Bool(items.iter().any(|item| *item == target)))
-            }
             Value::Map(m) => {
                 let key = expect_str(args.first(), "contains")?;
                 Ok(Value::Bool(m.contains_key(&key)))
@@ -1827,9 +1866,15 @@ fn eval_algebra_method(
                 let sub = expect_str(args.first(), "contains")?;
                 Ok(Value::Bool(s.contains(&sub)))
             }
-            _ => Err(InterpError::TypeError {
-                msg: format!("contains not supported on {}", receiver.type_label()),
-            }),
+            _ => match expect_list(&receiver, "contains") {
+                Ok(items) => {
+                    let target = args.first().cloned().unwrap_or(Value::Null);
+                    Ok(Value::Bool(items.iter().any(|item| *item == target)))
+                }
+                Err(_) => Err(InterpError::TypeError {
+                    msg: format!("contains not supported on {}", receiver.type_label()),
+                }),
+            },
         },
 
         "join" => {
@@ -1839,18 +1884,25 @@ fn eval_algebra_method(
             Ok(Value::Str(strs.join(&sep)))
         }
 
-        "get" => match &receiver {
-            Value::List(items) => {
-                let idx = expect_int(args.first(), "get")?;
-                Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
-            }
-            other => {
+        // Map key lookup is checked BEFORE the FreeMonoid list path: a String IS a
+        // FreeMonoid<Char>, but `.get` on a String is not char-list indexing (ctrl#1476 B1;
+        // same Str-representation rule as `index` / `slice` / `contains`).
+        "get" => {
+            if matches!(&receiver, Value::Str(_)) {
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(other, key, env, ctx)
+                raw_map_lookup(&receiver, key, env, ctx)
+            } else if let Ok(items) = expect_list(&receiver, "get") {
+                let idx = expect_int(args.first(), "get")?;
+                Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
+            } else {
+                let key = args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "get requires a key argument".to_string(),
+                })?;
+                raw_map_lookup(&receiver, key, env, ctx)
             }
-        },
+        }
 
         "insert" | "map_insert" => {
             let m = expect_map(&receiver, "insert")?;
@@ -2720,6 +2772,18 @@ fn eval_builtin(
             Ok(Some(Value::Str(format!("{}", v))))
         }
 
+        // `discriminant(v)` reifies a coproduct/record value's own constructor name as a
+        // `Symbol` (Symbol values are interned strings — see eval_var's `data X: Symbol = X`
+        // idiom at Value::Str). This is the single intrinsic that dissolves the hand-written
+        // `fn ..._discriminant(v) -> Symbol { match v { Ctor{..} => ctor_tag ... } }` bridges
+        // that shadow a coproduct's arm-set with a parallel `data ctor_tag: Symbol` vocabulary.
+        // The constructor's own name IS the discriminant; no per-type code is required.
+        "discriminant" => match positional.first() {
+            Some(Value::Variant { variant_name, .. }) => Ok(Some(Value::Str(variant_name.clone()))),
+            Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(type_name.clone()))),
+            _ => Ok(None),
+        },
+
         "parse_int" => {
             let s = expect_str(positional.first().copied(), "parse_int")?;
             match s.parse::<i64>() {
@@ -2740,27 +2804,55 @@ fn eval_builtin(
                 return Ok(Some(Value::Str(result)));
             }
             match positional.as_slice() {
-                [Value::List(a), Value::List(b)] => {
-                    let mut result = a.to_vec();
-                    result.extend(b.iter().cloned());
-                    Ok(Some(Value::List(Rc::new(result))))
-                }
+                [a, b] => match (a, b) {
+                    (l, Value::Str(s)) => match free_monoid_to_vec(l) {
+                        Some(mut result) => {
+                            result.push(Value::Str(s.clone()));
+                            Ok(Some(Value::List(Rc::new(result))))
+                        }
+                        None => Ok(None),
+                    },
+                    (Value::Str(s), r) => match free_monoid_to_vec(r) {
+                        Some(result) => {
+                            let mut out = vec![Value::Str(s.clone())];
+                            out.extend(result);
+                            Ok(Some(Value::List(Rc::new(out))))
+                        }
+                        None => Ok(None),
+                    },
+                    _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+                        (Some(mut a_items), Some(b_items)) => {
+                            a_items.extend(b_items);
+                            Ok(Some(Value::List(Rc::new(a_items))))
+                        }
+                        _ => Ok(None),
+                    },
+                },
                 _ => Ok(None),
             }
         }
 
         "count" => match positional.first() {
-            Some(Value::List(items)) => Ok(Some(Value::Int(items.len() as i64))),
-            _ => Ok(None),
+            Some(v) => match free_monoid_to_vec(v) {
+                Some(items) => Ok(Some(Value::Int(items.len() as i64))),
+                None => Ok(None),
+            },
+            None => Ok(None),
         },
 
+        // String IS FreeMonoid<Char>, but list builtins must not char-explode Str operands
+        // (ctrl#1476 B1; same Str-representation rule as concat/contains/slice).
         "reverse" => match positional.first() {
-            Some(Value::List(items)) => {
-                let mut r = items.to_vec();
-                r.reverse();
-                Ok(Some(Value::List(Rc::new(r))))
-            }
-            _ => Ok(None),
+            Some(Value::Str(_)) => Ok(None),
+            Some(v) => match free_monoid_to_vec(v) {
+                Some(items) => {
+                    let mut r = items;
+                    r.reverse();
+                    Ok(Some(Value::List(Rc::new(r))))
+                }
+                None => Ok(None),
+            },
+            None => Ok(None),
         },
 
         "string_length" => {
@@ -2807,20 +2899,28 @@ fn eval_builtin(
         }
 
         "list_push" | "append" => match positional.as_slice() {
-            [Value::List(items), item] => {
-                let mut result = items.to_vec();
-                result.push((*item).clone());
-                Ok(Some(Value::List(Rc::new(result))))
-            }
+            [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
+            [list_val, item] => match free_monoid_to_vec(list_val) {
+                Some(items) => {
+                    let mut result = items;
+                    result.push((*item).clone());
+                    Ok(Some(Value::List(Rc::new(result))))
+                }
+                None => Ok(None),
+            },
             _ => Ok(None),
         },
 
         "list_concat" => match positional.as_slice() {
-            [Value::List(a), Value::List(b)] => {
-                let mut result = a.to_vec();
-                result.extend(b.iter().cloned());
-                Ok(Some(Value::List(Rc::new(result))))
-            }
+            [a, b] if matches!(a, Value::Str(_)) || matches!(b, Value::Str(_)) => Ok(None),
+            [a, b] => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+                (Some(a_items), Some(b_items)) => {
+                    let mut result = a_items;
+                    result.extend(b_items);
+                    Ok(Some(Value::List(Rc::new(result))))
+                }
+                _ => Ok(None),
+            },
             _ => Ok(None),
         },
 
