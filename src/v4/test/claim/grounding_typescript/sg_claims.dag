@@ -348,3 +348,16 @@ data subject_ts_g2_sg5_collection_absence: TestClaimEvalSubject<Node> = eval_tes
 data run_ts_g2_sg5_collection_absence: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_ts_g2_sg5_collection_absence
 )
+
+
+// Wave-A route-through-v2 pilot: discriminating claim-run witnesses (E-10 consumer).
+// Positive narrow resolution — symbol SG-1 evidence targets the canonical symbol kernel.
+fn ts_g2_sg1_symbol_carrier_holds() -> Bool {
+  ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
+}
+
+
+// Fail-closed discrimination — SG-5 absence records reject collection realization edges.
+fn ts_g2_sg5_absence_fail_closed_holds() -> Bool {
+  ts_g2_sg5_collection_realization_absence_holds()
+}
