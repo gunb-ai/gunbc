@@ -70,9 +70,10 @@ fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSp
             source.push('\n');
         }
         let name = format!("fn_{i}");
-        let start = source.len() as i64;
+        // Char offsets (mirror tokenizer spans; chars_to_string is char-indexed).
+        let start = source.chars().count() as i64;
         source.push_str(&name);
-        let end = source.len() as i64;
+        let end = source.chars().count() as i64;
         spans.push(Rc::new(SourceSpan {
             file: file.clone(),
             start,
@@ -535,22 +536,26 @@ fn tokenizer_text_lookup_flat_in_file_size() {
 
 // ── Name / span text lookup (authored_name_at → source_text_at) ─────────
 //
-// Tracked-red-by-measurement: always-run locks pin today's O(offset) char-walk
-// cost via deterministic chars-walked counters. Tokenizer indexing is already
+// Flat-by-measurement: always-run locks assert source_text_at work is O(span
+// width), independent of file offset / file size. Tokenizer indexing is already
 // flat (`tokenizer_text_lookup_flat_in_file_size` above).
 //
-// DISSOLUTION: when char->byte offset table lands, flip each lock to assert FLAT
-// (O(1) / O(K*name_len)) — a reintroduced char-walk then fails the guard.
+// HISTORY: these were tracked-red locks pinning the old O(offset) `substring`
+// char-walk. The char->byte offset table landed (NewlineIndex.char_codes +
+// chars_to_string, src/v2/00_core.dag), so they are flipped to assert FLAT — a
+// reintroduced char-walk now fails the guard. Spans use char offsets to mirror
+// the tokenizer (spans are char offsets; chars_to_string is char-indexed).
 
 #[test]
-fn source_text_at_lookup_tracked_red_not_flat_in_file_size() {
+fn source_text_at_lookup_flat_in_file_size() {
     let source = read_v2_file("src/v2/02_parse.dag");
     assert!(
         !source.is_ascii(),
-        "fixture must include non-ASCII so substring takes the slow char-walk path"
+        "fixture must include non-ASCII so a reintroduced substring slow path would be caught"
     );
     let index = build_newline_index("lookup_flat.dag".to_string(), source.clone());
-    let tail = (source.len() as i64) - 4;
+    let char_len = source.chars().count() as i64;
+    let tail = char_len - 4;
     let head_span = Rc::new(SourceSpan {
         file: "lookup_flat.dag".to_string(),
         start: 0,
@@ -571,16 +576,17 @@ fn source_text_at_lookup_tracked_red_not_flat_in_file_size() {
         source.len(),
     );
 
-    // Pins today's O(offset) substring walk on 02_parse.dag (262970B).
+    // FLAT: chars_to_string walks only the span width (4), regardless of offset.
+    // A reintroduced O(offset) char-walk would inflate tail_walked far past head.
     assert_eq!(head_walked, 800, "head span 0..4 × {LOOKUPS} lookups");
     assert_eq!(
-        tail_walked, 52_594_000,
-        "tail span near EOF × {LOOKUPS} lookups — scales with file offset today"
+        tail_walked, head_walked,
+        "tail span near EOF must walk the same as head — flat in file offset"
     );
 }
 
 #[test]
-fn source_text_at_lookup_tracked_red_scales_with_file_padding() {
+fn source_text_at_lookup_flat_in_file_padding() {
     const K: usize = 8;
     const SMALL_PAD: usize = 32;
     const LARGE_PAD: usize = SMALL_PAD * 10;
@@ -607,11 +613,16 @@ fn source_text_at_lookup_tracked_red_scales_with_file_padding() {
         "source_text_at K={K} names: small {small_len}B walked={small_walked} | large {large_len}B walked={large_walked}"
     );
 
-    // Pins today's padding-sensitive walk (10× filler → ~7.8× walked on K=8 fixture).
-    assert_eq!(small_walked, 118_600, "K={K} names, pad={SMALL_PAD}");
+    // FLAT: chars_to_string walks only the name widths, independent of the
+    // surrounding filler — so 10× padding leaves the work identical. Names are
+    // "fn_0".."fn_7" (4 chars each): K*4*LOOKUPS_PER_SPAN = 8*4*50 = 1600.
     assert_eq!(
-        large_walked, 925_000,
-        "K={K} names, pad={LARGE_PAD} — walked scales with file length today"
+        small_walked, 1_600,
+        "K={K} names × 4 chars × {LOOKUPS_PER_SPAN}"
+    );
+    assert_eq!(
+        large_walked, small_walked,
+        "10× padding must not change source_text_at work — flat in file length"
     );
 }
 
