@@ -1,11 +1,21 @@
 // src/v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag
 // Scope: SG-2 mode-2 own cert — emit greens non-grammar-matched type-expression subtrees.
-// Status: prep/cert-harness (PR #4465). Prep-tier claims green now; gate/dissolve claims
-// green post-A when 06_translate mode-2 edits land (see design-closure doc).
+// Status: prep/cert-harness (#4465) + T-22 runner wiring (PR #4468). Prep-tier claims
+// execute green now; gate/dissolve claims stay compile-only until A (#4462) lands and
+// 06_translate mode-2 edits green them (see design-closure doc).
 
 module v4.test.claim.manual.sg2_mode2_non_grammar_emit
 
 import v4.compiler.emit { emit }
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval_diagnostic,
+  eval_test_claim_subject,
+  run_test_claim
+}
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetModel }
 import v4.compiler.translate {
@@ -31,14 +41,33 @@ import v4.extdeps.languages.rust {
   rust_type_expression_projection
 }
 import v4.std.algebra { is_empty }
-import v4.std.collection { Map }
+import v4.std.collection { List, Map }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
+  Outcome,
   Rejected,
   Unavailable,
+  diagnostics_singleton,
   node_locus
+}
+import v4.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  Continue,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
 }
 import v4.std.witness { Violates, Witness }
 import v4.std.logic { Bool }
@@ -398,3 +427,145 @@ data claim_sg2_mode2_gap2_lex_only_atom_serialize: TestClaim = CompilesClaim {
   expected_value: sg2_mode2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+// T-22 TestClaimRun — minimal unit interpreter for CompilesClaim pass/fail sentinel nodes.
+data sg2_mode2_interpretation_pin: Symbol = sg2_mode2_interpretation_pin
+data sg2_mode2_evaluator_pin: Symbol = sg2_mode2_evaluator_pin
+data sg2_mode2_runtime_rejected: Symbol = sg2_mode2_runtime_rejected
+data sg2_mode2_allocate_literal_sym: Symbol = sg2_mode2_allocate_literal_sym
+data sg2_mode2_call_primitive_sym: Symbol = sg2_mode2_call_primitive_sym
+data sg2_mode2_choose_branch_sym: Symbol = sg2_mode2_choose_branch_sym
+data sg2_mode2_step_loop_sym: Symbol = sg2_mode2_step_loop_sym
+data sg2_mode2_bind_value_sym: Symbol = sg2_mode2_bind_value_sym
+
+fn sg2_mode2_runtime_unit(node: Node) -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue { unit_type: node }
+  }
+}
+
+fn sg2_mode2_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Accepted { value: sg2_mode2_runtime_unit(node: node), diagnostics: None }
+}
+
+fn sg2_mode2_reject_runtime(node: Node) -> Outcome<RuntimeValue> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: eval_diagnostic(reason: sg2_mode2_runtime_rejected, node: node)
+    )
+  }
+}
+
+fn sg2_mode2_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  sg2_mode2_reject_runtime(node: node)
+}
+
+fn sg2_mode2_choose_branch(
+  node: Node,
+  _value: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: eval_diagnostic(reason: sg2_mode2_runtime_rejected, node: node)
+    )
+  }
+}
+
+fn sg2_mode2_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Accepted { value: Continue { value: sg2_mode2_runtime_unit(node: node) }, diagnostics: None }
+}
+
+fn sg2_mode2_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn sg2_mode2_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: sg2_mode2_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: sg2_mode2_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: sg2_mode2_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: sg2_mode2_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: sg2_mode2_bind_value
+    }
+  }
+}
+
+fn sg2_mode2_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: sg2_mode2_allocate_literal_sym,
+    call_primitive: sg2_mode2_call_primitive_sym,
+    choose_branch: sg2_mode2_choose_branch_sym,
+    step_loop: sg2_mode2_step_loop_sym,
+    bind_value: sg2_mode2_bind_value_sym
+  }
+}
+
+fn sg2_mode2_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: sg2_mode2_interpretation_pin,
+    interpretation: sg2_mode2_interpretation(),
+    structure_witness: sg2_mode2_interpretation_structure_witness()
+  )
+}
+
+fn sg2_mode2_test_claim_subject(claim: TestClaim) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: claim,
+    context: sg2_mode2_context(),
+    tree: sg2_mode2_inferred_tree,
+    evaluator_pin: sg2_mode2_evaluator_pin
+  )
+}
+
+data subject_sg2_mode2_translation_rules_empty: TestClaimEvalSubject<Node> =
+  sg2_mode2_test_claim_subject(claim: claim_sg2_mode2_translation_rules_empty)
+
+data run_sg2_mode2_translation_rules_empty: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_sg2_mode2_translation_rules_empty
+)
+
+data subject_sg2_mode2_emitted_non_grammar_matched: TestClaimEvalSubject<Node> =
+  sg2_mode2_test_claim_subject(claim: claim_sg2_mode2_emitted_non_grammar_matched)
+
+data run_sg2_mode2_emitted_non_grammar_matched: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_sg2_mode2_emitted_non_grammar_matched
+)
+
+data subject_sg2_mode2_wire_kind_authority: TestClaimEvalSubject<Node> =
+  sg2_mode2_test_claim_subject(claim: claim_sg2_mode2_wire_kind_authority)
+
+data run_sg2_mode2_wire_kind_authority: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_sg2_mode2_wire_kind_authority
+)
+
+data subject_sg2_mode2_gap2_lex_only_prep: TestClaimEvalSubject<Node> =
+  sg2_mode2_test_claim_subject(claim: claim_sg2_mode2_gap2_lex_only_prep)
+
+data run_sg2_mode2_gap2_lex_only_prep: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_sg2_mode2_gap2_lex_only_prep
+)
+
+data subject_sg2_mode2_gap2_lex_only_rejects_binding_spellings: TestClaimEvalSubject<Node> =
+  sg2_mode2_test_claim_subject(claim: claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings)
+
+data run_sg2_mode2_gap2_lex_only_rejects_binding_spellings: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_sg2_mode2_gap2_lex_only_rejects_binding_spellings
+)
