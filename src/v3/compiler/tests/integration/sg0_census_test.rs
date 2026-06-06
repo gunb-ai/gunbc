@@ -1059,7 +1059,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-23: lens application surface (`src/v4/lens/application.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
     // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
     // T-38B: lens_idempotency subject roster + run_test_claim + family receipt (eval_mvp2 wedge).
     // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
     // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /

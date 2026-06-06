@@ -100,7 +100,7 @@ fn edit_locus_single_node_claim_tree() -> InferredTree {
 fn edit_locus_affected_set_wire_fail_closed_holds() -> Bool {
   match affected_set_reading_from_git_diff(
     edit_read: edit_locus_fixture_read,
-    graph: affected_set_claim_tree(),
+    graph: edit_locus_single_node_claim_tree(),
     git_diff: edit_locus_unknown_git_diff,
     bindings: [edit_locus_v4_binding]
   ) {
