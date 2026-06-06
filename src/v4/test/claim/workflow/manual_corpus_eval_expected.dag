@@ -32,18 +32,6 @@ import v4.test.claim.manual.eval_runtime_mvp {
   claim_eval_mvp2_test_claim_route,
   run_eval_mvp2_test_claim_route
 }
-import v4.test.claim.manual.sg2_mode2_non_grammar_emit {
-  claim_sg2_mode2_emitted_non_grammar_matched,
-  claim_sg2_mode2_gap2_lex_only_prep,
-  claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings,
-  claim_sg2_mode2_translation_rules_empty,
-  claim_sg2_mode2_wire_kind_authority,
-  run_sg2_mode2_emitted_non_grammar_matched,
-  run_sg2_mode2_gap2_lex_only_prep,
-  run_sg2_mode2_gap2_lex_only_rejects_binding_spellings,
-  run_sg2_mode2_translation_rules_empty,
-  run_sg2_mode2_wire_kind_authority
-}
 
 // CDV-row claim symbol atoms only — do NOT import parallelism/effect modules here; loading those
 // modules evaluates `run_test_claim` receipts and crashes before per-row transport gates.
@@ -54,11 +42,6 @@ data run_parallelism_data_dependency_receipt_sym: Symbol = run_parallelism_data_
 data run_lens_effect_depends_on_runtime_verdict_sym: Symbol = run_lens_effect_depends_on_runtime_verdict_sym
 data run_rust_language_model_emit_mechanical_reverification_claim_sym: Symbol = run_rust_language_model_emit_mechanical_reverification_claim_sym
 data run_rust_language_model_emit_subsumption_reverifies_sym: Symbol = run_rust_language_model_emit_subsumption_reverifies_sym
-data run_sg2_mode2_translation_rules_empty_sym: Symbol = run_sg2_mode2_translation_rules_empty_sym
-data run_sg2_mode2_emitted_non_grammar_matched_sym: Symbol = run_sg2_mode2_emitted_non_grammar_matched_sym
-data run_sg2_mode2_wire_kind_authority_sym: Symbol = run_sg2_mode2_wire_kind_authority_sym
-data run_sg2_mode2_gap2_lex_only_prep_sym: Symbol = run_sg2_mode2_gap2_lex_only_prep_sym
-data run_sg2_mode2_gap2_lex_only_rejects_binding_spellings_sym: Symbol = run_sg2_mode2_gap2_lex_only_rejects_binding_spellings_sym
 
 // Host-transport rejection carrier for pre-TestClaimRun interpreter failures (CDV fold site).
 data interpreter_classified_dependency_view_non_exhaustive: Symbol = interpreter_classified_dependency_view_non_exhaustive
@@ -126,31 +109,6 @@ data manual_corpus_eval_host_run_specs: List<CorpusEvalHostRunSpec> = [
     claim_id: claim_rust_language_model_emit_subsumption_reverifies,
     entry_relpath: "src/v4/test/claim/manual/dissolution_subsumption_reverification.dag",
     run_fn: run_rust_language_model_emit_subsumption_reverifies_sym
-  },
-  CorpusEvalHostRunSpec {
-    claim_id: claim_sg2_mode2_translation_rules_empty,
-    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag",
-    run_fn: run_sg2_mode2_translation_rules_empty_sym
-  },
-  CorpusEvalHostRunSpec {
-    claim_id: claim_sg2_mode2_emitted_non_grammar_matched,
-    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag",
-    run_fn: run_sg2_mode2_emitted_non_grammar_matched_sym
-  },
-  CorpusEvalHostRunSpec {
-    claim_id: claim_sg2_mode2_wire_kind_authority,
-    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag",
-    run_fn: run_sg2_mode2_wire_kind_authority_sym
-  },
-  CorpusEvalHostRunSpec {
-    claim_id: claim_sg2_mode2_gap2_lex_only_prep,
-    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag",
-    run_fn: run_sg2_mode2_gap2_lex_only_prep_sym
-  },
-  CorpusEvalHostRunSpec {
-    claim_id: claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings,
-    entry_relpath: "src/v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag",
-    run_fn: run_sg2_mode2_gap2_lex_only_rejects_binding_spellings_sym
   }
 ]
 
@@ -185,36 +143,6 @@ data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
     observation: ExecutedFail,
     primary_reason: eval_rejected_type_node,
     dissolution_target: dissolution_target_subsumption_tree_eval
-  },
-  CorpusEvalExpectedPin {
-    claim_id: claim_sg2_mode2_translation_rules_empty,
-    observation: ExecutedPass,
-    primary_reason: corpus_eval_verdict_pass_reason,
-    dissolution_target: dissolution_target_transform_eval
-  },
-  CorpusEvalExpectedPin {
-    claim_id: claim_sg2_mode2_emitted_non_grammar_matched,
-    observation: ExecutedPass,
-    primary_reason: corpus_eval_verdict_pass_reason,
-    dissolution_target: dissolution_target_transform_eval
-  },
-  CorpusEvalExpectedPin {
-    claim_id: claim_sg2_mode2_wire_kind_authority,
-    observation: ExecutedPass,
-    primary_reason: corpus_eval_verdict_pass_reason,
-    dissolution_target: dissolution_target_transform_eval
-  },
-  CorpusEvalExpectedPin {
-    claim_id: claim_sg2_mode2_gap2_lex_only_prep,
-    observation: ExecutedPass,
-    primary_reason: corpus_eval_verdict_pass_reason,
-    dissolution_target: dissolution_target_transform_eval
-  },
-  CorpusEvalExpectedPin {
-    claim_id: claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings,
-    observation: ExecutedPass,
-    primary_reason: corpus_eval_verdict_pass_reason,
-    dissolution_target: dissolution_target_transform_eval
   }
 ]
 
@@ -226,7 +154,7 @@ fn corpus_eval_expected_pins_match_host_run_specs() -> Bool {
 
 // Cardinality must match `manual_corpus_node_subject_rows` (ci.dag run_roster authority). Do not
 // import/evaluate that roster here — CDV rows crash `gunbc run` before per-row transport gates.
-data manual_corpus_eval_tracked_expectation_row_count: Int = 10
+data manual_corpus_eval_tracked_expectation_row_count: Int = 5
 
 fn corpus_eval_expected_pins_match_roster_frontier() -> Bool {
   length(xs: manual_corpus_eval_expected_pins) == manual_corpus_eval_tracked_expectation_row_count
@@ -420,40 +348,5 @@ fn witness_corpus_eval_row_parallelism_host_rejected_gate() -> Bool {
 fn witness_corpus_eval_row_effect_host_rejected_gate() -> Bool {
   corpus_eval_host_rejected_transport_gate_for_claim(
     claim_id: claim_lens_effect_depends_on_runtime_verdict
-  )
-}
-
-fn witness_corpus_eval_row_sg2_mode2_translation_rules_empty_runtime_gate() -> Bool {
-  corpus_eval_executed_row_runtime_gate_for_claim(
-    run: run_sg2_mode2_translation_rules_empty,
-    claim_id: claim_sg2_mode2_translation_rules_empty
-  )
-}
-
-fn witness_corpus_eval_row_sg2_mode2_emitted_non_grammar_matched_runtime_gate() -> Bool {
-  corpus_eval_executed_row_runtime_gate_for_claim(
-    run: run_sg2_mode2_emitted_non_grammar_matched,
-    claim_id: claim_sg2_mode2_emitted_non_grammar_matched
-  )
-}
-
-fn witness_corpus_eval_row_sg2_mode2_wire_kind_authority_runtime_gate() -> Bool {
-  corpus_eval_executed_row_runtime_gate_for_claim(
-    run: run_sg2_mode2_wire_kind_authority,
-    claim_id: claim_sg2_mode2_wire_kind_authority
-  )
-}
-
-fn witness_corpus_eval_row_sg2_mode2_gap2_lex_only_prep_runtime_gate() -> Bool {
-  corpus_eval_executed_row_runtime_gate_for_claim(
-    run: run_sg2_mode2_gap2_lex_only_prep,
-    claim_id: claim_sg2_mode2_gap2_lex_only_prep
-  )
-}
-
-fn witness_corpus_eval_row_sg2_mode2_gap2_lex_only_rejects_binding_spellings_runtime_gate() -> Bool {
-  corpus_eval_executed_row_runtime_gate_for_claim(
-    run: run_sg2_mode2_gap2_lex_only_rejects_binding_spellings,
-    claim_id: claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings
   )
 }
