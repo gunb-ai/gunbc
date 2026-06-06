@@ -44,6 +44,7 @@ import v4.std.witness { Violates, Witness }
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
+  Conj,
   Edge,
   Instantiation,
   Node,
