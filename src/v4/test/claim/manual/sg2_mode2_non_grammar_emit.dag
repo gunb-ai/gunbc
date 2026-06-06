@@ -186,7 +186,7 @@ fn sg2_mode2_serialized_text(emitted: Node) -> String {
 
 fn sg2_mode2_translate_emitted() -> Node {
   match translate(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
-    Accepted { value: tree, diagnostics: _ } => tree.root
+    Accepted { value: emitted, diagnostics: _ } => emitted
     Rejected { diagnostics: _ } => sg2_mode2_fail_node()
   }
 }
