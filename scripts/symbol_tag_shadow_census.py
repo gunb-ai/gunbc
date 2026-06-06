@@ -21,8 +21,11 @@ ROOT = sys.argv[1] if len(sys.argv) > 1 else "src/v4"
 TAG_RE = re.compile(r"^\s*data\s+(\w+)\s*:\s*Symbol\s*=\s*(\w+)\s*$", re.M)
 # bridge fn header: fn name(...) -> Symbol {
 BRIDGE_HDR_RE = re.compile(r"^\s*fn\s+(\w+)\s*\([^)]*\)\s*->\s*Symbol\s*\{", re.M)
-# a match arm mapping a Constructor (Capitalized, optional {..}/(..)) to a symbol-ident
-ARM_RE = re.compile(r"^\s*([A-Z]\w*)\s*(?:\{[^}]*\}|\([^)]*\))?\s*=>\s*([a-z]\w*)\s*$", re.M)
+# a match arm mapping a Constructor (Capitalized, optional {..}/(..)) to a symbol-ident.
+# DOTALL on the payload so multi-line `{ ... }` arm patterns still match.
+ARM_RE = re.compile(
+    r"\b([A-Z]\w*)\s*(?:\{[^{}]*\}|\([^()]*\))?\s*=>\s*([a-z]\w*)\b", re.S
+)
 # roster-pin test: fn ... -> Bool whose body calls *_discriminant( and compares == *_arm*/symbol
 DISC_CALL_RE = re.compile(r"\w*discriminant\s*\(")
 
@@ -49,18 +52,17 @@ def analyze(path, text):
         if "match" not in body:
             continue
         arms = ARM_RE.findall(body)
-        # keep only arms whose RHS is a known self-named tag in this file (the shadow set)
-        shadow_arms = [(lhs, rhs) for (lhs, rhs) in arms if rhs in tags]
-        if len(shadow_arms) >= 2:
-            bridges.append((m.group(1), len(shadow_arms), {r for _, r in shadow_arms}))
+        # broad: any arm mapping Constructor => lowercase-ident is a discriminant bridge,
+        # whether the target symbol is declared in this file or imported from the probe module.
+        if len(arms) >= 2:
+            bridges.append((m.group(1), len(arms), {r for _, r in arms}))
     # roster-pin tests: -> Bool fns invoking a discriminant and comparing to tags
     pin_tests = 0
     for m in re.finditer(r"^\s*fn\s+(\w+)\s*\([^)]*\)\s*->\s*Bool\s*\{", text, re.M):
         body = brace_body(text, m.end() - 1)
-        if DISC_CALL_RE.search(body) and "==" in body:
-            # require it compares to at least one self-named tag
-            if any(t in body for t in tags):
-                pin_tests += 1
+        # a roster-pin test calls a *discriminant( and compares results with ==
+        if DISC_CALL_RE.search(body) and body.count("==") >= 2:
+            pin_tests += 1
     shadow_syms = set()
     for _, _, syms in bridges:
         shadow_syms |= syms
