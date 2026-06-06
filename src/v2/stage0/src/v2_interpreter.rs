@@ -1806,12 +1806,11 @@ fn eval_algebra_method(
             Ok(Value::List(Rc::new(result)))
         }
 
-        "contains" | "has" => match expect_list(&receiver, "contains") {
-            Ok(items) => {
-                let target = args.first().cloned().unwrap_or(Value::Null);
-                Ok(Value::Bool(items.iter().any(|item| *item == target)))
-            }
-            Err(_) => match &receiver {
+        // String/Map membership is checked BEFORE the FreeMonoid list path: a String IS a
+        // FreeMonoid<Char>, but `.contains` on a String means substring containment, not
+        // char-list membership — exploding it to chars would break multi-char queries
+        // (ctrl#1476 B1; same Str-representation rule as `concat`).
+        "contains" | "has" => match &receiver {
             Value::Map(m) => {
                 let key = expect_str(args.first(), "contains")?;
                 Ok(Value::Bool(m.contains_key(&key)))
@@ -1820,9 +1819,14 @@ fn eval_algebra_method(
                 let sub = expect_str(args.first(), "contains")?;
                 Ok(Value::Bool(s.contains(&sub)))
             }
-            _ => Err(InterpError::TypeError {
-                msg: format!("contains not supported on {}", receiver.type_label()),
-            }),
+            _ => match expect_list(&receiver, "contains") {
+                Ok(items) => {
+                    let target = args.first().cloned().unwrap_or(Value::Null);
+                    Ok(Value::Bool(items.iter().any(|item| *item == target)))
+                }
+                Err(_) => Err(InterpError::TypeError {
+                    msg: format!("contains not supported on {}", receiver.type_label()),
+                }),
             },
         },
 

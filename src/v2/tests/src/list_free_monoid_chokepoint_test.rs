@@ -102,3 +102,35 @@ fn cons_len() -> Int {
         other => panic!("expected Int(3) from Cons chain .length(), got {other:?}"),
     }
 }
+
+/// A String IS a FreeMonoid<Char>, but `.contains` on a String means *substring*
+/// containment — the chokepoint must check the Str representation before the list path,
+/// or a multi-char query is wrongly evaluated as char-list membership (returns false).
+#[test]
+fn string_contains_multichar_substring_not_char_membership() {
+    let src = r#"module test.str_contains
+fn has_substring() -> Bool {
+  "abcd".contains("bc")
+}
+fn lacks_substring() -> Bool {
+  "abcd".contains("xy")
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    // Discriminating: char-list membership would make a multi-char substring false.
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "has_substring") {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected Bool(true) from \"abcd\".contains(\"bc\"), got {other:?}"),
+    }
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "lacks_substring") {
+        Ok(Value::Bool(false)) => {}
+        other => panic!("expected Bool(false) from \"abcd\".contains(\"xy\"), got {other:?}"),
+    }
+}
