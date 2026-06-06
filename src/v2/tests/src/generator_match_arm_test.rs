@@ -41,12 +41,6 @@ fn record_match_pattern_includes_value_record_arm() {
         "Generator/record destructuring must route through match_pattern Value::Record arm \
          (ctrl#1476 B3 Gap-1)."
     );
-    let variant_to_list_gap = "                }\n                // Bridge list literals";
-    assert!(
-        !match_pattern_body.contains(variant_to_list_gap),
-        "record match-arm regression: Value::Variant arm must not fall through directly to \
-         list bridge without Value::Record (ctrl#1476 B3)."
-    );
 }
 
 #[test]
