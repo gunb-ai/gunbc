@@ -143,6 +143,7 @@ pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
     path.starts_with("src/v4/test/claim/")
         || path == "scripts/v4-testclaim-corpus-eval.sh"
         || path == "scripts/v4-testclaim-roster-pilot.sh"
+        || path == "scripts/v4-testclaim-grounding-typescript-pilot.sh"
 }
 
 pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
@@ -234,6 +235,9 @@ mod tests {
         ));
         assert!(ci_changed_path_affects_testclaim_corpus(
             "scripts/v4-testclaim-roster-pilot.sh"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "scripts/v4-testclaim-grounding-typescript-pilot.sh"
         ));
         assert!(!ci_changed_path_affects_testclaim_corpus(
             "scripts/other.sh"
