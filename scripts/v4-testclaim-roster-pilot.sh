@@ -53,4 +53,34 @@ claim_run \
   "$roster_entry" \
   "$(dag_string_data v4_roster_pilot_edit_locus_fail_closed_fn)"
 
-echo "::notice title=v4 roster pilot::edit_locus resolver witnesses passed"
+# Exemplar E1: v4.std.text carrier witnesses (smoke→witness migration).
+std_text_entry="$(dag_string_data v4_roster_pilot_std_text_entry)"
+if [[ -z "$std_text_entry" ]]; then
+  echo "error: missing v4_roster_pilot_std_text_entry in $roster" >&2
+  exit 2
+fi
+
+"$bin" run \
+  --source-root src/v4 \
+  --entry "$roster" \
+  --function witness_v4_roster_pilot_declares_std_text_rows \
+  --claim-run
+
+claim_run \
+  "std_text String FreeMonoid<Char> carrier" \
+  "$std_text_entry" \
+  "$(dag_string_data v4_roster_pilot_std_text_freemonoid_carrier_fn)"
+claim_run \
+  "std_text HostStringText constructor/projection round-trip" \
+  "$std_text_entry" \
+  "$(dag_string_data v4_roster_pilot_std_text_roundtrip_fn)"
+claim_run \
+  "std_text HostStringText empty round-trip (projection returns stored text)" \
+  "$std_text_entry" \
+  "$(dag_string_data v4_roster_pilot_std_text_empty_roundtrip_fn)"
+claim_run \
+  "std_text HostStringText record field text:String" \
+  "$std_text_entry" \
+  "$(dag_string_data v4_roster_pilot_std_text_field_text_fn)"
+
+echo "::notice title=v4 roster pilot::edit_locus + std_text witnesses passed"

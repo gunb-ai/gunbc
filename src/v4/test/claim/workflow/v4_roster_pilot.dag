@@ -15,8 +15,29 @@ data v4_roster_pilot_edit_locus_narrow_resolution_fn: String = "edit_locus_narro
 data v4_roster_pilot_edit_locus_fail_closed_fn: String = "edit_locus_fail_closed_holds"
 
 
+// Exemplar E1: v4.std.text smoke→witness migration. Discriminating claim-run witnesses
+// (mutation-proven red-under-mutation) carry the behavioral content of the frozen
+// v4_std_text_dag_smoke_test.rs parse-surface greps. Additive: the .rs smoke + SG-0
+// census stay until the batch-delete gate clears.
+data v4_roster_pilot_std_text_entry: String = "src/v4/test/claim/std_text/carrier_claims.dag"
+
+data v4_roster_pilot_std_text_freemonoid_carrier_fn: String = "text_string_freemonoid_carrier_holds"
+data v4_roster_pilot_std_text_roundtrip_fn: String = "text_host_string_roundtrip_holds"
+data v4_roster_pilot_std_text_empty_roundtrip_fn: String = "text_host_string_empty_roundtrip_holds"
+data v4_roster_pilot_std_text_field_text_fn: String = "text_host_string_field_text_holds"
+
+
 fn witness_v4_roster_pilot_declares_edit_locus_rows() -> Bool {
   v4_roster_pilot_edit_locus_entry == "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
     && v4_roster_pilot_edit_locus_narrow_resolution_fn == "edit_locus_narrow_resolution_holds"
     && v4_roster_pilot_edit_locus_fail_closed_fn == "edit_locus_fail_closed_holds"
+}
+
+
+fn witness_v4_roster_pilot_declares_std_text_rows() -> Bool {
+  v4_roster_pilot_std_text_entry == "src/v4/test/claim/std_text/carrier_claims.dag"
+    && v4_roster_pilot_std_text_freemonoid_carrier_fn == "text_string_freemonoid_carrier_holds"
+    && v4_roster_pilot_std_text_roundtrip_fn == "text_host_string_roundtrip_holds"
+    && v4_roster_pilot_std_text_empty_roundtrip_fn == "text_host_string_empty_roundtrip_holds"
+    && v4_roster_pilot_std_text_field_text_fn == "text_host_string_field_text_holds"
 }
