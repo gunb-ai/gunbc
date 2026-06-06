@@ -26,7 +26,8 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     );
 }
 
-/// Detection: red if any list op bypasses the Option-B chokepoint.
+/// Supplementary source-pattern ratchet (known bypass snapshots). Semantic coverage is in the
+/// runtime tests below; this catches reintroduction of specific pre-B1 `Value::List` operand arms.
 #[test]
 fn list_operations_do_not_match_value_list_on_incoming_operands() {
     let source = include_str!("../../stage0/src/v2_interpreter.rs");
@@ -176,7 +177,9 @@ fn two_elements() -> Int {
         .expect("graph after successful resolve");
 
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "two_elements") {
-        Ok(Value::Int(2)) => {}
-        other => panic!("expected Int(2) from flat_map returning [\"ab\"], got {other:?}"),
+        Ok(Value::Int(1)) => {}
+        other => panic!(
+            "expected Int(1) from flat_map returning [\"ab\"] (one Str element, not char-exploded), got {other:?}"
+        ),
     }
 }
