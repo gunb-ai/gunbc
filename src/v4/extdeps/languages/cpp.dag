@@ -18,8 +18,8 @@ import v4.std.grammar {
   GrammarProduction,
   Sequence,
   Terminal,
-  grammar_production_to_node
-  grammar_relation_tokens_node,
+  grammar_production_to_node,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   LexRule,
