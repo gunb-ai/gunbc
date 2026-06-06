@@ -94,6 +94,9 @@ const SHARED_CLOSURE_WORKSHEET_PATH: &str =
     "docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
     include_str!("../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
+const TESTCLAIM_CORPUS_EVAL_SCRIPT: &str =
+    include_str!("../../../scripts/v4-testclaim-corpus-eval.sh");
+const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eval.sh";
 const T15_SELF_HOST_STEP_NAME: &str = "T-15 self-host fixed-point harness (stage1==stage2)";
 const CLAIM_DAG: &str =
     include_str!("../../../src/v4/test/claim/workflow/affected_set_ci_runner.dag");
@@ -104,6 +107,10 @@ const WAVE3_ROSTER_PATH: &str = "src/v4/test/claim/workflow/wave3_shadow_roster.
 const TESTCLAIM_CORPUS_RUNNER_DAG: &str =
     include_str!("../../../src/v4/test/claim/workflow/testclaim_corpus_runner.dag");
 const TESTCLAIM_CORPUS_RUNNER_PATH: &str = "src/v4/test/claim/workflow/testclaim_corpus_runner.dag";
+const MANUAL_CORPUS_EVAL_EXPECTED_DAG: &str =
+    include_str!("../../../src/v4/test/claim/workflow/manual_corpus_eval_expected.dag");
+const MANUAL_CORPUS_EVAL_EXPECTED_PATH: &str =
+    "src/v4/test/claim/workflow/manual_corpus_eval_expected.dag";
 const MANUAL_CORPUS_ROSTER_DAG: &str =
     include_str!("../../../src/v4/test/claim/manual/manual_corpus_roster.dag");
 const MANUAL_CORPUS_ROSTER_PATH: &str = "src/v4/test/claim/manual/manual_corpus_roster.dag";
@@ -1146,6 +1153,86 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
         !CI_YML.contains("v4-testclaim-corpus-gate.sh"),
         "{CI_YML_PATH}: legacy shell bridge script must be absent from workflow"
     );
+}
+
+#[test]
+fn v4_workflow_ci_testclaim_corpus_eval_ratchet_is_asymmetric_and_modeled() {
+    let _module = parse_module(
+        MANUAL_CORPUS_EVAL_EXPECTED_DAG,
+        MANUAL_CORPUS_EVAL_EXPECTED_PATH,
+    );
+    assert!(
+        MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("type CorpusEvalPinStatus")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("= PinnedRed")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("| MustPass"),
+        "{MANUAL_CORPUS_EVAL_EXPECTED_PATH}: corpus eval pins must model provisional-red vs ratcheted must-pass state"
+    );
+    assert!(
+        MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("type CorpusEvalPinEvaluation")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG
+                .contains("| CorpusEvalPinRatchetForward { dissolution_target: Symbol }")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("| CorpusEvalPinRegression"),
+        "{MANUAL_CORPUS_EVAL_EXPECTED_PATH}: gate must classify ratchet-forward separately from regression"
+    );
+    assert!(
+        MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("fn corpus_eval_pin_status_well_formed")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("MustPass =>")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("corpus_eval_verdict_pass_reason")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG
+                .contains("PinnedRed => match corpus_eval_observation_is_pass")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("true => false")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("false => true"),
+        "{MANUAL_CORPUS_EVAL_EXPECTED_PATH}: MustPass pins must be locked to ExecutedPass/pass-reason and PinnedRed pins must stay non-pass"
+    );
+    assert_eq!(
+        MANUAL_CORPUS_EVAL_EXPECTED_DAG
+            .matches("status: PinnedRed")
+            .count(),
+        5,
+        "{MANUAL_CORPUS_EVAL_EXPECTED_PATH}: current 0/5 corpus baseline must keep all five rows provisional-red"
+    );
+    assert!(
+        !MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("status: MustPass"),
+        "{MANUAL_CORPUS_EVAL_EXPECTED_PATH}: no row is green yet; first green must land as an explicit pin-table ratchet"
+    );
+    assert!(
+        MANUAL_CORPUS_EVAL_EXPECTED_DAG
+            .contains("CorpusEvalPinRatchetForward { dissolution_target: pin.dissolution_target }")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG
+                .contains("CorpusEvalPinRatchetForward { dissolution_target: _ } => false")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("CorpusEvalPinRegression => false"),
+        "{MANUAL_CORPUS_EVAL_EXPECTED_PATH}: a PinnedRed pass must flow through modeled ratchet-forward state and fail until the pin is locked; regression also fails hard"
+    );
+    assert!(
+        MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("fn corpus_eval_executed_row_ratchet_forward(")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("Fail { actual: Rejected")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG.contains("Deferred { diagnostic: d"),
+        "{MANUAL_CORPUS_EVAL_EXPECTED_PATH}: executed-row ratchet prompts must inspect the actual TestClaimRun, not assume every gate failure is a pass"
+    );
+    assert!(
+        MANUAL_CORPUS_EVAL_EXPECTED_DAG
+            .contains("fn witness_corpus_eval_row_parallelism_transport_pass_ratchet_forward")
+            && MANUAL_CORPUS_EVAL_EXPECTED_DAG
+                .contains("fn witness_corpus_eval_row_effect_transport_pass_ratchet_forward"),
+        "{MANUAL_CORPUS_EVAL_EXPECTED_PATH}: CDV HostRejected rows need modeled transport-pass ratchet witnesses for the first green"
+    );
+    assert!(
+        CI_YML.contains("bash scripts/v4-testclaim-corpus-eval.sh"),
+        "{CI_YML_PATH}: corpus eval transport must stay in the existing script; no ci.yml/carrier cascade for this ratchet"
+    );
+    for needle in [
+        "claim_run_required()",
+        "host_rejected_or_transport_pass_required()",
+        "flip its pin PinnedRed->MustPass",
+        "witness_corpus_eval_row_parallelism_transport_pass_ratchet_forward",
+        "witness_corpus_eval_row_effect_transport_pass_ratchet_forward",
+        "--claim-run",
+    ] {
+        assert!(
+            TESTCLAIM_CORPUS_EVAL_SCRIPT.contains(needle),
+            "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: thin transport must surface modeled ratchet outcome `{needle}`"
+        );
+    }
 }
 
 #[test]

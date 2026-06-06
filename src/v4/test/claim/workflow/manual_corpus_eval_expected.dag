@@ -245,11 +245,13 @@ fn corpus_eval_pin_status_well_formed(pin: CorpusEvalExpectedPin) -> Bool {
         observation: pin.observation,
         reason: pin.primary_reason
       )
-    PinnedRed =>
-      !corpus_eval_observation_is_pass(
+    PinnedRed => match corpus_eval_observation_is_pass(
         observation: pin.observation,
         reason: pin.primary_reason
-      )
+      ) {
+        true => false
+        false => true
+      }
   }
 }
 
@@ -345,9 +347,57 @@ fn corpus_eval_evaluate_pin(
 fn corpus_eval_pin_evaluation_allows_ci(evaluation: CorpusEvalPinEvaluation) -> Bool {
   match evaluation {
     CorpusEvalPinMatched => true
-    CorpusEvalPinRatchetForward { dissolution_target: _ } => true
+    CorpusEvalPinRatchetForward { dissolution_target: _ } => false
     CorpusEvalPinRegression => false
   }
+}
+
+
+fn corpus_eval_pin_evaluation_is_ratchet_forward(evaluation: CorpusEvalPinEvaluation) -> Bool {
+  match evaluation {
+    CorpusEvalPinRatchetForward { dissolution_target: _ } => true
+    CorpusEvalPinMatched => false
+    CorpusEvalPinRegression => false
+  }
+}
+
+
+fn corpus_eval_observation_ratchet_forward_for_claim(
+  actual: CorpusEvalExpectedObservation,
+  actual_reason: Symbol,
+  claim_id: Symbol
+) -> Bool {
+  match corpus_eval_expected_pin_lookup(claim_id: claim_id) {
+    CorpusEvalPinLookupFound { pin: pin } =>
+      corpus_eval_pin_evaluation_is_ratchet_forward(evaluation: corpus_eval_evaluate_pin(
+        actual: actual,
+        actual_reason: actual_reason,
+        pin: pin
+      ))
+    CorpusEvalPinLookupMissing => false
+  }
+}
+
+
+fn corpus_eval_transport_pass_gate_for_claim(claim_id: Symbol) -> Bool {
+  match corpus_eval_expected_pin_lookup(claim_id: claim_id) {
+    CorpusEvalPinLookupFound { pin: pin } =>
+      corpus_eval_pin_evaluation_allows_ci(evaluation: corpus_eval_evaluate_pin(
+        actual: ExecutedPass,
+        actual_reason: corpus_eval_verdict_pass_reason,
+        pin: pin
+      ))
+    CorpusEvalPinLookupMissing => false
+  }
+}
+
+
+fn corpus_eval_transport_pass_ratchet_forward_for_claim(claim_id: Symbol) -> Bool {
+  corpus_eval_observation_ratchet_forward_for_claim(
+    actual: ExecutedPass,
+    actual_reason: corpus_eval_verdict_pass_reason,
+    claim_id: claim_id
+  )
 }
 
 
@@ -378,6 +428,33 @@ fn corpus_eval_executed_row_runtime_gate(
 }
 
 
+fn corpus_eval_executed_row_ratchet_forward(
+  run: TestClaimRun<Node, RuntimeValue>,
+  pin: CorpusEvalExpectedPin
+) -> Bool {
+  match run.verdict {
+    Pass =>
+      corpus_eval_pin_evaluation_is_ratchet_forward(evaluation: corpus_eval_evaluate_pin(
+        actual: ExecutedPass,
+        actual_reason: corpus_eval_verdict_pass_reason,
+        pin: pin
+      ))
+    Fail { actual: Rejected { diagnostics: ds }, falsification: _ } =>
+      corpus_eval_pin_evaluation_is_ratchet_forward(evaluation: corpus_eval_evaluate_pin(
+        actual: ExecutedFail,
+        actual_reason: ds.head.reason,
+        pin: pin
+      ))
+    Deferred { diagnostic: d, actual: _ } =>
+      corpus_eval_pin_evaluation_is_ratchet_forward(evaluation: corpus_eval_evaluate_pin(
+        actual: ExecutedDeferred,
+        actual_reason: d.reason,
+        pin: pin
+      ))
+  }
+}
+
+
 fn corpus_eval_host_rejected_transport_gate(pin: CorpusEvalExpectedPin) -> Bool {
   corpus_eval_pin_evaluation_allows_ci(evaluation: corpus_eval_evaluate_pin(
     actual: HostRejected,
@@ -394,6 +471,18 @@ fn corpus_eval_executed_row_runtime_gate_for_claim(
   match corpus_eval_expected_pin_lookup(claim_id: claim_id) {
     CorpusEvalPinLookupFound { pin: pin } =>
       corpus_eval_executed_row_runtime_gate(run: run, pin: pin)
+    CorpusEvalPinLookupMissing => false
+  }
+}
+
+
+fn corpus_eval_executed_row_ratchet_forward_for_claim(
+  run: TestClaimRun<Node, RuntimeValue>,
+  claim_id: Symbol
+) -> Bool {
+  match corpus_eval_expected_pin_lookup(claim_id: claim_id) {
+    CorpusEvalPinLookupFound { pin: pin } =>
+      corpus_eval_executed_row_ratchet_forward(run: run, pin: pin)
     CorpusEvalPinLookupMissing => false
   }
 }
@@ -444,6 +533,51 @@ fn witness_corpus_eval_row_parallelism_host_rejected_gate() -> Bool {
 
 fn witness_corpus_eval_row_effect_host_rejected_gate() -> Bool {
   corpus_eval_host_rejected_transport_gate_for_claim(
+    claim_id: claim_lens_effect_depends_on_runtime_verdict
+  )
+}
+
+fn witness_corpus_eval_row_eval_mvp2_ratchet_forward() -> Bool {
+  corpus_eval_executed_row_ratchet_forward_for_claim(
+    run: run_eval_mvp2_test_claim_route,
+    claim_id: claim_eval_mvp2_test_claim_route
+  )
+}
+
+fn witness_corpus_eval_row_mechanical_reverification_ratchet_forward() -> Bool {
+  corpus_eval_executed_row_ratchet_forward_for_claim(
+    run: run_rust_language_model_emit_mechanical_reverification_claim,
+    claim_id: claim_rust_language_model_emit_mechanical_reverification
+  )
+}
+
+fn witness_corpus_eval_row_subsumption_reverifies_ratchet_forward() -> Bool {
+  corpus_eval_executed_row_ratchet_forward_for_claim(
+    run: run_rust_language_model_emit_subsumption_reverifies,
+    claim_id: claim_rust_language_model_emit_subsumption_reverifies
+  )
+}
+
+fn witness_corpus_eval_row_parallelism_transport_pass_gate() -> Bool {
+  corpus_eval_transport_pass_gate_for_claim(
+    claim_id: claim_parallelism_data_dependency_run_test_claim_receipt
+  )
+}
+
+fn witness_corpus_eval_row_parallelism_transport_pass_ratchet_forward() -> Bool {
+  corpus_eval_transport_pass_ratchet_forward_for_claim(
+    claim_id: claim_parallelism_data_dependency_run_test_claim_receipt
+  )
+}
+
+fn witness_corpus_eval_row_effect_transport_pass_gate() -> Bool {
+  corpus_eval_transport_pass_gate_for_claim(
+    claim_id: claim_lens_effect_depends_on_runtime_verdict
+  )
+}
+
+fn witness_corpus_eval_row_effect_transport_pass_ratchet_forward() -> Bool {
+  corpus_eval_transport_pass_ratchet_forward_for_claim(
     claim_id: claim_lens_effect_depends_on_runtime_verdict
   )
 }

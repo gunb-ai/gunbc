@@ -30,6 +30,32 @@ claim_run() {
   "$bin" run --source-root src/v4 --entry "$entry" --function "$1" --claim-run
 }
 
+claim_run_required() {
+  local gate_fn="$1" ratchet_fn="$2" label="$3" target="$4"
+  set +e
+  local out
+  out="$(claim_run "$gate_fn" 2>&1)"
+  local ex=$?
+  set -e
+  printf '%s\n' "$out"
+  if [[ "$ex" -eq 0 ]]; then
+    return 0
+  fi
+
+  set +e
+  local ratchet_out
+  ratchet_out="$(claim_run "$ratchet_fn" 2>&1)"
+  local ratchet_ex=$?
+  set -e
+  if [[ "$ratchet_ex" -eq 0 ]]; then
+    printf '%s\n' "$ratchet_out"
+    echo "::error title=corpus eval ratchet required::row ${label} greened (dissolution_target ${target} achieved); flip its pin PinnedRed->MustPass in src/v4/test/claim/workflow/manual_corpus_eval_expected.dag in this PR to lock the win." >&2
+    exit 1
+  fi
+
+  return "$ex"
+}
+
 dag_string_data() {
   local name="$1"
   grep -E "^data ${name}: String = \"" "$root/$entry" \
@@ -37,14 +63,37 @@ dag_string_data() {
     | head -1
 }
 
-transport_run() {
+transport_claim_run() {
   local row_entry="$1" row_fn="$2"
   set +e
   local out
-  out="$("$bin" run --source-root src/v4 --entry "$row_entry" --function "$row_fn" 2>&1)"
+  out="$("$bin" run --source-root src/v4 --entry "$row_entry" --function "$row_fn" --claim-run 2>&1)"
   local ex=$?
   set -e
   printf '%s' "$out"
+  return "$ex"
+}
+
+host_rejected_or_transport_pass_required() {
+  local label="$1" target="$2" row_entry="$3" row_fn="$4" host_gate_fn="$5" pass_gate_fn="$6" pass_ratchet_fn="$7"
+  set +e
+  local out
+  out="$(transport_claim_run "$row_entry" "$row_fn" 2>&1)"
+  local ex=$?
+  set -e
+  printf '%s\n' "$out"
+
+  if [[ "$ex" -eq 0 ]]; then
+    claim_run_required "$pass_gate_fn" "$pass_ratchet_fn" "$label" "$target"
+    return 0
+  fi
+
+  if grep -Fq "$cdv_host_rejection_marker" <<< "$out"; then
+    claim_run "$host_gate_fn"
+    return 0
+  fi
+
+  echo "::error title=corpus eval regression::${label} row no longer matched its HostRejected pin and did not produce a passing TestClaimRun." >&2
   return "$ex"
 }
 
@@ -58,28 +107,41 @@ fi
 claim_run witness_corpus_eval_tracked_expectation_closed
 
 # Executed rows: runtime drift gate projects from TestClaimRun via modeled witnesses.
-claim_run witness_corpus_eval_row_eval_mvp2_runtime_gate
-claim_run witness_corpus_eval_row_mechanical_reverification_runtime_gate
-claim_run witness_corpus_eval_row_subsumption_reverifies_runtime_gate
+claim_run_required \
+  witness_corpus_eval_row_eval_mvp2_runtime_gate \
+  witness_corpus_eval_row_eval_mvp2_ratchet_forward \
+  claim_eval_mvp2_test_claim_route \
+  dissolution_target_transform_eval
+claim_run_required \
+  witness_corpus_eval_row_mechanical_reverification_runtime_gate \
+  witness_corpus_eval_row_mechanical_reverification_ratchet_forward \
+  claim_rust_language_model_emit_mechanical_reverification \
+  dissolution_target_transform_eval
+claim_run_required \
+  witness_corpus_eval_row_subsumption_reverifies_runtime_gate \
+  witness_corpus_eval_row_subsumption_reverifies_ratchet_forward \
+  claim_rust_language_model_emit_subsumption_reverifies \
+  dissolution_target_subsumption_tree_eval
 
-# HostRejected rows: transport observes pinned stderr marker; modeled witness gates pin alignment.
-out="$(transport_run \
+# HostRejected rows: if the row now produces a passing TestClaimRun, the modeled pass gate forces
+# a PinnedRed->MustPass source edit instead of letting the improvement pass silently.
+host_rejected_or_transport_pass_required \
+  claim_parallelism_data_dependency_run_test_claim_receipt \
+  dissolution_target_cdv_eager_moth_810 \
   "src/v4/test/claim/lens_parallelism/data_dependency.dag" \
-  "run_parallelism_data_dependency_receipt")" || true
-if ! grep -Fq "$cdv_host_rejection_marker" <<< "$out"; then
-  echo "::error title=corpus eval transport::parallelism row expected CDV host rejection (marker from .dag)" >&2
-  exit 1
-fi
-claim_run witness_corpus_eval_row_parallelism_host_rejected_gate
+  "run_parallelism_data_dependency_receipt" \
+  witness_corpus_eval_row_parallelism_host_rejected_gate \
+  witness_corpus_eval_row_parallelism_transport_pass_gate \
+  witness_corpus_eval_row_parallelism_transport_pass_ratchet_forward
 
-out="$(transport_run \
+host_rejected_or_transport_pass_required \
+  claim_lens_effect_depends_on_runtime_verdict \
+  dissolution_target_cdv_eager_moth_810 \
   "src/v4/test/claim/lens_effect/effect_depends_on.dag" \
-  "run_lens_effect_depends_on_runtime_verdict")" || true
-if ! grep -Fq "$cdv_host_rejection_marker" <<< "$out"; then
-  echo "::error title=corpus eval transport::effect row expected CDV host rejection (marker from .dag)" >&2
-  exit 1
-fi
-claim_run witness_corpus_eval_row_effect_host_rejected_gate
+  "run_lens_effect_depends_on_runtime_verdict" \
+  witness_corpus_eval_row_effect_host_rejected_gate \
+  witness_corpus_eval_row_effect_transport_pass_gate \
+  witness_corpus_eval_row_effect_transport_pass_ratchet_forward
 
 echo "::notice title=corpus eval tracked-expectation gate::all pinned rows matched (0 drift)"
 exit 0
