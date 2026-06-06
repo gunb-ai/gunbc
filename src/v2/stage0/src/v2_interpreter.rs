@@ -2712,6 +2712,18 @@ fn eval_builtin(
             Ok(Some(Value::Str(format!("{}", v))))
         }
 
+        // `discriminant(v)` reifies a coproduct/record value's own constructor name as a
+        // `Symbol` (Symbol values are interned strings — see eval_var's `data X: Symbol = X`
+        // idiom at Value::Str). This is the single intrinsic that dissolves the hand-written
+        // `fn ..._discriminant(v) -> Symbol { match v { Ctor{..} => ctor_tag ... } }` bridges
+        // that shadow a coproduct's arm-set with a parallel `data ctor_tag: Symbol` vocabulary.
+        // The constructor's own name IS the discriminant; no per-type code is required.
+        "discriminant" => match positional.first() {
+            Some(Value::Variant { variant_name, .. }) => Ok(Some(Value::Str(variant_name.clone()))),
+            Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(type_name.clone()))),
+            _ => Ok(None),
+        },
+
         "parse_int" => {
             let s = expect_str(positional.first().copied(), "parse_int")?;
             match s.parse::<i64>() {
