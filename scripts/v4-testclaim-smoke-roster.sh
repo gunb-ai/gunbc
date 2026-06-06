@@ -2,8 +2,8 @@
 # scripts/v4-testclaim-smoke-roster.sh
 #
 # Wave-A consolidated smoke-roster transport. Row authority lives in
-# src/v4/test/claim/workflow/v4_roster_pilot.dag (list-based); this shell only
-# projects modeled V4RosterPilotClaimRunRow blocks and invokes v2 claim-run.
+# src/v4/test/claim/workflow/v4_roster_pilot.dag (`v4_roster_pilot_claim_run_rows` list);
+# this shell projects only list member bindings and invokes v2 claim-run.
 #
 # Env:
 #   V2_COMPILER — gunbc binary (default: target/release/gunbc)
@@ -21,6 +21,13 @@ if [[ ! -x "$bin" ]]; then
   exit 2
 fi
 
+dag_string_data() {
+  local name="$1"
+  grep -E "^data ${name}: String = \"" "$root/$roster" \
+    | sed -n "s/^data ${name}: String = \"\\(.*\\)\"/\\1/p" \
+    | head -1
+}
+
 claim_run() {
   local label="$1" entry="$2" function="$3"
   echo "::group::v4 smoke roster: ${label}"
@@ -28,10 +35,24 @@ claim_run() {
   echo "::endgroup::"
 }
 
-# Project each V4RosterPilotClaimRunRow { label, entry, function } block from the roster DAG.
-parse_claim_run_rows() {
+# List member names from `v4_roster_pilot_claim_run_rows` authority (not free file scan).
+list_claim_run_row_members() {
   awk '
-    /= V4RosterPilotClaimRunRow \{/ { in_row = 1; label = ""; entry = ""; fn = "" }
+    /data v4_roster_pilot_claim_run_rows:/ { in_list = 1; next }
+    in_list && /^\]/ { in_list = 0 }
+    in_list && /^  v4_roster_pilot_row_/ {
+      gsub(/^  /, "")
+      gsub(/,.*/, "")
+      print
+    }
+  ' "$root/$roster"
+}
+
+# Project one list member binding: `data <name>: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow { ... }`.
+project_list_member_row() {
+  local name="$1"
+  awk -v n="$name" '
+    $0 ~ "^data " n ": V4RosterPilotClaimRunRow" { in_row = 1; label = ""; entry = ""; fn = "" }
     in_row && /label: "/ {
       sub(/.*label: "/, "")
       sub(/".*/, "")
@@ -62,15 +83,32 @@ parse_claim_run_rows() {
   --function witness_v4_roster_pilot_declares_claim_run_rows \
   --claim-run
 
+expected_count="$(dag_string_data v4_roster_pilot_claim_run_row_count)"
+if [[ -z "$expected_count" ]]; then
+  echo "error: missing v4_roster_pilot_claim_run_row_count in $roster" >&2
+  exit 2
+fi
+
 row_count=0
-while IFS=$'\t' read -r label entry function; do
-  [[ -z "$label" || -z "$entry" || -z "$function" ]] && continue
+while IFS= read -r member; do
+  [[ -z "$member" ]] && continue
+  row="$(project_list_member_row "$member")"
+  if [[ -z "$row" ]]; then
+    echo "error: list member $member missing V4RosterPilotClaimRunRow binding in $roster" >&2
+    exit 2
+  fi
+  IFS=$'\t' read -r label entry function <<< "$row"
   claim_run "$label" "$entry" "$function"
   row_count=$((row_count + 1))
-done < <(parse_claim_run_rows)
+done < <(list_claim_run_row_members)
 
 if [[ "$row_count" -eq 0 ]]; then
-  echo "error: no V4RosterPilotClaimRunRow blocks found in $roster" >&2
+  echo "error: v4_roster_pilot_claim_run_rows has no members in $roster" >&2
+  exit 2
+fi
+
+if [[ "$row_count" -ne "$expected_count" ]]; then
+  echo "error: smoke roster transport projected ${row_count} rows; modeled count is ${expected_count}" >&2
   exit 2
 fi
 

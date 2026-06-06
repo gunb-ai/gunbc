@@ -57,14 +57,19 @@ cdv_host_rejected_row() {
   if grep -Fq "$cdv_host_rejection_marker" <<< "$out"; then
     claim_run "$witness"
   else
-    echo "::notice title=corpus eval tracked-red::${label} CDV host-rejection pin held; transport precondition unmet until B1 (#4476)"
+    echo "::notice title=corpus eval tracked-red::${label} CDV host-rejection pin held; transport precondition unmet until B1 (#${cdv_tracked_red_until_b1})"
     claim_run "$witness"
   fi
 }
 
 cdv_host_rejection_marker="$(dag_string_data corpus_eval_cdv_host_rejection_stderr_marker)"
+cdv_tracked_red_until_b1="$(dag_string_data corpus_eval_cdv_tracked_red_until_b1)"
 if [[ -z "$cdv_host_rejection_marker" ]]; then
   echo "error: missing corpus_eval_cdv_host_rejection_stderr_marker in $entry" >&2
+  exit 2
+fi
+if [[ -z "$cdv_tracked_red_until_b1" ]]; then
+  echo "error: missing corpus_eval_cdv_tracked_red_until_b1 in $entry" >&2
   exit 2
 fi
 
