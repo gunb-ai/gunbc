@@ -54,3 +54,24 @@ claim_run \
   "$(dag_string_data v4_roster_pilot_edit_locus_fail_closed_fn)"
 
 echo "::notice title=v4 roster pilot::edit_locus resolver witnesses passed"
+
+# ctrl#1476 B3-Gap2 — SG-RC probe wire-decode call-site fix. Only the owned round-trip is
+# promoted; sg_rc_f6_round_trip_rc remains a tracked-red read-path bug (follow-up work-item).
+sg_rc_entry="$(dag_string_data v4_roster_pilot_sg_rc_entry)"
+if [[ -z "$sg_rc_entry" ]]; then
+  echo "error: missing v4_roster_pilot_sg_rc_entry in $roster" >&2
+  exit 2
+fi
+
+"$bin" run \
+  --source-root src/v4 \
+  --entry "$roster" \
+  --function witness_v4_roster_pilot_declares_sg_rc_rows \
+  --claim-run
+
+claim_run \
+  "sg-rc f6 round-trip owned (ctrl#1476 B3-Gap2)" \
+  "$sg_rc_entry" \
+  "$(dag_string_data v4_roster_pilot_sg_rc_f6_owned_fn)"
+
+echo "::notice title=v4 roster pilot::sg_rc B3-Gap2 owned probe witness passed"

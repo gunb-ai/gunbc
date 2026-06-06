@@ -20,3 +20,16 @@ fn witness_v4_roster_pilot_declares_edit_locus_rows() -> Bool {
     && v4_roster_pilot_edit_locus_narrow_resolution_fn == "edit_locus_narrow_resolution_holds"
     && v4_roster_pilot_edit_locus_fail_closed_fn == "edit_locus_fail_closed_holds"
 }
+
+
+// ctrl#1476 B3-Gap2 (SG-RC probe wire-decode call-site fix). The Rc round-trip read
+// (sg_rc_f6_round_trip_rc) is a separate tracked-red read-path bug and is NOT promoted here.
+data v4_roster_pilot_sg_rc_entry: String = "src/v4/test/claim/manual/sg_rc_layering.dag"
+
+data v4_roster_pilot_sg_rc_f6_owned_fn: String = "sg_rc_f6_round_trip_owned"
+
+
+fn witness_v4_roster_pilot_declares_sg_rc_rows() -> Bool {
+  v4_roster_pilot_sg_rc_entry == "src/v4/test/claim/manual/sg_rc_layering.dag"
+    && v4_roster_pilot_sg_rc_f6_owned_fn == "sg_rc_f6_round_trip_owned"
+}

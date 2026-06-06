@@ -38,6 +38,8 @@ mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;
 #[cfg(test)]
+mod rc_probe_wire_decode_call_test;
+#[cfg(test)]
 mod render_repeat_test;
 #[cfg(test)]
 mod source_audit;
