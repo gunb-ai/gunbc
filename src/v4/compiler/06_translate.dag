@@ -2016,8 +2016,9 @@ fn project_type_expression_children(
   )
 }
 // The VALUE/SURFACE content of an inhabitant is its bare-atom child (the surface
-// identity); every other child (the facts record) is type-declaration METADATA.
-// Returns the surface atom node, or Rejected if there is no bare-atom child.
+// identity); every other child (the facts record) is the type's GROUNDING (intrinsic
+// descriptors that define the type). Returns the surface atom node, or Rejected if
+// there is no bare-atom child.
 fn translate_inhabitant_surface_atom_node(node: Node) -> Outcome<Node> {
   fold(
     node.children,
@@ -2069,15 +2070,17 @@ fn translate_node_is_declared_inhabitant(node: Node, target: TargetModel) -> Boo
     Absent => false
   }
 }
-// Use-site-ownership authority marker (value carrier vs type-declaration metadata).
-// Ownership attaches to value CARRIERS, not to type metadata. Within a recognized
-// inhabitant the VALUE CARRIER is the surface atom (a bare-atom field); every other
-// (composite) field is METADATA, which must NOT drive a use-site-ownership lookup but
-// MUST stay in the emitted structure (serialize's whole-node grammar match needs it).
-// `parent_is_inhabitant` is computed once per Conj from declared_inhabitants; this
-// classifies a single field language-agnostically (atom = carrier, composite = metadata
-// — the inhabitant's own surface-vs-facts shape, no hardcoded field names).
-fn translate_field_is_inhabitant_metadata(parent_is_inhabitant: Bool, edge: Edge) -> Bool {
+// Use-site-ownership authority marker (value carrier vs the type's GROUNDING).
+// Ownership applies to the value CARRIER (the atom — i32 itself), NOT to the type's
+// GROUNDING (its intrinsic descriptors: signedness/width/range — these DEFINE what the
+// type IS; you do not "own" signedness). Within a recognized inhabitant the VALUE
+// CARRIER is the surface atom (a bare-atom field); every other (composite) field is
+// GROUNDING, which must NOT drive a use-site-ownership lookup but MUST stay in the
+// emitted structure (it defines the type; serialize needs it). `parent_is_inhabitant`
+// is computed once per Conj from declared_inhabitants; this classifies a single field
+// language-agnostically (atom = carrier, composite = grounding — the inhabitant's own
+// surface-vs-grounding shape, no hardcoded field names).
+fn translate_field_is_inhabitant_grounding(parent_is_inhabitant: Bool, edge: Edge) -> Bool {
   if parent_is_inhabitant {
     match edge.target.kind {
       TypeNode { connective: Atom { identity: _ } } => false
@@ -2106,13 +2109,13 @@ fn project_type_expression_field_slots_go(
       f: fn(split) {
         match split.head.label {
           Named { name: label } =>
-            if translate_field_is_inhabitant_metadata(parent_is_inhabitant: parent_is_inhabitant, edge: split.head) {
-              // Type-declaration METADATA of an inhabitant: kept in the emitted
-              // structure (serialize's whole-node grammar match needs it) but EXCLUDED
-              // from use-site-ownership — it is not a value carrier. Preserve the raw
-              // field target; do NOT re-enter projection, which would recurse and run
-              // ownership over the metadata sub-atoms (e.g. the signedness/width tags),
-              // missing the SG-RC catalog and failing closed on non-carriers.
+            if translate_field_is_inhabitant_grounding(parent_is_inhabitant: parent_is_inhabitant, edge: split.head) {
+              // The type's GROUNDING field (its intrinsic descriptors that define what
+              // the type IS): kept in the emitted structure (serialize needs it) but
+              // EXCLUDED from use-site-ownership — you do not "own" a type's grounding.
+              // NOTE (path-2/SG-2 refinement, b-i): grounding must ultimately be PROJECTED
+              // wrapped-but-ownership-free so per-node (mode-2) serialize can render it;
+              // preserving it raw here is the interim shape and is incomplete on path 2.
               project_type_expression_field_slots_go(
                 remaining: remaining - 1,
                 node: node,
