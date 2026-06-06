@@ -60,6 +60,8 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
 // (ctrl#1476 B1) — bind v2_interpreter `expect_list`/`free_monoid_to_vec` chokepoint —
 // dissolve-on-arrival: unified runtime representation so list ops need no per-site bridge;
 // forbidden: direct `Value::List` consumption bypassing `expect_list` / `free_monoid_to_vec`.
+// known asymmetry (B1 interim): `Value::Str` list operands stay atomic; Cons/Empty string
+// encodings still flatten via the chokepoint until representation unifies.
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
 // 🟡 bootstrap-limitation interim — feature:B-MAP-LOOKUP-OPTION-C-1 — Map=PartialFunction lookup alias honored

@@ -2828,7 +2828,10 @@ fn eval_builtin(
             None => Ok(None),
         },
 
+        // String IS FreeMonoid<Char>, but list builtins must not char-explode Str operands
+        // (ctrl#1476 B1; same Str-representation rule as concat/contains/slice).
         "reverse" => match positional.first() {
+            Some(Value::Str(_)) => Ok(None),
             Some(v) => match free_monoid_to_vec(v) {
                 Some(items) => {
                     let mut r = items;
@@ -2896,6 +2899,7 @@ fn eval_builtin(
         },
 
         "list_concat" => match positional.as_slice() {
+            [a, b] if matches!(a, Value::Str(_)) || matches!(b, Value::Str(_)) => Ok(None),
             [a, b] => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
                 (Some(a_items), Some(b_items)) => {
                     let mut result = a_items;
