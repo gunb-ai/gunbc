@@ -2015,9 +2015,82 @@ fn project_type_expression_children(
     acc: Empty
   )
 }
+// The VALUE/SURFACE content of an inhabitant is its bare-atom child (the surface
+// identity); every other child (the facts record) is type-declaration METADATA.
+// Returns the surface atom node, or Rejected if there is no bare-atom child.
+fn translate_inhabitant_surface_atom_node(node: Node) -> Outcome<Node> {
+  fold(
+    node.children,
+    init: outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node)),
+    f: fn(acc, e) {
+      match acc {
+        Accepted { value: _, diagnostics: _ } => acc
+        Rejected { diagnostics: _ } =>
+          match e.target.kind {
+            TypeNode { connective: Atom { identity: _ } } => outcome_accepted(e.target)
+            _ => acc
+          }
+      }
+    }
+  )
+}
+// An inhabitant's surface IDENTITY: the Symbol of its bare-atom (value/surface) child.
+// Absent for a node with no bare-atom child (not a surface-bearing inhabitant).
+fn translate_inhabitant_surface_identity(node: Node) -> Optional<Symbol> {
+  match translate_inhabitant_surface_atom_node(node: node) {
+    Accepted { value: atom, diagnostics: _ } =>
+      match atom.kind {
+        TypeNode { connective: Atom { identity: id } } => Present { value: id }
+        _ => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+// Is this node one of the target's DECLARED INHABITANTS? Consults the existing
+// declared_inhabitants authority (the same set coercion uses), so recognition is
+// language-agnostic — the projection does not hardcode any language's inhabitant
+// field labels. Matches on the inhabitant's SURFACE-ATOM IDENTITY (a Symbol), not
+// full-node `==`: the node reaching projection has been through the pipeline
+// (content_hash child canonicalization can reorder a Conj's edges), so structural
+// equality against the raw declared node is unreliable; the surface identity is stable.
+fn translate_node_is_declared_inhabitant(node: Node, target: TargetModel) -> Bool {
+  match translate_inhabitant_surface_identity(node: node) {
+    Present { value: node_surface } =>
+      match target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants) {
+        Accepted { value: inhabitants_root, diagnostics: _ } =>
+          declared_inhabitant_candidates(inhabitants_root: inhabitants_root)
+            |> any(c =>
+              match translate_inhabitant_surface_identity(node: c) {
+                Present { value: c_surface } => c_surface == node_surface
+                Absent => false
+              })
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+// Use-site-ownership authority marker (value carrier vs type-declaration metadata).
+// Ownership attaches to value CARRIERS, not to type metadata. Within a recognized
+// inhabitant the VALUE CARRIER is the surface atom (a bare-atom field); every other
+// (composite) field is METADATA, which must NOT drive a use-site-ownership lookup but
+// MUST stay in the emitted structure (serialize's whole-node grammar match needs it).
+// `parent_is_inhabitant` is computed once per Conj from declared_inhabitants; this
+// classifies a single field language-agnostically (atom = carrier, composite = metadata
+// — the inhabitant's own surface-vs-facts shape, no hardcoded field names).
+fn translate_field_is_inhabitant_metadata(parent_is_inhabitant: Bool, edge: Edge) -> Bool {
+  if parent_is_inhabitant {
+    match edge.target.kind {
+      TypeNode { connective: Atom { identity: _ } } => false
+      _ => true
+    }
+  } else {
+    false
+  }
+}
 fn project_type_expression_field_slots_go(
   remaining: Int,
   node: Node,
+  parent_is_inhabitant: Bool,
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
   edges: List<Edge>,
@@ -2033,6 +2106,26 @@ fn project_type_expression_field_slots_go(
       f: fn(split) {
         match split.head.label {
           Named { name: label } =>
+            if translate_field_is_inhabitant_metadata(parent_is_inhabitant: parent_is_inhabitant, edge: split.head) {
+              // Type-declaration METADATA of an inhabitant: kept in the emitted
+              // structure (serialize's whole-node grammar match needs it) but EXCLUDED
+              // from use-site-ownership — it is not a value carrier. Preserve the raw
+              // field target; do NOT re-enter projection, which would recurse and run
+              // ownership over the metadata sub-atoms (e.g. the signedness/width tags),
+              // missing the SG-RC catalog and failing closed on non-carriers.
+              project_type_expression_field_slots_go(
+                remaining: remaining - 1,
+                node: node,
+                parent_is_inhabitant: parent_is_inhabitant,
+                target: target,
+                projection: projection,
+                edges: split.tail,
+                acc: list_snoc_item(
+                  xs: acc,
+                  item: TargetTypeExprFieldSlot { label: label, type_expr: split.head.target }
+                )
+              )
+            } else {
             bind_outcome(
               o: project_type_expression_node_bounded(
                 remaining: node_subtree_count(n: split.head.target),
@@ -2042,14 +2135,12 @@ fn project_type_expression_field_slots_go(
               ),
               f: fn(projected) {
                 bind_outcome(
-                  // Ownership attaches to CARRIERS, asked once each — not to a
-                  // carrier's structural fact sub-atoms. Route field-slot
-                  // ownership through the same boundary discipline as function
-                  // params/return: decode the projected wire, apply ownership ONLY
-                  // when it is an atom carrier (keyed by its canonical atom
-                  // binding), and pass non-carrier shapes through. This stops the
-                  // per-edge recursion from decorating a scalar carrier's fact
-                  // sub-atoms (surface_spelling / inhabitant / signedness tag).
+                  // Ownership attaches to value CARRIERS, asked once each — not to a
+                  // carrier's structural fact sub-atoms. Route field-slot ownership
+                  // through the same boundary discipline as function params/return:
+                  // decode the projected wire, apply ownership ONLY when it is an atom
+                  // carrier (keyed by its canonical atom binding), pass non-carrier
+                  // shapes through. (Inhabitant metadata is excluded one level up.)
                   o: translate_apply_use_site_ownership_to_projected_boundary(
                     projected: projected,
                     source_for_binding: split.head.target,
@@ -2061,6 +2152,7 @@ fn project_type_expression_field_slots_go(
                     project_type_expression_field_slots_go(
                       remaining: remaining - 1,
                       node: node,
+                      parent_is_inhabitant: parent_is_inhabitant,
                       target: target,
                       projection: projection,
                       edges: split.tail,
@@ -2073,6 +2165,7 @@ fn project_type_expression_field_slots_go(
                 )
               }
             )
+            }
           Positional =>
             outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
         }
@@ -2088,6 +2181,7 @@ fn project_type_expression_field_slots(
 ) -> Outcome<List<TargetTypeExprFieldSlot>> {
   project_type_expression_field_slots_go(
     remaining: remaining,
+    parent_is_inhabitant: translate_node_is_declared_inhabitant(node: node, target: target),
     node: node,
     target: target,
     projection: projection,
