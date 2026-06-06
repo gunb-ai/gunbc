@@ -12104,10 +12104,8 @@ fn ownership_stage0_census() {
     // Tolerance: ±1% to absorb CI vs local codegen differences (different
     // Rust versions, optimization flags, or platform-specific clone patterns).
     // The ratchet catches real regressions (hundreds of clones) not noise.
-    // 2026-06-05: stage0 crate-boundary bookkeeping modules (#4437/#4440) and
-    // dag_collect_support extraction (#4408) raised the monolith census to ~29300.
-    const CLONE_RATCHET: usize = 29300;
-    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100; // 1% = ~293
+    const CLONE_RATCHET: usize = 24000;
+    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100; // 1% = ~240
     const TRY_UNWRAP_RATCHET: usize = 8;
 
     assert!(
