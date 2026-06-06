@@ -1392,7 +1392,7 @@ type LineCol {
 type NewlineIndex {
   file: String
   offsets: List<Int>
-  source: String
+  char_codes: List<Int>
 }
 
 fn build_newline_index(file: String, source: String) -> NewlineIndex {
@@ -1400,7 +1400,7 @@ fn build_newline_index(file: String, source: String) -> NewlineIndex {
   let offsets = char_codes |> enumerate |> fold(init: [], f: (acc, pair) =>
     if pair.second == 10 { list_push(acc, pair.first) } else { acc }
   )
-  NewlineIndex { file: file, offsets: offsets, source: source }
+  NewlineIndex { file: file, offsets: offsets, char_codes: char_codes }
 }
 
 fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
@@ -1418,7 +1418,7 @@ fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
 }
 
 fn source_line_at(index: NewlineIndex, line: Int) -> String {
-  let src_len = string_length(s: index.source)
+  let src_len = count(index.char_codes)
   let line_start = if line <= 1 { 0 }
     else {
       match index.offsets |> skip(line - 2) |> first {
@@ -1430,11 +1430,11 @@ fn source_line_at(index: NewlineIndex, line: Int) -> String {
     Some { value: o } => o
     None => src_len
   }
-  substring(s: index.source, start: line_start, end: line_end)
+  chars_to_string(chars: index.char_codes, start: line_start, end: line_end)
 }
 
 fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
-  substring(s: index.source, start: span.start, end: span.end)
+  chars_to_string(chars: index.char_codes, start: span.start, end: span.end)
 }
 
 // =========================================================================
