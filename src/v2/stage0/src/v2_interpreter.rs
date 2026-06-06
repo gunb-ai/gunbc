@@ -985,8 +985,12 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         }
     }
 
+    let pats: Vec<String> = arms
+        .iter()
+        .map(|a| format!("{:?}", arm_pattern(a.clone())))
+        .collect();
     Err(InterpError::PatternMatchFailure {
-        value: format!("{}", scrutinee_val),
+        value: format!("{} || arms-tried: {}", scrutinee_val, pats.join(" ; ")),
     })
 }
 
