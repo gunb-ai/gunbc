@@ -341,6 +341,8 @@ mod v4_source_authority_contract_smoke_test;
 mod v4_std_grounding_dag_smoke_test;
 #[path = "integration/v4_std_model_core_dag_smoke_test.rs"]
 mod v4_std_model_core_dag_smoke_test;
+#[path = "integration/positional_conj_fold_list_emit_path_test.rs"]
+mod positional_conj_fold_list_emit_path_test;
 #[path = "integration/v4_std_target_realization_dag_smoke_test.rs"]
 mod v4_std_target_realization_dag_smoke_test;
 #[path = "integration/v4_std_text_dag_smoke_test.rs"]

@@ -41,7 +41,8 @@ import v4.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
-  formal_production_to_node
+  formal_production_to_node,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   CharClassPattern,
