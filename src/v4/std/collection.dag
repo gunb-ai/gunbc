@@ -58,6 +58,10 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
 }
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
+// 🟡 bootstrap-limitation interim — feature:B-MAP-LOOKUP-OPTION-C-1 — Map=PartialFunction lookup alias honored
+// per-operation via v2 `raw_map_lookup` dual-dispatch chokepoint (ctrl#1476 B6 Option-C); dissolve-on-arrival:
+// unified runtime representation so lookup ops need no per-site bridge; forbidden: direct
+// `Value::Map` key-probe bypassing `raw_map_lookup`.
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
 }

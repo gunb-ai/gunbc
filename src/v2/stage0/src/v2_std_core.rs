@@ -3333,14 +3333,15 @@ pub struct LineCol {
 pub struct NewlineIndex {
     pub file: String,
     pub offsets: Rc<Vec<i64>>,
-    pub source: String,
+    pub char_codes: Rc<Vec<i64>>,
 }
 
 pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
     {
-        let char_codes = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+        let char_codes = Rc::new(source.chars().map(|c| c as i64).collect::<Vec<_>>());
         let offsets = Rc::new(
             char_codes
+                .clone()
                 .iter()
                 .cloned()
                 .enumerate()
@@ -3359,7 +3360,7 @@ pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
         Rc::new(NewlineIndex {
             file: file,
             offsets: offsets,
-            source: source.clone(),
+            char_codes: char_codes.clone(),
         })
     }
 }
@@ -3405,7 +3406,7 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
 
 pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
     {
-        let src_len = v2_rt::string_length(&index.source.clone());
+        let src_len = (index.char_codes.clone().len() as i64);
         let line_start = if (line.clone() <= 1) {
             0
         } else {
@@ -3428,12 +3429,16 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             Some(o) => o.clone(),
             None => src_len.clone(),
         };
-        v2_rt::substring(&index.source.clone(), line_start, line_end)
+        v2_rt::chars_to_string(&index.char_codes.clone(), line_start, line_end)
     }
 }
 
 pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> String {
-    v2_rt::substring(&index.source.clone(), span.start.clone(), span.end.clone())
+    v2_rt::chars_to_string(
+        &index.char_codes.clone(),
+        span.start.clone(),
+        span.end.clone(),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

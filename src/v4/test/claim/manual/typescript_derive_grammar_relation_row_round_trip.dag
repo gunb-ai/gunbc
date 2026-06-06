@@ -13,7 +13,7 @@ import v4.extdeps.languages.typescript {
   ts_mvp1_emitted_add_fn_node,
   ts_mvp1_grammar_relation_row,
   ts_mvp1_concrete_tokens,
-  ts_relation_token_edges,
+  ts_concrete_token_node,
   ts_wave2a_task_formal_productions,
   ts_wave2a_task_type_alias_emitted,
   ts_wave2a_task_type_alias_relation_row_witness,
@@ -24,7 +24,8 @@ import v4.std.grammar {
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
   grammar_relation_emitted_not_conj,
-  grammar_relation_row_to_node
+  grammar_relation_row_to_node,
+  grammar_relation_tokens_node
 }
 import v4.extdeps.languages.typescript { ts_production_wave2a_type_alias_decl }
 import v4.std.logic { Bool }
@@ -61,10 +62,10 @@ fn ts_grammar_relation_round_trip_fail_node() -> Node {
 }
 
 fn ts_mvp1_grammar_relation_tokens_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: ts_relation_token_edges(tokens: ts_mvp1_concrete_tokens())
-  }
+  grammar_relation_tokens_node(
+    tokens: ts_mvp1_concrete_tokens(),
+    token_to_node: ts_concrete_token_node
+  )
 }
 
 fn ts_mvp1_grammar_relation_row_std_node() -> Node {

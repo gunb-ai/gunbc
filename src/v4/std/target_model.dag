@@ -3504,12 +3504,18 @@ type TargetReferenceLayerProbe
   | ReferenceLayerProbeNotWrapped
   | ReferenceLayerProbeInvalid
 
+// 🟡 gated — call-site arg-name bug fix — feature:B-RC-PROBE-WIRE-DECODE-CALL-1 (ctrl#1476 B3-Gap2)
+// — the SG-RC bidirectional read decodes the emitted wire via target_type_expr_emitted_wire_decode,
+// whose signature is (node:, projection:). The named-arg `emitted:` was wrong and `projection:` was
+// omitted, leaving `node` unbound at runtime ("undefined variable: node"). Uncaught because v2 has no
+// call-site arg-name/arity check yet. dissolve-on: enforcement-B call-site arg-check makes misnamed/
+// missing-arg calls compile-time errors (this mark + the manual guard then become redundant).
 fn target_reference_layer_probe_from_emitted_type(
   emitted: Node,
   projection: TargetTypeExpressionProjection,
   tokens: TargetReferenceLayerTokens
 ) -> TargetReferenceLayerProbe {
-  match target_type_expr_emitted_wire_decode(emitted: emitted) {
+  match target_type_expr_emitted_wire_decode(node: emitted, projection: projection) {
     Accepted { value: wire, diagnostics: _ } =>
       match wire.kind {
         TargetTypeExprInstantiation =>
