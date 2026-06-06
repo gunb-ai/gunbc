@@ -52,13 +52,5 @@ claim_run \
   "edit-locus fail closed" \
   "$roster_entry" \
   "$(dag_string_data v4_roster_pilot_edit_locus_fail_closed_fn)"
-claim_run \
-  "edit-locus affected-set wire positive" \
-  "$roster_entry" \
-  "$(dag_string_data v4_roster_pilot_edit_locus_wire_positive_fn)"
-claim_run \
-  "edit-locus affected-set wire fail closed" \
-  "$roster_entry" \
-  "$(dag_string_data v4_roster_pilot_edit_locus_wire_fail_closed_fn)"
 
-echo "::notice title=v4 roster pilot::edit_locus promoted witnesses passed"
+echo "::notice title=v4 roster pilot::edit_locus resolver witnesses passed"

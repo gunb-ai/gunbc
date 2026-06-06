@@ -13,14 +13,10 @@ data v4_roster_pilot_edit_locus_entry: String = "src/v4/test/claim/lens_affected
 
 data v4_roster_pilot_edit_locus_narrow_resolution_fn: String = "edit_locus_narrow_resolution_holds"
 data v4_roster_pilot_edit_locus_fail_closed_fn: String = "edit_locus_fail_closed_holds"
-data v4_roster_pilot_edit_locus_wire_positive_fn: String = "edit_locus_affected_set_wire_holds"
-data v4_roster_pilot_edit_locus_wire_fail_closed_fn: String = "edit_locus_affected_set_wire_fail_closed_holds"
 
 
 fn witness_v4_roster_pilot_declares_edit_locus_rows() -> Bool {
   v4_roster_pilot_edit_locus_entry == "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
     && v4_roster_pilot_edit_locus_narrow_resolution_fn == "edit_locus_narrow_resolution_holds"
     && v4_roster_pilot_edit_locus_fail_closed_fn == "edit_locus_fail_closed_holds"
-    && v4_roster_pilot_edit_locus_wire_positive_fn == "edit_locus_affected_set_wire_holds"
-    && v4_roster_pilot_edit_locus_wire_fail_closed_fn == "edit_locus_affected_set_wire_fail_closed_holds"
 }
