@@ -48,6 +48,12 @@ data v4_roster_pilot_row_grounding_ts_absence_fail_closed: V4RosterPilotClaimRun
   function: "ts_g2_sg5_absence_fail_closed_holds"
 }
 
+data v4_roster_pilot_row_discriminant_intrinsic: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "discriminant intrinsic payload-blind arm-sharp",
+  entry: "src/v4/test/claim/manual/discriminant_intrinsic.dag",
+  function: "discriminant_intrinsic_is_payload_blind_and_arm_sharp"
+}
+
 // ctrl#1476 B3-Gap2 (SG-RC probe wire-decode call-site fix). Only the owned round-trip is
 // promoted; sg_rc_f6_round_trip_rc remains a separate tracked-red read-path bug (follow-up).
 data v4_roster_pilot_row_sg_rc_f6_owned: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
@@ -91,6 +97,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_generator_provenance,
   v4_roster_pilot_row_grounding_ts_symbol_carrier,
   v4_roster_pilot_row_grounding_ts_absence_fail_closed,
+  v4_roster_pilot_row_discriminant_intrinsic,
   v4_roster_pilot_row_sg_rc_f6_owned,
   v4_roster_pilot_row_std_text_freemonoid_carrier,
   v4_roster_pilot_row_std_text_roundtrip,
@@ -99,7 +106,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "10"
+data v4_roster_pilot_claim_run_row_count: String = "11"
 
 
 fn v4_roster_pilot_row_matches(
@@ -128,6 +135,7 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_generator_provenance)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_symbol_carrier)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_absence_fail_closed)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_discriminant_intrinsic)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg_rc_f6_owned)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_freemonoid_carrier)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_roundtrip)
@@ -137,8 +145,8 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 10)
-    && (v4_roster_pilot_claim_run_row_count == "10")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 11)
+    && (v4_roster_pilot_claim_run_row_count == "11")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -164,6 +172,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_grounding_ts_absence_fail_closed,
       entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
       function: "ts_g2_sg5_absence_fail_closed_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_discriminant_intrinsic,
+      entry: "src/v4/test/claim/manual/discriminant_intrinsic.dag",
+      function: "discriminant_intrinsic_is_payload_blind_and_arm_sharp"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_sg_rc_f6_owned,
