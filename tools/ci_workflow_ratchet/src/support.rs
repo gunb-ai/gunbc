@@ -11,11 +11,13 @@ pub fn find_list_empty_constructor_tag(dag: &Dag, list_ty: DeclarationId) -> Dec
         .expect("bootstrap must define `List`");
     let list_id = list_decl.id;
     let empty_arm_ty = match &list_decl.connective {
-        TypeConnective::Disj { variants } => variants
-            .iter()
-            .find(|v| v.label == "Empty")
-            .expect("List.Empty arm")
-            .ty,
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|v| v.label == "Empty")
+                .expect("List.Empty arm")
+                .ty
+        }
         other => panic!("`List` must be a Disj, got {other:?}"),
     };
     let elem_value = match &dag.declaration(list_ty).connective {

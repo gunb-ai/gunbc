@@ -79,19 +79,17 @@
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
 use ci_workflow_ratchet::support::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceLiteral, SurfaceRecordField};
 use ci_workflow_ratchet::support::tokenize_for_test;
+use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceLiteral, SurfaceRecordField};
 
 const CI_DAG: &str = include_str!("../../../src/v4/workflow/ci.dag");
 const CI_DAG_PATH: &str = "src/v4/workflow/ci.dag";
 const CI_YML: &str = include_str!("../../../.github/workflows/ci.yml");
 const CI_YML_PATH: &str = ".github/workflows/ci.yml";
-const CI_WORKFLOW_DAG: &str =
-    include_str!("../../../dsl/gunbc/ci_github_actions_workflow.dag");
+const CI_WORKFLOW_DAG: &str = include_str!("../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
-const SHARED_CLOSURE_WORKSHEET: &str = include_str!(
-    "../../../docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md"
-);
+const SHARED_CLOSURE_WORKSHEET: &str =
+    include_str!("../../../docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md");
 const SHARED_CLOSURE_WORKSHEET_PATH: &str =
     "docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
@@ -2244,4 +2242,3 @@ fn v4_workflow_ci_upsert_node_projection_substrate() {
         );
     }
 }
-
