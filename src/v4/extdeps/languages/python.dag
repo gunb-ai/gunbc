@@ -32,7 +32,8 @@ import v4.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
-  formal_production_to_node
+  formal_production_to_node,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -1065,19 +1066,7 @@ fn python_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn python_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
-  Edge { label: Positional, target: python_concrete_token_node(token: token) }
-}
 
-fn python_positional_edges_from_token_classes() -> List<Edge> {
-  fold_list(
-    xs: python_mvp1_concrete_tokens(),
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: python_positional_token_edge(token: token))
-    }
-  )
-}
 
 fn python_mvp1_serialize_source_children() -> List<Edge> {
   list_append(
@@ -1085,7 +1074,15 @@ fn python_mvp1_serialize_source_children() -> List<Edge> {
       python_named_edge(name: python_mvp1_source_text_field, target: python_inhabitant_atom(id: python_mvp1_source_literal)),
       python_named_edge(name: python_mvp1_source_grammar_field, target: python_inhabitant_atom(id: python_production_mvp1_fn_add))
     ],
-    right: python_positional_edges_from_token_classes()
+    right: [
+      python_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: python_mvp1_concrete_tokens(),
+          token_to_node: python_concrete_token_node
+        )
+      )
+    ]
   )
 }
 
@@ -1264,15 +1261,6 @@ fn python_mvp1_grammar_relation_row() -> PythonGrammarRelationRow {
   }
 }
 
-fn python_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: python_positional_token_edge(token: token))
-    }
-  )
-}
 
 fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
   Node {
@@ -1282,10 +1270,10 @@ fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
       python_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       python_named_edge(
         name: grammar_relation_field_tokens,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: python_relation_token_edges(tokens: row.tokens)
-        }
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: python_concrete_token_node
+        )
       )
     ]
   }

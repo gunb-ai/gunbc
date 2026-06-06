@@ -37,7 +37,8 @@ import v4.std.grammar {
   formal_production_for_lhs_exact,
   grammar_production_to_node,
   grammar_relation_row_tokens_not_conj,
-  grammar_relation_row_to_node
+  grammar_relation_row_to_node,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -653,25 +654,7 @@ fn ts_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn ts_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
-  Edge {
-    label: Positional,
-    target: ts_concrete_token_node(token: token)
-  }
-}
 
-fn ts_mvp1_positional_edges_from_token_classes() -> List<Edge> {
-  fold_list(
-    xs: ts_mvp1_concrete_tokens(),
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: ts_mvp1_positional_token_edge(token: token)
-      )
-    }
-  )
-}
 
 fn ts_mvp1_serialize_source_prefix_edges() -> List<Edge> {
   [
@@ -689,7 +672,15 @@ fn ts_mvp1_serialize_source_prefix_edges() -> List<Edge> {
 fn ts_mvp1_serialize_source_children() -> List<Edge> {
   list_append(
     left: ts_mvp1_serialize_source_prefix_edges(),
-    right: ts_mvp1_positional_edges_from_token_classes()
+    right: [
+      ts_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: ts_mvp1_concrete_tokens(),
+          token_to_node: ts_concrete_token_node
+        )
+      )
+    ]
   )
 }
 
@@ -744,18 +735,6 @@ fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   }
 }
 
-fn ts_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: ts_mvp1_positional_token_edge(token: token)
-      )
-    }
-  )
-}
 
 // DESIGN-1: emitted Conj positional slots = bound-terminal + nonterminal RHS occurrences only.
 fn ts_wave2a_field_type_string_emitted() -> Node {
@@ -1272,10 +1251,10 @@ fn ts_pr3_identity_target_model_witness() -> Witness<TargetModel> {
 fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
   grammar_relation_row_to_node(
     row: derive_grammar_relation_row(production: row.production, emitted: row.emitted),
-    tokens: Node {
-      kind: TypeNode { connective: Conj },
-      children: ts_relation_token_edges(tokens: row.tokens)
-    }
+    tokens: grammar_relation_tokens_node(
+      tokens: row.tokens,
+      token_to_node: ts_concrete_token_node
+    )
   )
 }
 

@@ -27,7 +27,8 @@ import v4.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
-  grammar_production_to_node
+  grammar_production_to_node,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -1433,25 +1434,7 @@ fn rust_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn rust_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
-  Edge {
-    label: Positional,
-    target: rust_concrete_token_node(token: token)
-  }
-}
 
-fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
-  fold_list(
-    xs: rust_mvp1_concrete_tokens(),
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_mvp1_positional_token_edge(token: token)
-      )
-    }
-  )
-}
 
 fn rust_mvp1_serialize_source_prefix_edges() -> List<Edge> {
   [
@@ -1477,9 +1460,9 @@ fn rust_mvp1_serialize_source_children() -> List<Edge> {
     right: [
       rust_named_edge(
         name: grammar_relation_field_tokens,
-        target: fold_list_node(
-          xs: rust_mvp1_concrete_tokens(),
-          item_node: rust_concrete_token_node
+        target: grammar_relation_tokens_node(
+          tokens: rust_mvp1_concrete_tokens(),
+          token_to_node: rust_concrete_token_node
         )
       )
     ]
@@ -1537,18 +1520,6 @@ fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {
   }
 }
 
-fn rust_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: rust_mvp1_positional_token_edge(token: token)
-      )
-    }
-  )
-}
 
 fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
   Node {
@@ -1561,10 +1532,10 @@ fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
       rust_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       rust_named_edge(
         name: grammar_relation_field_tokens,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: rust_relation_token_edges(tokens: row.tokens)
-        }
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: rust_concrete_token_node
+        )
       )
     ]
   }
