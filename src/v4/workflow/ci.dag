@@ -1484,10 +1484,8 @@ data ci_upsert_testclaim_corpus_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval.dag"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval_expected.dag"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/v4_roster_pilot.dag"),
-  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/v4_grounding_typescript_pilot.dag"),
   ci_upsert_file_set_input(segment: "scripts/v4-testclaim-corpus-eval.sh"),
-  ci_upsert_file_set_input(segment: "scripts/v4-testclaim-roster-pilot.sh"),
-  ci_upsert_file_set_input(segment: "scripts/v4-testclaim-grounding-typescript-pilot.sh")
+  ci_upsert_file_set_input(segment: "scripts/v4-testclaim-smoke-roster.sh")
 ]
 
 // #4091 §1.2 — M1 rust emit is upstream compile authority (forbidden: host-owned `gunbc compile --target rust` in corpus eval transport).
@@ -3509,14 +3507,10 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     path == "src/v4/test/claim/workflow/manual_corpus_eval_expected.dag"
   } else if segment == "src/v4/test/claim/workflow/v4_roster_pilot.dag" {
     path == "src/v4/test/claim/workflow/v4_roster_pilot.dag"
-  } else if segment == "src/v4/test/claim/workflow/v4_grounding_typescript_pilot.dag" {
-    path == "src/v4/test/claim/workflow/v4_grounding_typescript_pilot.dag"
   } else if segment == "scripts/v4-testclaim-corpus-eval.sh" {
     path == "scripts/v4-testclaim-corpus-eval.sh"
-  } else if segment == "scripts/v4-testclaim-roster-pilot.sh" {
-    path == "scripts/v4-testclaim-roster-pilot.sh"
-  } else if segment == "scripts/v4-testclaim-grounding-typescript-pilot.sh" {
-    path == "scripts/v4-testclaim-grounding-typescript-pilot.sh"
+  } else if segment == "scripts/v4-testclaim-smoke-roster.sh" {
+    path == "scripts/v4-testclaim-smoke-roster.sh"
   } else if segment == "src/v4/compiler/source_authority.dag" {
     path == "src/v4/compiler/source_authority.dag"
   } else if segment == "src/v4/test/claim/round_trip/source_authority_contract.dag" {
@@ -5753,8 +5747,7 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
 fn ci_changed_path_affects_testclaim_corpus(changed: RepoPath) -> Bool {
   ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/")
     || changed == "scripts/v4-testclaim-corpus-eval.sh"
-    || changed == "scripts/v4-testclaim-roster-pilot.sh"
-    || changed == "scripts/v4-testclaim-grounding-typescript-pilot.sh"
+    || changed == "scripts/v4-testclaim-smoke-roster.sh"
 }
 
 

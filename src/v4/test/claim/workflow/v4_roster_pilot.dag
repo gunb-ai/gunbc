@@ -1,24 +1,111 @@
 // src/v4/test/claim/workflow/v4_roster_pilot.dag
-// Scope: v4 smoke-roster pilot promotions — ordinary named claim-run witnesses.
-// Status: Wave-A pilot; host transport is thin and reads these row names.
+// Scope: v4 smoke-roster Wave-A promotions — ordinary named claim-run witnesses.
+// Status: list-based row authority; host transport is scripts/v4-testclaim-smoke-roster.sh.
 
 module v4.test.claim.workflow.v4_roster_pilot
 
 
+import v4.std.algebra { count_equal, length }
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 
 
-data v4_roster_pilot_edit_locus_entry: String = "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
+type V4RosterPilotClaimRunRow {
+  label: String
+  entry: String
+  function: String
+}
 
-data v4_roster_pilot_edit_locus_narrow_resolution_fn: String = "edit_locus_narrow_resolution_holds"
-data v4_roster_pilot_edit_locus_fail_closed_fn: String = "edit_locus_fail_closed_holds"
+
+data v4_roster_pilot_row_edit_locus_narrow: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "edit-locus narrow resolution",
+  entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+  function: "edit_locus_narrow_resolution_holds"
+}
+
+data v4_roster_pilot_row_edit_locus_fail_closed: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "edit-locus fail closed",
+  entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+  function: "edit_locus_fail_closed_holds"
+}
+
+data v4_roster_pilot_row_grounding_ts_symbol_carrier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "grounding_typescript SG-1 symbol carrier",
+  entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
+  function: "ts_g2_sg1_symbol_carrier_holds"
+}
+
+data v4_roster_pilot_row_grounding_ts_absence_fail_closed: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "grounding_typescript SG-5 absence fail-closed",
+  entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
+  function: "ts_g2_sg5_absence_fail_closed_holds"
+}
 
 
-fn witness_v4_roster_pilot_declares_edit_locus_rows() -> Bool {
-  v4_roster_pilot_edit_locus_entry == "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
-    && v4_roster_pilot_edit_locus_narrow_resolution_fn == "edit_locus_narrow_resolution_holds"
-    && v4_roster_pilot_edit_locus_fail_closed_fn == "edit_locus_fail_closed_holds"
+data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
+  v4_roster_pilot_row_edit_locus_narrow,
+  v4_roster_pilot_row_edit_locus_fail_closed,
+  v4_roster_pilot_row_grounding_ts_symbol_carrier,
+  v4_roster_pilot_row_grounding_ts_absence_fail_closed
+]
+
+// Host transport projection: shell reads this count and list member names only (not free awk scan).
+data v4_roster_pilot_claim_run_row_count: String = "4"
+
+
+fn v4_roster_pilot_row_matches(
+  row: V4RosterPilotClaimRunRow,
+  entry: String,
+  function: String
+) -> Bool {
+  row.entry == entry && row.function == function
+}
+
+
+fn v4_roster_pilot_claim_run_list_contains_once(
+  row: V4RosterPilotClaimRunRow
+) -> Bool {
+  count_equal(
+    xs: v4_roster_pilot_claim_run_rows,
+    item: row,
+    eq: fn(left, right) { left == right }
+  ) == 1
+}
+
+
+fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
+  v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_narrow)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_fail_closed)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_symbol_carrier)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_absence_fail_closed)
+}
+
+
+fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
+  (length(xs: v4_roster_pilot_claim_run_rows) == 4)
+    && (v4_roster_pilot_claim_run_row_count == "4")
+    && v4_roster_pilot_claim_run_list_composition_holds()
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_edit_locus_narrow,
+      entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+      function: "edit_locus_narrow_resolution_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_edit_locus_fail_closed,
+      entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+      function: "edit_locus_fail_closed_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_grounding_ts_symbol_carrier,
+      entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
+      function: "ts_g2_sg1_symbol_carrier_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_grounding_ts_absence_fail_closed,
+      entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
+      function: "ts_g2_sg5_absence_fail_closed_holds"
+    )
 }
 
 
