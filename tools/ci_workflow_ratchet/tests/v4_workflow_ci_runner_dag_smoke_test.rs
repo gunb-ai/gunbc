@@ -229,6 +229,15 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         release_distribution: false,
     },
     CiAffectedFixture {
+        path: "scripts/v4-testclaim-corpus-eval.sh",
+        v2: false,
+        v3: false,
+        v4: false,
+        testclaim_corpus: true,
+        workflow_policy: false,
+        release_distribution: false,
+    },
+    CiAffectedFixture {
         path: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
         v2: false,
         v3: false,
