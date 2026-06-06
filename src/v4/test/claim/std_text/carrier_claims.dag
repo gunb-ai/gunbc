@@ -10,10 +10,11 @@
 // carrier shape turns a witness red, so the green is not vacuous (no compile-only
 // false green; cf. witness-sweep discipline).
 //
-// Status: Wave-A additive only. The frozen .rs smoke + SG-0 census stay until the
-// batch-delete gate clears (manager: prove discrimination first). Importing
-// v4.std.text forces v2 to tokenize/parse/infer text.dag, so the parse-surface
-// "tokenizes_and_parses" fact rides every witness below.
+// Status: Wave-A fold-delete (W1). These witnesses are the .dag coverage that
+// satisfies the smoke test's own P5/T-PB-B dissolution gate, so the same PR retires
+// the frozen v4_std_text_dag_smoke_test.rs and its SG-0 EXPECTED_HAND_AUTHORED_TEST
+// row. Importing v4.std.text forces v2 to tokenize/parse/infer text.dag, so the
+// parse-surface "tokenizes_and_parses" fact rides every witness below.
 
 module v4.test.claim.std_text.carrier_claims
 

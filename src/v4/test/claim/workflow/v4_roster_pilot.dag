@@ -42,10 +42,10 @@ data v4_roster_pilot_row_grounding_ts_absence_fail_closed: V4RosterPilotClaimRun
   function: "ts_g2_sg5_absence_fail_closed_holds"
 }
 
-// Exemplar E1: v4.std.text smoke→witness migration. Discriminating claim-run witnesses
-// (mutation-proven red-under-mutation) carry the behavioral content of the frozen
-// v4_std_text_dag_smoke_test.rs parse-surface greps. Additive: the .rs smoke + SG-0
-// census stay until the batch-delete gate clears.
+// Exemplar E1: v4.std.text smoke→witness migration (fold-delete W1). Discriminating
+// claim-run witnesses (mutation-proven red-under-mutation) carry the behavioral content
+// of the now-retired v4_std_text_dag_smoke_test.rs parse-surface greps; that .rs and its
+// SG-0 census row are deleted in the same PR per the smoke test's P5 dissolution gate.
 data v4_roster_pilot_row_std_text_freemonoid_carrier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "std_text String FreeMonoid<Char> carrier",
   entry: "src/v4/test/claim/std_text/carrier_claims.dag",
