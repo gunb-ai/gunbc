@@ -1840,17 +1840,18 @@ fn eval_algebra_method(
         }
 
         "get" => match &receiver {
-            Value::Map(m) => {
-                let key = expect_str(args.first(), "get")?;
-                Ok(m.get(&key).cloned().unwrap_or(Value::Null))
-            }
             Value::List(items) => {
                 let idx = expect_int(args.first(), "get")?;
                 Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
             }
-            _ => Err(InterpError::TypeError {
-                msg: format!("get not supported on {}", receiver.type_label()),
-            }),
+            other => {
+                let key = args
+                    .first()
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "get requires a key argument".to_string(),
+                    })?;
+                raw_map_lookup(other, key, env, ctx)
+            }
         },
 
         "insert" | "map_insert" => {
@@ -2709,7 +2710,7 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
 fn eval_builtin(
     name: &str,
     args: &[(Option<String>, Value)],
-    _ctx: &InterpContext,
+    ctx: &InterpContext,
 ) -> InterpResult<Option<Value>> {
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
 
@@ -2871,9 +2872,7 @@ fn eval_builtin(
         // is honored per-operation (matching, ==, zip_eq, lookup) rather than once at the
         // representation — tracked for the post-R2 representation-level dissolution.]
         "lookup" => match positional.as_slice() {
-            [Value::Map(m), Value::Str(k)] => {
-                Ok(Some(m.get(k.as_str()).cloned().unwrap_or(Value::Null)))
-            }
+            [map, key] => Ok(Some(raw_map_lookup(map, key, &Env::empty(), ctx)?)),
             _ => Ok(None),
         },
 
@@ -3046,6 +3045,58 @@ fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<Vec<Value>>> {
                 msg: format!("{} expects a list, got {}", context, val.type_label()),
             }),
         },
+    }
+}
+
+fn is_map_lookup_receiver(val: &Value) -> bool {
+    match val {
+        Value::Map(_) => true,
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            fields.contains_key("lookup")
+        }
+        _ => false,
+    }
+}
+
+/// Low-level map key probe for Option-C dual-dispatch (ctrl#1476 B6).
+///
+/// Native `Value::Map`: present -> value, missing -> `Null`.
+/// Record-form `Map { lookup: fn }`: invoke the `lookup` field (closure or fn).
+/// The pattern bridge (`Null` -> `None`, value -> `Some`) lets std `map_get`
+/// (v4.std.collection, `Outcome<Optional<V>>`) wrap the raw probe; `map_get` is
+/// intentionally absent from `eval_builtin` (B-LOOKUP-1).
+fn raw_map_lookup(
+    map: &Value,
+    key: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    match map {
+        Value::Map(m) => {
+            let k = format!("{}", key);
+            Ok(m.get(&k).cloned().unwrap_or(Value::Null))
+        }
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            let lookup = fields.get("lookup").ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "raw_map_lookup expects Map, got {}",
+                    map.type_label()
+                ),
+            })?;
+            match lookup {
+                Value::Closure { .. } => apply_closure(lookup, &[key.clone()], env, ctx),
+                Value::Fn { node } => {
+                    let named = vec![(None, key.clone())];
+                    call_function(ctx, node, &named, env)
+                }
+                _ => Err(InterpError::TypeError {
+                    msg: "Map.lookup field is not callable".to_string(),
+                }),
+            }
+        }
+        _ => Err(InterpError::TypeError {
+            msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
+        }),
     }
 }
 
