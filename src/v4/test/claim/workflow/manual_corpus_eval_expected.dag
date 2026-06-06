@@ -1,5 +1,5 @@
 // src/v4/test/claim/workflow/manual_corpus_eval_expected.dag
-// Scope: T-38 tracked-expectation pins for the manual corpus roster (verdict arm + primary reason).
+// Scope: T-38 asymmetric tracked-expectation pins for the manual corpus roster (verdict arm + primary reason).
 // Status: drift gate authority — host transport mirrors `manual_corpus_eval_expected_pins` +
 // `manual_corpus_eval_host_run_specs` (single authority; no parallel bash claim-list).
 // HostRejected CDV rows: transport observes `corpus_eval_cdv_host_rejection_stderr_marker`
@@ -68,8 +68,16 @@ type CorpusEvalExpectedObservation
   | HostRejected
 
 
+// PinnedRed is a provisional known-bad row. MustPass is the ratcheted, locked state: once a
+// row improves, its pin changes to MustPass and the gate only accepts an ExecutedPass result.
+type CorpusEvalPinStatus
+  = PinnedRed
+  | MustPass
+
+
 type CorpusEvalExpectedPin {
   claim_id: Symbol
+  status: CorpusEvalPinStatus
   observation: CorpusEvalExpectedObservation
   primary_reason: Symbol
   dissolution_target: Symbol
@@ -116,30 +124,35 @@ data manual_corpus_eval_host_run_specs: List<CorpusEvalHostRunSpec> = [
 data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
   CorpusEvalExpectedPin {
     claim_id: claim_eval_mvp2_test_claim_route,
+    status: PinnedRed,
     observation: ExecutedFail,
     primary_reason: eval_rejected_invalid_node,
     dissolution_target: dissolution_target_transform_eval
   },
   CorpusEvalExpectedPin {
     claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
+    status: PinnedRed,
     observation: HostRejected,
     primary_reason: interpreter_classified_dependency_view_non_exhaustive,
     dissolution_target: dissolution_target_cdv_eager_moth_810
   },
   CorpusEvalExpectedPin {
     claim_id: claim_lens_effect_depends_on_runtime_verdict,
+    status: PinnedRed,
     observation: HostRejected,
     primary_reason: interpreter_classified_dependency_view_non_exhaustive,
     dissolution_target: dissolution_target_cdv_eager_moth_810
   },
   CorpusEvalExpectedPin {
     claim_id: claim_rust_language_model_emit_mechanical_reverification,
+    status: PinnedRed,
     observation: ExecutedFail,
     primary_reason: eval_rejected_invalid_node,
     dissolution_target: dissolution_target_transform_eval
   },
   CorpusEvalExpectedPin {
     claim_id: claim_rust_language_model_emit_subsumption_reverifies,
+    status: PinnedRed,
     observation: ExecutedFail,
     primary_reason: eval_rejected_type_node,
     dissolution_target: dissolution_target_subsumption_tree_eval
@@ -165,6 +178,7 @@ fn corpus_eval_tracked_expectation_pins_well_formed() -> Bool {
   corpus_eval_expected_pins_match_host_run_specs()
     && corpus_eval_expected_pins_match_roster_frontier()
     && corpus_eval_all_host_specs_have_pins()
+    && corpus_eval_all_pin_statuses_well_formed()
 }
 
 
@@ -211,6 +225,46 @@ fn corpus_eval_all_host_specs_have_pins() -> Bool {
 }
 
 
+fn corpus_eval_observation_is_pass(
+  observation: CorpusEvalExpectedObservation,
+  reason: Symbol
+) -> Bool {
+  match observation {
+    ExecutedPass => reason == corpus_eval_verdict_pass_reason
+    ExecutedFail => false
+    ExecutedDeferred => false
+    HostRejected => false
+  }
+}
+
+
+fn corpus_eval_pin_status_well_formed(pin: CorpusEvalExpectedPin) -> Bool {
+  match pin.status {
+    MustPass =>
+      corpus_eval_observation_is_pass(
+        observation: pin.observation,
+        reason: pin.primary_reason
+      )
+    PinnedRed =>
+      !corpus_eval_observation_is_pass(
+        observation: pin.observation,
+        reason: pin.primary_reason
+      )
+  }
+}
+
+
+fn corpus_eval_all_pin_statuses_well_formed() -> Bool {
+  fold_list(
+    xs: manual_corpus_eval_expected_pins,
+    empty: true,
+    cons: fn(acc, pin) {
+      acc && corpus_eval_pin_status_well_formed(pin: pin)
+    }
+  )
+}
+
+
 fn corpus_eval_observation_arm_matches(
   actual: CorpusEvalExpectedObservation,
   expected: CorpusEvalExpectedObservation
@@ -244,7 +298,13 @@ fn corpus_eval_observation_arm_matches(
 }
 
 
-fn corpus_eval_observation_matches_pin(
+type CorpusEvalPinEvaluation
+  = CorpusEvalPinMatched
+  | CorpusEvalPinRatchetForward { dissolution_target: Symbol }
+  | CorpusEvalPinRegression
+
+
+fn corpus_eval_observation_exactly_matches_pin(
   actual: CorpusEvalExpectedObservation,
   actual_reason: Symbol,
   pin: CorpusEvalExpectedPin
@@ -254,39 +314,76 @@ fn corpus_eval_observation_matches_pin(
 }
 
 
+fn corpus_eval_evaluate_pin(
+  actual: CorpusEvalExpectedObservation,
+  actual_reason: Symbol,
+  pin: CorpusEvalExpectedPin
+) -> CorpusEvalPinEvaluation {
+  match pin.status {
+    MustPass =>
+      if corpus_eval_observation_is_pass(observation: actual, reason: actual_reason) {
+        CorpusEvalPinMatched
+      } else {
+        CorpusEvalPinRegression
+      }
+    PinnedRed =>
+      if corpus_eval_observation_exactly_matches_pin(
+        actual: actual,
+        actual_reason: actual_reason,
+        pin: pin
+      ) {
+        CorpusEvalPinMatched
+      } else if corpus_eval_observation_is_pass(observation: actual, reason: actual_reason) {
+        CorpusEvalPinRatchetForward { dissolution_target: pin.dissolution_target }
+      } else {
+        CorpusEvalPinRegression
+      }
+  }
+}
+
+
+fn corpus_eval_pin_evaluation_allows_ci(evaluation: CorpusEvalPinEvaluation) -> Bool {
+  match evaluation {
+    CorpusEvalPinMatched => true
+    CorpusEvalPinRatchetForward { dissolution_target: _ } => true
+    CorpusEvalPinRegression => false
+  }
+}
+
+
 fn corpus_eval_executed_row_runtime_gate(
   run: TestClaimRun<Node, RuntimeValue>,
   pin: CorpusEvalExpectedPin
 ) -> Bool {
   match run.verdict {
     Pass =>
-      corpus_eval_observation_matches_pin(
+      corpus_eval_pin_evaluation_allows_ci(evaluation: corpus_eval_evaluate_pin(
         actual: ExecutedPass,
         actual_reason: corpus_eval_verdict_pass_reason,
         pin: pin
-      )
+      ))
     Fail { actual: Rejected { diagnostics: ds }, falsification: _ } =>
-      corpus_eval_observation_matches_pin(
+      corpus_eval_pin_evaluation_allows_ci(evaluation: corpus_eval_evaluate_pin(
         actual: ExecutedFail,
         actual_reason: ds.head.reason,
         pin: pin
-      )
+      ))
     Deferred { diagnostic: d, actual: _ } =>
-      corpus_eval_observation_matches_pin(
+      corpus_eval_pin_evaluation_allows_ci(evaluation: corpus_eval_evaluate_pin(
         actual: ExecutedDeferred,
         actual_reason: d.reason,
         pin: pin
-      )
+      ))
   }
 }
 
 
 fn corpus_eval_host_rejected_transport_gate(pin: CorpusEvalExpectedPin) -> Bool {
-  corpus_eval_observation_matches_pin(
+  corpus_eval_pin_evaluation_allows_ci(evaluation: corpus_eval_evaluate_pin(
     actual: HostRejected,
     actual_reason: interpreter_classified_dependency_view_non_exhaustive,
     pin: pin
-  )
+  ))
 }
 
 
