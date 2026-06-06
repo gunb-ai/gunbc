@@ -26,6 +26,8 @@ mod effects;
 #[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]
+mod generator_match_arm_test;
+#[cfg(test)]
 mod infer_semantics;
 #[cfg(test)]
 mod int_pow_bounded_test;
@@ -37,6 +39,8 @@ mod pb_method_template_projection_consumability;
 mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;
+#[cfg(test)]
+mod rc_probe_wire_decode_call_test;
 #[cfg(test)]
 mod render_repeat_test;
 #[cfg(test)]

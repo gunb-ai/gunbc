@@ -30,6 +30,12 @@ data v4_roster_pilot_row_edit_locus_fail_closed: V4RosterPilotClaimRunRow = V4Ro
   function: "edit_locus_fail_closed_holds"
 }
 
+data v4_roster_pilot_row_generator_provenance: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "generator provenance",
+  entry: "src/v4/test/claim/lens_testgen/generator_provenance.dag",
+  function: "witness_lens_testgen_scheduled_generators_carry_provenance_green"
+}
+
 data v4_roster_pilot_row_grounding_ts_symbol_carrier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "grounding_typescript SG-1 symbol carrier",
   entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
@@ -42,6 +48,7 @@ data v4_roster_pilot_row_grounding_ts_absence_fail_closed: V4RosterPilotClaimRun
   function: "ts_g2_sg5_absence_fail_closed_holds"
 }
 
+<<<<<<< HEAD
 // Exemplar E1: v4.std.text smoke→witness migration (fold-delete W1). Discriminating
 // claim-run witnesses (mutation-proven red-under-mutation) carry the behavioral content
 // of the now-retired v4_std_text_dag_smoke_test.rs parse-surface greps; that .rs and its
@@ -68,14 +75,24 @@ data v4_roster_pilot_row_std_text_field_text: V4RosterPilotClaimRunRow = V4Roste
   label: "std_text HostStringText record field text:String",
   entry: "src/v4/test/claim/std_text/carrier_claims.dag",
   function: "text_host_string_field_text_holds"
+=======
+// ctrl#1476 B3-Gap2 (SG-RC probe wire-decode call-site fix). Only the owned round-trip is
+// promoted; sg_rc_f6_round_trip_rc remains a separate tracked-red read-path bug (follow-up).
+data v4_roster_pilot_row_sg_rc_f6_owned: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "sg-rc f6 round-trip owned (ctrl#1476 B3-Gap2)",
+  entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
+  function: "sg_rc_f6_round_trip_owned"
+>>>>>>> origin/main
 }
 
 
 data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_edit_locus_narrow,
   v4_roster_pilot_row_edit_locus_fail_closed,
+  v4_roster_pilot_row_generator_provenance,
   v4_roster_pilot_row_grounding_ts_symbol_carrier,
   v4_roster_pilot_row_grounding_ts_absence_fail_closed,
+<<<<<<< HEAD
   v4_roster_pilot_row_std_text_freemonoid_carrier,
   v4_roster_pilot_row_std_text_roundtrip,
   v4_roster_pilot_row_std_text_empty_roundtrip,
@@ -84,6 +101,13 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
 data v4_roster_pilot_claim_run_row_count: String = "8"
+=======
+  v4_roster_pilot_row_sg_rc_f6_owned
+]
+
+// Host transport projection: shell reads this count and list member names only (not free awk scan).
+data v4_roster_pilot_claim_run_row_count: String = "5"
+>>>>>>> origin/main
 
 
 fn v4_roster_pilot_row_matches(
@@ -109,18 +133,28 @@ fn v4_roster_pilot_claim_run_list_contains_once(
 fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
   v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_narrow)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_fail_closed)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_generator_provenance)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_symbol_carrier)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_absence_fail_closed)
+<<<<<<< HEAD
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_freemonoid_carrier)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_empty_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_field_text)
+=======
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg_rc_f6_owned)
+>>>>>>> origin/main
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
+<<<<<<< HEAD
   (length(xs: v4_roster_pilot_claim_run_rows) == 8)
     && (v4_roster_pilot_claim_run_row_count == "8")
+=======
+  (length(xs: v4_roster_pilot_claim_run_rows) == 5)
+    && (v4_roster_pilot_claim_run_row_count == "5")
+>>>>>>> origin/main
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -133,6 +167,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "edit_locus_fail_closed_holds"
     )
     && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_generator_provenance,
+      entry: "src/v4/test/claim/lens_testgen/generator_provenance.dag",
+      function: "witness_lens_testgen_scheduled_generators_carry_provenance_green"
+    )
+    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_grounding_ts_symbol_carrier,
       entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
       function: "ts_g2_sg1_symbol_carrier_holds"
@@ -143,6 +182,7 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "ts_g2_sg5_absence_fail_closed_holds"
     )
     && v4_roster_pilot_row_matches(
+<<<<<<< HEAD
       row: v4_roster_pilot_row_std_text_freemonoid_carrier,
       entry: "src/v4/test/claim/std_text/carrier_claims.dag",
       function: "text_string_freemonoid_carrier_holds"
@@ -161,5 +201,12 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_std_text_field_text,
       entry: "src/v4/test/claim/std_text/carrier_claims.dag",
       function: "text_host_string_field_text_holds"
+=======
+      row: v4_roster_pilot_row_sg_rc_f6_owned,
+      entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
+      function: "sg_rc_f6_round_trip_owned"
+>>>>>>> origin/main
     )
 }
+
+
