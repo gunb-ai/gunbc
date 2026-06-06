@@ -41,7 +41,8 @@ import v4.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
-  formal_production_to_node
+  formal_production_to_node,
+  grammar_relation_tokens_node
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -974,19 +975,7 @@ fn ecmascript_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn ecmascript_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
-  Edge { label: Positional, target: ecmascript_concrete_token_node(token: token) }
-}
 
-fn ecmascript_positional_edges_from_token_classes() -> List<Edge> {
-  fold_list(
-    xs: ecmascript_mvp1_concrete_tokens(),
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: ecmascript_positional_token_edge(token: token))
-    }
-  )
-}
 
 fn ecmascript_mvp1_serialize_source_children() -> List<Edge> {
   list_append(
@@ -994,7 +983,15 @@ fn ecmascript_mvp1_serialize_source_children() -> List<Edge> {
       ecmascript_named_edge(name: ecmascript_mvp1_source_text_field, target: ecmascript_inhabitant_atom(id: ecmascript_mvp1_source_literal)),
       ecmascript_named_edge(name: ecmascript_mvp1_source_grammar_field, target: ecmascript_inhabitant_atom(id: ecmascript_production_mvp1_fn_add))
     ],
-    right: ecmascript_positional_edges_from_token_classes()
+    right: [
+      ecmascript_named_edge(
+        name: grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: ecmascript_mvp1_concrete_tokens(),
+          token_to_node: ecmascript_concrete_token_node
+        )
+      )
+    ]
   )
 }
 
@@ -1173,15 +1170,6 @@ fn ecmascript_mvp1_grammar_relation_row() -> EcmascriptGrammarRelationRow {
   }
 }
 
-fn ecmascript_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: ecmascript_positional_token_edge(token: token))
-    }
-  )
-}
 
 fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> Node {
   Node {
@@ -1191,10 +1179,10 @@ fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> No
       ecmascript_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       ecmascript_named_edge(
         name: grammar_relation_field_tokens,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: ecmascript_relation_token_edges(tokens: row.tokens)
-        }
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: ecmascript_concrete_token_node
+        )
       )
     ]
   }
