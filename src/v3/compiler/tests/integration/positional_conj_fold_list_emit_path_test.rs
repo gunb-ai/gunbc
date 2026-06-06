@@ -3,6 +3,11 @@
 //! Grammar-relation / serialize_source token sequences on the emit path must lower via
 //! `grammar_relation_tokens_node` (fold_list_node named-cons spine), not positional-Conj
 //! `fold_list` edge builders.
+//!
+//! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+//! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero`; dissolves when modeled `TestClaim` exercises
+//! emit-path grammar-relation token encode without this hand-Rust substring/parse ratchet.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::tokenize_for_test;
@@ -62,6 +67,19 @@ fn code_lines(source: &str) -> String {
         .join("\n")
 }
 
+fn defines_fn_with_suffix(body: &str, suffix: &str) -> bool {
+    body.lines().any(|line| {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("fn ") {
+            return false;
+        }
+        let rest = trimmed.strip_prefix("fn ").unwrap_or("");
+        rest.split(['(', '<', ' '])
+            .next()
+            .is_some_and(|name| name.ends_with(suffix))
+    })
+}
+
 /// Detection: red if emit-path language models reintroduce positional-Conj fold_list builders.
 #[test]
 fn emit_path_language_models_do_not_define_positional_conj_fold_list_builders() {
@@ -78,7 +96,7 @@ fn emit_path_language_models_do_not_define_positional_conj_fold_list_builders() 
     for (label, source) in EMIT_PATH_DAGS {
         let body = code_lines(source);
         for suffix in fn_forbidden {
-            if body.contains(&format!("fn {suffix}")) {
+            if defines_fn_with_suffix(&body, suffix) {
                 panic!(
                     "positional-Conj fold_list bypass in {label}.\n\
                      forbidden: fn ...{suffix}\n\
