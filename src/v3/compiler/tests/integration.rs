@@ -181,6 +181,8 @@ mod pb1_bootstrap_full_snapshot_test;
 mod pb_method_template_projection_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
+#[path = "integration/positional_conj_fold_list_emit_path_test.rs"]
+mod positional_conj_fold_list_emit_path_test;
 #[path = "integration/prereq_x_call_on_field_access_ratchet_test.rs"]
 mod prereq_x_call_on_field_access_ratchet_test;
 #[path = "integration/r1_release_acceptance_test.rs"]
