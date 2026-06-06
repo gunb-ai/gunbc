@@ -26,6 +26,53 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     );
 }
 
+#[test]
+fn map_insert_builtin_evaluates_in_interpreter() {
+    let src = r#"module test.map_insert_only
+fn probe() -> Int {
+  let m = empty_map()
+  match m |> map_insert("k", 7) {
+    _ => 1
+  }
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "probe") {
+        Ok(Value::Int(1)) => {}
+        other => panic!("expected Int(1) from map_insert match, got {other:?}"),
+    }
+}
+
+#[test]
+fn empty_map_builtin_evaluates_in_interpreter() {
+    let src = r#"module test.empty_map_only
+fn probe() -> Int {
+  match empty_map() {
+    _ => 1
+  }
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "probe") {
+        Ok(Value::Int(1)) => {}
+        other => panic!("expected Int(1) from empty_map match, got {other:?}"),
+    }
+}
+
 /// Detection: red if any map key-probe bypasses the Option-C chokepoint.
 #[test]
 fn map_lookup_operations_do_not_probe_value_map_outside_chokepoint() {
