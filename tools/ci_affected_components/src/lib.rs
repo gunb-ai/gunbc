@@ -2,7 +2,7 @@
 //!
 //! **Modeled authority:** `src/v4/workflow/ci.dag` (`ci_component_affected_from_git_diff` and
 //! `ci_changed_path_affects_*`). This crate is an interim Rust mirror of those predicates for
-//! the CI runner (not `.dag` eval yet); keep aligned via `v4_workflow_ci_runner_dag_smoke_test`
+//! the CI runner (not `.dag` eval yet); keep aligned via `tools/ci_workflow_ratchet`
 //! set-equality + behavioral fixture parity (not substring presence). Lives outside `v3-compiler`
 //! so the affected job can emit `v3=false` without compiling the frozen v3 package first
 //! (INVARIANTS P3 fail-closed boundary).
@@ -140,7 +140,7 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
 }
 
 pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
-    path.starts_with("src/v4/test/claim/")
+    path.starts_with("src/v4/test/claim/") || path == "scripts/v4-testclaim-corpus-eval.sh"
 }
 
 pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
@@ -226,6 +226,12 @@ mod tests {
         ));
         assert!(!ci_changed_path_affects_testclaim_corpus(
             "src/v4/workflow/ci.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "scripts/v4-testclaim-corpus-eval.sh"
+        ));
+        assert!(!ci_changed_path_affects_testclaim_corpus(
+            "scripts/other.sh"
         ));
     }
 

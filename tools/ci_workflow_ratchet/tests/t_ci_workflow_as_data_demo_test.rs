@@ -1,5 +1,6 @@
 //! **Layer:** integration
 //!
+//! PR-A relocation — gate-57 / lens_gate57 compile_to_dag receipts (ctrl#1467 follow-up).
 //! **T-Workflow-As-Data** — `ci_workflow_modeled_as_dag` receipt (gunbc#1956): gunbc CI workflow
 //! carriers from `dsl/extdeps/github/actions.dag` are authored as `.dag` **data** alongside a
 //! `Lens<TimingMeasurement>` reporting shell. On the **gate-57 linked `gunbc.ci` compile** (see
@@ -49,7 +50,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
-use crate::common::find_list_empty_constructor_tag;
+use ci_workflow_ratchet::support::find_list_empty_constructor_tag;
 use serde_yaml::{Mapping as YamlMapping, Value as YamlValue};
 use sha2::{Digest, Sha256};
 use v3_compiler::dag::{
@@ -75,16 +76,16 @@ const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
 /// disk. Merge the pinned GitHub Actions workflow module before `gunbc.ci` so
 /// `ci_workflow_dag.github_actions_workflow` resolves to `gunbc_ci_github_actions_workflow`.
 const GUNBC_CI_LINKED_COMPILE_SOURCE: &str = concat!(
-    include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag"),
+    include_str!("../../../dsl/gunbc/ci_github_actions_workflow.dag"),
     "\n\n",
-    include_str!("../../../../../dsl/gunbc/ci.dag"),
+    include_str!("../../../dsl/gunbc/ci.dag"),
 );
 const GUNBC_CI_LINKED_COMPILE_FILE: &str = "dsl/gunbc/ci_with_github_actions_workflow.dag";
 const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
-    include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
+    include_str!("../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
-const GITHUB_ACTIONS_CI_YML_SOURCE: &str = include_str!("../../../../../.github/workflows/ci.yml");
-const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
+const GITHUB_ACTIONS_CI_YML_SOURCE: &str = include_str!("../../../.github/workflows/ci.yml");
+const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../dsl/gunbc/ci_emission.dag");
 const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
 
 fn demo_bootstrap_dag() -> v3_compiler::dag::Dag {

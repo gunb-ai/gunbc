@@ -239,8 +239,6 @@ mod sg7_prep_variant_payload_freshness_test;
 mod shape_a_target_source_filtering_authority_test;
 #[path = "integration/symbolic_cost_expr_equals_executable_ratchet_test.rs"]
 mod symbolic_cost_expr_equals_executable_ratchet_test;
-#[path = "integration/t_ci_workflow_as_data_demo_test.rs"]
-mod t_ci_workflow_as_data_demo_test;
 #[path = "integration/t_gate_106_show_correct_code_diagnostic_coverage_test.rs"]
 mod t_gate_106_show_correct_code_diagnostic_coverage_test;
 #[path = "integration/t_gate_58_apply_lens_self_application_test.rs"]
@@ -355,8 +353,6 @@ mod v4_t15_self_host_fixed_point_harness_test;
 mod v4_test_bootstrap_infra_closeout_test;
 #[path = "integration/v4_test_fixture_task_manager_demo_smoke_test.rs"]
 mod v4_test_fixture_task_manager_demo_smoke_test;
-#[path = "integration/v4_workflow_ci_runner_dag_smoke_test.rs"]
-mod v4_workflow_ci_runner_dag_smoke_test;
 #[path = "integration/v4_workflow_release_dag_smoke_test.rs"]
 mod v4_workflow_release_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
