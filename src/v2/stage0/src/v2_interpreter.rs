@@ -1566,6 +1566,17 @@ fn eval_algebra_method(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     match method {
+        // `m.lookup(k)` on a native Value::Map: the low-level raw probe (present -> value,
+        // missing -> Null). The pattern bridge (Null -> None, value -> Some) lets the std
+        // `map_get` (v4.std.collection, Outcome<Optional<V>>) wrap it; the bootstrap otherwise
+        // only resolves `.lookup` on the record-form `Map { lookup: fn }`, not native maps.
+        "lookup" => match (&receiver, args) {
+            (Value::Map(m), [Value::Str(k)]) => Ok(m.get(k.as_str()).cloned().unwrap_or(Value::Null)),
+            _ => Err(InterpError::Unimplemented {
+                what: format!("method 'lookup' on non-map receiver"),
+            }),
+        },
+
         "map" => list_method_with_closure("map", receiver, args, env, ctx, |items, f, env, ctx| {
             items
                 .iter()
