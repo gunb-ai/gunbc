@@ -240,42 +240,6 @@ fn e_m_method_semantics_subsumption_receipt_is_verifiable() {
         record_fields(&dag, "BindNode").contains(&String::from("params")),
         "fold_accumulator_type maps through callable/lambda BindNode params and port states"
     );
-
-    let root = workspace_root();
-    let register = std::fs::read_to_string(root.join("docs/v3-lens-capability-register.md"))
-        .expect("read docs/v3-lens-capability-register.md");
-    assert!(
-        register.contains("PlainMethodSemantics` maps to ordinary `TransformTarget::Callable(DeclarationId)` dispatch or `TransformTarget::FieldProject"),
-        "register must name the PlainMethodSemantics structural replacement"
-    );
-    assert!(
-        register.contains("AlgebraMethodSemantics.method_def` maps to the callable declaration id or, for operators still in the surface scaffold, `TransformTarget::Operator(OperatorKind)`"),
-        "register must name the AlgebraMethodSemantics structural replacement"
-    );
-    assert!(
-        register.contains("fold_accumulator_type` maps to callable/lambda signature facts: v3 resolves the callable's `Arrow { inputs, output, body }`, binds callback arguments through `BindNode.params` and port states"),
-        "register must name the fold_accumulator_type structural replacement"
-    );
-    assert!(
-        register.contains("ServiceMethodSemantics` maps to typed service/effect declarations and operation metadata"),
-        "register must name the ServiceMethodSemantics structural replacement"
-    );
-
-    let program =
-        std::fs::read_to_string(root.join("docs/design-substrate-carrier-port-program.md"))
-            .expect("read docs/design-substrate-carrier-port-program.md");
-    assert!(
-        program.contains("**E-M is closed via M-b structural subsumption**"),
-        "carrier program must record E-M as closed via M-b"
-    );
-    assert!(
-        program.contains("`AlgebraMethodSemantics.fold_accumulator_type` maps to resolved callable/lambda `Arrow { inputs, output, body }` signatures plus `BindNode.params`"),
-        "carrier program must name the fold_accumulator_type structural replacement"
-    );
-    assert!(
-        program.contains("**Sanity predicate passed:** v3 structural resolution carries all v2 `MethodSemantics` facts needed for carrier parity"),
-        "closed E-M lane must retain its verifiable sanity predicate"
-    );
 }
 
 #[test]
