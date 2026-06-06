@@ -745,6 +745,73 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
     }
   )
 }
+// Find a serialize_source's canonical `tokens` edge (the fold_list_node named-cons token
+// sequence), if present. Folds the children directly so it is safe on either encoding —
+// a node carrying the named tokens edge (lowered) or one with legacy positional token
+// edges (returns Absent, the caller falls back to positional extraction).
+fn serialize_source_tokens_fold_child(serialize_source: Node) -> Optional<Node> {
+  fold(
+    serialize_source.children,
+    init: Absent,
+    f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match e.label {
+            Named { name: n } =>
+              if n == grammar_relation_field_tokens { Present { value: e.target } } else { acc }
+            Positional => acc
+          }
+      }
+    }
+  )
+}
+// Walk a fold_list_node named-cons chain (Conj{Named head, Named tail} cells terminating
+// in an empty Conj) to the List of head targets. Self-contained (no decode_item convention).
+fn serialize_source_fold_list_targets(remaining: Int, node: Node) -> Outcome<List<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+  } else {
+    match node.kind {
+      TypeNode { connective: Conj } =>
+        if is_empty(xs: node.children) {
+          Accepted { value: Empty, diagnostics: None }
+        } else {
+          bind_outcome(
+            o: conj_named_child(parent: node, edge_name: fold_list_node_head),
+            f: fn(head) {
+              bind_outcome(
+                o: conj_named_child(parent: node, edge_name: fold_list_node_tail),
+                f: fn(tail) {
+                  bind_outcome(
+                    o: serialize_source_fold_list_targets(remaining: remaining - 1, node: tail),
+                    f: fn(rest) {
+                      Accepted { value: Cons { head: head, tail: rest }, diagnostics: None }
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      _ => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+    }
+  }
+}
+// Token-target sequence of a serialize_source, transparent over the token encoding: a
+// canonical fold_list_node named-cons tokens edge is walked as a fold_list; a legacy
+// serialize_source with positional token edges falls back to its positional targets.
+fn serialize_source_token_targets(serialize_source: Node) -> Outcome<List<Node>> {
+  match serialize_source_tokens_fold_child(serialize_source: serialize_source) {
+    Present { value: tokens_fold } =>
+      serialize_source_fold_list_targets(
+        remaining: node_subtree_count(n: tokens_fold),
+        node: tokens_fold
+      )
+    Absent =>
+      conj_positional_targets(parent: serialize_source)
+  }
+}
 fn grammar_serialize_source_matches_row(
   serialize_source: Node,
   row: Node
@@ -754,7 +821,7 @@ fn grammar_serialize_source_matches_row(
       o: grammar_relation_row_tokens_root(row: row),
       f: fn(tokens_root) {
         bind_outcome(
-          o: conj_positional_targets(parent: serialize_source),
+          o: serialize_source_token_targets(serialize_source: serialize_source),
           f: fn(source_targets) {
             bind_outcome(
               o: conj_positional_targets(parent: tokens_root),
@@ -4147,6 +4214,16 @@ fn translate_mvp1_fold_init(
       }
   }
 }
+// Grammar-first match: does the (raw, structure-preserving) emitted node match a row in
+// the target's grammar relation? Accepted(row) => the node is grammar-fixtured and must
+// serialize via the mode-1 whole-node match (grammar_relation_row_for_emitted :536 ->
+// pre-baked tokens); Rejected => no row, fall through to the projection / mode-2 path.
+fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    f: fn(rules) { grammar_relation_row_for_emitted(rules: rules, emitted: emitted) }
+  )
+}
 fn translate_type_expression_tree(
   node: Node,
   tree: InferredTree,
@@ -4161,7 +4238,18 @@ fn translate_type_expression_tree(
         step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
       }
     ),
-    f: fn(n) { project_type_expression_node(node: n, target: target, projection: projection) }
+    f: fn(n) {
+      // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
+      // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
+      // node grammar match -> pre-baked concrete tokens (the full source, e.g. the mvp1
+      // add fn). Nodes WITHOUT a grammar row fall through to the existing projection /
+      // mode-2 (SG-2) path, UNTOUCHED — they carry the type-expression projection wrapping.
+      match translate_grammar_relation_row_match(target: target, emitted: n) {
+        Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
+        Rejected { diagnostics: _ } =>
+          project_type_expression_node(node: n, target: target, projection: projection)
+      }
+    }
   )
 }
 fn translate_node_with_projection(

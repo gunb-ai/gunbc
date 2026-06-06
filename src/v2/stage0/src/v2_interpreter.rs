@@ -247,6 +247,36 @@ impl PartialEq for Value {
             ) => a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
             (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
+            // List <-> FreeMonoid alias-transparency. `List<T>` IS `FreeMonoid<T>` (std), and
+            // the alias is already honored in pattern matching (the Value::List -> Empty/Cons
+            // bridge) and in every list operation (free_monoid_to_vec / expect_list accept
+            // either representation). Equality is the single site it was never honored: a list
+            // literal builds Value::List, while snoc-built sequences (list_snoc_item — e.g.
+            // Node.children rebuilt by a fold) build an Empty/Cons Variant chain. Flatten BOTH
+            // sides through the canonical free_monoid_to_vec and compare element-wise (this
+            // recurses through `==`, so nested mixed representations reconcile too). A Variant
+            // that is not a well-formed Empty/Cons chain flattens to None, so a genuine
+            // non-list Variant (e.g. Some/None) still never equals a List.
+            (Value::List(_), Value::Variant { .. }) | (Value::Variant { .. }, Value::List(_)) => {
+                match (free_monoid_to_vec(self), free_monoid_to_vec(other)) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => false,
+                }
+            }
+            // Same alias-transparency for `type String = FreeMonoid<Char>` (std/text.dag): a
+            // native Value::Str and a snoc/Cons-built (or list-literal) char sequence denote the
+            // same FreeMonoid<Char>. Flatten both through free_monoid_to_vec (Str -> one-char
+            // Strs) and compare. (Str,Str) is handled natively above; this only adds the cross-
+            // representation pairings, so it never slows the common string-equality path.
+            (Value::Str(_), Value::Variant { .. })
+            | (Value::Variant { .. }, Value::Str(_))
+            | (Value::Str(_), Value::List(_))
+            | (Value::List(_), Value::Str(_)) => {
+                match (free_monoid_to_vec(self), free_monoid_to_vec(other)) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => false,
+                }
+            }
             _ => false,
         }
     }
@@ -1080,6 +1110,48 @@ fn match_pattern(
                     }
                     _ => None,
                 },
+                // Bridge String values (Value::Str) to FreeMonoid<Char> Empty/Cons patterns:
+                // `type String = FreeMonoid<Char>` (std/text.dag), so fold_list/list_append walk
+                // a String char-by-char. A Char is a one-char Value::Str here (self-consistent:
+                // the head of a String is a length-1 String, the tail is the rest). [Recurring
+                // class: List=FreeMonoid alias honored per-operation — this is the String/Char
+                // surface of it; the representation-level dissolution is tracked separately.]
+                Value::Str(s) if name == "Empty" || name == "Cons" => match name.as_str() {
+                    "Empty" => {
+                        if s.is_empty() {
+                            Some(HashMap::new())
+                        } else {
+                            None
+                        }
+                    }
+                    "Cons" => {
+                        let mut chars = s.chars();
+                        match chars.next() {
+                            None => None,
+                            Some(c) => {
+                                let head = Value::Str(c.to_string());
+                                let tail = Value::Str(chars.as_str().to_string());
+                                let mut bindings = HashMap::new();
+                                for fb in field_bindings.iter() {
+                                    let field_name = field_binding_name_at(
+                                        fb.clone(),
+                                        ctx.source_indices.clone(),
+                                    );
+                                    let fb_pat = field_binding_pattern(fb.clone());
+                                    let field_val = match field_name.as_str() {
+                                        "head" => head.clone(),
+                                        "tail" => tail.clone(),
+                                        _ => return None,
+                                    };
+                                    let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                                    bindings.extend(sub_bindings);
+                                }
+                                Some(bindings)
+                            }
+                        }
+                    }
+                    _ => None,
+                },
                 // Match on Option: Some { value: x } pattern
                 Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
                 _ if name == "Some" => {
@@ -1546,6 +1618,19 @@ fn eval_algebra_method(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     match method {
+        // `m.lookup(k)` on a native Value::Map: the low-level raw probe (present -> value,
+        // missing -> Null). The pattern bridge (Null -> None, value -> Some) lets the std
+        // `map_get` (v4.std.collection, Outcome<Optional<V>>) wrap it; the bootstrap otherwise
+        // only resolves `.lookup` on the record-form `Map { lookup: fn }`, not native maps.
+        "lookup" => match (&receiver, args) {
+            (Value::Map(m), [Value::Str(k)]) => {
+                Ok(m.get(k.as_str()).cloned().unwrap_or(Value::Null))
+            }
+            _ => Err(InterpError::Unimplemented {
+                what: "method 'lookup' on non-map receiver".to_string(),
+            }),
+        },
+
         "map" => list_method_with_closure("map", receiver, args, env, ctx, |items, f, env, ctx| {
             items
                 .iter()
@@ -2767,7 +2852,16 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
-        "map_get" | "lookup" => match positional.as_slice() {
+        // `lookup` is the low-level raw map probe (present -> value, missing -> Null); the
+        // pattern bridge (Null->None, value->Some) lets the std `map_get` (v4.std.collection,
+        // Outcome<Optional<V>>) wrap it. `map_get` is NOT handled here on purpose: the builtin
+        // arm previously SHADOWED the typed std map_get (eval_builtin wins over user fns at
+        // eval_call), so `map_get(...)` returned the RAW value and any `match { Accepted; Rejected }`
+        // consumer crashed non-exhaustively (B-LOOKUP-1). Dropping `map_get` here routes it to the
+        // typed v4.std.collection authority. [List=FreeMonoid/Option-alias recurrence: the bridge
+        // is honored per-operation (matching, ==, zip_eq, lookup) rather than once at the
+        // representation — tracked for the post-R2 representation-level dissolution.]
+        "lookup" => match positional.as_slice() {
             [Value::Map(m), Value::Str(k)] => {
                 Ok(Some(m.get(k.as_str()).cloned().unwrap_or(Value::Null)))
             }
@@ -2905,6 +2999,13 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
         match &cur {
             Value::List(items) => {
                 out.extend(items.iter().cloned());
+                return Some(out);
+            }
+            // `type String = FreeMonoid<Char>` (std/text.dag): a String IS its char sequence.
+            // Explode to one-char Value::Strs so list ops and `==` treat it as a FreeMonoid<Char>
+            // (matches the Value::Str Empty/Cons pattern bridge in match_pattern).
+            Value::Str(s) => {
+                out.extend(s.chars().map(|c| Value::Str(c.to_string())));
                 return Some(out);
             }
             Value::Variant {

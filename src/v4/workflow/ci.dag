@@ -3801,6 +3801,7 @@ data ci_dependency_kind_bootstrap_depends_on_tag: Symbol = ci_dependency_kind_bo
 data ci_testclaim_variant_compiles_tag: Symbol = ci_testclaim_variant_compiles_tag
 data ci_testclaim_variant_diagnostic_tag: Symbol = ci_testclaim_variant_diagnostic_tag
 data ci_testclaim_variant_equals_tag: Symbol = ci_testclaim_variant_equals_tag
+data ci_testclaim_variant_structural_equals_tag: Symbol = ci_testclaim_variant_structural_equals_tag
 data ci_testclaim_variant_round_trip_tag: Symbol = ci_testclaim_variant_round_trip_tag
 data ci_claim_anchor_manual_tag: Symbol = ci_claim_anchor_manual_tag
 data ci_claim_anchor_generated_tag: Symbol = ci_claim_anchor_generated_tag
@@ -4189,6 +4190,7 @@ fn ci_testclaim_variant_digest(variant: TestClaimCoproductVariant) -> Hash {
     TestClaimCompilesClaimVariant => ci_symbol_digest(sym: ci_testclaim_variant_compiles_tag)
     TestClaimDiagnosticClaimVariant => ci_symbol_digest(sym: ci_testclaim_variant_diagnostic_tag)
     TestClaimEqualsClaimVariant => ci_symbol_digest(sym: ci_testclaim_variant_equals_tag)
+    TestClaimStructuralEqualsClaimVariant => ci_symbol_digest(sym: ci_testclaim_variant_structural_equals_tag)
     TestClaimRoundTripClaimVariant => ci_symbol_digest(sym: ci_testclaim_variant_round_trip_tag)
   }
 }
