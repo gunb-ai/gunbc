@@ -2079,9 +2079,9 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "segment == \"src/v4/test/claim/workflow/manual_corpus_eval.dag\"",
         "ci_upsert_file_set_input(segment: \"src/v4/test/claim/workflow/v4_roster_pilot.dag\")",
         "segment == \"src/v4/test/claim/workflow/v4_roster_pilot.dag\"",
-        "scripts/v4-testclaim-roster-pilot.sh",
-        "ci_upsert_file_set_input(segment: \"scripts/v4-testclaim-roster-pilot.sh\")",
-        "segment == \"scripts/v4-testclaim-roster-pilot.sh\"",
+        "scripts/v4-testclaim-smoke-roster.sh",
+        "ci_upsert_file_set_input(segment: \"scripts/v4-testclaim-smoke-roster.sh\")",
+        "segment == \"scripts/v4-testclaim-smoke-roster.sh\"",
     ] {
         assert!(
             CI_DAG.contains(needle),
