@@ -12,7 +12,7 @@ module v4.test.claim.workflow.manual_corpus_eval_expected
 import v4.compiler.eval {
   TestClaimRun,
   eval_rejected_invalid_node,
-  eval_rejected_type_node
+  eval_structural_equals_mismatch
 }
 import v4.std.collection { List }
 import v4.std.diagnostic { Rejected }
@@ -141,7 +141,11 @@ data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
   CorpusEvalExpectedPin {
     claim_id: claim_rust_language_model_emit_subsumption_reverifies,
     observation: ExecutedFail,
-    primary_reason: eval_rejected_type_node,
+    // StructuralEqualsClaim (PR #4471): no longer a harness reject (eval_rejected_type_node);
+    // now an HONEST structural mismatch — lhs receipt (unverifiable) != rhs (verified). The
+    // residual red is a model finding (the receipt produces the wrong verdict), not a
+    // subsumption-tree-eval substrate gap.
+    primary_reason: eval_structural_equals_mismatch,
     dissolution_target: dissolution_target_subsumption_tree_eval
   }
 ]

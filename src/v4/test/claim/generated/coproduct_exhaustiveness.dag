@@ -26,6 +26,7 @@ import v4.std.verification {
   TestClaimCompilesClaimVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
+  TestClaimStructuralEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
   generated_claim_anchor,
   test_claim_input,

@@ -106,6 +106,7 @@ import v4.std.verification {
   TestClaimCoproductVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
+  TestClaimStructuralEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
   ManualAnchorAbsent,
   ManualAnchorKey,
