@@ -12125,6 +12125,12 @@ fn ownership_stage0_census() {
     // (v2_compiler_emit_rust.rs regen). Non-emit modules grew only +238
     // (19928→20166). The ratchet therefore scopes to non-emit files so a bump
     // cannot mask clone-on-share regressions inside emit_rust.
+    //
+    // Deferred emit ratchet (TESTING.md discipline): owner=after-R2 keystone/perf
+    // lane; trigger=R2 emit complete + crisp-seal lift (ROADMAP Track 2 /
+    // ownership-design.md LS-4 clone census). Emit bucket logged below —
+    // subtracted-not-frozen until that lane re-measures emit_rust.
+    const EMIT_CLONE_BASELINE: usize = 9114; // main@e6163cb forensic; informational
     const EMIT_CENSUS_EXCLUDE: &[&str] = &[
         "v2_compiler_emit.rs",
         "v2_compiler_emit_rust.rs",
@@ -12142,10 +12148,14 @@ fn ownership_stage0_census() {
         .filter(|(name, ..)| EMIT_CENSUS_EXCLUDE.contains(&name.as_str()))
         .map(|(_, clones, ..)| *clones)
         .sum();
+    eprintln!(
+        "  GROSS .clone():        {} (informational — not ratcheted; see emit deferral above)",
+        total_clones
+    );
     eprintln!("  NON-EMIT .clone():     {} (ratcheted)", ratchet_clones);
     eprintln!(
-        "  EMIT .clone():         {} (tracked finding — NOT ratcheted; after-R2 keystone/perf lane)",
-        emit_clones
+        "  EMIT .clone():         {} (baseline ~{}; tracked — owner after-R2 keystone/perf lane)",
+        emit_clones, EMIT_CLONE_BASELINE
     );
     for (name, clones, ..) in &file_metrics {
         if EMIT_CENSUS_EXCLUDE.contains(&name.as_str()) && *clones > 0 {
