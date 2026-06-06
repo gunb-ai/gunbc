@@ -4140,6 +4140,7 @@ fn rust_sg2_sum_xy_emitted() -> Node {
 // GAP-2 prep: intentionally absent from rust_sg2_binding_spellings — mode-2 atom serialize must
 // resolve via projection atom_form.ident_token lex class, not map_get(binding_spellings).
 data rust_binding_sg2_lex_only_atom: Symbol = rust_binding_sg2_lex_only_atom
+data rust_sg2_lex_only_atom_spelling: String = "LexOnlyProbe"
 
 fn rust_sg2_lex_only_atom_emitted() -> Node {
   target_type_expr_atom_emitted(

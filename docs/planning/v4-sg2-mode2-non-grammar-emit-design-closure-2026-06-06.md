@@ -1,6 +1,6 @@
 # SG-2 mode-2 emit — non-grammar-matched nodes (design closure)
 
-Status: **DESIGN + cert harness landed**; `06_translate.dag` implementation edits are **blocked on PR #4462** (`r2-green-grammar-first-reroute`) landing first (collision-safe).
+Status: **DESIGN + prep fixtures + cert harness landed** (PR #4465); `06_translate.dag` GAP-1/GAP-2 implementation edits are **blocked on PR #4462** (`r2-green-grammar-first-reroute`) landing first (collision-safe).
 
 ## Routing (mode-1 vs mode-2)
 

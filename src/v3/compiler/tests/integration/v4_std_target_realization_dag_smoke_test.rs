@@ -54,6 +54,9 @@ const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
 const SG_RC_LAYERING_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/sg_rc_layering.dag");
 const SG_RC_LAYERING_CLAIM_PATH: &str = "src/v4/test/claim/manual/sg_rc_layering.dag";
+const SG2_MODE2_EMIT_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag");
+const SG2_MODE2_EMIT_CLAIM_PATH: &str = "src/v4/test/claim/manual/sg2_mode2_non_grammar_emit.dag";
 const SG_COLLECTION_PROJECTION_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/sg_collection_projection.dag");
 const SG_COLLECTION_PROJECTION_CLAIM_PATH: &str =
@@ -854,6 +857,34 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
     assert!(
         surface_declares_data(&module, "target_reference_layer_tokens_decode_invalid"),
         "{TARGET_MODEL_PATH}: non-Conj token bundle must fail-closed"
+    );
+}
+
+#[test]
+fn v4_sg2_mode2_non_grammar_emit_claim_harness_wired() {
+    assert!(
+        RUST_LANGUAGE_DAG.contains("rust_binding_sg2_lex_only_atom"),
+        "{RUST_LANGUAGE_PATH}: GAP-2 prep fixture must declare lex-only atom binding absent from binding_spellings"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("rust_sg2_lex_only_atom_spelling"),
+        "{RUST_LANGUAGE_PATH}: GAP-2 prep fixture must pin expected ident-token spelling"
+    );
+    assert!(
+        SG2_MODE2_EMIT_CLAIM_DAG.contains("claim_sg2_mode2_emit_accepts"),
+        "{SG2_MODE2_EMIT_CLAIM_PATH}: own cert must pin emit acceptance for non-grammar-matched subtree"
+    );
+    assert!(
+        SG2_MODE2_EMIT_CLAIM_DAG.contains("claim_sg2_mode2_gap1_outcome_return_rc_serialize"),
+        "{SG2_MODE2_EMIT_CLAIM_PATH}: GAP-1 ownership-at-serialize dissolve target must be present"
+    );
+    assert!(
+        SG2_MODE2_EMIT_CLAIM_DAG.contains("claim_sg2_mode2_gap2_lex_only_atom_serialize"),
+        "{SG2_MODE2_EMIT_CLAIM_PATH}: GAP-2 ident_token dissolve target must be present"
+    );
+    assert!(
+        SG2_MODE2_EMIT_CLAIM_DAG.contains("grammar_relation_row_for_emitted"),
+        "{SG2_MODE2_EMIT_CLAIM_PATH}: harness must prove grammar-row absence via translation_rules lookup"
     );
 }
 
