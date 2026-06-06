@@ -16,13 +16,16 @@ import v4.compiler.eval {
   eval_test_claim_subject,
   run_test_claim
 }
-import v4.compiler.infer { InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List }
 import v4.std.text { String }
 import v4.test.claim.lens_common.infer_fixture {
-  claim_inferred_facts,
+  claim_atom_node,
+  claim_inferred_facts_from_nodes,
   claim_inferred_tree
 }
+import v4.std.witness { Holds }
 import v4.std.diagnostic {
   Accepted,
   None,
@@ -63,7 +66,6 @@ import v4.std.verification {
   manual_claim_anchor
 }
 
-data sg2_mode2_corpus_type_sym: Symbol = sg2_mode2_corpus_type_sym
 data sg2_mode2_corpus_algebra_sym: Symbol = sg2_mode2_corpus_algebra_sym
 data sg2_mode2_corpus_descent_sym: Symbol = sg2_mode2_corpus_descent_sym
 data sg2_mode2_corpus_interpretation_pin: Symbol = sg2_mode2_corpus_interpretation_pin
@@ -172,14 +174,23 @@ fn sg2_mode2_corpus_context() -> EvalContext {
   )
 }
 
+fn sg2_mode2_corpus_facts() -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: sg2_mode2_corpus_leaf_node(),
+    algebra: claim_atom_node(s: sg2_mode2_corpus_algebra_sym),
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: sg2_mode2_corpus_descent_sym }
+      }
+    }
+  )
+}
+
 fn sg2_mode2_corpus_tree() -> InferredTree {
   claim_inferred_tree(
     root: sg2_mode2_corpus_leaf_node(),
-    facts: claim_inferred_facts(
-      type_symbol: sg2_mode2_corpus_type_sym,
-      algebra_symbol: sg2_mode2_corpus_algebra_sym,
-      descent_symbol: sg2_mode2_corpus_descent_sym
-    )
+    facts: sg2_mode2_corpus_facts()
   )
 }
 
