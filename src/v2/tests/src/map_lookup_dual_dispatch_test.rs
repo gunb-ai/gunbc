@@ -26,53 +26,6 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     );
 }
 
-#[test]
-fn map_insert_builtin_evaluates_in_interpreter() {
-    let src = r#"module test.map_insert_only
-fn probe() -> Int {
-  let m = empty_map()
-  match m |> map_insert("k", 7) {
-    _ => 1
-  }
-}
-"#;
-    let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
-    assert_resolved_no_hard_errors(&resolved);
-    let graph = resolved
-        .graph
-        .as_ref()
-        .expect("graph after successful resolve");
-
-    match v2_interpreter::run(graph, resolved.source_indices.clone(), "probe") {
-        Ok(Value::Int(1)) => {}
-        other => panic!("expected Int(1) from map_insert match, got {other:?}"),
-    }
-}
-
-#[test]
-fn empty_map_builtin_evaluates_in_interpreter() {
-    let src = r#"module test.empty_map_only
-fn probe() -> Int {
-  match empty_map() {
-    _ => 1
-  }
-}
-"#;
-    let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
-    assert_resolved_no_hard_errors(&resolved);
-    let graph = resolved
-        .graph
-        .as_ref()
-        .expect("graph after successful resolve");
-
-    match v2_interpreter::run(graph, resolved.source_indices.clone(), "probe") {
-        Ok(Value::Int(1)) => {}
-        other => panic!("expected Int(1) from empty_map match, got {other:?}"),
-    }
-}
-
 /// Detection: red if any map key-probe bypasses the Option-C chokepoint.
 #[test]
 fn map_lookup_operations_do_not_probe_value_map_outside_chokepoint() {
@@ -98,10 +51,8 @@ fn map_lookup_operations_do_not_probe_value_map_outside_chokepoint() {
 fn map_get_method_routes_through_dual_dispatch_chokepoint() {
     let src = r#"module test.map_get_method
 fn found() -> Int {
-  lookup(
-    map_insert(m: empty_map(), key: "a", value: 10),
-    key: "a"
-  )
+  let m = empty_map() |> map_insert("a", 10)
+  m |> get("a")
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
@@ -114,7 +65,7 @@ fn found() -> Int {
 
     match v2_interpreter::run(graph, resolved.source_indices.clone(), "found") {
         Ok(Value::Int(10)) => {}
-        other => panic!("expected Int(10) from map lookup, got {other:?}"),
+        other => panic!("expected Int(10) from map get, got {other:?}"),
     }
 }
 
@@ -122,7 +73,8 @@ fn found() -> Int {
 fn map_index_routes_through_dual_dispatch_chokepoint() {
     let src = r#"module test.map_index
 fn read_b() -> Int {
-  map_insert(m: empty_map(), key: "b", value: 42)["b"]
+  let m = empty_map() |> map_insert("b", 42)
+  m["b"]
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
@@ -143,10 +95,8 @@ fn read_b() -> Int {
 fn lookup_builtin_routes_through_dual_dispatch_chokepoint() {
     let src = r#"module test.lookup_builtin
 fn probe() -> Int {
-  lookup(
-    map_insert(m: empty_map(), key: "k", value: 7),
-    key: "k"
-  )
+  let m = empty_map() |> map_insert("k", 7)
+  lookup(m, "k")
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
