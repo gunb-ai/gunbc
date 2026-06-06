@@ -1467,9 +1467,22 @@ fn rust_mvp1_serialize_source_prefix_edges() -> List<Edge> {
 }
 
 fn rust_mvp1_serialize_source_children() -> List<Edge> {
+  // R2 / round-8 positional-Conj fix: the token sequence is lowered to the canonical
+  // fold_list_node named-cons encoding (Named head/tail cells) under a single named
+  // `tokens` edge, so serialize_source is an all-NAMED Conj and well_formed passes
+  // (Conj-requires-named stays strict). [Per-site patch of the positional-Conj class —
+  // tokens_root + the builders are tracked for the post-R2 authority dissolution.]
   list_append(
     left: rust_mvp1_serialize_source_prefix_edges(),
-    right: rust_mvp1_positional_edges_from_token_classes()
+    right: [
+      rust_named_edge(
+        name: grammar_relation_field_tokens,
+        target: fold_list_node(
+          xs: rust_mvp1_concrete_tokens(),
+          item_node: rust_concrete_token_node
+        )
+      )
+    ]
   )
 }
 
@@ -2016,16 +2029,18 @@ fn rust_ident_lex_rule() -> LexRule {
 }
 
 // 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
-// most LiteralPattern.text below (e.g. "fn " not "fn"); `rust_token_plus` is layout-free
-// (`"+"`) so additive expressions tokenize with trivia. Dissolves when T-6 supplies
-// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
+// every LiteralPattern.text below (e.g. "fn " not "fn", " + " not "+") as the interim
+// trivia policy: a token carries the layout adjacent to it so `x + y` renders with the
+// spaces the reference (`rust_mvp1_source_text`) requires. Dissolves when T-6 supplies
+// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout structurally
+// (at which point these texts drop their baked spaces).
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       rust_lex_rule(token_class: rust_token_kw_fn, text: "fn "),
       rust_ident_lex_rule(),
       rust_lex_rule(token_class: rust_token_ty_i32, text: "i32"),
-      rust_lex_rule(token_class: rust_token_plus, text: "+"),
+      rust_lex_rule(token_class: rust_token_plus, text: " + "),
       rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
       rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
       rust_lex_rule(token_class: rust_token_rbrace, text: " }"),

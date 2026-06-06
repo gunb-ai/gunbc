@@ -106,6 +106,7 @@ import v4.std.verification {
   TestClaimCoproductVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
+  TestClaimStructuralEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
   ManualAnchorAbsent,
   ManualAnchorKey,
@@ -333,6 +334,7 @@ data gen_id_anchor_absent: Symbol = gen_id_anchor_absent
 data gen_id_coproduct_compiles: Symbol = gen_id_coproduct_compiles
 data gen_id_coproduct_diagnostic: Symbol = gen_id_coproduct_diagnostic
 data gen_id_coproduct_equals: Symbol = gen_id_coproduct_equals
+data gen_id_coproduct_structural_equals: Symbol = gen_id_coproduct_structural_equals
 data gen_id_coproduct_roundtrip: Symbol = gen_id_coproduct_roundtrip
 
 
@@ -371,6 +373,7 @@ fn generator_id_for_coproduct_variant(v: TestClaimCoproductVariant) -> Generator
     TestClaimCompilesClaimVariant => gen_id_coproduct_compiles
     TestClaimDiagnosticClaimVariant => gen_id_coproduct_diagnostic
     TestClaimEqualsClaimVariant => gen_id_coproduct_equals
+    TestClaimStructuralEqualsClaimVariant => gen_id_coproduct_structural_equals
     TestClaimRoundTripClaimVariant => gen_id_coproduct_roundtrip
   }
 }
@@ -553,6 +556,9 @@ data coproduct_exhaustiveness_compiles_claim_variant: Symbol = coproduct_exhaust
 
 
 data coproduct_exhaustiveness_equals_claim_variant: Symbol = coproduct_exhaustiveness_equals_claim_variant
+
+
+data coproduct_exhaustiveness_structural_equals_claim_variant: Symbol = coproduct_exhaustiveness_structural_equals_claim_variant
 
 
 data coproduct_exhaustiveness_roundtrip_claim_variant: Symbol = coproduct_exhaustiveness_roundtrip_claim_variant
@@ -1835,6 +1841,7 @@ fn test_claim_coproduct_variant_symbol(variant: TestClaimCoproductVariant) -> Sy
     TestClaimCompilesClaimVariant => coproduct_exhaustiveness_compiles_claim_variant
     TestClaimDiagnosticClaimVariant => coproduct_exhaustiveness_diagnostic_claim_variant
     TestClaimEqualsClaimVariant => coproduct_exhaustiveness_equals_claim_variant
+    TestClaimStructuralEqualsClaimVariant => coproduct_exhaustiveness_structural_equals_claim_variant
     TestClaimRoundTripClaimVariant => coproduct_exhaustiveness_roundtrip_claim_variant
   }
 }
