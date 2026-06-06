@@ -4485,7 +4485,14 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
           }
           concat("        ", pat, " => \"", child_text, "\".to_string(),")
         )
-        concat("(match &(", scrutinee, ") {\n", arms |> join(separator: "\n"), "\n    })")
+        // Borrow the scrutinee so the arms (which never bind fields) don't move it. Shared types
+        // are Rc-wrapped, so deref through the Rc with `&*` to reach `&T`; owned values use `&`.
+        let scrut_ref = if set_contains(shared_types, ty_name) {
+          concat("&*(", scrutinee, ")")
+        } else {
+          concat("&(", scrutinee, ")")
+        }
+        concat("(match ", scrut_ref, " {\n", arms |> join(separator: "\n"), "\n    })")
       } else {
         // Product/record type: the discriminant is the type's own name (interpreter returns type_name).
         concat("\"", ty_name, "\".to_string()")

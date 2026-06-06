@@ -11406,7 +11406,7 @@ pub fn emit_discriminant_call_lowering(
             registry,
             scope.clone(),
             depth,
-            shared_types,
+            shared_types.clone(),
             emit_info,
             1024,
         );
@@ -11469,11 +11469,22 @@ pub fn emit_discriminant_call_lowering(
                             }
                             __result
                         });
+                        let scrut_ref = if v2_rt::set_contains(&shared_types, ty_name.clone()) {
+                            v2_rt::concat(
+                                v2_rt::concat("&*(".to_string(), scrutinee),
+                                ")".to_string(),
+                            )
+                        } else {
+                            v2_rt::concat(
+                                v2_rt::concat("&(".to_string(), scrutinee),
+                                ")".to_string(),
+                            )
+                        };
                         v2_rt::concat(
                             v2_rt::concat(
                                 v2_rt::concat(
-                                    v2_rt::concat("(match &(".to_string(), scrutinee),
-                                    ") {\n".to_string(),
+                                    v2_rt::concat("(match ".to_string(), scrut_ref),
+                                    " {\n".to_string(),
                                 ),
                                 arms.join(&"\n".to_string()),
                             ),
