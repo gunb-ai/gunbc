@@ -1343,10 +1343,19 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         .map(|a| eval_expr(&arg_value(a.clone()), env, ctx))
         .collect::<InterpResult<_>>()?;
 
+    // Option-C dual-dispatch (ctrl#1476 B6): native `Value::Map` and record-form
+    // `Map { lookup: fn }` share one raw key-probe chokepoint.
+    if method_name == "lookup" {
+        let key = args.first().ok_or_else(|| InterpError::TypeError {
+            msg: "lookup requires a key argument".to_string(),
+        })?;
+        return raw_map_lookup(&receiver_val, key, env, ctx);
+    }
+
     // Record/Variant field holding a function: `r.field(args)` calls the field's closure/fn.
     // Checked BEFORE semantics dispatch because it applies whether or not the method was
     // tagged AlgebraMethodSemantics — e.g. fold_node's `algebra.init(n)`/`algebra.step(...)`
-    // over a NodeFold record, and the closure-backed `Map { lookup: fn(..) }` (`m.lookup(k)`).
+    // over a NodeFold record.
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
         if let Some(field_val) = fields.get(&method_name) {
             match field_val {
@@ -1395,12 +1404,12 @@ fn eval_field_access(
             // Or list: first element
             match &base_val {
                 Value::List(items) => Ok(items.first().cloned().unwrap_or(Value::Null)),
-                _ => extract_field(&base_val, &field_name),
+                _ => extract_field(&base_val, &field_name, env, ctx),
             }
         }
         Some(FieldAccessStyle::TupleSecond) => match &base_val {
             Value::List(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
-            _ => extract_field(&base_val, &field_name),
+            _ => extract_field(&base_val, &field_name, env, ctx),
         },
         Some(FieldAccessStyle::OptionalUnwrap) => {
             // .value on Optional — unwrap or return Null
@@ -1411,13 +1420,18 @@ fn eval_field_access(
         }
         Some(FieldAccessStyle::EnumAccessor) => {
             // Accessing a discriminant field on an enum value
-            extract_field(&base_val, &field_name)
+            extract_field(&base_val, &field_name, env, ctx)
         }
-        _ => extract_field(&base_val, &field_name),
+        _ => extract_field(&base_val, &field_name, env, ctx),
     }
 }
 
-fn extract_field(value: &Value, field: &str) -> InterpResult<Value> {
+fn extract_field(
+    value: &Value,
+    field: &str,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
     match value {
         Value::Record { type_name, fields } => {
             fields
@@ -1437,7 +1451,7 @@ fn extract_field(value: &Value, field: &str) -> InterpResult<Value> {
                 type_name: type_name.clone(),
                 field: field.to_string(),
             }),
-        Value::Map(m) => Ok(m.get(field).cloned().unwrap_or(Value::Null)),
+        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx),
         _ => Err(InterpError::TypeError {
             msg: format!("cannot access field '{}' on {}", field, value.type_label()),
         }),
@@ -1556,7 +1570,7 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
         }
-        (Value::Map(m), Value::Str(k)) => Ok(m.get(k.as_str()).cloned().unwrap_or(Value::Null)),
+        (base, key) if is_map_lookup_receiver(base) => raw_map_lookup(base, key, env, ctx),
         (Value::Str(s), Value::Int(i)) => {
             let i = *i as usize;
             Ok(s.chars()
@@ -1618,18 +1632,13 @@ fn eval_algebra_method(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     match method {
-        // `m.lookup(k)` on a native Value::Map: the low-level raw probe (present -> value,
-        // missing -> Null). The pattern bridge (Null -> None, value -> Some) lets the std
-        // `map_get` (v4.std.collection, Outcome<Optional<V>>) wrap it; the bootstrap otherwise
-        // only resolves `.lookup` on the record-form `Map { lookup: fn }`, not native maps.
-        "lookup" => match (&receiver, args) {
-            (Value::Map(m), [Value::Str(k)]) => {
-                Ok(m.get(k.as_str()).cloned().unwrap_or(Value::Null))
-            }
-            _ => Err(InterpError::Unimplemented {
-                what: "method 'lookup' on non-map receiver".to_string(),
-            }),
-        },
+        // Option-C dual-dispatch chokepoint (ctrl#1476 B6): see `raw_map_lookup`.
+        "lookup" => {
+            let key = args.first().ok_or_else(|| InterpError::TypeError {
+                msg: "lookup requires a key argument".to_string(),
+            })?;
+            raw_map_lookup(&receiver, key, env, ctx)
+        }
 
         "map" => list_method_with_closure("map", receiver, args, env, ctx, |items, f, env, ctx| {
             items
