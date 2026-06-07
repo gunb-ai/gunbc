@@ -2757,29 +2757,82 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
 // Built-in functions (v2_rt equivalents)
 // ---------------------------------------------------------------------------
 
-/// Reflect a coproduct type DECLARATION's arm (constructor) labels by walking the loaded
-/// program's type table. Mirrors the compiler's own coproduct-arm enumeration
-/// (`variant_locals_from_items`): a coproduct is the `Connective::Disj` item whose authored
-/// name matches `type_name`; its arm labels are the authored names of its children. Returns
-/// the empty vec for an unknown or non-coproduct name. This is reflection BY EXECUTION — the
-/// labels come from the live declaration, never pre-enumerated by the host.
-fn reflect_coproduct_arm_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
+// ---------------------------------------------------------------------------
+// Type-declaration reflection (read-axis substrate)
+//
+// The intrinsics below let a `.dag` witness fold a type DECLARATION's structure BY
+// EXECUTION — they walk the loaded program's type table (`ctx.modules`), never a host
+// pre-enumeration. They mirror the compiler's own type-item shape conventions
+// (`variant_locals_from_items` / `field_to_child_node` in 02_parse): a top-level type
+// item is the declaration node; a coproduct is `Connective::Disj` with one child per arm;
+// a record (and a coproduct arm's payload) is `Connective::Conj` with one child per field;
+// the authored name of each node is its arm/field label. The read-axis counterpart to
+// `discriminant(v)`, which reflects a VALUE's own constructor.
+// ---------------------------------------------------------------------------
+
+/// Find the top-level type-declaration item whose authored name is `type_name`.
+fn find_type_decl_item(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
     for module in ctx.modules.iter() {
         for item in module.items.iter() {
-            if item.connective == Connective::Disj {
-                let name = authored_name_at(ctx.source_indices.clone(), item.clone());
-                if name == type_name {
-                    return item
-                        .children
-                        .iter()
-                        .map(|c| authored_name_at(ctx.source_indices.clone(), c.clone()))
-                        .filter(|n| !n.is_empty())
-                        .collect();
-                }
+            let name = authored_name_at(ctx.source_indices.clone(), item.clone());
+            if name == type_name {
+                return Some(item.clone());
             }
         }
     }
-    Vec::new()
+    None
+}
+
+/// The authored names of a node's children (its arms or fields), empty names dropped.
+fn child_labels(ctx: &InterpContext, node: &Rc<Node>) -> Vec<String> {
+    node.children
+        .iter()
+        .map(|c| authored_name_at(ctx.source_indices.clone(), c.clone()))
+        .filter(|n| !n.is_empty())
+        .collect()
+}
+
+/// Reflect a coproduct declaration's arm (constructor) labels. Empty for an unknown or
+/// non-coproduct name.
+fn reflect_coproduct_arm_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
+    match find_type_decl_item(ctx, type_name) {
+        Some(item) if item.connective == Connective::Disj => child_labels(ctx, &item),
+        _ => Vec::new(),
+    }
+}
+
+/// Reflect a record (product) declaration's field labels. Empty for an unknown or
+/// non-record name.
+fn reflect_record_field_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
+    match find_type_decl_item(ctx, type_name) {
+        Some(item) if item.connective == Connective::Conj => child_labels(ctx, &item),
+        _ => Vec::new(),
+    }
+}
+
+/// Reflect the payload field labels of a single arm of a coproduct declaration. Empty when
+/// the coproduct, the arm, or the arm's payload record is absent.
+fn reflect_arm_payload_field_labels(
+    ctx: &InterpContext,
+    coproduct: &str,
+    arm: &str,
+) -> Vec<String> {
+    match find_type_decl_item(ctx, coproduct) {
+        Some(item) if item.connective == Connective::Disj => {
+            for child in item.children.iter() {
+                if authored_name_at(ctx.source_indices.clone(), child.clone()) == arm {
+                    return child_labels(ctx, child);
+                }
+            }
+            Vec::new()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Wrap a label vec as a `List<Symbol>` runtime value.
+fn labels_to_list_value(labels: Vec<String>) -> Value {
+    Value::List(Rc::new(labels.into_iter().map(Value::Str).collect()))
 }
 
 fn eval_builtin(
@@ -2819,12 +2872,29 @@ fn eval_builtin(
         // arm-set), so the builtin always returns a `List`. See std/reflection.dag for the
         // CoproductDeclShape domain type that composes this door.
         "coproduct_arm_labels" => match positional.first() {
-            Some(Value::Str(type_name)) => {
-                let labels = reflect_coproduct_arm_labels(ctx, type_name);
-                Ok(Some(Value::List(Rc::new(
-                    labels.into_iter().map(Value::Str).collect(),
-                ))))
-            }
+            Some(Value::Str(type_name)) => Ok(Some(labels_to_list_value(
+                reflect_coproduct_arm_labels(ctx, type_name),
+            ))),
+            _ => Ok(None),
+        },
+
+        // `record_field_labels(name)` reflects a record (product / `Connective::Conj`) type
+        // DECLARATION's field labels as a `List<Symbol>`, by execution; empty for an unknown
+        // or non-record name. Read-axis door for declaration-shape consumers over records.
+        "record_field_labels" => match positional.first() {
+            Some(Value::Str(type_name)) => Ok(Some(labels_to_list_value(
+                reflect_record_field_labels(ctx, type_name),
+            ))),
+            _ => Ok(None),
+        },
+
+        // `coproduct_arm_payload_field_labels(coproduct, arm)` reflects the payload field
+        // labels of one ARM of a coproduct declaration (the arm's `Connective::Conj` record)
+        // as a `List<Symbol>`, by execution; empty when coproduct/arm/payload is absent.
+        "coproduct_arm_payload_field_labels" => match (positional.first(), positional.get(1)) {
+            (Some(Value::Str(coproduct)), Some(Value::Str(arm))) => Ok(Some(labels_to_list_value(
+                reflect_arm_payload_field_labels(ctx, coproduct, arm),
+            ))),
             _ => Ok(None),
         },
 
@@ -3296,5 +3366,47 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
         (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
         _ => std::cmp::Ordering::Equal,
+    }
+}
+
+#[cfg(test)]
+mod reflection_mechanism_tests {
+    use super::*;
+    use crate::v2_compiler_infer_emit_info::empty_emit_graph_info;
+
+    // Mechanism-decoupling control (ctrl#1484 "host did NOT pre-enumerate"): the reflection
+    // intrinsics compute arm/field labels SOLELY by walking the loaded type table
+    // (`ctx.modules`). With an EMPTY type table there is nothing to walk, so a load-bearing
+    // walk MUST return empty. If labels still came back, that would expose a host fallback /
+    // pre-enumeration — i.e. a .dag-native masquerade. This is the decisive complement to the
+    // claim-run witness's echo controls (unknown-name→empty, mutate-real-decl→red).
+    fn empty_table_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(vec![]),
+            item_registry: Rc::new(std::collections::HashMap::new()),
+            diagnostics: Rc::new(vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(std::collections::HashMap::new()), false)
+    }
+
+    #[test]
+    fn coproduct_arm_labels_empty_with_no_type_table() {
+        let ctx = empty_table_ctx();
+        assert!(reflect_coproduct_arm_labels(&ctx, "ReactElement").is_empty());
+    }
+
+    #[test]
+    fn record_field_labels_empty_with_no_type_table() {
+        let ctx = empty_table_ctx();
+        assert!(reflect_record_field_labels(&ctx, "ReactContextBinding").is_empty());
+    }
+
+    #[test]
+    fn arm_payload_field_labels_empty_with_no_type_table() {
+        let ctx = empty_table_ctx();
+        assert!(
+            reflect_arm_payload_field_labels(&ctx, "ReactCreateElementChild", "Text").is_empty()
+        );
     }
 }

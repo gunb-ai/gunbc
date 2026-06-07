@@ -1,0 +1,112 @@
+// src/v4/test/claim/manual/coproduct_reflection.dag
+// Scope: witness for the `coproduct_arm_labels(name) -> List<Symbol>` reflection intrinsic
+//        and the v4.std.reflection.CoproductDeclShape domain type it composes. A .dag witness
+//        folds a coproduct type DECLARATION's arm-label set BY EXECUTION (read-axis counterpart
+//        to discriminant(v), which reflects a VALUE's constructor).
+// Status: claim-run witness (fn () -> Bool). Discriminates: mutate the REAL decl below
+//         (add/remove an arm) and arm_set_holds goes RED. Control: an unknown type name
+//         reflects to the EMPTY list — the intrinsic reads the live type table, it does not
+//         echo its input (proves no host pre-enumeration / no host-fallback masquerade).
+
+module v4.test.claim.manual.coproduct_reflection
+
+
+import v4.std.reflection {
+  CoproductDeclShape,
+  RecordDeclShape,
+  reflect_arm_payload_decl,
+  reflect_coproduct_decl,
+  reflect_record_decl
+}
+
+
+// REAL local declarations with distinct arity and unique arm/field names. The names appear
+// ONLY here (in the declaration) — nowhere in the host — so reflecting them proves the
+// intrinsics walk the live type table, not a pre-enumerated host literal.
+type ReflectProbeShape
+  = ProbeGamma { a: Int }
+  | ProbeDelta
+  | ProbeEpsilon { b: Int }
+
+type ReflectProbeBinary
+  = ProbeLeft
+  | ProbeRight
+
+type ReflectProbeRecord {
+  probe_field_one: Int
+  probe_field_two: Int
+}
+
+
+// The reflected declaration shape carries the type's own name and its exact arm-label set.
+fn arm_set_holds() -> Bool {
+  let shape = reflect_coproduct_decl(declared_type: "ReflectProbeShape")
+  let arms = shape.arm_labels
+
+  let count_right = arms.length() == 3
+  let has_all_arms =
+    arms.contains("ProbeGamma")
+    && arms.contains("ProbeDelta")
+    && arms.contains("ProbeEpsilon")
+  // Arm-sharp: a name that is NOT a declared arm is absent (no over-broad fold).
+  let no_phantom_arm = arms.contains("ProbeZeta") == false
+
+  count_right && has_all_arms && no_phantom_arm
+}
+
+
+// Reflection discriminates BETWEEN declarations: a different coproduct yields its own arms,
+// not ReflectProbeShape's — so the fold is keyed on the named declaration, not a constant.
+fn arm_set_is_per_declaration() -> Bool {
+  let binary = reflect_coproduct_decl(declared_type: "ReflectProbeBinary").arm_labels
+  let ternary = reflect_coproduct_decl(declared_type: "ReflectProbeShape").arm_labels
+
+  let binary_count = binary.length() == 2
+  let binary_arms = binary.contains("ProbeLeft") && binary.contains("ProbeRight")
+  // ReflectProbeBinary does NOT carry ReflectProbeShape's arms.
+  let no_cross_bleed = binary.contains("ProbeGamma") == false
+
+  binary_count && binary_arms && no_cross_bleed
+}
+
+
+// Control: an unknown type name reflects to the EMPTY arm-label list. If the intrinsic were a
+// host-fallback echoing its input (or a hardcoded list), this would not be empty — so this
+// proves the labels are read from the live declaration table BY EXECUTION.
+fn unknown_type_reflects_empty() -> Bool {
+  let unknown = reflect_coproduct_decl(declared_type: "NoSuchCoproductXYZ").arm_labels
+  unknown.length() == 0
+}
+
+
+// Record (Conj) field-label reflection: a record declaration's field-set is folded by name.
+fn record_field_set_holds() -> Bool {
+  let fields = reflect_record_decl(declared_type: "ReflectProbeRecord").field_labels
+  let count_right = fields.length() == 2
+  let has_fields =
+    fields.contains("probe_field_one") && fields.contains("probe_field_two")
+  // A coproduct name reflected as a record yields empty (connective-discriminating).
+  let coproduct_is_not_a_record =
+    reflect_record_decl(declared_type: "ReflectProbeShape").field_labels.length() == 0
+  count_right && has_fields && coproduct_is_not_a_record
+}
+
+
+// Arm-payload field reflection: the Conj record nested under one coproduct arm.
+fn arm_payload_field_set_holds() -> Bool {
+  let gamma = reflect_arm_payload_decl(coproduct: "ReflectProbeShape", arm: "ProbeGamma").field_labels
+  let gamma_right = gamma.length() == 1 && gamma.contains("a")
+  // A nullary arm has no payload fields.
+  let delta_empty =
+    reflect_arm_payload_decl(coproduct: "ReflectProbeShape", arm: "ProbeDelta").field_labels.length() == 0
+  gamma_right && delta_empty
+}
+
+
+fn coproduct_reflection_folds_real_declaration_by_execution() -> Bool {
+  arm_set_holds()
+    && arm_set_is_per_declaration()
+    && unknown_type_reflects_empty()
+    && record_field_set_holds()
+    && arm_payload_field_set_holds()
+}
