@@ -979,9 +979,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // White-box sweep (#4511): broader-corpus dual-rep smokes deleted (wave-owned rows untouched).
     // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
     "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
-    // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
-    "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
     // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
     // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
     // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
@@ -1007,15 +1004,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
     // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
-    // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
-    // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
-    "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
-    // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
-    "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
-    // T-4.16: `ConfigPatchRecord` / `config_patch_layer` consumer smoke on `black.dag`
-    // (zero diagnostics; `BlackConfigPatch` materializes `FieldPatch<T>` fields).
-    // SG-0 + INVARIANTS §P5(b) receipt.
-    "src/v3/compiler/tests/integration/v4_extdeps_formatters_black_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics only). 7 A-class
     // receipts are `.dag` witnesses; all 5 B-class declaration-shape receipts deleted
@@ -1023,44 +1011,18 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
     // (ROADMAP.md:74).
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
-    // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
-    // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
-    // T-23: lens application surface (`src/v4/lens/application.dag`); SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
-    // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
-    // T-38B: lens_idempotency subject roster + run_test_claim + family receipt (eval_mvp2 wedge).
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
-    // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
-    // `pb_rust_tests_outside_residual_zero` (table row at ROADMAP.md:57); M1(2.7)
-    // tokenize/parse ratchet on `src/v4/test/claim/lens_idempotency/*` until cross-module
-    // v4 `compile_to_dag` import merge lands (peer `v4_lens_edit_locus_dag_smoke_test`
-    // posture). Lane: T-38B TestClaimRun structural receipts; dissolves when substrate
-    // eval executes the roster without this hand-Rust parse smoke.
-    "src/v3/compiler/tests/integration/v4_lens_idempotency_claim_dag_smoke_test.rs",
-    // L1.4 IdenticalVariantPayload sub-signature (`src/v4/lens/identical_variant_payload.dag`);
-    // shared `coverage_defect_carrier_clone`; SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_identical_variant_payload_dag_smoke_test.rs",
-    // PREFIX T-23 v0 + Lens-CI activation: parse-surface ratchet over
-    // `src/v4/lens/registry.dag` registry query rows, `src/v4/workflow/ci.dag`
-    // consumer wiring, and the live `.github/workflows/ci.yml` Lens-CI signal binding.
-    // Paired with the CI semantic `ci.dag` entry-root compile using `--target rust`
-    // (not known-hanging `--target dag`). SG-0 + INVARIANTS §P5(b) receipt.
-    "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
-    // G.0: parse ratchet on `src/v4/std/grounding.dag` — Branch G.0 schema carriers.
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_grounding_dag_smoke_test.rs` in EXPECTED_HAND_AUTHORED_TEST.
-    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
-    // (ROADMAP.md:62); dissolves when `.dag` TestClaim coverage asserts PerLanguageFactBundleRegistry
-    // + GroundingEvidenceSchema directly.
-    "src/v3/compiler/tests/integration/v4_std_grounding_dag_smoke_test.rs",
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
-    "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
-    // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
-    "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
+    // W3 B-class delete (operator 2026-06-07: declaration-shape tests are dual-representations of
+    // our own std structure — change-detectors with zero external-oracle coverage; correctness-by-
+    // construction, not 2FA-for-code). The three v4_std_{grounding,model_core,target_realization}_dag
+    // smoke files (44 parse-surface/source-grep receipts) are DELETED, not deferred. Their two
+    // behavioral receipts are migrated to mutation-proven .dag claim-run witnesses on v4_roster_pilot:
+    //   - src/v4/test/claim/std_model_core/bool_fact_lookup.dag (also retires the hand-Rust MIRROR
+    //     helper bool_fact_axis_dispatch — a tautology that re-stated the fold in Rust); and
+    //   - src/v4/test/claim/std_grounding/terminal_gate.dag.
+    // No INVARIANTS.md per-file rows exist for these (the §P5(b) references were the general gate).
     // Host-test preservation justification (W1-W4 qualifying bar — provably runtime-inexpressible):
     // non-behavioral: asserts type-ABSENCE of ByteString/FileBody/FileContent/TargetSource in
     // text.dag — no runtime witness can express type-non-existence. (Behavioral content folded
@@ -1494,10 +1456,11 @@ fn sg0_v3_test_hand_authored_subratchet() {
 #[test]
 fn v4_parse_surface_smoke_roster_is_closed_to_growth() {
     // Pinned to the live count (ctrl#1467 §6.4). Retirements lower this; nothing raises it.
-    // 18 (ratification) → 14 after #4511 broader-corpus sweep (removed lens_testgen +
-    // workflow_release v4 parse-surface smokes; wave-owned rows untouched). W3 #4512 will
-    // lower further when std grounding/model_core/target_realization trio lands.
-    const V4_DAG_SMOKE_CEILING: usize = 14;
+    // 18 (ratification) → 11 after the W-wave smoke→witness fold-deletes: #4511 broader-corpus
+    // sweep removed lens_testgen + workflow_release; W3 #4512 removed the std
+    // grounding/model_core/target_realization trio. Tightened to the live floor so the subset
+    // cannot grow back: a new v4 parse-surface smoke must instead land as a .dag claim-run witness.
+    const V4_DAG_SMOKE_CEILING: usize = 11;
     let v4_dag_smokes: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
         .iter()
         .copied()
