@@ -31,9 +31,7 @@ env:
 # Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness, DAG parity (ci_floor), M1 rust+dag emit (ci_floor_emit).
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR -- model authority: src/v4/workflow/ci.dag
-  # `ci_runner_isolation_policy`. This job + its carrier Job record are coverage-bound byte-for-byte
-  # by the full-workflow carrier dsl/gunbc/ci_github_actions_workflow.dag (tests
-  # gunbc_ci_github_actions_workflow_matches_ci_yml_structure + _pins_ci_yml_source_checksum).
+  # `ci_runner_isolation_policy`.
   # gunbc is PUBLIC on the private self-hosted fleet, so
   # fork-PR runs execute attacker-controlled code on srv1/srv2. The operator runner de-priv (jobs run
   # as unprivileged `ghrunner`: non-root, not in docker/sudo/lxd/wheel/root, no passwordless sudo, no
