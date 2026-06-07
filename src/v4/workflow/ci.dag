@@ -5744,8 +5744,11 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
 }
 
 
+// Layer-2 gap-closure — emit-producer substrate inherits `ci_changed_path_affects_v4`
+// (derived, not hand-listed); claim/ + corpus transport paths remain explicit.
 fn ci_changed_path_affects_testclaim_corpus(changed: RepoPath) -> Bool {
-  ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/")
+  ci_changed_path_affects_v4(changed: changed)
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/")
     || changed == "scripts/v4-testclaim-corpus-eval.sh"
     || changed == "scripts/v4-testclaim-smoke-roster.sh"
 }
