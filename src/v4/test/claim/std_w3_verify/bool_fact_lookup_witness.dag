@@ -1,0 +1,55 @@
+// TEMPORARY (c)-light verification scaffold — W3 clean-A exec-verify.
+// Discriminating witness over the REAL model_core_wave1_bool_fact_lookup fold:
+//   arm-1 (Width) holds the width fact, arm-2 (Encoding) holds a DIFFERENT encoding fact,
+//   unbound (Signedness) fails closed. Mutating the real fn (e.g. encoding arm -> width fact)
+//   collapses the arm-1 != arm-2 discriminator -> witness goes RED.
+
+module v4.test.claim.std_w3_verify.bool_fact_lookup_witness
+
+
+import v4.std.logic {
+  bool_encoding_fact_node,
+  bool_primitive_facts,
+  bool_width_fact_node
+}
+import v4.std.logic { Bool }
+import v4.std.node { Node, Symbol, content_hash }
+import v4.std.witness { Holds, Violates }
+import v4.std.model_core {
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisWidth,
+  model_core_wave1_bool_fact_lookup
+}
+
+
+fn witness_bool_fact_lookup_discriminates() -> Bool {
+  let w_width = model_core_wave1_bool_fact_lookup(
+    facts: bool_primitive_facts,
+    axis: discriminant(v: ModelCoreFactAxisWidth {})
+  )
+  let w_enc = model_core_wave1_bool_fact_lookup(
+    facts: bool_primitive_facts,
+    axis: discriminant(v: ModelCoreFactAxisEncoding {})
+  )
+  let w_signed = model_core_wave1_bool_fact_lookup(
+    facts: bool_primitive_facts,
+    axis: discriminant(v: ModelCoreFactAxisSignedness {})
+  )
+  match w_width {
+    Holds { value: vw } =>
+      match w_enc {
+        Holds { value: ve } =>
+          content_hash(n: vw)
+            == content_hash(n: bool_width_fact_node(width: bool_primitive_facts.width))
+          && content_hash(n: ve)
+            == content_hash(n: bool_encoding_fact_node(encoding: bool_primitive_facts.encoding))
+          && match w_signed {
+            Violates { diagnostic: _ } => true
+            Holds { value: _ } => false
+          }
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
