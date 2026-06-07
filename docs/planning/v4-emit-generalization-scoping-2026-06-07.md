@@ -345,3 +345,128 @@ Escalate via `dashboard-ops escalate` if a worker brief would:
 | What is the mid-arc lever? | **Executed T0** unlocks T1–T8 and downstream ci/coercion/ingest/lens lanes |
 | GO for implementation? | **NO-GO** until T0 witness executes green |
 | Next manager action? | Dispatch Phase 0 (interpreter perf) as keystone child; hold T1+ until T0 receipt |
+
+---
+
+## 12. Ingestion coupling — concern, probes, recommended reorder
+
+### 12.1 The concern is valid and consciously scoped
+
+This scoping pass **generalizes emit without connecting ingest**, by design:
+
+- **T7** (arbitrary-source ingest) and **T8** (emit→ingest round-trip) are the top two ladder
+  rungs.
+- **§8** lists bidirectional `.dag` emission as an explicit **non-goal** for this arc.
+
+That is a deliberate trade: nothing is falsifiable until emit executes (T0), and E-10 pulls
+substrate only when a green consumer demands it. Flagging the disconnect at **NO-GO** — before
+any rung is authorized — is the right moment.
+
+The concern splits into two different problems with different fixes.
+
+### 12.2 Mechanism — one engine or two?
+
+**Constraint #4** forbids a parallel coercion engine (`coercion = emission`; `find_witness`
+replaces inline arms). The GO matrix defers `find_witness` dissolution with "inline coercion
+works for MVP-1 fixtures."
+
+**Probe (T0 path, measured):** the MVP-1 coercion spine **already routes through
+`find_witness`** — not around it:
+
+```
+coerce_grounded_node → coercion_fold_with_declared_priority → coercion_fold → find_witness
+```
+
+(`06_translate.dag` → `std/coercion.dag`.) The shared witness-search engine exists on the
+coercion leg today.
+
+What is still **inline / accreting**:
+
+| Inline surface | Where | Risk if deferred |
+|----------------|-------|------------------|
+| Hand-enumerated fixture grounding | `mvp1_rust_canonical_grounding_for` if-chain in `mvp1_rust_add_translate.dag` | Emit proves a fixture printer, not infer-authored grounding |
+| Projection sprawl | ~150 `project_*` / per-variant arms in `06_translate` | T2–T6 grow bespoke arms instead of derived morphisms |
+| GO-matrix "find_witness dissolution" row | Scoping §5 | Misread as "engine not built" — engine is built; **dissolution of translate sprawl + fixture grounding** is what's deferred |
+
+Ingest is coercion reversed and needs the same engine. Deferring dissolution until T7 means
+either dissolving six tiers of accreted arms into `find_witness`/structural fold, or ingest
+grows its own arms — the two-engine outcome constraint #4 forbids.
+
+**Verdict:** mechanism risk is real but **mis-located** in the GO matrix. The fix is not
+"build `find_witness`" (done) — it is **stop accreting inline translate/grounding arms** after
+T0/T1 and route new coverage through the existing engine.
+
+### 12.3 Validation — what does a green emit tier prove?
+
+A golden-string emit witness proves: *this tree prints to this text.* That is a code generator.
+It does **not** prove the map is invertible or structure-preserving — two trees could print to
+the same text, or the text might not parse back.
+
+**Round-trip** (emit → ingest → normalized compare) is what proves *faithful*. That is T8 in
+this doc — deferred to the top. The thesis claim is not "emit produces good code" but "one
+faithful structure-preserving map, run both ways" (ROADMAP §coercion bidirectionality).
+
+As scoped, T0–T6 climb six rungs proving a one-way printer; faithfulness proof waits for T8.
+
+### 12.4 Probe — is `.dag` a cheap home round-trip target today?
+
+**Probe (measured):** **partially, not yet cheap.**
+
+| Asset | Status |
+|-------|--------|
+| `extdeps/languages/dag.dag` | Shape A language model — wave-1 lex + grammar for **parse**; no `TargetModel` / `dag_mvp1_*` bundle |
+| `test/fixture/dag_round_trip_mvp1.dag` | Trivial identity fn — wave-1 surface smoke only |
+| `test/claim/round_trip/dag_ingest_round_trip.dag` | **W1 readiness** (lex/grammar/C5 authorities); emit→ingest compare explicitly **W1b** — not executable fidelity yet |
+| Parser for `.dag` | Exists (ingest side) |
+| `.dag` emit for `fn add` | **Not populated** — unlike `rust_mvp1_target_model` + `rust_mvp1_source_text` |
+
+Home round-trip (`.dag → IR → emit-.dag → parse → IR → compare`) is the **cheapest** fidelity
+proof (no foreign parser), but it requires a **`dag_mvp1_target_model`** slice in `dag.dag`
+(translation rules, declared inhabitants, serialize prefix — mirror `rust_mvp1_*` pattern) plus
+a W1b executable `RoundTripClaim` on `add`. Budget: small scoping child after T0 green, not
+T7 breadth.
+
+### 12.5 Recommended reorder (surgical — *when*, not *whether*)
+
+Keep **T0 first** — nothing falsifies until emit executes. Immediately after T0/T1 on `add`,
+pull two things **before** generalizing to T2–T6:
+
+1. **Route coercion through the engine, not fixture arms** — dissolve
+   `mvp1_rust_canonical_grounding_for` in favor of infer-authored facts (existing
+   `feature:W-T-10-mvp1-inferred-tree-grounding` gate). New translate coverage uses
+   `coercion_fold`/`find_witness`, not per-case projection arms where structural fold applies.
+
+2. **Minimal home round-trip on `add`** — new tier **T0.5** (not full T7 ingest):
+   - Populate `dag_mvp1_target_model` + golden `dag_mvp1_source_text` for the add fixture.
+   - Author W1b claim: `emit(tree, dag_target) → parse → normalized IR equality`.
+   - Leave **T7** (arbitrary real `.dag` source through `compile`) and **T8** (full coverage
+     round-trip) at the top — only the smallest bidirectional proof moves early.
+
+Then T2–T6 generalize a mechanism **already known** to be faithful both ways, not a one-way
+printer retrofitted at T8.
+
+**Phase 0.5 dispatch (manager, post-T0 green):**
+
+```
+T0.5a — dag_mvp1_target_model + emit(add) golden + W1b round-trip claim (add only)
+T0.5b — infer-authored grounding replaces hand fixture enumeration on mvp1 claims
+```
+
+### 12.6 Doc tension — co-equal vs top-of-ladder
+
+| Doc | Bidirectional stance |
+|-----|---------------------|
+| **ROADMAP** §coercion bidirectionality | Co-equal: "one mechanism, run both ways"; ingest = emit⁻¹ |
+| **This scoping doc** §2 ladder | Top rungs: T7 ingest, T8 round-trip |
+| **§8 non-goals** | Bidirectional `.dag` emission not in *this arc's* implementation scope |
+
+**Resolution (proposed):** ROADMAP states the **thesis mechanism** (co-equal). This scoping doc
+states the **implementation ladder** (breadth deferred). Add explicit cross-ref:
+
+- **Mechanism co-equal** — `find_witness` serves both directions from T0.5 onward on `add`.
+- **Breadth deferred** — arbitrary-source ingest (T7) and full-form round-trip (T8) stay late;
+  **minimal faithfulness proof** (T0.5 home round-trip on `add`) is early and mandatory before
+  T2–T6 GO.
+
+Without T0.5, the two docs read as contradictory. With T0.5, they agree: bidirectional is
+co-equal in *architecture*; only *arbitrary-source ingest breadth* is top-of-ladder.
