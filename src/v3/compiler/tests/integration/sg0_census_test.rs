@@ -1047,12 +1047,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
-    // Branch H.7.2 source-authority shape contract: parse-surface ratchet for
-    // `src/v4/compiler/source_authority.dag` and its TestClaim visibility row.
-    // Explicit P5 deferral: ROADMAP.md § "Nine lanes" row `T-PB-B` /
-    // `pb_rust_tests_outside_residual_zero`; dissolves when a `.dag` TestClaim or
-    // generated harness executes the source-authority receipt directly.
-    "src/v3/compiler/tests/integration/v4_source_authority_contract_smoke_test.rs",
     // W3 B-class delete (operator 2026-06-07: declaration-shape tests are dual-representations of
     // our own std structure — change-detectors with zero external-oracle coverage; correctness-by-
     // construction, not 2FA-for-code). The three v4_std_{grounding,model_core,target_realization}_dag
@@ -1495,17 +1489,11 @@ fn sg0_v3_test_hand_authored_subratchet() {
 #[test]
 fn v4_parse_surface_smoke_roster_is_closed_to_growth() {
     // Pinned to the live count (ctrl#1467 §6.4). Retirements lower this; nothing raises it.
-<<<<<<< HEAD
-    // 18 (ratification) → 13 after the W1/W2/W3/W4 smoke→witness fold-deletes (W3 #4512 removed the
-    // grounding/model_core/target_realization trio). Tightened to the live floor so the subset
+    // 18 (ratification) → 11 after the W-wave smoke→witness fold-deletes: #4511 broader-corpus
+    // sweep removed lens_testgen + workflow_release; W3 #4512 removed the std
+    // grounding/model_core/target_realization trio. Tightened to the live floor so the subset
     // cannot grow back: a new v4 parse-surface smoke must instead land as a .dag claim-run witness.
-    const V4_DAG_SMOKE_CEILING: usize = 13;
-=======
-    // 18 (ratification) → 14 after #4511 broader-corpus sweep (removed lens_testgen +
-    // workflow_release v4 parse-surface smokes; wave-owned rows untouched). W3 #4512 will
-    // lower further when std grounding/model_core/target_realization trio lands.
-    const V4_DAG_SMOKE_CEILING: usize = 14;
->>>>>>> origin/main
+    const V4_DAG_SMOKE_CEILING: usize = 11;
     let v4_dag_smokes: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
         .iter()
         .copied()
