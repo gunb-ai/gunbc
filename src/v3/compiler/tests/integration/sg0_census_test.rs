@@ -1023,7 +1023,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
     // (ROADMAP.md:74).
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
-    // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
