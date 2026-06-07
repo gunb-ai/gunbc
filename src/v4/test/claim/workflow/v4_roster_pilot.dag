@@ -62,6 +62,34 @@ data v4_roster_pilot_row_sg_rc_f6_owned: V4RosterPilotClaimRunRow = V4RosterPilo
   function: "sg_rc_f6_round_trip_owned"
 }
 
+// Exemplar E1: v4.std.text smoke→witness migration (fold-delete W1). Discriminating
+// claim-run witnesses (mutation-proven red-under-mutation) carry the behavioral content
+// of the now-retired v4_std_text_dag_smoke_test.rs parse-surface greps; that .rs and its
+// SG-0 census row are deleted in the same PR per the smoke test's P5 dissolution gate.
+data v4_roster_pilot_row_std_text_freemonoid_carrier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "std_text String FreeMonoid<Char> carrier",
+  entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+  function: "text_string_freemonoid_carrier_holds"
+}
+
+data v4_roster_pilot_row_std_text_roundtrip: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "std_text HostStringText constructor/projection round-trip",
+  entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+  function: "text_host_string_roundtrip_holds"
+}
+
+data v4_roster_pilot_row_std_text_empty_roundtrip: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "std_text HostStringText empty round-trip (projection returns stored text)",
+  entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+  function: "text_host_string_empty_roundtrip_holds"
+}
+
+data v4_roster_pilot_row_std_text_field_text: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "std_text HostStringText record field text:String",
+  entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+  function: "text_host_string_field_text_holds"
+}
+
 // R2 keystone execution cert — emit(add) must produce the canonical rust_mvp1 add-fn source
 // (ctrl#1476 B5 grammar-inverse consumer; execution not structural grep).
 data v4_roster_pilot_row_mvp1_rust_emit_add_fn: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
@@ -79,11 +107,15 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_grounding_ts_absence_fail_closed,
   v4_roster_pilot_row_discriminant_intrinsic,
   v4_roster_pilot_row_sg_rc_f6_owned,
+  v4_roster_pilot_row_std_text_freemonoid_carrier,
+  v4_roster_pilot_row_std_text_roundtrip,
+  v4_roster_pilot_row_std_text_empty_roundtrip,
+  v4_roster_pilot_row_std_text_field_text,
   v4_roster_pilot_row_mvp1_rust_emit_add_fn
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "8"
+data v4_roster_pilot_claim_run_row_count: String = "12"
 
 
 fn v4_roster_pilot_row_matches(
@@ -114,13 +146,17 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_absence_fail_closed)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_discriminant_intrinsic)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg_rc_f6_owned)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_freemonoid_carrier)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_roundtrip)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_empty_roundtrip)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_field_text)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_mvp1_rust_emit_add_fn)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 8)
-    && (v4_roster_pilot_claim_run_row_count == "8")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 12)
+    && (v4_roster_pilot_claim_run_row_count == "12")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -158,8 +194,29 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "sg_rc_f6_round_trip_owned"
     )
     && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_std_text_freemonoid_carrier,
+      entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+      function: "text_string_freemonoid_carrier_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_std_text_roundtrip,
+      entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+      function: "text_host_string_roundtrip_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_std_text_empty_roundtrip,
+      entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+      function: "text_host_string_empty_roundtrip_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_std_text_field_text,
+      entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+      function: "text_host_string_field_text_holds"
+    )
+    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_mvp1_rust_emit_add_fn,
       entry: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
       function: "mvp1_rust_emit_add_fn_accepts_holds"
     )
 }
+
