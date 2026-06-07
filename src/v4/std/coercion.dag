@@ -79,10 +79,6 @@ type CoercionResult {
 type CoercionWitness {
   homomorphism: HomomorphismWitness
 }
-// The diagnostic reason is the CoercionMismatchKind constructor's own name, via the `discriminant`
-// intrinsic — no shadow `data coercion_mismatch_*: Symbol` tags and no hand-written
-// `coercion_mismatch_reason` bridge fn. The reason is carried for display, never compared
-// (the rejection witness re-derives it through the same diagnostic builder).
 fn coercion_not_realized_diagnostic(
   source: CanonicalGrounding,
   kind: CoercionMismatchKind,
