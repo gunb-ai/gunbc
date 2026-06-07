@@ -1044,8 +1044,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_extdeps_formatters_black_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
-    // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
-    // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
+    // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics + 5 B-INTERIM
+    // declaration-shape receipts). 7 A-class receipts fold-deleted to `.dag` witnesses.
+    // B-INTERIM dissolution: ctrl#1476 READ axis (sleek-carp-651); delete when B migrate.
+    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+    // (ROADMAP.md:74).
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
     // G.1.4: parse-surface ratchet on `typescript.dag` PerLanguageFactBundleRegistry
     // population (wave-2b primitive fact axes via insert_per_language_fact_bundle_entry).
