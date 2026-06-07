@@ -42,12 +42,6 @@ fn parse_module(source: &str, path: &str) {
     parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"));
 }
 
-fn extract_data_symbol_binding(dag_text: &str, data_name: &str) -> Option<String> {
-    let needle = format!("data {data_name}: Symbol = ");
-    let line = dag_text.lines().find(|l| l.starts_with(&needle))?;
-    Some(line.strip_prefix(&needle)?.trim().to_string())
-}
-
 fn extract_block_after_header(text: &str, header: &str) -> Option<String> {
     let start = text.find(header)? + header.len();
     let rest = &text[start..];
