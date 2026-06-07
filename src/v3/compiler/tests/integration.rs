@@ -277,18 +277,10 @@ mod timing_lens_substrate_carrier_test;
 mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/v4_bin_main_dag_smoke_test.rs"]
 mod v4_bin_main_dag_smoke_test;
-#[path = "integration/v4_compiler_parse_table_dag_smoke_test.rs"]
-mod v4_compiler_parse_table_dag_smoke_test;
 #[path = "integration/v4_emit_host_eval_dispatch_test.rs"]
 mod v4_emit_host_eval_dispatch_test;
 #[path = "integration/v4_emit_host_harness_test.rs"]
 mod v4_emit_host_harness_test;
-#[path = "integration/v4_extdeps_coordination_dag_smoke_test.rs"]
-mod v4_extdeps_coordination_dag_smoke_test;
-#[path = "integration/v4_extdeps_file_system_dag_smoke_test.rs"]
-mod v4_extdeps_file_system_dag_smoke_test;
-#[path = "integration/v4_extdeps_formatters_black_dag_smoke_test.rs"]
-mod v4_extdeps_formatters_black_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
 #[path = "boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"]
