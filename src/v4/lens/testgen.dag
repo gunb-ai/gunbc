@@ -553,21 +553,6 @@ data algebra_law_anchor_mismatch: Symbol = algebra_law_anchor_mismatch
 data coproduct_exhaustiveness_testclaim_variant: Symbol = coproduct_exhaustiveness_testclaim_variant
 
 
-data coproduct_exhaustiveness_diagnostic_claim_variant: Symbol = coproduct_exhaustiveness_diagnostic_claim_variant
-
-
-data coproduct_exhaustiveness_compiles_claim_variant: Symbol = coproduct_exhaustiveness_compiles_claim_variant
-
-
-data coproduct_exhaustiveness_equals_claim_variant: Symbol = coproduct_exhaustiveness_equals_claim_variant
-
-
-data coproduct_exhaustiveness_structural_equals_claim_variant: Symbol = coproduct_exhaustiveness_structural_equals_claim_variant
-
-
-data coproduct_exhaustiveness_roundtrip_claim_variant: Symbol = coproduct_exhaustiveness_roundtrip_claim_variant
-
-
 data coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
 
 
@@ -1839,17 +1824,10 @@ fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> GeneratedAnchorKey 
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: testclaim-coproduct-reflection — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: replace this hand-enumerated TestClaimCoproductVariant → Symbol projection with canonical arm-key → symbol mapping once TestClaim coproduct reflection is available; forbidden: permanent hand-rolled arm-identity-to-symbol mapping outside the reflection primitive.
-fn test_claim_coproduct_variant_symbol(variant: TestClaimCoproductVariant) -> Symbol {
-  match variant {
-    TestClaimCompilesClaimVariant => coproduct_exhaustiveness_compiles_claim_variant
-    TestClaimDiagnosticClaimVariant => coproduct_exhaustiveness_diagnostic_claim_variant
-    TestClaimEqualsClaimVariant => coproduct_exhaustiveness_equals_claim_variant
-    TestClaimStructuralEqualsClaimVariant => coproduct_exhaustiveness_structural_equals_claim_variant
-    TestClaimRoundTripClaimVariant => coproduct_exhaustiveness_roundtrip_claim_variant
-  }
-}
-
+// The omitted-variant node identity is the TestClaimCoproductVariant constructor's own name, via
+// the `discriminant` intrinsic — no shadow `data ..._claim_variant: Symbol` tags and no
+// hand-written bridge fn. `coproduct_exhaustiveness_variant_node` uses `discriminant(v: variant)`
+// directly.
 
 fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> TestClaimCoproductVariant {
   match anchor {
@@ -1861,7 +1839,7 @@ fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -
 fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: test_claim_coproduct_variant_symbol(variant: variant) }
+      connective: Atom { identity: discriminant(v: variant) }
     },
     children: []
   }
