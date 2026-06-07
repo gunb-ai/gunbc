@@ -182,7 +182,6 @@ import v4.std.target_model {
   target_collection_row_field_primary,
   target_collection_row_field_alternatives,
   target_collection_row_field_fallback,
-  target_collection_repr_kind_atom,
   target_collection_set_no_representation,
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
@@ -651,6 +650,17 @@ type RustModelCoreLawKey
   | RustLawFloatNanInfCarriedByIeee754
   | RustLawBoolBoundedLattice
   | RustLawBoolComplement
+
+data rust_law_kind_integer_add_associative_when_representable: Symbol = rust_law_kind_integer_add_associative_when_representable
+data rust_law_kind_integer_add_commutative_when_representable: Symbol = rust_law_kind_integer_add_commutative_when_representable
+data rust_law_kind_integer_mul_associative_when_representable: Symbol = rust_law_kind_integer_mul_associative_when_representable
+data rust_law_kind_integer_mul_commutative_when_representable: Symbol = rust_law_kind_integer_mul_commutative_when_representable
+data rust_law_kind_integer_distributive_when_representable: Symbol = rust_law_kind_integer_distributive_when_representable
+data rust_law_kind_integer_total_order_over_representable_values: Symbol = rust_law_kind_integer_total_order_over_representable_values
+data rust_law_kind_float_ieee754_rounding: Symbol = rust_law_kind_float_ieee754_rounding
+data rust_law_kind_float_nan_inf_carried_by_ieee754: Symbol = rust_law_kind_float_nan_inf_carried_by_ieee754
+data rust_law_kind_bool_bounded_lattice: Symbol = rust_law_kind_bool_bounded_lattice
+data rust_law_kind_bool_complement: Symbol = rust_law_kind_bool_complement
 
 data rust_witness_checked_integer_arithmetic: Symbol = rust_witness_checked_integer_arithmetic
 data rust_witness_float_approximate_field: Symbol = rust_witness_float_approximate_field
@@ -1627,7 +1637,7 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
     children: [
       rust_named_edge(
         name: target_collection_repr_field_kind,
-        target: rust_inhabitant_atom(id: target_collection_repr_kind_atom(kind: form.kind))
+        target: rust_inhabitant_atom(id: discriminant(v: form.kind))
       ),
       rust_named_edge(
         name: target_collection_repr_field_apply,
@@ -2249,6 +2259,27 @@ fn rust_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
+fn rust_law_kind_symbol(key: RustModelCoreLawKey) -> Symbol {
+  match key {
+    RustLawIntegerAddAssociativeWhenRepresentable =>
+      rust_law_kind_integer_add_associative_when_representable
+    RustLawIntegerAddCommutativeWhenRepresentable =>
+      rust_law_kind_integer_add_commutative_when_representable
+    RustLawIntegerMulAssociativeWhenRepresentable =>
+      rust_law_kind_integer_mul_associative_when_representable
+    RustLawIntegerMulCommutativeWhenRepresentable =>
+      rust_law_kind_integer_mul_commutative_when_representable
+    RustLawIntegerDistributiveWhenRepresentable =>
+      rust_law_kind_integer_distributive_when_representable
+    RustLawIntegerTotalOrderOverRepresentableValues =>
+      rust_law_kind_integer_total_order_over_representable_values
+    RustLawFloatIeee754Rounding => rust_law_kind_float_ieee754_rounding
+    RustLawFloatNanInfCarriedByIeee754 => rust_law_kind_float_nan_inf_carried_by_ieee754
+    RustLawBoolBoundedLattice => rust_law_kind_bool_bounded_lattice
+    RustLawBoolComplement => rust_law_kind_bool_complement
+  }
+}
+
 fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2257,7 +2288,7 @@ fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawK
       rust_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       rust_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: rust_inhabitant_atom(id: discriminant(v: key))
+        target: rust_inhabitant_atom(id: rust_law_kind_symbol(key: key))
       )
     ]
   }
