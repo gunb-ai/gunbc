@@ -1,7 +1,4 @@
 // src/v4/extdeps/languages/rust.dag
-// Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar (Rust Reference §17.4 if, §17.6 return, §17.10.1 let, §17.11 block). Wave-1 MVP-1 and wave-2 productions declared as `FormalProduction` flat rhs (`rust_wave1_formal_productions`, `rust_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence (independently maintained — CP-1b dual-carrier hold). Wave-2 keyword/operator lexemes are layout-free; `WhitespaceChar` trivia separates tokens. Wave-1 MVP-1 lex still has layout-in-literals — 🟡 T-6 TokenLayout. bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
-// Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
 
