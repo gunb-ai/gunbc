@@ -216,8 +216,12 @@ mod tests {
     #[test]
     fn gram_emit_substrate_triggers_testclaim_corpus() {
         assert!(ci_changed_path_affects_v4("src/v4/std/grammar.dag"));
-        assert!(ci_changed_path_affects_testclaim_corpus("src/v4/std/grammar.dag"));
-        assert!(!ci_changed_path_affects_workflow_policy("src/v4/std/grammar.dag"));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/std/grammar.dag"
+        ));
+        assert!(!ci_changed_path_affects_workflow_policy(
+            "src/v4/std/grammar.dag"
+        ));
     }
 
     #[test]
