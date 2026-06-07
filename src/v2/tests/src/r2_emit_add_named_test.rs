@@ -19,6 +19,7 @@
 //! whole-text equality flips the witness to `false` (the green is non-vacuous).
 
 use std::rc::Rc;
+use std::sync::OnceLock;
 
 use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v2_compiler::v2_interpreter::{self, Value};
@@ -35,11 +36,37 @@ fn v4_source_roots() -> Vec<std::path::PathBuf> {
     vec![workspace_root().join("src/v4")]
 }
 
+/// The cert's transitive v4 closure as owned `(path, content)` pairs, resolved once and shared
+/// by both tests via a process-wide cache. The module-index scan over src/v4 is the dominant
+/// cost; resolving it once (rather than per-test) roughly halves the step's wall-clock. Owned
+/// Strings (not `Rc<SourceFile>`, which is !Sync) so the value can live in a `OnceLock`.
+fn cert_source_pairs() -> &'static Vec<(String, String)> {
+    static CACHE: OnceLock<Vec<(String, String)>> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let entry_content = std::fs::read_to_string(workspace_root().join(CERT_ENTRY))
+            .unwrap_or_else(|e| panic!("read {CERT_ENTRY}: {e}"));
+        resolve_imports_transitively_with_source_roots(
+            CERT_ENTRY,
+            &entry_content,
+            &v4_source_roots(),
+        )
+        .iter()
+        .map(|s| (s.path.clone(), s.content.clone()))
+        .collect()
+    })
+}
+
 /// Resolve the cert's transitive v4 closure (same set `gunbc run --source-root src/v4` builds).
 fn cert_sources() -> Vec<Rc<SourceFile>> {
-    let entry_content = std::fs::read_to_string(workspace_root().join(CERT_ENTRY))
-        .unwrap_or_else(|e| panic!("read {CERT_ENTRY}: {e}"));
-    resolve_imports_transitively_with_source_roots(CERT_ENTRY, &entry_content, &v4_source_roots())
+    cert_source_pairs()
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            })
+        })
+        .collect()
 }
 
 fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
