@@ -20,6 +20,22 @@ A `.dag` program is a dependency graph. Parallelism is the default because indep
 
 The compiler reads the dependency graph directly and can choose the target schedule mechanically from the same source.
 
+## The core flip: put the meaning in the types, derive the coercion
+
+Mainstream types are *lean*. `int`, `str`, `char` carry only what the machine needs to move the bits — almost no meaning. That is exactly why coercion between them is unsafe: there is nothing to check a conversion *against*, so mixing a `UserId` and an `AccountId` (both `int`) is invisible. Developers pay for this twice — they hand-write the translations between types, and they re-declare the same concept under thirty names across API, DB, wire, and frontend (the "nicknaming tax").
+
+gunbc flips the model. **Put the meaning into the types, and a safe coercion between any two becomes *derivable*** — because a structure-preserving map between two meaning-rich types is determined by their meanings. The compiler finds the witness that relates them. The thirty nicknames for one concept become thirty names for overlapping structures the compiler can see through, so the N² hand-written translations collapse: you declare the genuine semantic decisions once, and the compiler derives everything downstream. This is the one idea under the rest of the thesis — **emit is coercion *to* a target, ingest is coercion *from* a source, the glue developers write is coercion the compiler should derive. One engine** ([the derived homomorphism](#the-derived-homomorphism--model-local-derive-global)).
+
+Three things keep this from being the old unsafe implicit coercion with better branding:
+
+- **The safety is in what it *refuses*, not in automating everything.** The compiler derives every coercion the meaning *determines*. But some coercions lose information (rich → coarse) and some must add it (the target lacks a carrier, so it must be *realized*). Those can never be silent. The flip's safety is the **fail-closed boundary**: derive what's determined; fail closed — or realize with an explicit receipt — on loss, ambiguity, or a missing carrier. *That boundary is the product.* "All automatic" minus the boundary is the problem we're escaping.
+- **It only works if the types are actually distinct.** "The compiler sees what each type needs" requires `UserId ≠ AccountId` to be *enforced*, not just named. That distinctness is the **keystone**: no enforcement, no derivable coercion — meaning-in-the-types is cosmetic without it.
+- **Developers still make the genuine decisions.** The derivable part — most of it, the pure nicknaming — derives fully. Where two systems truly *disagree* on semantics (not just naming), the compiler detects the mismatch but cannot invent the resolution; that stays a human decision it **surfaces, not guesses**. The precise claim: declare the genuine semantic decisions once; the compiler derives everything downstream.
+
+**Positioning.** Rich types that *derive* coercion have relatives — dependent and refinement types, prover-backed coercions, type-driven deriving. gunbc's distinctive bet is not "rich types"; it is that the language is **closed and total**, so coercion is a **decision procedure that always terminates with a verdict** — not a heuristic, not an open-ended proof search. The one-liner: **decidable, not heuristic; derive behavior, not just shape.**
+
+**The litmus.** Does a design move meaning *into* the types and *derive* the coercion — or does it re-introduce manual translation and coarse types? That single question catches most drift.
+
 ## Why this works
 
 `.dag` is designed as a closed system: bounded data, bounded iteration, and composition that preserves those bounds.
