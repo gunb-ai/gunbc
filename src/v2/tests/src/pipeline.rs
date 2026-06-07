@@ -890,6 +890,14 @@ fn dag_emit_from_resolved_matches_compile_sources_for_v4_slice() {
         standalone.files, from_resolved.files,
         "resolved-to-DAG emit files must match standalone --target dag files byte-for-byte"
     );
+
+    // R2 add-emit keystone guard rides this always-on parity invocation. CI runs the
+    // v2-compiler-tests crate only via this single `--exact` test (ci_floor), so the
+    // keystone is asserted here rather than as a standalone test (which would be dormant)
+    // or via a new always-on CI step (a CI-behavior change). emit(add) must produce exactly
+    // `fn add(x: i32, y: i32) -> i32 { x + y }` and flip to false on a mutated expected
+    // source — the standing guard for B5-style emit-consumer regressions (cf. #4484).
+    crate::r2_emit_add_named_test::assert_r2_emit_add_keystone();
 }
 
 /// Regression for recursive by-value DAG serialization: shared subgraphs must

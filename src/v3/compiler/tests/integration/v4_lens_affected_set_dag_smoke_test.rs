@@ -10,6 +10,15 @@
 //!
 //! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
 //! **TASKS.md** T-21 (IRT-1 held).
+//!
+//! **Wave-A W2 fold-delete (GO iii):** A-fold-deleted: parse-only gate + 4 foldable IRT-1
+//! witnesses → `lens_affected_set/sg_claims.dag` (mutation-witnessed each).
+//! Remaining receipt tags:
+//! - B-REFLECTABLE: module_authority module_path, surface_declares_fn
+//! - B-TEXTGREP: module_authority .contains markers, leaf_claim_wiring, suite_wiring greps
+//! - A-red-scaffold (smoke wiring retained, NOT in roster): dimension_seed (claim-run false)
+//! - A-blocked-v2-newmatchgap (smoke wiring retained, NOT in roster): excluded_propagation +
+//!   leaf_suite (InterpError::PatternMatchFailure on Holds{Excluded{DimensionNotRead}})
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
@@ -87,15 +96,6 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
         } => item_name == name,
         _ => false,
     })
-}
-
-#[test]
-fn v4_lens_affected_set_dag_tokenizes_and_parses() {
-    let _ = parse_module(AFFECTED_SET_DAG, AFFECTED_SET_PATH);
-    let _ = parse_module(IRT1_LEAF_CLAIM_SUITE.0, IRT1_LEAF_CLAIM_SUITE.1);
-    for (source, path) in IRT1_LEAF_CLAIMS {
-        let _ = parse_module(source, path);
-    }
 }
 
 #[test]

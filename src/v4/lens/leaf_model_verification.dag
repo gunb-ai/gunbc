@@ -58,8 +58,6 @@ import v4.std.host_run { ValueDiff }
 import v4.std.logic { Bool }
 import v4.std.target_model {
   TargetAtomRealization,
-  TargetValueExprSymbolIdentity,
-  TargetValueExprSymbolToOwnedString,
   ValueSymbolIdentityPassthrough,
   source_atom_symbol,
   symbol_kernel_type_atom,
@@ -655,10 +653,6 @@ data rust_r3_internal_probe_symbol_identity: Symbol = rust_r3_internal_probe_sym
 
 data rust_r3_internal_mutated_type_spelling: Symbol = rust_r3_internal_mutated_type_spelling
 
-data rust_r3_internal_emit_kind_symbol_to_owned_string: Symbol = rust_r3_internal_emit_kind_symbol_to_owned_string
-
-data rust_r3_internal_emit_kind_symbol_identity: Symbol = rust_r3_internal_emit_kind_symbol_identity
-
 data rust_r3_internal_emit_kind_rejected: Symbol = rust_r3_internal_emit_kind_rejected
 
 data rust_r3_internal_mutated_row: TargetAtomRealization = TargetAtomRealization {
@@ -673,12 +667,7 @@ data rust_r3_internal_mutated_row: TargetAtomRealization = TargetAtomRealization
 fn rust_r3_internal_value_emit_kind_label(row: TargetAtomRealization) -> Symbol {
   let probe = source_atom_symbol(identity: rust_r3_internal_probe_symbol_identity)
   match target_atom_value_expression(row: row, value: probe) {
-    Accepted { value: expr } =>
-      match expr.kind {
-        TargetValueExprSymbolToOwnedString => rust_r3_internal_emit_kind_symbol_to_owned_string
-        TargetValueExprSymbolIdentity => rust_r3_internal_emit_kind_symbol_identity
-        _ => rust_r3_internal_emit_kind_rejected
-      }
+    Accepted { value: expr } => discriminant(v: expr.kind)
     Rejected { diagnostics: _ } => rust_r3_internal_emit_kind_rejected
   }
 }
