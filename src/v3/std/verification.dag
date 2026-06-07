@@ -587,11 +587,11 @@ type QuantifiedTestClaim {
   requires: List<ResourceReference>
 }
 
-// T-Workflow-As-Data interim `YamlStatic` carrier.
+// T-Workflow-As-Data interim transport.
 //
 // Committed `.github/workflows/ci.yml` remains the hand-edited source of truth until the T-24 CI
-// model emits it. `CIWorkflowDag.github_actions_workflow` carries the pinned static Actions carrier
-// consumed by `project_github_actions(ci_workflow_dag, YamlStatic)`.
+// model emits it. `CIWorkflowDag` carries gate topology only; Actions transport projection is
+// deferred to T-24 `src/v4/workflow/ci.dag`.
 //
 // R3 T-Workflow-As-Data gate #101 (`test_cost_dimension_landed`).
 //

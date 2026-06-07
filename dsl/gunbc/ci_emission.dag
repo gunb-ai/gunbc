@@ -1,13 +1,11 @@
 // gunbc/ci_emission.dag — T-WAD WI-2 / Slice 4: `WorkflowRuntime` + `project_github_actions`.
 //
-// Static GitHub Actions `Workflow` carrier bytes live in `gunbc.ci.github_actions_workflow`
-// (`dsl/gunbc/ci_github_actions_workflow.dag`). `.github/workflows/ci.yml` remains the
-// hand-edited workflow authority until the T-24 CI model emits it. `CIWorkflowDag.github_actions_workflow`
-// pins the static carrier as part of the same authority row as the gate graph (`dsl/gunbc/ci.dag`).
+// `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
+// emits it. `CIWorkflowDag` in `dsl/gunbc/ci.dag` carries gate topology only; Actions transport
+// projection is deferred to T-24 `src/v4/workflow/ci.dag`.
 //
-// `project_github_actions(..., YamlStatic)` returns that YAML-pinned carrier (Slice 4:
-// no structural projection from `pipeline`/`edges` yet; WI-2 follow-on). Transport-arm
-// selection, not a second gate-topology editor.
+// `project_github_actions(..., BinaryShim)` emits a thin single-job workflow that invokes the
+// compiled `gunbc-ci` runner. Transport-arm selection, not a second gate-topology editor.
 
 module gunbc.ci_emission
 
@@ -15,34 +13,42 @@ import gunbc.ci { CIWorkflowDag, ci_workflow_dag }
 import extdeps.github.actions {
   Workflow, Job, RunStep, UsesStep,
   HostedRunner, UbuntuLatest,
-  Bash
+  Bash,
+  WorkflowTrigger, Push, PullRequest,
+  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
+  WorkflowPermissions, PermRead, PermWrite, PermNone,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax,
+  CancelInProgressSpec, CancelInProgressBool
 }
 
 // 🟡 YELLOW (scaffold) — coproduct-dissolution receipt (see modeling-discipline Practice 4).
-// Ratified initial surface: YamlStatic | BinaryShim
-// (`docs/r3-t-workflow-as-data-full-r3-close-scope.md` §1 gate #99).
+// Ratified initial surface: BinaryShim only until T-24 YamlStatic emission lands.
+// YamlStatic dissolved with the interim hand-sync carrier `ci_github_actions_workflow.dag`.
 // PythonShim and InlineGunbc stay off the enum until a real runtime consumer
 // lands with the corresponding substrate-prereq PR.
 
-type WorkflowRuntime = YamlStatic | BinaryShim
+type WorkflowRuntime = BinaryShim
 
 // Slice 5: BinaryShim thin-shim `Workflow` projection (design-ci-workflow-emitter-dispatch.md §5.2).
 //
-// Single-authority discipline (brief Phase C): every workflow-level field
-// (`name`, `on`, `concurrency`, `env`, `permissions`) is forwarded from the
-// `CIWorkflowDag` source — same trigger / permissions / concurrency envelope
-// as the YamlStatic arm per emitter-dispatch §7 (1)–(2). The structural
-// deviation between the two targets is `jobs`: BinaryShim collapses the full
-// gate matrix into a single bootstrap job whose only `run:` invokes the
-// compiled `gunbc-ci` runner. The binary at runtime reads `CIWorkflowDag` and
+// Workflow-level envelope fields are minimal placeholders until T-24 projection reads
+// `src/v4/workflow/ci.dag` directly. The structural deviation from the live ci.yml transport is
+// `jobs`: BinaryShim collapses the full gate matrix into a single bootstrap job whose only `run:`
+// invokes the compiled `gunbc-ci` runner. The binary at runtime reads `CIWorkflowDag` and
 // dispatches the gate matrix (Slice 7 / PR #2713 affected-set lens territory).
 //
 // Binary `main()` and affected-set selection are out of scope — the arm
 // emits a `Workflow` that *references* the binary, not the binary itself.
 fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow = {
-  name: dag.github_actions_workflow.name,
-  on: dag.github_actions_workflow.on,
-  concurrency: dag.github_actions_workflow.concurrency,
+  name: "ci",
+  on: [Push { branches: ["main"], paths: [] }, PullRequest { branches: ["main"], types: [Opened, Synchronize, Reopened, ReadyForReview] }],
+  concurrency: Some {
+    value: ConcurrencyMappingQueueNotMax {
+      group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}",
+      cancel_in_progress: Some { value: CancelInProgressBool { value: true } },
+      explicit_single: none
+    }
+  },
   jobs: [{
       id: "ci",
       name: none,
@@ -76,16 +82,19 @@ fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow = {
       continue_on_error: false,
       concurrency: none
     }],
-  env: dag.github_actions_workflow.env,
-  permissions: dag.github_actions_workflow.permissions
+  env: { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings", "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24": "true" },
+  permissions: Some {
+    value: {
+      contents: PermRead,
+      pull_requests: PermRead,
+      issues: PermNone,
+      actions: PermNone
+    }
+  }
 }
 
 // v3 tokenizer maps `fn`, not legacy `func` (which becomes `Ident("func")` and fails top-level dispatch).
 fn project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow =
   match runtime {
-    YamlStatic => dag.github_actions_workflow
     BinaryShim => gunbc_ci_emission_binary_shim_workflow(dag)
   }
-
-// Pinned projection: same `ci_workflow_dag` row, YamlStatic transport (Slice 4).
-data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)
