@@ -1824,11 +1824,6 @@ fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> GeneratedAnchorKey 
 }
 
 
-// The omitted-variant node identity is the TestClaimCoproductVariant constructor's own name, via
-// the `discriminant` intrinsic — no shadow `data ..._claim_variant: Symbol` tags and no
-// hand-written bridge fn. `coproduct_exhaustiveness_variant_node` uses `discriminant(v: variant)`
-// directly.
-
 fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> TestClaimCoproductVariant {
   match anchor {
     GeneratedCoproductExhaustiveness { omitted_variant } => omitted_variant
