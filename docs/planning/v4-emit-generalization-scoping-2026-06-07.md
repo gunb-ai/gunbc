@@ -102,7 +102,7 @@ arms + `emit_host` execution rows (T-22).
 **Scope:** `type Task = { ... }` via grammar-inverse round-trip on derive path — still fixture
 `InferredTree`, not source ingest.
 
-**Depends on:** T0.5 green; T1 TS TargetModel wave2a grammar rows populated.
+**Depends on:** T1 TS TargetModel wave2a grammar rows populated.
 
 ### T3 — SG-2 type-expression projection (grammar-matched types)
 
@@ -115,7 +115,7 @@ arms + `emit_host` execution rows (T-22).
 `06_translate`. Dissolves `ProjectionAbsent` shim per mark
 `feature:sg-2-mvp1-projection-absent-shim`.
 
-**Depends on:** T0.5 green; T0 (serialize path live); `target_model_edge_type_expression_projection` on
+**Depends on:** T0 (serialize path live); `target_model_edge_type_expression_projection` on
 every active `TargetModel`.
 
 ### T4 — SG-2 mode-2: non-grammar-matched type nodes
@@ -191,15 +191,14 @@ is tier-dependent:
 |-----------------|-------------------|-------------------|
 | **Multi-target platform** (RR-C/D, RCA mgrs) | T1 | Same IR → N `TargetModel`s; `post_emit_verifier` per target (`multi_target_emit_verification_gate.dag`) |
 | **ci.dag conformance** (`workflow/ci.dag`) | T0 + T1 (probe) | `m1_rust_emit_probe_execution` graduates from v2 emit to v4 `emit` receipt; shadow selection receipts need executed claim verdicts |
-| **Coercion engine** (translate sprawl + fixture grounding dissolution) | T0.5–T3 | `find_witness` engine exists today (`coercion_fold` / `solve_constraints`); dissolution target is projection sprawl + hand fixture grounding — negative claims become executable as tiers land |
-| **Omni-ingestion** | T0.5 (minimal) + T7–T8 (breadth) | T0.5 home round-trip on `add` proves faithfulness early; T7–T8 remain arbitrary-source + full-form coverage |
+| **Coercion engine** (translate sprawl + fixture grounding dissolution) | T0–T3 | `find_witness` engine exists today (`coercion_fold` / `solve_constraints`); dissolution target is projection sprawl + hand fixture grounding — negative claims become executable as tiers land |
+| **Omni-ingestion** | T7–T8 | Ingest is coercion reversed; without emit that executes, round-trip claims are unfalsifiable |
 | **Lenses** (cost/CX/parallelism on compiler) | T0 + executing spine | `claim_pipeline/translate.dag` (G3.4) needs translate to run, not just compile; lens claims over CI workflow pull emit verdicts |
 | **Self-host fixed point** | T6–T7 | `compiler.dag` emits stage0 Rust; requires value-expression + full compile, not add-only |
 | **Shape B omni-emission** (OpenAPI/SQL/React) | **Out of scope** | User `.dag` programs per RR-D GUARDED — not compiler `emit()` |
 
-**Critical path:** T0 (keystone execute) → **T0.5 (faithfulness on `add` — blocks T2+)** → T1
-(multi-target add, may parallel T0.5) → T3/T4 (type expr) → T6 (value expr) → T7 (ingest
-breadth) → self-host. T5 (RC layering) parallels T3–T4. T8 (full round-trip coverage) follows T7.
+**Critical path:** T0 (keystone execute) → T1 (multi-target add) → T3/T4 (type expr) → T6
+(value expr) → T7 (ingest) → self-host. T5 (RC layering) parallels T3–T4. T8 follows T7.
 
 ---
 
@@ -227,22 +226,20 @@ From THESIS, INVARIANTS, RR-C, RR-D:
 | Lane | GO when | NO-GO now because |
 |------|---------|-------------------|
 | T0 keystone execute | Interpreter perf fix + emit logic bugs from running witness | S0 done; S1/S2 open — **no emit executes** |
-| T0.5 faithfulness (`add`) | T0 green + `dag_mvp1_target_model` + W1b round-trip + infer-authored grounding | **Mandatory gate before T2–T6** — see §2 T0.5 |
-| T1 multi-target add | T0 green + per-target serialize verified | Depends on T0; may parallel T0.5 |
-| T2 wave2a type alias | T0.5 green + T1 TS row + grammar rows | Fixture-only; no new consumer beyond existing claims |
-| T3 SG-2 projection | T0.5 green + `ProjectionAbsent` shim dissolved | Translate edits need executing spine + faithfulness proof |
+| T1 multi-target add | T0 green + per-target serialize verified | Depends on T0 |
+| T2 wave2a type alias | T1 TS row + grammar rows | Fixture-only; no new consumer beyond existing claims |
+| T3 SG-2 projection | T0 green + `ProjectionAbsent` shim dissolved | Translate edits need executing spine |
 | T4 SG-2 mode-2 | #4462 merged + T3 receipts | Explicitly blocked (design-closure doc) |
 | T5 SG-RC layering | T3–T4 + `lookup` interpreter | ERROR bucket in claim map |
 | T6 value expressions | New claims authored + T0–T5 | **No executable consumer** — design map only |
 | T7 ingest | Ingest staging replaced in `00_compile` | Separate arc; don't conflate with emit tiers |
 | T8 round-trip | T7 + emit coverage | Staged claims only |
 | Substrate: `fold_node` memoization | T0 shows fold-family blowup after runtime fix | S0 refuted fold-as-root-cause for keystone |
-| Substrate: translate sprawl + fixture grounding dissolution | T0.5 green + executing negative coercion claims | Engine exists (`coercion_fold`/`solve_constraints` → `find_witness`); deferral is projection sprawl + hand `mvp1_rust_canonical_grounding_for` — not "engine unbuilt" |
+| Substrate: translate sprawl + fixture grounding dissolution | Coercion claims execute on translate path | Engine exists (`coercion_fold`/`solve_constraints` → `find_witness`); deferral is projection sprawl + hand `mvp1_rust_canonical_grounding_for` — not "engine unbuilt" |
 | `06_translate` bulk port from v2 | Never as a lump | Violates execution-first rebuild (Part 5) |
 
 **Operator NO-GO (this scoping pass):** no implementation PRs against `06_translate` except
-hotfix to make T0 green once interpreter fix lands. Scoping does not authorize T1+ work without
-T0 receipt; does not authorize **T2–T6** without **T0.5** receipt.
+hotfix to make T0 green once interpreter fix lands. Scoping does not authorize tier ≥1 work.
 
 ---
 
@@ -252,16 +249,12 @@ T0 receipt; does not authorize **T2–T6** without **T0.5** receipt.
 Phase 0 (keystone — BLOCKING EVERYTHING)
   └─ Fix v2 interpreter runtime (v2_rt share/memo) → executed emit(add) Rust witness green
 
-Phase 0.5 (faithfulness gate — BLOCKING T2–T6; may overlap Phase 1)
-  ├─ T0.5a: dag_mvp1_target_model + emit(add) golden + W1b home round-trip claim
-  └─ T0.5b: infer-authored grounding replaces hand fixture enumeration on mvp1 claims
-
-Phase 1 (parallel after Phase 0; finish before T2)
+Phase 1 (parallel after Phase 0)
   ├─ T1a: Python/Go add execute + emit_host rows (T-22)
   ├─ T1b: C++/TS add execute
   └─ G3.4: claim_pipeline/translate.dag spine claim (executes once T0 green)
 
-Phase 2 (type surface — requires Phase 0.5 green)
+Phase 2 (type surface)
   ├─ T3: SG-2 projection — dissolve ProjectionAbsent shim
   ├─ T4: SG-2 mode-2 (after #4462) — per design-closure checklist
   └─ T5: SG-RC layering (parallel if lookup lands)
@@ -273,7 +266,7 @@ Phase 3 (value surface + compile)
 
 Phase 4 (downstream convergence)
   ├─ ci.dag: v4 emit probe replaces v2 shim
-  ├─ Coercion: find_witness dissolution behind executing negative claims
+  ├─ Coercion: translate sprawl + fixture grounding dissolution behind executing negative claims
   └─ Self-host: compiler.dag slice emit
 ```
 
@@ -374,8 +367,8 @@ The concern splits into two different problems with different fixes.
 ### 12.2 Mechanism — one engine or two?
 
 **Constraint #4** forbids a parallel coercion engine (`coercion = emission`; `find_witness`
-replaces inline arms). The GO matrix defers `find_witness` dissolution with "inline coercion
-works for MVP-1 fixtures."
+replaces inline arms). §5 now defers **translate sprawl + fixture grounding dissolution** (not
+"engine unbuilt").
 
 **Probe (T0 path, measured):** the MVP-1 coercion spine **already routes through
 `find_witness`** — not around it:
@@ -393,7 +386,7 @@ What is still **inline / accreting**:
 |----------------|-------|------------------|
 | Hand-enumerated fixture grounding | `mvp1_rust_canonical_grounding_for` if-chain in `mvp1_rust_add_translate.dag` | Emit proves a fixture printer, not infer-authored grounding |
 | Projection sprawl | ~150 `project_*` / per-variant arms in `06_translate` | T2–T6 grow bespoke arms instead of derived morphisms |
-| GO-matrix "find_witness dissolution" row | Scoping §5 | Misread as "engine not built" — engine is built; **dissolution of translate sprawl + fixture grounding** is what's deferred |
+| GO-matrix dissolution row | Scoping §5 (corrected) | Deferral is projection sprawl + hand fixture grounding — not "engine unbuilt" |
 
 Ingest is coercion reversed and needs the same engine. Deferring dissolution until T7 means
 either dissolving six tiers of accreted arms into `find_witness`/structural fold, or ingest
@@ -433,47 +426,36 @@ proof (no foreign parser), but it requires a **`dag_mvp1_target_model`** slice i
 a W1b executable `RoundTripClaim` on `add`. Budget: small scoping child after T0 green, not
 T7 breadth.
 
-### 12.5 Recommended reorder (surgical — *when*, not *whether*)
+### 12.5 Recommended reorder (future scoping — **not authorized by this doc**)
 
-Keep **T0 first** — nothing falsifies until emit executes. Immediately after T0/T1 on `add`,
-pull two things **before** generalizing to T2–T6:
+**Authority:** §2, §6, and §11 define the operational ladder for this arc. The items below are
+design recommendations for a **follow-on scoping pass** after T0 executes — not gates in the
+GO matrix and not additions to §6 dispatch.
 
-1. **Route coercion through the engine, not fixture arms** — dissolve
-   `mvp1_rust_canonical_grounding_for` in favor of infer-authored facts (existing
-   `feature:W-T-10-mvp1-inferred-tree-grounding` gate). New translate coverage uses
-   `coercion_fold`/`find_witness`, not per-case projection arms where structural fold applies.
+Keep **T0 first** — nothing falsifies until emit executes. A future pass may pull, on `add`
+only:
 
-2. **Minimal home round-trip on `add`** — new tier **T0.5** (not full T7 ingest):
-   - Populate `dag_mvp1_target_model` + golden `dag_mvp1_source_text` for the add fixture.
-   - Author W1b claim: `emit(tree, dag_target) → parse → normalized IR equality`.
-   - Leave **T7** (arbitrary real `.dag` source through `compile`) and **T8** (full coverage
-     round-trip) at the top — only the smallest bidirectional proof moves early.
+1. **Infer-authored grounding** — dissolve `mvp1_rust_canonical_grounding_for` in favor of
+   infer-authored facts (`feature:W-T-10-mvp1-inferred-tree-grounding`).
 
-Then T2–T6 generalize a mechanism **already known** to be faithful both ways, not a one-way
-printer retrofitted at T8.
+2. **Minimal home `.dag` round-trip on `add`** — populate `dag_mvp1_target_model`, golden
+   `dag_mvp1_source_text`, and a W1b claim (`emit → parse → normalized IR equality`). This
+   remains a **non-goal for this arc** per §8 until a separate scoping pass authorizes it.
 
-**Phase 0.5 dispatch (manager, post-T0 green):**
-
-```
-T0.5a — dag_mvp1_target_model + emit(add) golden + W1b round-trip claim (add only)
-T0.5b — infer-authored grounding replaces hand fixture enumeration on mvp1 claims
-```
+**T7** (arbitrary-source ingest) and **T8** (full round-trip coverage) stay on the §2 ladder
+regardless.
 
 ### 12.6 Doc tension — co-equal vs top-of-ladder
 
 | Doc | Bidirectional stance |
 |-----|---------------------|
 | **ROADMAP** §coercion bidirectionality | Co-equal: "one mechanism, run both ways"; ingest = emit⁻¹ |
-| **This scoping doc** §2 ladder | Top rungs: T7 ingest, T8 round-trip |
-| **§8 non-goals** | Bidirectional `.dag` emission not in *this arc's* implementation scope |
+| **This scoping doc** §2 / §6 / §11 | Authoritative ladder: T7 ingest, T8 round-trip at top |
+| **§8 non-goals** | Bidirectional `.dag` emission / show-correct-code — not in this arc's scope |
+| **§12.5** | Future recommendation only — does not amend §2 / §6 / §8 / §11 |
 
-**Resolution (proposed):** ROADMAP states the **thesis mechanism** (co-equal). This scoping doc
-states the **implementation ladder** (breadth deferred). Add explicit cross-ref:
-
-- **Mechanism co-equal** — `find_witness` serves both directions from T0.5 onward on `add`.
-- **Breadth deferred** — arbitrary-source ingest (T7) and full-form round-trip (T8) stay late;
-  **minimal faithfulness proof** (T0.5 home round-trip on `add`) is early and mandatory before
-  T2–T6 GO.
-
-Without T0.5, the two docs read as contradictory. With T0.5, they agree: bidirectional is
-co-equal in *architecture*; only *arbitrary-source ingest breadth* is top-of-ladder.
+**Resolution (ratified):** ROADMAP states the **thesis mechanism** (co-equal). This scoping doc
+states the **implementation ladder** for *this arc* (§2, §6, §11). §12 records ingest-coupling
+probes and a **deferred** reorder recommendation (§12.5); it does not introduce T0.5 or override
+§8. Bidirectional breadth lands at T7–T8; early faithfulness on `add` is input to a future
+scoping pass, not a mandatory gate here.
