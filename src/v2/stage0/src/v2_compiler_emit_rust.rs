@@ -45,7 +45,7 @@ pub use crate::v2_compiler_emit_core_support::{
 pub use crate::v2_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v2_compiler_infer::InferScope;
 pub use crate::v2_compiler_infer::{
-    build_emit_graph_info, build_params_scope, expr_span, extend_scope,
+    build_emit_graph_info, build_params_scope, expr_span, extend_scope, resolved_type_name,
 };
 use crate::v2_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v2_compiler_infer_emit_info::{
@@ -11391,6 +11391,121 @@ pub fn is_map_typed_expr(
     }
 }
 
+pub fn emit_discriminant_call_lowering(
+    value_arg: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let arg = arg_value(value_arg);
+        let scrutinee = emit_typed_expr(
+            arg.clone(),
+            registry,
+            scope.clone(),
+            depth,
+            shared_types.clone(),
+            emit_info,
+            1024,
+        );
+        let ty_name =
+            resolved_type_name(arg.clone(), scope.type_env.clone().source_indices.clone());
+        match lookup_type_by_name(scope.type_env.clone(), ty_name.clone()) {
+            Some(enum_node) => {
+                if is_coproduct_type(enum_node.clone()) {
+                    {
+                        let arms = Rc::new({
+                            let mut __result = Vec::new();
+                            for child in enum_node.children.clone().iter().cloned() {
+                                __result.push({
+                                    let child_text =
+                                        authored_name(scope.type_env.clone(), child.clone());
+                                    let pat = if ((child.children.clone().len() as i64) == 0) {
+                                        v2_rt::concat(
+                                            v2_rt::concat(ty_name.clone(), "::".to_string()),
+                                            child_text.clone(),
+                                        )
+                                    } else {
+                                        if variant_is_synthetic_positional_payload(
+                                            child.children.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ) {
+                                            v2_rt::concat(
+                                                v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        ty_name.clone(),
+                                                        "::".to_string(),
+                                                    ),
+                                                    child_text.clone(),
+                                                ),
+                                                "(_)".to_string(),
+                                            )
+                                        } else {
+                                            v2_rt::concat(
+                                                v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        ty_name.clone(),
+                                                        "::".to_string(),
+                                                    ),
+                                                    child_text.clone(),
+                                                ),
+                                                " { .. }".to_string(),
+                                            )
+                                        }
+                                    };
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                v2_rt::concat("        ".to_string(), pat.clone()),
+                                                " => \"".to_string(),
+                                            ),
+                                            child_text.clone(),
+                                        ),
+                                        "\".to_string(),".to_string(),
+                                    )
+                                });
+                            }
+                            __result
+                        });
+                        let scrut_ref = if v2_rt::set_contains(&shared_types, ty_name.clone()) {
+                            v2_rt::concat(
+                                v2_rt::concat("&*(".to_string(), scrutinee),
+                                ")".to_string(),
+                            )
+                        } else {
+                            v2_rt::concat(
+                                v2_rt::concat("&(".to_string(), scrutinee),
+                                ")".to_string(),
+                            )
+                        };
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat("(match ".to_string(), scrut_ref),
+                                    " {\n".to_string(),
+                                ),
+                                arms.join(&"\n".to_string()),
+                            ),
+                            "\n    })".to_string(),
+                        )
+                    }
+                } else {
+                    v2_rt::concat(
+                        v2_rt::concat("\"".to_string(), ty_name.clone()),
+                        "\".to_string()".to_string(),
+                    )
+                }
+            }
+            None => v2_rt::concat(
+                v2_rt::concat("\"".to_string(), ty_name.clone()),
+                "\".to_string()".to_string(),
+            ),
+        }
+    }
+}
+
 pub fn emit_typed_call_expr(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
@@ -11636,6 +11751,25 @@ pub fn emit_typed_call(
                     None => "compile_error!(\"to_string call missing value argument\")".to_string(),
                 };
                 return ts_result;
+            }
+        }
+        if (func.clone().as_str() == "discriminant".to_string().as_str()) {
+            {
+                let disc_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
+                let disc_result = match disc_args.first().cloned() {
+                    Some(value_arg) => emit_discriminant_call_lowering(
+                        value_arg.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    ),
+                    None => {
+                        "compile_error!(\"discriminant call missing value argument\")".to_string()
+                    }
+                };
+                return disc_result;
             }
         }
         let collection_scope = if ((((func.clone().as_str() == "map".to_string().as_str())
