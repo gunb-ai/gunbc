@@ -30,6 +30,15 @@ summary that links to that home and must not restate the fact.** `[live]`
 This is P2/M2 applied to prose; it makes cost-of-change → 1 for docs (when a fact
 changes, one file changes, not six in lockstep).
 
+## Adding a gunbc doc is a heavy action
+
+A doc in gunbc is **durable, load-bearing reference** — it earns its place like code
+and is review-gated the same way. Scratch, planning, throwaway, and work-in-flight
+docs do **not** belong here; they live in **ctrl** (`gunb-ai/ctrl`, `gunbc-planning/`).
+**Default to ctrl;** promote into gunbc only when a doc is the durable home of a fact
+with a real consumer. A gunbc doc with no durable fact and no inbound reference is a
+scratch doc in the wrong repo — it goes to ctrl, or it goes away.
+
 ## The authority DAG — where facts live
 
 **Tier 0 — this file:** the doc map + the rule. Supersedes the inline maps formerly
