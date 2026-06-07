@@ -772,7 +772,7 @@ fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 fn swift_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
-  let token_class = swift_concrete_token_class(token: token)
+  let token_class = concrete_syntax_token_class(token: token)
   if token_class == swift_token_kw_func {
     acc
   } else {
@@ -1034,7 +1034,7 @@ fn swift_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Forma
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: swift_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )

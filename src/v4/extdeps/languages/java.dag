@@ -881,7 +881,7 @@ fn java_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
 }
 
 fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
-  let token_class = java_concrete_token_class(token: token)
+  let token_class = concrete_syntax_token_class(token: token)
   if token_class == java_token_kw_static {
     acc
   } else {
@@ -1046,7 +1046,7 @@ fn java_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Formal
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: java_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )

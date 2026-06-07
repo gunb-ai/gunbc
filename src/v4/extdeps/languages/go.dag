@@ -1591,13 +1591,6 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
   }
 }
 
-fn go_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
-  match token {
-    FixedToken { token_class: c } => c
-    BoundToken { token_class: c, binding: _ } => c
-  }
-}
-
 fn go_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   // T-11: serialize through the single shared morphism (no parallel wire authority).
   concrete_syntax_token_to_node(token: token)
@@ -1637,7 +1630,7 @@ fn go_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGr
     xs: tokens,
     empty: Empty,
     cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: grammar_formal_terminal(identity: go_concrete_token_class(token: token)))
+      list_snoc_item(xs: acc, item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token)))
     }
   )
 }
@@ -1666,13 +1659,13 @@ fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
       match state {
         GoGramBuild1StateInit =>
           GoGramBuild1StateReady {
-            expr: go_grammar_terminal(token_class: go_concrete_token_class(token: token))
+            expr: go_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         GoGramBuild1StateReady { expr: acc } =>
           GoGramBuild1StateReady {
             expr: Sequence {
               left: acc,
-              right: go_grammar_terminal(token_class: go_concrete_token_class(token: token))
+              right: go_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }

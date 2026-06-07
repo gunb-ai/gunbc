@@ -702,13 +702,13 @@ fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
       match state {
         TsGramBuild1StateInit =>
           TsGramBuild1StateReady {
-            expr: ts_grammar_terminal(token_class: ts_concrete_token_class(token: token))
+            expr: ts_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         TsGramBuild1StateReady { expr: acc } =>
           TsGramBuild1StateReady {
             expr: Sequence {
               left: acc,
-              right: ts_grammar_terminal(token_class: ts_concrete_token_class(token: token))
+              right: ts_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }

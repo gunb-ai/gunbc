@@ -1485,13 +1485,13 @@ fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           RustGramBuild1StateReady {
             expr: Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
@@ -2031,7 +2031,7 @@ fn rust_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Formal
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: rust_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )

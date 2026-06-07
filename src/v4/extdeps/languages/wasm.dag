@@ -768,7 +768,7 @@ fn wasm_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
 }
 
 fn wasm_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
-  let token_class = wasm_concrete_token_class(token: token)
+  let token_class = concrete_syntax_token_class(token: token)
   if token_class == wasm_token_lparen {
     acc
   } else {
@@ -1235,7 +1235,7 @@ fn wasm_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Formal
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: wasm_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )
