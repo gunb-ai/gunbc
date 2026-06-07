@@ -104,16 +104,14 @@ demo is v2 end-to-end.
 
 **v3 — frozen.** v3 explored behaviors, lenses, and substrate reflection; the tree
 remains under `src/v3/` for study and regression context. New modeling and compiler work
-live in v4 only. The language surface in [`docs/v3-spec.md`](docs/v3-spec.md) still
-informs v4.
+live in v4 only.
 
 **v4 — in progress (honest).** v4 combines a typed Node + Behavior substrate with a
 full pipeline (tokenize → parse → resolve → infer → emit → translate). In CI, v2
 `gunbc` compiles and type-checks all of `src/v4` with zero diagnostics. Runnable v4
 stage0, full multi-target emission, execute-verified structural tests, and the self-host
 fixed point are still landing — **v2 remains the reference for end-to-end emit until v4
-closes that loop.** See [ROADMAP.md](ROADMAP.md) and
-[docs/v4-compilation-milestones.md](docs/v4-compilation-milestones.md).
+closes that loop.** See [ROADMAP.md](ROADMAP.md).
 
 ## What gunbc proves
 
