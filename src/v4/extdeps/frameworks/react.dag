@@ -150,7 +150,7 @@ type ReactElement
 // 🟡 coproduct dissolution — consumer:react-child-lattice-arm-discriminator
 type ReactCreateElementChild
   = Element { element: ReactElement }
-  | Text { text_value_ref: ReactCrossDeclRef, key: ReactOptKey }
+  | Text { text_value_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/createContext
 type ReactContextBinding {
