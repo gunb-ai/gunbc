@@ -18,7 +18,7 @@
 //! to the same visible summary as a successful empty diff.
 //!
 //! Wired as a non-blocking (Class C) step in the `affected` job (`.github/workflows/ci.yml`),
-//! mirrored in the pinned carrier `dsl/gunbc/ci_github_actions_workflow.dag`.
+//! mirrored in `.github/workflows/ci.yml` (sole live Actions transport).
 
 use std::io;
 
