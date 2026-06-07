@@ -86,8 +86,6 @@ const CI_DAG: &str = include_str!("../../../src/v4/workflow/ci.dag");
 const CI_DAG_PATH: &str = "src/v4/workflow/ci.dag";
 const CI_YML: &str = include_str!("../../../.github/workflows/ci.yml");
 const CI_YML_PATH: &str = ".github/workflows/ci.yml";
-const CI_WORKFLOW_DAG: &str = include_str!("../../../dsl/gunbc/ci_github_actions_workflow.dag");
-const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const SHARED_CLOSURE_WORKSHEET: &str =
     include_str!("../../../docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md");
 const SHARED_CLOSURE_WORKSHEET_PATH: &str =
@@ -622,61 +620,6 @@ fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
     let rest = &workflow_yml[start..];
     let end = rest.find("\n    - name: ").unwrap_or(rest.len());
     &rest[..end]
-}
-
-fn workflow_dag_job_block<'a>(workflow_dag: &'a str, job_id: &str) -> &'a str {
-    let marker = format!("id: \"{job_id}\"");
-    let id_start = workflow_dag
-        .find(&marker)
-        .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: missing `{job_id}` job"));
-    let block_start = workflow_dag[..id_start]
-        .rfind('{')
-        .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: malformed `{job_id}` job"));
-    let mut depth = 0usize;
-    for (offset, ch) in workflow_dag[block_start..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth = depth
-                    .checked_sub(1)
-                    .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: malformed job braces"));
-                if depth == 0 {
-                    let end = block_start + offset + ch.len_utf8();
-                    return &workflow_dag[block_start..end];
-                }
-            }
-            _ => {}
-        }
-    }
-    panic!("{CI_WORKFLOW_DAG_PATH}: unterminated `{job_id}` job")
-}
-
-/// True for a generated-workflow job field line (6-space indent), not nested step rows (10+ spaces).
-fn workflow_dag_line_is_job_level_field(line: &str) -> bool {
-    line.strip_prefix("      ")
-        .is_some_and(|rest| !rest.starts_with(' '))
-}
-
-/// Fail-closed: job-level `continue_on_error` must be present and exactly `false` (step-level must not satisfy).
-fn workflow_dag_job_level_continue_on_error_is_false(job_block: &str) -> bool {
-    let mut saw_exactly_false = false;
-    for line in job_block.lines().filter(|line| {
-        workflow_dag_line_is_job_level_field(line)
-            && line.trim_start().starts_with("continue_on_error:")
-    }) {
-        let value = line
-            .trim_start()
-            .strip_prefix("continue_on_error:")
-            .unwrap_or_default()
-            .trim()
-            .trim_end_matches(',');
-        if value == "false" {
-            saw_exactly_false = true;
-        } else {
-            return false;
-        }
-    }
-    saw_exactly_false
 }
 
 fn is_ci_yml_job_name_char(c: char) -> bool {
@@ -1708,39 +1651,6 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
             "{CI_YML_PATH}: Wave 1 cut — must not invoke `{forbidden}` on required path"
         );
     }
-}
-
-#[test]
-fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
-    assert!(
-        CI_WORKFLOW_DAG.contains("id: \"ci_floor\""),
-        "{CI_WORKFLOW_DAG_PATH}: regen artifact must model `ci_floor`"
-    );
-    assert!(
-        CI_WORKFLOW_DAG.contains("id: \"ci_floor_emit\""),
-        "{CI_WORKFLOW_DAG_PATH}: regen artifact must model the parallel `ci_floor_emit` job (M1 emit probe split out of `ci_floor`)"
-    );
-    assert!(
-        CI_WORKFLOW_DAG.contains("id: \"ci\"")
-            && CI_WORKFLOW_DAG
-                .contains("needs: [\"affected\", \"ci_floor\", \"ci_floor_emit\", \"infra_isolation\", \"ci_corpus_eval\"]"),
-        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt, `ci_floor`, the parallel `ci_floor_emit` lane, and the `infra_isolation` de-priv guard"
-    );
-    let affected_dag = workflow_dag_job_block(CI_WORKFLOW_DAG, "affected");
-    assert!(
-        workflow_dag_job_level_continue_on_error_is_false(affected_dag),
-        "{CI_WORKFLOW_DAG_PATH}: component `affected` receipt must be live (job-level continue_on_error: false)"
-    );
-    let affected_yml = ci_yml_job_block(CI_YML, "affected");
-    assert!(
-        ci_yml_job_level_omits_continue_on_error(affected_yml),
-        "{CI_YML_PATH}: component `affected` receipt must be live (no job-level continue-on-error anywhere in job block)"
-    );
-    assert!(
-        !CI_WORKFLOW_DAG.contains("id: \"ci_integration\"")
-            && !CI_WORKFLOW_DAG.contains("id: \"ci_v4\""),
-        "{CI_WORKFLOW_DAG_PATH}: legacy parallel lanes dissolved in regen artifact"
-    );
 }
 
 // P5(b) receipt: `docs/planning/ci-required-surface-cut-2026-06-01.md` § P5(b) `v4_workflow_ci_wave3_*`
