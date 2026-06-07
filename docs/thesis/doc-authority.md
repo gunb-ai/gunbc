@@ -1,9 +1,7 @@
 # Documentation Authority — the doc map and the single-authority rule
 
-> **Mode:** `LIVE` — describes the current contract; its own references resolve via
-> [`scripts/check_doc_refs.py`](../../scripts/check_doc_refs.py) `[live]`. CI wiring of
-> that script as a required gate is `[target]` — pending explicit operator GO (not in
-> gunbc#4519; follow-up PR).
+> **Mode:** `LIVE` — describes the current contract; its own references resolve
+> (enforced by [`scripts/check_doc_refs.py`](../../scripts/check_doc_refs.py)).
 
 ## Why this exists
 
@@ -237,13 +235,11 @@ flowchart LR
 - Applies to every **new or touched** doc immediately — touch-driven; no big-bang
   rewrite (the same converge-on-touch move used elsewhere in the codebase).
 - **Standing detection:** [`scripts/check_doc_refs.py`](../../scripts/check_doc_refs.py)
-  `[live]` — every Markdown reference must resolve. `--all` produces the full census;
-  `--changed origin/main` is the intended CI entrypoint (touch-driven: a touched doc
-  with a dangling reference should fail review). Diff-scoped by design: no repo-wide
-  sweep, no ratchet baseline — you fix a doc's references when you touch it.
-  **CI wiring** (`ci.yml` `doc_refs` job rolled into the `ci` aggregator) is `[target]`
-  — a new fail-closed required gate needs explicit operator GO; lands in a follow-up PR,
-  not gunbc#4519.
+  — every Markdown reference must resolve. `--all` produces the full census;
+  CI runs `--changed origin/main` so a touched doc with a dangling reference fails
+  review `[live]` — the `doc_refs` job is wired into the `ci` aggregator (fail-closed),
+  operator-authorized. Diff-scoped by design: no repo-wide sweep, no ratchet baseline —
+  you fix a doc's references when you touch it.
 - A new or touched doc that **restates** a fact owned elsewhere, instead of linking,
   fails review.
 

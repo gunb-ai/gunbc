@@ -10,18 +10,17 @@
 
 ---
 
-## Fast scan — the 8 questions
+## Fast scan — the 7 questions
 
 Hold any design to these first; if it's clean here, do the full pass. (Each digests a lettered item below — see that item for its authority.)
 
-1. **Consumer & execution.** Is "done" a real consumer **green by execution** (`run`/`--claim-run`) — not compile-clean, grep, parse, or "spec written" — with a **discriminating control** (perturb → red; fixture/hand-fed input is *not* accepted as proof)? *(F1–F4, F11)*
+1. **Consumer & execution.** Is "done" a real consumer **green by execution** (`run`/`--claim-run`) — not compile-clean, grep, parse, or "spec written" — with a **discriminating control** (perturb → red; fixture/hand-fed input is *not* accepted as proof)? *(F1–F4)*
 2. **One homomorphism.** Does it route **emit and ingest through the one shared relation** (`find_witness`), or quietly build an emit-only / parallel path? *(A4, B1–B6)*
 3. **Faithfulness.** Is any IR↔surface claim proven by **normalized round-trip**, not a golden string? (Golden string = code generator; round-trip = homomorphism.) *(B3)*
 4. **File-agnostic.** Does it keep files/positions as **surface metadata** and the IR file-agnostic — or leak files into the pipeline / node identity / the unit of compilation? *(D1)*
 5. **Single roof.** Does it **converge** on the one queryable-graph authority (reflection, affected-set, lenses) — or fork a new parallel reader? *(C1–C2)*
 6. **Construction over convention.** Does it make the wrong thing **structurally impossible** (and *show* the impossibility) — or add a rule / count-ceiling / ratchet that can be reached around? *(D2)*
 7. **Ladders up + fold-DELETE.** Does it advance the **spine** (substrate → emit/ingest → platform → lenses) or a **keystone** (enforcement) — and does it **delete** the thing it replaces, not sit alongside it? *(G1, F7)*
-8. **Grounding & load-bearing gate.** Target mapping via **declared inhabitance** (fail-closed search, not name tables); load-bearing substrate/pipeline edits gated by **model PR + consumer**, not improvisation? *(D9, D10, A10)*
 
 ---
 
@@ -44,14 +43,6 @@ Hold any design to these first; if it's clean here, do the full pass. (Each dige
   - ✗ a null / `<error:*>` / `"Unknown"` / `Dynamic` fallback (the C-1..C-10 family); a string-keyed open-set case list with a silent default branch; a fabrication sentinel (`__BUG_*`).
 - **A8 — Decidable by bounded forward execution.** Every accepted form carries an explicit bound (recursion → `Loop` depth, iteration → bounded fold) or is rejected at the boundary; lowering is the receipt; cycles are relations over acyclic values, never cyclic values. → *INVARIANTS P4*
   - ✗ arbitrary recursion / uncapped iteration / a heuristic timeout; a verifier that re-derives its own parallel copy of the facts instead of reading the substrate.
-- **A9 — Dependency graph is the program; parallelism default.** The program *is* a dependency graph; parallel execution is the default — sequential ordering requires a visible data dependency to justify it. → *THESIS · Core abstraction*
-  - ✗ implicit sequential ordering without a dependency edge; parallelism treated as opt-in annotation.
-- **A10 — Ownership: no aliased mutation in emitted code.** Aliasing and mutation conflicts are proven at compile time structurally, not caught by runtime lint. → *THESIS · Tier 1 · Ownership*
-  - ✗ ownership as comments/attributes only; runtime checks substituting for a structural proof.
-- **A11 — Two groundings kept distinct.** Static validation (structural proofs) and efficient target realization are separate obligations — don't conflate "typechecks" with "emits faithfully" or "runs efficiently on target." → *docs/thesis/two-groundings-static-validation-vs-efficient-realization.md*
-  - ✗ a design that proves only one side while claiming both; optimizing realization by bypassing structural grounding.
-- **A12 — CX gate + structural termination checker.** Recursive forms carry proven bounds; hand-threaded `*_bounded`/`*_go` fuel triads are interim — the direction is a checker that *derives* descent from structure and dissolves explicit fuel measures. → *THESIS · CX gate; docs/v4-compiler-migration.md §2.6; src/v4/std/termination.dag*
-  - ✗ new `*_bounded` triads without a named dissolution path to derived descent; CX/termination claims that never execute.
 
 ## B. Homomorphism & bidirectionality
 - **B1 — Two queries of one R, per layer.** Ingest forgets; emit chooses a canonical section (adjoint pair, not inverse). → *ROADMAP · Coercion in both directions; docs/thesis/the-derived-homomorphism.md*
@@ -93,10 +84,6 @@ Hold any design to these first; if it's clean here, do the full pass. (Each dige
   - ✗ a nickname (`ModulePath` for what is a `QualifiedName`); an internal name for a canonical concept (`GrammarSchema`, `ModeledLexRules`); a sibling type beside an unnamed shared parent (the `Interval<D>` / `Dimension<Unit,Carrier>` shape); a sum type a single inhabitant fills every arm of.
 - **D8 — No hand-rolled derived operation.** If behavior is fixed entirely by a modeled type's shape, consume the derived primitive (catamorphism / traversal / grammar model / structural fact); don't re-implement it. → *MODELING M1 Practice 10; INVARIANTS P1*
   - ✗ a function that re-derives what the model already determines — a second authority for one fact. The deficiency is in the model, not the code.
-- **D9 — Grounding completeness (fail-closed emit).** Target primitives are structurally modeled from language references with declared inhabitance; `.dag`→target mapping is algebra-homomorphism search over those inhabitants, not name-keyed lookup tables. Ungrounded types refuse to emit. → *THESIS · Tier 1 · Grounding completeness; docs/single-emitter-design.md*
-  - ✗ string-keyed lookup tables; emitting through silent glue when inhabitance is missing.
-- **D10 — Model-before-implement on load-bearing surfaces.** New substrate facts / pipeline-stage semantics require the L2.5 model PR + named consumer before territory code; improvise past doubt → escalate. → *INVARIANTS P1 substrate-fact introduction procedure; MODELING.md; CLAUDE.md*
-  - ✗ editing `05_emit` / `06_translate` / `00_compile` or `std/` carriers under a brief that predates the relevant model work.
 
 ## E. Enforcement & opacity (the AIM / keystone)
 - **E1 — gunbc enforces type/nominal distinctness** at call-args (an asserted-but-open Tier-1 claim — measured *not* enforced today). → *THESIS · Tier 1; ctrl enforcement call-arg-check design*
@@ -125,8 +112,6 @@ Hold any design to these first; if it's clean here, do the full pass. (Each dige
   - ✗ acceptance via a new hand-`.rs` test instead of a claim; a `compile`-only witness for a type fact (false green — type facts need `run`/`--claim-run`).
 - **F10 — White-box tests = DELETE; relocation must not launder.** A test that mirrors what a declaration already states (decl-shape pin, source-grep of its own structure) is "2FA for code" — a second copy of one authority, zero real coverage → delete, don't migrate. When a test moves layers it stays a discriminating consumer, not a green tautology ("0 dropped" = 0 coverage lost, not 0-because-converted-to-a-grep). → *TESTING.md; operator "white-box tests = 2FA → delete"*
   - ✗ a decl-mirror / source-grep test kept or "migrated"; a relocated test that no longer goes red when the behavior is wrong.
-- **F11 — Map vs territory; seesaw discipline.** Top-down structure is fine in **docs** (the map); executable `.dag` is **territory** and needs a running consumer. Commit shape on paper; build only the minimal slice a consumer validates — defer the rest to consumer-triggered items. → *INVARIANTS · "Read this first" · Map vs territory; seesaw discipline*
-  - ✗ growing compiler-sized specification in `.dag` that typechecks but doesn't run; planning/tidying displacing the keystone consumer.
 
 ## G. Spine & sequencing
 - **G1 — Everything ladders up the spine.** substrate runs → emit/ingest (one R) → platform → lenses. Compiler work earns its place by advancing the spine or a keystone. → *ROADMAP · Milestone shape; ctrl goals-by-horizon*
@@ -148,12 +133,6 @@ Hold any design to these first; if it's clean here, do the full pass. (Each dige
 - **H6 — Audience duality + adoption by economics.** The base language stays approachable (types/fns/match/effects/workflows); the advanced surface (lenses, proofs, user reflection) is **opt-in depth**; guarantees are free **by construction** (by using the language at all), not behind a flag. Adoption is gated by economics (low entry × high free value), not enforcement. → *THESIS · Audience duality · Adoption model*
   - ✗ forcing the lens/proof surface or an annotation tax onto every user; a "compliance check / analyzer flag" as the recruiting mechanism.
 
-## I. Process & doc hygiene
-*(meta-directions — keeps the scan tool and the tree it defers to aligned)*
-
-- **I1 — Single doc authority.** Every fact has exactly one canonical home; other mentions link and must not restate. Planning/scratch lives in **ctrl** unless promoted with a durable consumer. → *docs/thesis/doc-authority.md*
-  - ✗ a second map/ledger restating facts from their authority home; gunbc `docs/planning/` snapshots without a migration plan.
-
 ---
 
-> **Standing note.** v1.1 — gap audit 2026-06-07: added A9–A12 (dependency/ownership/two-groundings/CX), D9–D10 (grounding completeness/model gate), F11 (map vs territory), I1 (doc authority), fast-scan Q8. Yours to own and edit. The directions are durable; when one genuinely changes, change it *here* (with its "why"), so designs can't silently drift it. When you scan a design and find a ✗, the question is never "is the design clever" — it's "does it drop / circumvent / antagonize a direction," and if so, fix the design or change the direction on purpose.
+> **Standing note.** v1 — yours to own and edit. The directions are durable; when one genuinely changes, change it *here* (with its "why"), so designs can't silently drift it. When you scan a design and find a ✗, the question is never "is the design clever" — it's "does it drop / circumvent / antagonize a direction," and if so, fix the design or change the direction on purpose.
