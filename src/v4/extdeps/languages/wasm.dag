@@ -1919,15 +1919,6 @@ type WasmModelCoreLawKey
   | WasmLawFloatIeee754Rounding
   | WasmLawFloatNanInfCarriedByIeee754
 
-data wasm_law_kind_integer_add_associative_modular: Symbol = wasm_law_kind_integer_add_associative_modular
-data wasm_law_kind_integer_add_commutative_modular: Symbol = wasm_law_kind_integer_add_commutative_modular
-data wasm_law_kind_integer_mul_associative_modular: Symbol = wasm_law_kind_integer_mul_associative_modular
-data wasm_law_kind_integer_mul_commutative_modular: Symbol = wasm_law_kind_integer_mul_commutative_modular
-data wasm_law_kind_integer_distributive_modular: Symbol = wasm_law_kind_integer_distributive_modular
-data wasm_law_kind_integer_modular_wrap: Symbol = wasm_law_kind_integer_modular_wrap
-data wasm_law_kind_float_ieee754_rounding: Symbol = wasm_law_kind_float_ieee754_rounding
-data wasm_law_kind_float_nan_inf_carried_by_ieee754: Symbol = wasm_law_kind_float_nan_inf_carried_by_ieee754
-
 data wasm_witness_integer_commutative_semiring_modular: Symbol = wasm_witness_integer_commutative_semiring_modular
 data wasm_witness_float_approximate_field: Symbol = wasm_witness_float_approximate_field
 
@@ -2058,19 +2049,6 @@ fn wasm_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn wasm_law_kind_symbol(key: WasmModelCoreLawKey) -> Symbol {
-  match key {
-    WasmLawIntegerAddAssociativeModular => wasm_law_kind_integer_add_associative_modular
-    WasmLawIntegerAddCommutativeModular => wasm_law_kind_integer_add_commutative_modular
-    WasmLawIntegerMulAssociativeModular => wasm_law_kind_integer_mul_associative_modular
-    WasmLawIntegerMulCommutativeModular => wasm_law_kind_integer_mul_commutative_modular
-    WasmLawIntegerDistributiveModular => wasm_law_kind_integer_distributive_modular
-    WasmLawIntegerModularWrap => wasm_law_kind_integer_modular_wrap
-    WasmLawFloatIeee754Rounding => wasm_law_kind_float_ieee754_rounding
-    WasmLawFloatNanInfCarriedByIeee754 => wasm_law_kind_float_nan_inf_carried_by_ieee754
-  }
-}
-
 fn wasm_model_core_law_node(witness: Node, algebra: Node, key: WasmModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2079,7 +2057,7 @@ fn wasm_model_core_law_node(witness: Node, algebra: Node, key: WasmModelCoreLawK
       wasm_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       wasm_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: wasm_inhabitant_atom(id: wasm_law_kind_symbol(key: key))
+        target: wasm_inhabitant_atom(id: discriminant(v: key))
       )
     ]
   }

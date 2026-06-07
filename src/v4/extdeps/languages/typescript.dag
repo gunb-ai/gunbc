@@ -3292,38 +3292,6 @@ type TsModelCoreLawKey
   | TsLawStringConcatLeftIdentity
   | TsLawStringConcatRightIdentity
 
-data ts_law_kind_number_ieee754_rounding: Symbol = ts_law_kind_number_ieee754_rounding
-data ts_law_kind_number_nan_inf_carried_by_ieee754: Symbol = ts_law_kind_number_nan_inf_carried_by_ieee754
-data ts_law_kind_bigint_add_associative: Symbol = ts_law_kind_bigint_add_associative
-data ts_law_kind_bigint_add_commutative: Symbol = ts_law_kind_bigint_add_commutative
-data ts_law_kind_bigint_mul_associative: Symbol = ts_law_kind_bigint_mul_associative
-data ts_law_kind_bigint_mul_commutative: Symbol = ts_law_kind_bigint_mul_commutative
-data ts_law_kind_bigint_distributive: Symbol = ts_law_kind_bigint_distributive
-data ts_law_kind_bigint_total_order: Symbol = ts_law_kind_bigint_total_order
-data ts_law_kind_bool_bounded_lattice: Symbol = ts_law_kind_bool_bounded_lattice
-data ts_law_kind_bool_complement: Symbol = ts_law_kind_bool_complement
-data ts_law_kind_string_concat_associative: Symbol = ts_law_kind_string_concat_associative
-data ts_law_kind_string_concat_left_identity: Symbol = ts_law_kind_string_concat_left_identity
-data ts_law_kind_string_concat_right_identity: Symbol = ts_law_kind_string_concat_right_identity
-
-fn ts_law_kind_symbol(key: TsModelCoreLawKey) -> Symbol {
-  match key {
-    TsLawNumberIeee754Rounding => ts_law_kind_number_ieee754_rounding
-    TsLawNumberNanInfCarriedByIeee754 => ts_law_kind_number_nan_inf_carried_by_ieee754
-    TsLawBigIntAddAssociative => ts_law_kind_bigint_add_associative
-    TsLawBigIntAddCommutative => ts_law_kind_bigint_add_commutative
-    TsLawBigIntMulAssociative => ts_law_kind_bigint_mul_associative
-    TsLawBigIntMulCommutative => ts_law_kind_bigint_mul_commutative
-    TsLawBigIntDistributive => ts_law_kind_bigint_distributive
-    TsLawBigIntTotalOrder => ts_law_kind_bigint_total_order
-    TsLawBoolBoundedLattice => ts_law_kind_bool_bounded_lattice
-    TsLawBoolComplement => ts_law_kind_bool_complement
-    TsLawStringConcatAssociative => ts_law_kind_string_concat_associative
-    TsLawStringConcatLeftIdentity => ts_law_kind_string_concat_left_identity
-    TsLawStringConcatRightIdentity => ts_law_kind_string_concat_right_identity
-  }
-}
-
 fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -3332,7 +3300,7 @@ fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) 
       ts_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       ts_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: ts_inhabitant_atom(id: ts_law_kind_symbol(key: key))
+        target: ts_inhabitant_atom(id: discriminant(v: key))
       )
     ]
   }
