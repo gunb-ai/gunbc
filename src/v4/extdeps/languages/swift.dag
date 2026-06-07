@@ -76,13 +76,7 @@ import v4.std.model_core {
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  ModelCoreFactAxisWidth,
-}),
-  discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
-  discriminant(v: ModelCoreFactAxisSignedness {}),
-  discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
-  primitive_fact_axis_unbound_diagnostic,
-  discriminant(v: ModelCoreFactAxisWidth {})
+  ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }

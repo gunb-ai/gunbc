@@ -54,11 +54,7 @@ import v4.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  ModelCoreFactAxisWidth,
-}),
-  discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
-  primitive_fact_axis_unbound_diagnostic,
-  discriminant(v: ModelCoreFactAxisWidth {})
+  ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.nat { Nat }

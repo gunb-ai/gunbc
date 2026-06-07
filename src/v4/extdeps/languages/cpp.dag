@@ -59,13 +59,7 @@ import v4.std.model_core {
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  ModelCoreFactAxisWidth,
-}),
-  discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
-  discriminant(v: ModelCoreFactAxisSignedness {}),
-  discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
-  primitive_fact_axis_unbound_diagnostic,
-  discriminant(v: ModelCoreFactAxisWidth {})
+  ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }

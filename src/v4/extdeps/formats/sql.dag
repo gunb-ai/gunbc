@@ -17,10 +17,6 @@ import v4.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
-}),
-  discriminant(v: ModelCoreFactAxisSignedness {}),
-  discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
   primitive_fact_axis_unbound_diagnostic
 }
 import v4.std.witness { Holds, Violates }

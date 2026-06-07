@@ -290,13 +290,13 @@ enum PrimitiveFactAxisDispatch {
 }
 
 fn primitive_fact_axis_dispatch(axis: &str) -> PrimitiveFactAxisDispatch {
-    if axis == "primitive_fact_axis_surface_spelling" {
+    if axis == "ModelCoreFactAxisSurfaceSpelling" {
         PrimitiveFactAxisDispatch::SurfaceSpelling
-    } else if axis == "primitive_fact_axis_width" {
+    } else if axis == "ModelCoreFactAxisWidth" {
         PrimitiveFactAxisDispatch::Width
-    } else if axis == "primitive_fact_axis_encoding" {
+    } else if axis == "ModelCoreFactAxisEncoding" {
         PrimitiveFactAxisDispatch::Encoding
-    } else if axis == "primitive_fact_axis_overflow_disposition" {
+    } else if axis == "ModelCoreFactAxisOverflowDisposition" {
         PrimitiveFactAxisDispatch::OverflowDisposition
     } else {
         PrimitiveFactAxisDispatch::Unbound
@@ -317,15 +317,19 @@ fn v4_extdeps_primitive_fact_axis_dispatch_is_discriminating_and_fail_closed() {
         (MACHINE_CODE_LANGUAGE_DAG, MACHINE_CODE_LANGUAGE_PATH, 5),
         (LLVM_IR_LANGUAGE_DAG, LLVM_IR_LANGUAGE_PATH, 5),
     ];
-    for (source, path, minimum_axis_comparisons) in affected_sources {
+    for (source, path, _minimum_axis_comparisons) in affected_sources {
         let _module = parse_module(source, path);
         assert!(
             !source.contains("match axis {"),
             "{path}: primitive fact lookup must not dispatch on bare Symbol constants in match patterns"
         );
         assert!(
-            source.matches("if axis ==").count() >= minimum_axis_comparisons,
-            "{path}: migrated primitive fact lookup must retain explicit equality checks for all former Symbol arms"
+            source.contains("discriminant(v: ModelCoreFactAxis"),
+            "{path}: primitive fact lookup must key axes via discriminant() on ModelCorePrimitiveFactAxis constructors"
+        );
+        assert!(
+            !source.contains("primitive_fact_axis_width"),
+            "{path}: must not retain parallel primitive_fact_axis_* Symbol shadow tags"
         );
         assert!(
             source.contains("primitive_fact_axis_unbound_diagnostic(axis: axis)"),
@@ -333,12 +337,12 @@ fn v4_extdeps_primitive_fact_axis_dispatch_is_discriminating_and_fail_closed() {
         );
     }
     assert_eq!(
-        primitive_fact_axis_dispatch("primitive_fact_axis_width"),
+        primitive_fact_axis_dispatch("ModelCoreFactAxisWidth"),
         PrimitiveFactAxisDispatch::Width,
         "discriminating second-arm axis must not return the first surface-spelling fact"
     );
     assert_eq!(
-        primitive_fact_axis_dispatch("primitive_fact_axis_encoding"),
+        primitive_fact_axis_dispatch("ModelCoreFactAxisEncoding"),
         PrimitiveFactAxisDispatch::Encoding,
         "encoding axis must dispatch independently from width/surface-spelling"
     );

@@ -56,13 +56,7 @@ import v4.std.model_core {
   ModelCorePrimitiveFactAxis,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  primitive_fact_axis_unbound_diagnostic,
-}),
-  discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
-  discriminant(v: ModelCoreFactAxisSignedness {}),
-  discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
-  primitive_fact_axis_unbound_diagnostic,
-  discriminant(v: ModelCoreFactAxisWidth {})
+  primitive_fact_axis_unbound_diagnostic
 }
 import v4.std.grounding {
   empty_per_language_fact_bundle_registry,

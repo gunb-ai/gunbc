@@ -73,9 +73,6 @@ import v4.std.model_core {
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
-}),
-  discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
   primitive_fact_axis_unbound_diagnostic
 }
 import v4.std.witness { Holds, Violates }
