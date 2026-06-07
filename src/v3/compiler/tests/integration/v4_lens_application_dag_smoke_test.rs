@@ -7,6 +7,12 @@
 //!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full `compile_to_dag` import merge
 //! deferred until cross-module v4 load lands (peer v4 smoke posture).
+//!
+//! **Wave-A W2 fold-delete:** behavioral receipts migrated to discriminating claim-run
+//! witnesses in `src/v4/test/claim/lens_application/sg_claims.dag` (consolidated roster).
+//! Remaining assertions are **B-INTERIM** host-AST declaration-shape receipts — expressible
+//! in principle; host-AST until ctrl#1476 READ-axis reflection substrate lands; TRIGGER:
+//! migrate to `.dag` witness when substrate exists (route substrate consumers to sleek-carp-651).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
@@ -106,13 +112,6 @@ fn import_includes_name(
                 .all(|(a, &b)| a.as_str() == b)
             && names.iter().any(|n| n == name)
     })
-}
-
-#[test]
-fn v4_lens_application_dag_tokenizes_and_parses() {
-    let _ = parse_module(REPORT_DAG, REPORT_PATH);
-    let _ = parse_module(APPLICATION_DAG, APPLICATION_PATH);
-    let _ = parse_module(SYNTHESIS_DAG, SYNTHESIS_PATH);
 }
 
 #[test]

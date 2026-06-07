@@ -22,7 +22,7 @@ import v4.lens.registry {
   lens_registry_ids_resolve,
   lens_registry_row_count
 }
-import v4.std.collection { Cons, Empty, List }
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 
 

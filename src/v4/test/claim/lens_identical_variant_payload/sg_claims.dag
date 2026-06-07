@@ -13,7 +13,7 @@ import v4.lens.identical_variant_payload {
   identical_variant_payload_fact_for_type
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Node, Symbol }
 import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
 
 

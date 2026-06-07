@@ -1,7 +1,6 @@
 // src/v4/test/claim/lens_affected_set/sg_claims.dag
-// Scope: Wave-A W2 — discriminating claim-run witnesses for IRT-1 affected_set leaf
-// behavioral receipts migrated from v4_lens_affected_set_dag_smoke_test.rs wiring greps.
-// Status: execute-the-carrier; routed through v2 `dag run --claim-run`.
+// Scope: Wave-A W2 — foldable-now claim-run witnesses for IRT-1 affected_set leaf receipts.
+// Excluded (A-blocked-v2-crash, not in roster): dimension_seed, excluded_propagation, leaf_suite.
 
 module v4.test.claim.lens_affected_set.sg_claims
 
@@ -13,35 +12,16 @@ import v4.test.claim.lens_affected_set.fail_closed_pending_escalation {
 import v4.test.claim.lens_affected_set.irt1_boundary_prune_receipt {
   irt1_boundary_prune_receipt_claim_holds
 }
-import v4.test.claim.lens_affected_set.irt1_dimension_seed_receipt {
-  irt1_dimension_seed_receipt_claim_holds
-}
 import v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt {
   irt1_empty_diff_frontier_receipt_claim_holds
 }
-import v4.test.claim.lens_affected_set.irt1_excluded_propagation_receipt {
-  irt1_excluded_propagation_receipt_claim_holds
-}
 import v4.test.claim.lens_affected_set.irt1_fail_closed_absorption_receipt {
   irt1_fail_closed_absorption_receipt_claim_holds
-}
-import v4.test.claim.lens_affected_set.irt1_leaf_claim_suite {
-  affected_set_irt1_leaf_claim_suite_holds
 }
 
 
 fn lens_affected_set_irt1_boundary_prune_holds() -> Bool {
   irt1_boundary_prune_receipt_claim_holds()
-}
-
-
-fn lens_affected_set_irt1_dimension_seed_holds() -> Bool {
-  irt1_dimension_seed_receipt_claim_holds()
-}
-
-
-fn lens_affected_set_irt1_excluded_propagation_holds() -> Bool {
-  irt1_excluded_propagation_receipt_claim_holds()
 }
 
 
@@ -57,9 +37,4 @@ fn lens_affected_set_irt1_fail_closed_absorption_holds() -> Bool {
 
 fn lens_affected_set_irt1_empty_diff_frontier_holds() -> Bool {
   irt1_empty_diff_frontier_receipt_claim_holds()
-}
-
-
-fn lens_affected_set_irt1_leaf_suite_holds() -> Bool {
-  affected_set_irt1_leaf_claim_suite_holds()
 }

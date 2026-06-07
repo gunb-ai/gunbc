@@ -17,6 +17,13 @@
 //! **INVARIANTS §P5 Dispatch-Discipline Mechanism (b):** this path’s SG-0 census line + matching
 //! `INVARIANTS.md` table row land in the same PR as the harness (home-of-record for the
 //! hand-Rust receipt).
+//!
+//! **Wave-A W2 fold-delete:** registry query behavioral receipts migrated to
+//! `src/v4/test/claim/lens_registry/sg_claims.dag` (consolidated roster). Remaining
+//! assertions are **B-INTERIM** host-AST declaration-shape (registry row pins, ci.dag consumer
+//! wiring, string-grep bound-module receipts) — expressible in principle; host-AST until
+//! ctrl#1476 READ-axis reflection substrate lands; TRIGGER: migrate to `.dag` witness when
+//! substrate exists (route substrate consumers to sleek-carp-651).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{

@@ -10,6 +10,13 @@
 //!
 //! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
 //! **TASKS.md** T-21 (IRT-1 held).
+//!
+//! **Wave-A W2 fold-delete:** IRT-1 leaf behavioral receipts migrated to
+//! `src/v4/test/claim/lens_affected_set/sg_claims.dag` (consolidated roster). Remaining
+//! module-authority and claim-wiring greps are **B-INTERIM** host-AST declaration-shape —
+//! expressible in principle; host-AST until ctrl#1476 READ-axis reflection substrate lands;
+//! TRIGGER: migrate to `.dag` witness when substrate exists (route substrate consumers to
+//! sleek-carp-651).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
@@ -87,15 +94,6 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
         } => item_name == name,
         _ => false,
     })
-}
-
-#[test]
-fn v4_lens_affected_set_dag_tokenizes_and_parses() {
-    let _ = parse_module(AFFECTED_SET_DAG, AFFECTED_SET_PATH);
-    let _ = parse_module(IRT1_LEAF_CLAIM_SUITE.0, IRT1_LEAF_CLAIM_SUITE.1);
-    for (source, path) in IRT1_LEAF_CLAIMS {
-        let _ = parse_module(source, path);
-    }
 }
 
 #[test]

@@ -10,6 +10,12 @@
 //! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
 //! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:57); dissolves when T-38B
 //! `.dag` TestClaim execution replaces this hand-Rust parse harness.
+//!
+//! **Wave-A W2 fold-delete:** `idempotency_write_effect_claim_holds` migrated to
+//! `src/v4/test/claim/lens_idempotency/sg_claims.dag` (consolidated roster). Remaining
+//! wiring assertions are **B-INTERIM** host-AST declaration-shape — expressible in principle;
+//! host-AST until ctrl#1476 READ-axis reflection substrate lands; TRIGGER: migrate to
+//! `.dag` witness when substrate exists (route substrate consumers to sleek-carp-651).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
@@ -42,13 +48,6 @@ fn module_path(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<&str> 
             _ => None,
         })
         .unwrap_or_default()
-}
-
-#[test]
-fn v4_lens_idempotency_claim_dags_tokenize_and_parse() {
-    let _ = parse_module(WRITE_EFFECT_DAG, WRITE_EFFECT_PATH);
-    let _ = parse_module(SUBJECT_ROSTER_DAG, SUBJECT_ROSTER_PATH);
-    let _ = parse_module(FAMILY_RECEIPT_DAG, FAMILY_RECEIPT_PATH);
 }
 
 #[test]

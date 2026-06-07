@@ -3,23 +3,16 @@
 //! Parse-level ratchet for `src/v4/lens/identical_variant_payload.dag` — L1.4
 //! IdenticalVariantPayload sub-signature substrate (Carrier-clone family;
 //! shared `coverage_defect_carrier_clone` acceptance key).
+//!
+//! **Wave-A W2 fold-delete:** `identical_variant_payload_fact_for_type` Unrealized scaffold
+//! migrated to `src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag`. Remaining
+//! source-shape assertions are **B-INTERIM** host-AST declaration-shape — expressible in
+//! principle; host-AST until ctrl#1476 READ-axis reflection substrate lands; TRIGGER: migrate
+//! to `.dag` witness when substrate exists (route substrate consumers to sleek-carp-651).
 
 const IDENTICAL_VARIANT_PAYLOAD_DAG: &str =
     include_str!("../../../../v4/lens/identical_variant_payload.dag");
 const IDENTICAL_VARIANT_PAYLOAD_PATH: &str = "src/v4/lens/identical_variant_payload.dag";
-
-#[test]
-fn v4_lens_identical_variant_payload_dag_tokenizes_and_parses() {
-    let tokens = v3_compiler::tokenize_for_test(
-        IDENTICAL_VARIANT_PAYLOAD_DAG,
-        IDENTICAL_VARIANT_PAYLOAD_PATH,
-    )
-    .unwrap_or_else(|diag| {
-        panic!("{IDENTICAL_VARIANT_PAYLOAD_PATH}: tokenization failed: {diag:?}")
-    });
-    v3_compiler::parse_for_test(&tokens, IDENTICAL_VARIANT_PAYLOAD_PATH)
-        .unwrap_or_else(|diag| panic!("{IDENTICAL_VARIANT_PAYLOAD_PATH}: parse failed: {diag:?}"));
-}
 
 #[test]
 fn v4_lens_identical_variant_payload_module_authority_and_entrypoints() {
