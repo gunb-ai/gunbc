@@ -4,12 +4,12 @@ This directory hosts the **subsystem-modeling artifacts** for the `ctrl/` → `.
 
 **Authority**: every file in this directory is `🟡 STAGED`, not `🟢 AUTHORITY`, per INVARIANTS P2. The TS implementation in [the `ctrl/` repo](https://github.com/gunb-ai/ctrl) is the sole `🟢 AUTHORITY` while a subsystem is staged here. **Two distinct gates** govern the lifecycle — kept separate per INVARIANTS P2/P5 single-trigger discipline:
 
-1. **Parity-proof gate (readiness)**: trio convergence — `algebra_landed` ✓ + `phase15_pr_merged` ✓ + `phase3_emission_landed` ✓ + `parity_passed` ✓, using the ledger's column semantics (`algebra_landed` is satisfied by `true` OR `—` for non-consumer rows; see [`docs/audit/r4-ctrl-phase15-subsystem-receipt-trail.md`](../../docs/audit/r4-ctrl-phase15-subsystem-receipt-trail.md) §"N/A semantics" / §"Wave-1-trio gate" — that ledger is the single source of truth for these predicates). Crossing this gate *proves* the .dag substrate can stand in for the TS implementation; it does NOT itself flip authority. Workers and Mgrs cite this gate when judging whether a subsystem is ready for Phase 4 dispatch.
+1. **Parity-proof gate (readiness)**: trio convergence — `algebra_landed` ✓ + `phase15_pr_merged` ✓ + `phase3_emission_landed` ✓ + `parity_passed` ✓, using the ledger's column semantics (`algebra_landed` is satisfied by `true` OR `—` for non-consumer rows). Crossing this gate *proves* the .dag substrate can stand in for the TS implementation; it does NOT itself flip authority. Workers and Mgrs cite this gate when judging whether a subsystem is ready for Phase 4 dispatch.
 2. **Source-authority deletion gate (`STAGED → AUTHORITY` flip)**: the **ctrl PR cut-over** that deletes the corresponding TS file(s). This is the *only* event that flips a subsystem from `🟡 STAGED` to `🟢 AUTHORITY`. The PR's existence + merge IS the deletion receipt.
 
 The parity-proof gate is a **precondition** for cut-over dispatch but is not sufficient by itself; the cut-over PR must still land. This collapses-then-splits ordering avoids the competing-authority failure mode (no overlap window where two artifacts claim authority simultaneously).
 
-See [`docs/r4-ctrl-dag-migration-project-plan.md`](../../docs/r4-ctrl-dag-migration-project-plan.md) §6 + §"Phase 4" and [`docs/briefs/r4-ctrl-migration-subsystem-modeling-manager.md`](../../docs/briefs/r4-ctrl-migration-subsystem-modeling-manager.md) for the gate definitions.
+The migration project plan and the manager brief that define these gates live in the ctrl repo (`gunb-ai/ctrl`).
 
 ## Conventions
 
