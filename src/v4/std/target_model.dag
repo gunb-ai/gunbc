@@ -234,7 +234,7 @@ data target_type_expression_decode_invalid: Symbol = target_type_expression_deco
 data target_atom_realization_display_name_decode_invalid: Symbol = target_atom_realization_display_name_decode_invalid
 data target_constructor_template_decode_invalid: Symbol = target_constructor_template_decode_invalid
 data target_type_alias_field_spelling: Symbol = target_type_alias_field_spelling
-// TargetValueTemplateKind wire tags derive via discriminant(v: kind) — no shadow Symbol taxonomy.
+
 data target_model_edge_value_expression: Symbol = target_model_edge_value_expression
 data target_value_expression_symbol_identity_atom: Symbol = target_value_expression_symbol_identity
 data target_value_expression_symbol_to_owned_string_atom: Symbol = target_value_expression_symbol_to_owned_string
@@ -1185,8 +1185,6 @@ fn target_atom_realization_lookup_in_catalog_node(
 // TargetFunctionSignatureRealization is a product (heterogeneous fields), not an N-arm
 // identical-payload coproduct.
 
-// FunctionBoundarySite wire tags derive via discriminant(v: site) — no shadow Symbol taxonomy.
-
 data target_function_signature_realization_field_source_carrier: Symbol = target_function_signature_realization_field_source_carrier
 data target_function_signature_realization_field_target_model_bundle: Symbol = target_function_signature_realization_field_target_model_bundle
 data target_function_signature_realization_field_boundary_site: Symbol = target_function_signature_realization_field_boundary_site
@@ -1506,7 +1504,6 @@ data target_model_edge_type_expression_projection: Symbol = target_model_edge_ty
 // Emitted type-expression Conj fields — declared kind coproduct tag + surface + positional slots.
 data target_type_expr_field_kind: Symbol = target_type_expr_field_kind
 data target_type_expr_field_surface: Symbol = target_type_expr_field_surface
-// TargetTypeExprKind wire tags derive via discriminant(v: kind) — no shadow Symbol taxonomy.
 
 // 🟢 coproduct dissolution — SG-2 emitted type-expression wire-shape tag (six projection row forms).
 type TargetTypeExprKind
@@ -2451,8 +2448,6 @@ fn target_collection_set_carrier_node() -> Node {
   }
 }
 
-// TargetCollectionReprKind wire tags derive via discriminant(v: kind) — no shadow Symbol taxonomy.
-
 fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectionReprKind> {
   if id == discriminant(v: TargetCollectionReprBTreeSet) {
     optional_present(value: TargetCollectionReprBTreeSet)
@@ -2674,9 +2669,6 @@ type TargetUseSiteOwnershipRealization {
 type TargetCarrierOwnership
   = CarrierOwnershipByValue
   | CarrierOwnershipByReference { realization: TargetUseSiteOwnershipRealization }
-
-// TargetOwnershipUseSite / TargetReferenceLayer / TargetUseSiteOwnershipSourceProjection wire
-// tags derive via discriminant(v: ...) — no shadow Symbol taxonomy.
 
 data target_use_site_ownership_field_source_carrier: Symbol = target_use_site_ownership_field_source_carrier
 data target_use_site_ownership_field_source_projection: Symbol = target_use_site_ownership_field_source_projection

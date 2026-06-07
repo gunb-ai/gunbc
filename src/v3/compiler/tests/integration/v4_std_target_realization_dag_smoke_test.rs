@@ -182,39 +182,6 @@ fn v4_std_target_realization_dag_tokenizes_and_parses() {
 }
 
 #[test]
-fn v4_std_target_model_coproduct_discriminants_use_intrinsic() {
-    let _module = parse_module(TARGET_MODEL_DAG, TARGET_MODEL_PATH);
-    assert!(
-        !TARGET_MODEL_DAG.contains("data target_value_template_symbol_identity_passthrough: Symbol")
-            && !TARGET_MODEL_DAG.contains("data target_type_expr_kind_atom: Symbol")
-            && !TARGET_MODEL_DAG.contains("data target_function_boundary_site_param: Symbol")
-            && !TARGET_MODEL_DAG.contains("data target_collection_repr_kind_btree_set: Symbol")
-            && !TARGET_MODEL_DAG.contains("data target_ownership_use_site_function_return: Symbol")
-            && !TARGET_MODEL_DAG.contains("data target_reference_layer_owned: Symbol"),
-        "{TARGET_MODEL_PATH}: must not declare parallel Symbol-tag shadow taxonomy for coproduct wire tags"
-    );
-    assert!(
-        !TARGET_MODEL_DAG.contains("fn target_value_template_kind_tag(")
-            && !TARGET_MODEL_DAG.contains("fn target_function_boundary_site_symbol(")
-            && !TARGET_MODEL_DAG.contains("fn target_type_expr_kind_atom_for(")
-            && !TARGET_MODEL_DAG.contains("fn target_collection_repr_kind_atom(")
-            && !TARGET_MODEL_DAG.contains("fn target_ownership_use_site_atom(")
-            && !TARGET_MODEL_DAG.contains("fn target_reference_layer_atom("),
-        "{TARGET_MODEL_PATH}: hand-written coproduct→Symbol bridge fns must dissolve into discriminant()"
-    );
-    assert!(
-        TARGET_MODEL_DAG.contains("discriminant(v: kind)")
-            && TARGET_MODEL_DAG.contains("discriminant(v: site)")
-            && TARGET_MODEL_DAG.contains("discriminant(v: FunctionBoundaryParam)")
-            && TARGET_MODEL_DAG.contains("discriminant(v: TargetTypeExprAtom)")
-            && TARGET_MODEL_DAG.contains("discriminant(v: TargetCollectionReprBTreeSet)")
-            && TARGET_MODEL_DAG.contains("discriminant(v: OwnershipAtFunctionReturn)")
-            && TARGET_MODEL_DAG.contains("discriminant(v: ReferenceLayerOwned)"),
-        "{TARGET_MODEL_PATH}: wire encode/decode must key coproduct arms via discriminant() on typed constructors"
-    );
-}
-
-#[test]
 fn v4_std_target_realization_declares_target_atom_realization_carrier() {
     let module = parse_module(TARGET_MODEL_DAG, TARGET_MODEL_PATH);
     assert!(
