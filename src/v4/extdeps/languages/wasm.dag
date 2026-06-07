@@ -77,7 +77,7 @@ import v4.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
   grammar_relation_field_emitted,
@@ -682,13 +682,6 @@ fn wasm_mvp1_emitted_add_fn_node() -> Node {
 
 fn wasm_mvp1_source_text_authority() -> String {
   wasm_mvp1_source_text
-}
-
-fn wasm_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
-  match token {
-    FixedToken { token_class: c } => c
-    BoundToken { token_class: c, binding: _ } => c
-  }
 }
 
 fn wasm_concrete_token_node(token: ConcreteSyntaxToken) -> Node {

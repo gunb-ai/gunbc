@@ -82,7 +82,7 @@ import v4.std.model_core {
   PrimitiveOperationRef
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
@@ -1418,15 +1418,6 @@ fn rust_mvp1_emitted_add_fn_node() -> Node {
 
 fn rust_mvp1_source_text_authority() -> String {
   rust_mvp1_source_text
-}
-
-// MVP serialize_source — literal symbol + grammar production + token relation (aligned with source text).
-// dissolve-on: T-10 literal Node + bidirectional grammar-as-bidir emit/ingest round-trip.
-fn rust_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
-  match token {
-    FixedToken { token_class: c } => c
-    BoundToken { token_class: c, binding: _ } => c
-  }
 }
 
 fn rust_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
