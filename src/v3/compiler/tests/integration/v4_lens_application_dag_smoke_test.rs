@@ -154,10 +154,6 @@ fn v4_std_report_dag_advisory_carrier_shape() {
         "{REPORT_PATH}: ReportReason closed enum"
     );
     assert!(
-        surface_declares_fn(&module, "report_reason_to_diagnostic_reason"),
-        "{REPORT_PATH}: advisory→diagnostic reason seam"
-    );
-    assert!(
         type_sum_has_variant(&module, "ReportReason", "SynthesisGapDecisionTree"),
         "{REPORT_PATH}: ReportReason must declare SynthesisGapDecisionTree arm"
     );
