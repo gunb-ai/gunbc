@@ -2,7 +2,7 @@
 
 # Compiler and Runtime Invariants
 
-This is the reviewer-facing invariant index. Five principles anchor everything else. Per-rule long-form rationale lives under [`docs/invariants/`](docs/invariants/) and related design docs.
+This is the reviewer-facing invariant index. Five principles anchor everything else.
 
 ## The five principles
 
@@ -16,7 +16,7 @@ Every rule in this repo descends from one of five first principles. Growing sub-
 
 Two load-bearing headings from the previous organization map directly into these principles: **Verifiability** rolls into Decidability (verification is a structural consequence of a closed system), and **Sustainability** rolls into Progress Is Dissolution (sustainability is the long-run framing of cost-of-change). Their sub-rules distribute into the principles where their motivating teeth live — detailed in the appendix.
 
-Each principle below carries: the rule, why it stands alone, problem/solution shapes for pattern-matching, a historical dissolution receipt, and a cross-reference to the related rule IDs that elaborate it. Per-rule long-form rationale lives in subdocs under [`docs/invariants/`](docs/invariants/) and [`docs/design-*.md`](docs/); the appendix below names the exact subdoc per ID and each numbered rule has a stable `#id` anchor for in-file citation (e.g., `INVARIANTS.md#c-8`, `INVARIANTS.md#e-9`).
+Each principle below carries: the rule, why it stands alone, problem/solution shapes for pattern-matching, a historical dissolution receipt, and a cross-reference to the related rule IDs that elaborate it. Each numbered rule has a stable `#id` anchor for in-file citation (e.g., `INVARIANTS.md#c-8`, `INVARIANTS.md#e-9`); the appendix below indexes every ID to its home principle.
 
 ---
 
@@ -115,9 +115,9 @@ External authority: well-founded relations (Zermelo 1904, von Neumann 1929), ran
 
 The 5-Behavior substrate (`Behavior::Value | Transform | Branch | Loop | Bind` in `src/v3/std/substrate.dag`) is a *typed total* fragment of lambda calculus + structural coproducts + bounded recursion. The mapping is direct: `Transform` is application `(M N)`; `Bind` is let-binding (sugar for `(λx.N) M`); `Arrow.body` is the lambda abstraction `λ(params).body`; `Branch` extends with primitive coproducts (System F + sums); `Loop` replaces the Y-combinator with bounded recursion (totality choice — same as Coq/Agda/Idris-with-totality).
 
-α-conversion is satisfied by construction (NodeId-based binding has no name shadowing); β-reduction is being reified as a substrate citizen via the PB-Runtime interpreter-as-data work (see [`docs/design-pb-runtime-interpreter.md`](docs/design-pb-runtime-interpreter.md)); capture-avoiding substitution is structurally satisfied by DAG-reference identity. The lens framework + `Witness<C>` + `DimensionReport` are **analyses on top of the calculus** (algebraic-effect-handler-shaped per Plotkin & Pretnar 2009), not calculus citizens.
+α-conversion is satisfied by construction (NodeId-based binding has no name shadowing); β-reduction is being reified as a substrate citizen via the PB-Runtime interpreter-as-data work; capture-avoiding substitution is structurally satisfied by DAG-reference identity. The lens framework + `Witness<C>` + `DimensionReport` are **analyses on top of the calculus** (algebraic-effect-handler-shaped per Plotkin & Pretnar 2009), not calculus citizens.
 
-External authority: Church (1932/1936), Curry-Howard correspondence, System F (Girard 1972 / Reynolds 1974), Calculus of Inductive Constructions (Coquand & Huet 1986), Agda's totality discipline. Long-form: [`docs/design-substrate-lambda-calculus-grounding.md`](docs/design-substrate-lambda-calculus-grounding.md) — names the 3 intentional divergences (Loop / Branch / n-ary) + 3 research-level open questions (η-equivalence, confluence, strong normalization).
+External authority: Church (1932/1936), Curry-Howard correspondence, System F (Girard 1972 / Reynolds 1974), Calculus of Inductive Constructions (Coquand & Huet 1986), Agda's totality discipline. The grounding carries 3 intentional divergences (Loop / Branch / n-ary) and 3 research-level open questions (η-equivalence, confluence, strong normalization).
 
 ### Problem shape: Ungrounded heuristic
 
@@ -353,7 +353,7 @@ A PR's brief assigns a bounded scope (language fill, extdeps/ substrate, refacto
 
 ### Reflection evidence is not structural proof
 
-`reflect_program_dag_nodes_in_file` (via `lens_apply::substrate_reflection::reflect_behavior_list`) projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` per [`docs/design-reflection-completeness.md`](docs/design-reflection-completeness.md) (LOCKED 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
+`reflect_program_dag_nodes_in_file` (via `lens_apply::substrate_reflection::reflect_behavior_list`) projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` (reflection-completeness contract, locked 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
 
 Reflection is **authored against** `src/v3/std/substrate.dag` and uses the same **positional variant-payload** contract as bounded lens projection (`sum_variant_payload` ↔ `variant_payload_for_binding` in `lens_apply.rs`). **That is not yet a closed mechanical theorem** over the whole nested `FieldValue` tree: conformance is enforced where sums are built, and integration tests ratchet **record field order vs. named substrate `Conj`** for selected carriers (`ValueNode`, `TransformNode`, `BindNode`). Extend those tests (or add a walker) as new reflected shapes land—do not treat “no lossy mirror” as automatic proof against every `TypeConnective` row.
 
@@ -500,7 +500,7 @@ A model, function, type, or field is written ahead of anything that uses it — 
 - **Escape Hatches** — recurring violations come from API surfaces that make the wrong thing easier than the right thing
 - **Scaffold receipts** — every new interim scaffold lands with a named dissolution trigger and a checkable completion condition in the same change.
 
-- **Dispatch-Discipline Mechanisms (a–c)** and **SG-0 receipt tables** — operational P5 enforcement for hand-Rust under `src/v3/`; see [`_internal/INVARIANTS_OPS.md`](_internal/INVARIANTS_OPS.md) (mechanism **(b)** is what `.github/PULL_REQUEST_TEMPLATE.md` cites for the per-PR dissolution gate).
+- **Dispatch-Discipline Mechanisms (a–c)** and **SG-0 receipt tables** — operational P5 enforcement for hand-Rust under `src/v3/` (mechanism **(b)** is what `.github/PULL_REQUEST_TEMPLATE.md` cites for the per-PR dissolution gate).
 - **E-5: Clean-Emission Contract Is Satisfied By Construction** — clean-emission obligations belong in declared contracts, not hand-maintained target-side conventions (replacing-convention-by-construction is a progress move, not a boundary clarification)
 - **E-7: No Target-Private Realization Schema Without A Dissolution Ratchet** — explicitly names the dissolution discipline in the rule title
 - **DB-4: Clean-Emission Behavior Is A Declared Contract With Real Consumers** — same by-construction framing as E-5
