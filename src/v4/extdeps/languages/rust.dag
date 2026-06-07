@@ -1,4 +1,7 @@
 // src/v4/extdeps/languages/rust.dag
+// Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
+// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar (Rust Reference §17.4 if, §17.6 return, §17.10.1 let, §17.11 block). Wave-1 MVP-1 and wave-2 productions declared as `FormalProduction` flat rhs (`rust_wave1_formal_productions`, `rust_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence (independently maintained — CP-1b dual-carrier hold). Wave-2 keyword/operator lexemes are layout-free; `WhitespaceChar` trivia separates tokens. Wave-1 MVP-1 lex still has layout-in-literals — 🟡 T-6 TokenLayout. bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
 
@@ -648,17 +651,6 @@ type RustModelCoreLawKey
   | RustLawFloatNanInfCarriedByIeee754
   | RustLawBoolBoundedLattice
   | RustLawBoolComplement
-
-data rust_law_kind_integer_add_associative_when_representable: Symbol = rust_law_kind_integer_add_associative_when_representable
-data rust_law_kind_integer_add_commutative_when_representable: Symbol = rust_law_kind_integer_add_commutative_when_representable
-data rust_law_kind_integer_mul_associative_when_representable: Symbol = rust_law_kind_integer_mul_associative_when_representable
-data rust_law_kind_integer_mul_commutative_when_representable: Symbol = rust_law_kind_integer_mul_commutative_when_representable
-data rust_law_kind_integer_distributive_when_representable: Symbol = rust_law_kind_integer_distributive_when_representable
-data rust_law_kind_integer_total_order_over_representable_values: Symbol = rust_law_kind_integer_total_order_over_representable_values
-data rust_law_kind_float_ieee754_rounding: Symbol = rust_law_kind_float_ieee754_rounding
-data rust_law_kind_float_nan_inf_carried_by_ieee754: Symbol = rust_law_kind_float_nan_inf_carried_by_ieee754
-data rust_law_kind_bool_bounded_lattice: Symbol = rust_law_kind_bool_bounded_lattice
-data rust_law_kind_bool_complement: Symbol = rust_law_kind_bool_complement
 
 data rust_witness_checked_integer_arithmetic: Symbol = rust_witness_checked_integer_arithmetic
 data rust_witness_float_approximate_field: Symbol = rust_witness_float_approximate_field
@@ -2248,27 +2240,6 @@ fn rust_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn rust_law_kind_symbol(key: RustModelCoreLawKey) -> Symbol {
-  match key {
-    RustLawIntegerAddAssociativeWhenRepresentable =>
-      rust_law_kind_integer_add_associative_when_representable
-    RustLawIntegerAddCommutativeWhenRepresentable =>
-      rust_law_kind_integer_add_commutative_when_representable
-    RustLawIntegerMulAssociativeWhenRepresentable =>
-      rust_law_kind_integer_mul_associative_when_representable
-    RustLawIntegerMulCommutativeWhenRepresentable =>
-      rust_law_kind_integer_mul_commutative_when_representable
-    RustLawIntegerDistributiveWhenRepresentable =>
-      rust_law_kind_integer_distributive_when_representable
-    RustLawIntegerTotalOrderOverRepresentableValues =>
-      rust_law_kind_integer_total_order_over_representable_values
-    RustLawFloatIeee754Rounding => rust_law_kind_float_ieee754_rounding
-    RustLawFloatNanInfCarriedByIeee754 => rust_law_kind_float_nan_inf_carried_by_ieee754
-    RustLawBoolBoundedLattice => rust_law_kind_bool_bounded_lattice
-    RustLawBoolComplement => rust_law_kind_bool_complement
-  }
-}
-
 fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2277,7 +2248,7 @@ fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawK
       rust_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       rust_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: rust_inhabitant_atom(id: rust_law_kind_symbol(key: key))
+        target: rust_inhabitant_atom(id: discriminant(v: key))
       )
     ]
   }

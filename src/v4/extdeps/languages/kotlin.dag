@@ -1,4 +1,7 @@
 // src/v4/extdeps/languages/kotlin.dag
+// Scope: Kotlin language specification LanguageModel — built-in scalar fact-bundles, catalog-derived canonical symbols, ModelCore primitive bundles, wave-1 lex/grammar/MVP.
+// Status: T-4 Kotlin wave-1 + T-4.17 wave-2a lex/grammar (wave-1 productions declared as `FormalProduction` flat rhs — `kotlin_wave1_formal_productions`; `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence) + wave-2b inhabitance (int/long/float/bool only); built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 `fun add` substrate for T-11; byte/short stay in `KotlinIntegerPrimitiveFacts` only — `KotlinOrderedRingIntegerFacts` excludes Bits8/Bits16 at the type level (stdlib arithmetic widens sub-Int built-ins to Int); char/string/unit/nothing inhabitance deferred (encoding/singleton/uninhabited); runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
+// Anchor: https://kotlinlang.org/spec/built-in-types-and-their-semantics.html — syntax/lex/grammar: https://kotlinlang.org/spec/syntax-and-grammar.html
 
 module v4.extdeps.languages.kotlin
 

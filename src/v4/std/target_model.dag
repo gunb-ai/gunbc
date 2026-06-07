@@ -1,4 +1,7 @@
 // src/v4/std/target_model.dag
+// Scope: TargetModel carrier + Conj-bundle edge keys + grammar-relation protocol symbols
+//   + target-realization carriers (SG-1/SG-2/SG-3 canonical home per design-target-realization-canonical-home.md).
+// Status: single authority per INVARIANTS P2 — consumers import; do not redeclare.
 
 module v4.std.target_model
 
@@ -152,13 +155,6 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
           }
         ]
       }
-  }
-}
-
-fn concrete_syntax_token_class(token: ConcreteSyntaxToken) -> Symbol {
-  match token {
-    FixedToken { token_class: c } => c
-    BoundToken { token_class: c, binding: _ } => c
   }
 }
 

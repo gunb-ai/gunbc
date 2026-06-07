@@ -1,4 +1,10 @@
 // src/v4/extdeps/languages/wasm.dag
+// Scope: WebAssembly Core numeric value types — LanguageModel fact-bundles (Shape A).
+// Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
+// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
+// Anchor: https://webassembly.github.io/spec/core/types.html#number-types
+// Ledger: CP-3229-GREEN-TERMINAL, SL-T4-WAVE2B-WASM-LAW-KEY.
+// 🟡
 
 module v4.extdeps.languages.wasm
 
@@ -1906,15 +1912,6 @@ type WasmModelCoreLawKey
   | WasmLawFloatIeee754Rounding
   | WasmLawFloatNanInfCarriedByIeee754
 
-data wasm_law_kind_integer_add_associative_modular: Symbol = wasm_law_kind_integer_add_associative_modular
-data wasm_law_kind_integer_add_commutative_modular: Symbol = wasm_law_kind_integer_add_commutative_modular
-data wasm_law_kind_integer_mul_associative_modular: Symbol = wasm_law_kind_integer_mul_associative_modular
-data wasm_law_kind_integer_mul_commutative_modular: Symbol = wasm_law_kind_integer_mul_commutative_modular
-data wasm_law_kind_integer_distributive_modular: Symbol = wasm_law_kind_integer_distributive_modular
-data wasm_law_kind_integer_modular_wrap: Symbol = wasm_law_kind_integer_modular_wrap
-data wasm_law_kind_float_ieee754_rounding: Symbol = wasm_law_kind_float_ieee754_rounding
-data wasm_law_kind_float_nan_inf_carried_by_ieee754: Symbol = wasm_law_kind_float_nan_inf_carried_by_ieee754
-
 data wasm_witness_integer_commutative_semiring_modular: Symbol = wasm_witness_integer_commutative_semiring_modular
 data wasm_witness_float_approximate_field: Symbol = wasm_witness_float_approximate_field
 
@@ -2045,19 +2042,6 @@ fn wasm_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn wasm_law_kind_symbol(key: WasmModelCoreLawKey) -> Symbol {
-  match key {
-    WasmLawIntegerAddAssociativeModular => wasm_law_kind_integer_add_associative_modular
-    WasmLawIntegerAddCommutativeModular => wasm_law_kind_integer_add_commutative_modular
-    WasmLawIntegerMulAssociativeModular => wasm_law_kind_integer_mul_associative_modular
-    WasmLawIntegerMulCommutativeModular => wasm_law_kind_integer_mul_commutative_modular
-    WasmLawIntegerDistributiveModular => wasm_law_kind_integer_distributive_modular
-    WasmLawIntegerModularWrap => wasm_law_kind_integer_modular_wrap
-    WasmLawFloatIeee754Rounding => wasm_law_kind_float_ieee754_rounding
-    WasmLawFloatNanInfCarriedByIeee754 => wasm_law_kind_float_nan_inf_carried_by_ieee754
-  }
-}
-
 fn wasm_model_core_law_node(witness: Node, algebra: Node, key: WasmModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2066,7 +2050,7 @@ fn wasm_model_core_law_node(witness: Node, algebra: Node, key: WasmModelCoreLawK
       wasm_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       wasm_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: wasm_inhabitant_atom(id: wasm_law_kind_symbol(key: key))
+        target: wasm_inhabitant_atom(id: discriminant(v: key))
       )
     ]
   }
