@@ -51,10 +51,10 @@ import v4.std.model_core {
   ModelCore,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.nat { Nat }
@@ -737,15 +737,15 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: primitive_fact_axis_surface_spelling },
+        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: llvm_inhabitant_atom(id: facts.surface_spelling)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_width },
+        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
         target: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_encoding },
+        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: llvm_inhabitant_atom(id: llvm_repr_sign_agnostic_integer)
       },
       Edge {
@@ -761,11 +761,11 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: primitive_fact_axis_surface_spelling },
+        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: llvm_inhabitant_atom(id: facts.surface_spelling)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_encoding },
+        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: llvm_wave1_float_kind_node(kind: facts.kind)
       },
       Edge {
@@ -779,11 +779,11 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
 fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_width {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: llvm_inhabitant_atom(id: llvm_repr_sign_agnostic_integer) }
       } else {
           Violates {
@@ -797,9 +797,9 @@ fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node
 fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: llvm_wave1_float_kind_node(kind: facts.kind) }
       } else {
           Violates {

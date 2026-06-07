@@ -28,12 +28,12 @@ import v4.std.model_core {
   ModelCore,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
@@ -455,23 +455,23 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: primitive_fact_axis_surface_spelling },
+        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: mc_inhabitant_atom(id: facts.surface_spelling)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_signedness },
+        label: Named { name: discriminant(v: ModelCoreFactAxisSignedness {}) },
         target: mc_int_kind_node(kind: facts.kind)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_width },
+        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
         target: mc_int_width_node(width: facts.width)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_overflow_disposition },
+        label: Named { name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}) },
         target: mc_overflow_node(overflow: facts.overflow_release)
       },
       Edge {
-        label: Named { name: primitive_fact_axis_encoding },
+        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: mc_inhabitant_atom(id: mc_repr_twos_complement)
       },
       Edge {
@@ -485,15 +485,15 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
 fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: mc_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_width {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: mc_int_width_node(width: facts.width) }
-      } else if axis == primitive_fact_axis_signedness {
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           Holds { value: mc_int_kind_node(kind: facts.kind) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: mc_inhabitant_atom(id: mc_repr_twos_complement) }
-      } else if axis == primitive_fact_axis_overflow_disposition {
+      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
           Holds { value: mc_overflow_node(overflow: facts.overflow_release) }
       } else {
           Violates {
