@@ -20,6 +20,7 @@ import v4.compiler.eval {
   eval_context_with_semantics,
   eval_test_claim_subject,
   run_test_claim,
+  test_claim_run_verdict,
   test_claim_input
 }
 import v4.compiler.infer {
@@ -80,6 +81,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v4.std.verdict { Pass, Fail, Deferred }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 
@@ -210,6 +212,24 @@ fn nominal_distinct_control_compiles_ok() -> Bool {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
+}
+
+
+data witness_nominal_distinct_records_compile_rejects: Bool = match nominal_distinct_records_compile_receipt {
+  Rejected { diagnostics: _ } => true
+  Accepted { value: _, diagnostics: _ } => false
+}
+
+
+data witness_nominal_distinct_brands_compile_rejects: Bool = match nominal_distinct_brands_compile_receipt {
+  Rejected { diagnostics: _ } => true
+  Accepted { value: _, diagnostics: _ } => false
+}
+
+
+data witness_nominal_distinct_control_compile_accepts: Bool = match nominal_distinct_control_compile_receipt {
+  Accepted { value: _, diagnostics: _ } => true
+  Rejected { diagnostics: _ } => false
 }
 
 
@@ -434,3 +454,30 @@ data run_nominal_distinct_same_type_control_compiles: TestClaimRun<Node, Runtime
 
 
 data witness_nominal_distinct_control_compile_anchor: Bool = nominal_distinct_control_compiles_ok()
+
+
+data witness_nominal_distinct_records_run_rejects: Bool = match test_claim_run_verdict(
+  run: run_nominal_distinct_records_cross_call_rejects
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+
+data witness_nominal_distinct_brands_run_rejects: Bool = match test_claim_run_verdict(
+  run: run_nominal_distinct_branded_aliases_cross_call_rejects
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+
+data witness_nominal_distinct_control_run_accepts: Bool = match test_claim_run_verdict(
+  run: run_nominal_distinct_same_type_control_compiles
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
