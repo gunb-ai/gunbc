@@ -1551,8 +1551,11 @@ fn sg0_v3_test_hand_authored_subratchet() {
 /// this guard fails closed on.
 #[test]
 fn v4_parse_surface_smoke_roster_is_closed_to_growth() {
-    // Pinned to the count at ctrl#1467 §6.4 ratification. Retirements lower this; nothing raises it.
-    const V4_DAG_SMOKE_CEILING: usize = 18;
+    // Pinned to the live count (ctrl#1467 §6.4). Retirements lower this; nothing raises it.
+    // 18 (ratification) → 13 after the W1/W2/W3/W4 smoke→witness fold-deletes (W3 #4512 removed the
+    // grounding/model_core/target_realization trio). Tightened to the live floor so the subset
+    // cannot grow back: a new v4 parse-surface smoke must instead land as a .dag claim-run witness.
+    const V4_DAG_SMOKE_CEILING: usize = 13;
     let v4_dag_smokes: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
         .iter()
         .copied()
