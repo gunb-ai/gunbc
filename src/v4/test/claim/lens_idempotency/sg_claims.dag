@@ -1,6 +1,6 @@
 // src/v4/test/claim/lens_idempotency/sg_claims.dag
 // Scope: Wave-A W2 — discriminating claim-run witness for T-38B idempotency write-effect
-// behavioral receipt migrated from v4_lens_idempotency_claim_dag_smoke_test.rs.
+// behavioral receipt migrated from the retired v4_lens_idempotency_claim_dag_smoke_test.rs.
 // Status: execute-the-carrier; routed through v2 `dag run --claim-run`.
 
 module v4.test.claim.lens_idempotency.sg_claims

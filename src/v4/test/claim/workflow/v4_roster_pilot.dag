@@ -118,11 +118,9 @@ data v4_roster_pilot_row_mvp1_rust_emit_add_fn: V4RosterPilotClaimRunRow = V4Ros
   function: "mvp1_rust_emit_add_fn_accepts_holds"
 }
 
-// Wave-A W1: v4.extdeps.coordination smoke→witness (iii) A-fold-delete. Discriminating
-// claim-run witnesses (mutation-proven red-under-mutation) carry the executable
-// WIRECONTRACT-OBLIGATION-TABLE-T4.8 content of the obligation-table assertions removed from
-// v4_extdeps_coordination_dag_smoke_test.rs in the same PR. The remaining smoke receipts
-// (record-field shapes, shared-discriminant) are B and stay host-AST per the row's split.
+// Wave-A W1: v4.extdeps.coordination smoke→witness fold-delete. Discriminating claim-run
+// witnesses carry the executable WIRECONTRACT-OBLIGATION-TABLE-T4.8 content; the retired
+// v4_extdeps_coordination_dag_smoke_test.rs and its SG-0 census row land in the same PR.
 data v4_roster_pilot_row_coordination_obligation_exchange: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "coordination obligation table exchange arm-sharp",
   entry: "src/v4/test/claim/extdeps/coordination_claims.dag",
@@ -135,10 +133,9 @@ data v4_roster_pilot_row_coordination_obligation_settlement: V4RosterPilotClaimR
   function: "coordination_obligation_settlement_arm_sharp_holds"
 }
 
-// Wave-A W1: v4.compiler.parse token_position_indices smoke→witness (iii) A-fold-delete.
-// Mutation-proven (mutate the fold → witness red) execution of the 0..N no-extra-append index
-// sequence; carries the receipt removed from v4_compiler_parse_table_dag_smoke_test.rs. The
-// parse_table GRAMMAR core stays host-AST (contains-Variant-gap; not foldable through v2).
+// Wave-A W1: v4.compiler.parse token_position_indices smoke→witness fold-delete.
+// Mutation-proven execution of the 0..N no-extra-append index sequence; the retired
+// v4_compiler_parse_table_dag_smoke_test.rs and its SG-0 census row land in the same PR.
 data v4_roster_pilot_row_parse_table_token_position_indices: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "parse_table token_position_indices no-extra-append",
   entry: "src/v4/test/claim/parse/parse_table_claims.dag",
@@ -147,8 +144,7 @@ data v4_roster_pilot_row_parse_table_token_position_indices: V4RosterPilotClaimR
 
 // Wave-A W2: lens smoke→witness fold-delete (application, idempotency, identical_variant,
 // affected_set IRT-1 remainder, registry). Discriminating claim-run witnesses carry the
-// behavioral content of retired parse-only smokes; B declaration-shape receipts remain
-// host-AST interim in the surviving smoke harnesses.
+// behavioral content; the retired hand-Rust smokes and SG-0 census rows land in the same PR.
 data v4_roster_pilot_row_lens_application_introspect_advisory: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens application introspect advisory demotion",
   entry: "src/v4/test/claim/lens_application/sg_claims.dag",

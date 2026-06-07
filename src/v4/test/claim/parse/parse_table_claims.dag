@@ -2,17 +2,14 @@
 // Scope: Wave-A W1 — v4.compiler.parse `token_position_indices` as a discriminating
 // claim-run witness, routed through v2 (`dag run --claim-run`).
 //
-// Migrates the EXECUTABLE behavioral content of the `token_position_indices` no-extra-append
-// receipt in src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs
-// (formerly the host source-grep `!PARSE_DAG.contains("item: length(xs: tokens)")`) into a
+// Migrates the behavioral content of the retired
+// v4_compiler_parse_table_dag_smoke_test.rs (formerly the host source-grep `!PARSE_DAG.contains("item: length(xs: tokens)")`) into a
 // `fn -> Bool` witness that EXECUTES token_position_indices over a fixed token list and
 // DISCRIMINATES the produced 0..N index sequence: a duplicate final append (the regressed
 // shape) yields an extra index, turning the witness red. Mutating the fold turns it red.
 //
-// NOTE: the parse_table grammar core (parse_production / grammar_has_* / parse_skip_to_sync)
-// is NOT migrated here — it CRASHES through v2 with `contains expects a string argument, got
-// Variant` (the 'contains-Variant-gap' v2-interpreter builtin gap). Those receipts stay
-// host-AST in the smoke until that substrate lands.
+// Status: Wave-A W1 fold-delete. The retired v4_compiler_parse_table_dag_smoke_test.rs
+// and its SG-0 EXPECTED_HAND_AUTHORED_TEST row land in the same PR.
 
 module v4.test.claim.parse.parse_table_claims
 

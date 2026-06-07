@@ -2,20 +2,15 @@
 // Scope: Wave-A W1 — v4.extdeps.coordination WIRECONTRACT-OBLIGATION-TABLE-T4.8 as
 // discriminating claim-run witnesses, routed through v2 (`dag run --claim-run`).
 //
-// These witnesses migrate the EXECUTABLE behavioral content of
-// src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs's
-// `wire_contract_uses_decomposed_facts` obligation-table assertions from frozen-v3
-// host source-greps (which only matched the function body spelling) into `fn -> Bool`
-// witnesses that EXECUTE `coordination_effect_obligation` and DISCRIMINATE on the
+// These witnesses migrate the behavioral content of the retired
+// v4_extdeps_coordination_dag_smoke_test.rs from frozen-v3 host source-greps into
+// `fn -> Bool` witnesses that EXECUTE `coordination_effect_obligation` and DISCRIMINATE on the
 // per-effect mapping: each effect maps to its own exchange/settlement obligation and
 // is arm-sharp (a different effect's obligation does NOT match). Mutating any obligation
 // arm in coordination.dag turns a witness red, so the green is not vacuous.
 //
-// Status: Wave-A (iii) A-fold-delete. The obligation-table behavioral assertions in the
-// .rs smoke are deleted in the same PR (their content is proven here by execution). The
-// remaining smoke receipts (WireContractFacts/WireContract record-field shapes,
-// SettlementGuarantee/ConsistencyGuarantee shared-discriminant) are B (declaration-shape /
-// host source) and stay host-AST until the ctrl#1476 READ-axis reflection substrate lands.
+// Status: Wave-A W1 fold-delete. The retired v4_extdeps_coordination_dag_smoke_test.rs
+// and its SG-0 EXPECTED_HAND_AUTHORED_TEST row land in the same PR.
 // Importing v4.extdeps.coordination forces v2 to tokenize/parse/infer it, so the
 // parse-surface fact rides every witness below.
 
