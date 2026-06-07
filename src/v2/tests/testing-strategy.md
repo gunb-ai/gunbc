@@ -13,7 +13,7 @@ structurally unrepresentable — the type system ensures every construct
 carries enough information to derive its verification obligations. This
 is the testing analog of the Decidability Invariant: the structure makes
 unbounded computation impossible; the structure makes untested code
-impossible. See [INVARIANTS.md](../INVARIANTS.md) §Verifiability Invariant.
+impossible. See [INVARIANTS.md](../../../INVARIANTS.md).
 
 Tests run DURING compilation. Failure is a compile error, not a report
 the developer might not read. This is the same philosophy as
