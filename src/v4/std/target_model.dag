@@ -158,6 +158,13 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
   }
 }
 
+fn concrete_syntax_token_class(token: ConcreteSyntaxToken) -> Symbol {
+  match token {
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
+  }
+}
+
 data target_model_edge_atom_realizations: Symbol = target_model_edge_atom_realizations
 
 // SG-1b function-boundary signature realization catalog (per-language; Param/Return sites only).
