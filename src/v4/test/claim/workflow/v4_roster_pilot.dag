@@ -90,6 +90,14 @@ data v4_roster_pilot_row_std_text_field_text: V4RosterPilotClaimRunRow = V4Roste
   function: "text_host_string_field_text_holds"
 }
 
+// R2 keystone execution cert — emit(add) must produce the canonical rust_mvp1 add-fn source
+// (ctrl#1476 B5 grammar-inverse consumer; execution not structural grep).
+data v4_roster_pilot_row_mvp1_rust_emit_add_fn: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "mvp1 rust emit add-fn (R2 grammar-inverse execution)",
+  entry: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
+  function: "mvp1_rust_emit_add_fn_accepts_holds"
+}
+
 
 data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_edit_locus_narrow,
@@ -102,11 +110,12 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_std_text_freemonoid_carrier,
   v4_roster_pilot_row_std_text_roundtrip,
   v4_roster_pilot_row_std_text_empty_roundtrip,
-  v4_roster_pilot_row_std_text_field_text
+  v4_roster_pilot_row_std_text_field_text,
+  v4_roster_pilot_row_mvp1_rust_emit_add_fn
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "11"
+data v4_roster_pilot_claim_run_row_count: String = "12"
 
 
 fn v4_roster_pilot_row_matches(
@@ -141,12 +150,13 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_empty_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_field_text)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_mvp1_rust_emit_add_fn)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 11)
-    && (v4_roster_pilot_claim_run_row_count == "11")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 12)
+    && (v4_roster_pilot_claim_run_row_count == "12")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -203,4 +213,10 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       entry: "src/v4/test/claim/std_text/carrier_claims.dag",
       function: "text_host_string_field_text_holds"
     )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_mvp1_rust_emit_add_fn,
+      entry: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
+      function: "mvp1_rust_emit_add_fn_accepts_holds"
+    )
 }
+
