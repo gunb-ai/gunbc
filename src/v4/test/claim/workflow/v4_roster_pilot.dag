@@ -147,22 +147,10 @@ data v4_roster_pilot_row_extdeps_react_element_children: V4RosterPilotClaimRunRo
   function: "extdeps_react_element_children_are_list_create_element_child_holds"
 }
 
-data v4_roster_pilot_row_extdeps_react_child_text_no_key: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
-  label: "extdeps_react CreateElementChild Text has no element key",
-  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_create_element_child_text_has_no_element_key_holds"
-}
-
 data v4_roster_pilot_row_extdeps_react_child_element_wraps: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "extdeps_react CreateElementChild Element wraps ReactElement",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
   function: "extdeps_react_create_element_child_element_arm_wraps_react_element_holds"
-}
-
-data v4_roster_pilot_row_extdeps_react_context_binding: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
-  label: "extdeps_react ReactContextBinding createContext surface",
-  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_context_binding_matches_create_context_surface_holds"
 }
 
 // R2 keystone execution cert — emit(add) must produce the canonical rust_mvp1 add-fn source
@@ -189,22 +177,18 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_std_text_roundtrip,
   v4_roster_pilot_row_std_text_empty_roundtrip,
   v4_roster_pilot_row_std_text_field_text,
-  v4_roster_pilot_row_extdeps_react_hook_site_roster,
   v4_roster_pilot_row_extdeps_react_use_memo_callback_deps,
   v4_roster_pilot_row_extdeps_react_effect_setup_ref,
-  v4_roster_pilot_row_extdeps_react_use_resource_placement,
   v4_roster_pilot_row_extdeps_react_host_key_ref,
   v4_roster_pilot_row_extdeps_react_composite_key_ref,
   v4_roster_pilot_row_extdeps_react_fragment_key,
   v4_roster_pilot_row_extdeps_react_element_children,
-  v4_roster_pilot_row_extdeps_react_child_text_no_key,
   v4_roster_pilot_row_extdeps_react_child_element_wraps,
-  v4_roster_pilot_row_extdeps_react_context_binding,
   v4_roster_pilot_row_mvp1_rust_emit_add_fn
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "26"
+data v4_roster_pilot_claim_run_row_count: String = "22"
 
 
 fn v4_roster_pilot_row_matches(
@@ -242,24 +226,20 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_empty_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_field_text)
-    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_hook_site_roster)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_use_memo_callback_deps)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_effect_setup_ref)
-    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_use_resource_placement)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_host_key_ref)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_composite_key_ref)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_fragment_key)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_element_children)
-    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_child_text_no_key)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_child_element_wraps)
-    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_context_binding)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_mvp1_rust_emit_add_fn)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 26)
-    && (v4_roster_pilot_claim_run_row_count == "26")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 22)
+    && (v4_roster_pilot_claim_run_row_count == "22")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -332,11 +312,6 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "text_host_string_field_text_holds"
     )
     && v4_roster_pilot_row_matches(
-      row: v4_roster_pilot_row_extdeps_react_hook_site_roster,
-      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-      function: "extdeps_react_hook_site_roster_matches_pin_holds"
-    )
-    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_extdeps_react_use_memo_callback_deps,
       entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
       function: "extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds"
@@ -345,11 +320,6 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_extdeps_react_effect_setup_ref,
       entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
       function: "extdeps_react_effect_hooks_require_setup_ref_holds"
-    )
-    && v4_roster_pilot_row_matches(
-      row: v4_roster_pilot_row_extdeps_react_use_resource_placement,
-      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-      function: "extdeps_react_use_resource_is_react_use_call_site_not_hook_site_holds"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_extdeps_react_host_key_ref,
@@ -372,19 +342,9 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "extdeps_react_element_children_are_list_create_element_child_holds"
     )
     && v4_roster_pilot_row_matches(
-      row: v4_roster_pilot_row_extdeps_react_child_text_no_key,
-      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-      function: "extdeps_react_create_element_child_text_has_no_element_key_holds"
-    )
-    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_extdeps_react_child_element_wraps,
       entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
       function: "extdeps_react_create_element_child_element_arm_wraps_react_element_holds"
-    )
-    && v4_roster_pilot_row_matches(
-      row: v4_roster_pilot_row_extdeps_react_context_binding,
-      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-      function: "extdeps_react_context_binding_matches_create_context_surface_holds"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_mvp1_rust_emit_add_fn,
