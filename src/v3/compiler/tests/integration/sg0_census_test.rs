@@ -1050,17 +1050,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
-    // G.0: parse ratchet on `src/v4/std/grounding.dag` — Branch G.0 schema carriers.
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_grounding_dag_smoke_test.rs` in EXPECTED_HAND_AUTHORED_TEST.
-    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
-    // (ROADMAP.md:62); dissolves when `.dag` TestClaim coverage asserts PerLanguageFactBundleRegistry
-    // + GroundingEvidenceSchema directly.
-    "src/v3/compiler/tests/integration/v4_std_grounding_dag_smoke_test.rs",
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
-    "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
-    // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
-    "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
+    // W3 B-class delete (operator 2026-06-07: declaration-shape tests are dual-representations of
+    // our own std structure — change-detectors with zero external-oracle coverage; correctness-by-
+    // construction, not 2FA-for-code). The three v4_std_{grounding,model_core,target_realization}_dag
+    // smoke files (44 parse-surface/source-grep receipts) are DELETED, not deferred. Their two
+    // behavioral receipts are migrated to mutation-proven .dag claim-run witnesses on v4_roster_pilot:
+    //   - src/v4/test/claim/std_model_core/bool_fact_lookup.dag (also retires the hand-Rust MIRROR
+    //     helper bool_fact_axis_dispatch — a tautology that re-stated the fold in Rust); and
+    //   - src/v4/test/claim/std_grounding/terminal_gate.dag.
+    // No INVARIANTS.md per-file rows exist for these (the §P5(b) references were the general gate).
     // Host-test preservation justification (W1-W4 qualifying bar — provably runtime-inexpressible):
     // non-behavioral: asserts type-ABSENCE of ByteString/FileBody/FileContent/TargetSource in
     // text.dag — no runtime witness can express type-non-existence. (Behavioral content folded
@@ -1494,10 +1492,11 @@ fn sg0_v3_test_hand_authored_subratchet() {
 #[test]
 fn v4_parse_surface_smoke_roster_is_closed_to_growth() {
     // Pinned to the live count (ctrl#1467 §6.4). Retirements lower this; nothing raises it.
-    // 18 (ratification) → 14 after #4511 broader-corpus sweep (removed lens_testgen +
-    // workflow_release v4 parse-surface smokes; wave-owned rows untouched). W3 #4512 will
-    // lower further when std grounding/model_core/target_realization trio lands.
-    const V4_DAG_SMOKE_CEILING: usize = 14;
+    // 18 (ratification) → 11 after the W-wave smoke→witness fold-deletes: #4511 broader-corpus
+    // sweep removed lens_testgen + workflow_release; W3 #4512 removed the std
+    // grounding/model_core/target_realization trio. Tightened to the live floor so the subset
+    // cannot grow back: a new v4 parse-surface smoke must instead land as a .dag claim-run witness.
+    const V4_DAG_SMOKE_CEILING: usize = 11;
     let v4_dag_smokes: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
         .iter()
         .copied()
