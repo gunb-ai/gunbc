@@ -73,7 +73,7 @@ Work is organized around closing the bootstrap loop, not a calendar:
 |------|------------|--------------------|
 | **T-PB-B** | `pb_rust_tests_outside_residual_zero` | Pure Bootstrap test floor: hand-maintained Rust tests under `src/v3/compiler/tests/` shrink toward zero as receipts migrate to `.dag` `TestClaim` declarations or generated harness coverage. Each temporary Rust test scaffold must be listed in the SG-0 hand-authored-test census with a dissolution trigger, and the same PR removes that census entry when the modeled or generated replacement lands. |
 
-Earlier release-program lanes (complexity parity, testgen, multi-target emit, pure-bootstrap floors) informed v4 scope; detailed operational tracking for that era lives in [`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md) for maintainers migrating from the internal repo.
+Earlier release-program lanes (complexity parity, testgen, multi-target emit, pure-bootstrap floors) informed v4 scope; that era's detailed operational tracking is not carried in this repo.
 
 ## Active Deferrals
 
@@ -83,18 +83,7 @@ Earlier release-program lanes (complexity parity, testgen, multi-target emit, pu
 
 ## How to read the tree
 
-```
-THESIS.md          — why gunbc exists
-INVARIANTS.md      — five principles + elaborations
-MODELING.md        — concept DAG / modeling discipline
-ROADMAP.md         — this file
-
-dsl/std/           — portable vocabulary
-dsl/extdeps/       — external systems
-
-src/v2/            — shipping self-hosted compiler
-src/v4/            — next substrate + compiler
-```
+The doc map and the single-authority rule live in one place: see [docs/thesis/doc-authority.md](docs/thesis/doc-authority.md).
 
 ## Contributing orientation
 
@@ -102,6 +91,6 @@ src/v4/            — next substrate + compiler
 - Every scaffold needs a dissolution trigger; progress reduces duplicate authority.
 - Run `cargo test --workspace`, `cargo clippy --all-targets -- -D warnings`, and `cargo fmt --all --check` before pushing.
 
-For deep design context: [docs/architecture.md](docs/architecture.md), [docs/v3-spec.md](docs/v3-spec.md) (language surface, still relevant to v4), and essays under [docs/thesis/](docs/thesis/).
+For deep design context: [docs/architecture.md](docs/architecture.md) and essays under [docs/thesis/](docs/thesis/).
 
 Current-state audits live under [docs/audit/](docs/audit/). On information-hiding specifically — how close v4's foundational concepts are to the below-boundary opacity THESIS names (the "touch-once contract") — see [docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md](docs/audit/v4-encapsulation-touch-once-contract-2026-06-05.md): the headline is that opacity holds at substrate atoms and leaks at transparent aliases, and that v4 already has a `.dag` information-hiding primitive (`nominal_opaque`) pointed at zero foundational concepts.
