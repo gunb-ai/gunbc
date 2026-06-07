@@ -217,14 +217,7 @@ mod tests {
     fn gram_emit_substrate_triggers_testclaim_corpus() {
         assert!(ci_changed_path_affects_v4("src/v4/std/grammar.dag"));
         assert!(ci_changed_path_affects_testclaim_corpus("src/v4/std/grammar.dag"));
-        assert!(!ci_changed_path_affects_testclaim_corpus(
-            "src/v4/test/claim/parse/grammar_validation.dag"
-        ) == !ci_changed_path_affects_v4(
-            "src/v4/test/claim/parse/grammar_validation.dag"
-        ));
-        assert!(ci_changed_path_affects_testclaim_corpus(
-            "src/v4/test/claim/parse/grammar_validation.dag"
-        ));
+        assert!(!ci_changed_path_affects_workflow_policy("src/v4/std/grammar.dag"));
     }
 
     #[test]
@@ -241,7 +234,7 @@ mod tests {
         assert!(ci_changed_path_affects_testclaim_corpus(
             "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag"
         ));
-        assert!(!ci_changed_path_affects_testclaim_corpus(
+        assert!(ci_changed_path_affects_testclaim_corpus(
             "src/v4/workflow/ci.dag"
         ));
         assert!(ci_changed_path_affects_testclaim_corpus(
@@ -302,15 +295,18 @@ mod tests {
     }
 
     #[test]
-    fn v4_compile_harness_paths_outside_claim_bucket() {
+    fn v4_compile_harness_paths_inherit_testclaim_corpus_via_affects_v4() {
         assert!(ci_changed_path_affects_v4(
             "src/v4/test/coercion_fold_int_rust_fixture.dag"
         ));
         assert!(ci_changed_path_affects_v4(
             "src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
         ));
-        assert!(!ci_changed_path_affects_testclaim_corpus(
+        assert!(ci_changed_path_affects_testclaim_corpus(
             "src/v4/test/coercion_fold_int_rust_fixture.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
         ));
     }
 
