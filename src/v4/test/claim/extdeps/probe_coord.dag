@@ -1,0 +1,18 @@
+module v4.test.claim.extdeps.probe_coord
+import v4.std.logic { Bool }
+import v4.extdeps.coordination {
+  Http, Queue, RequestReply, FireAndForget,
+  coordination_effect_obligation
+}
+fn probe_http_requires_request_reply() -> Bool {
+  match coordination_effect_obligation(effect: Http).required_exchange {
+    RequestReply => true
+    _ => false
+  }
+}
+fn probe_queue_not_request_reply() -> Bool {
+  match coordination_effect_obligation(effect: Queue).required_exchange {
+    RequestReply => false
+    _ => true
+  }
+}
