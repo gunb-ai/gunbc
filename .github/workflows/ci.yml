@@ -140,6 +140,8 @@ jobs:
       run: |
         git fetch --no-tags origin main
         python3 scripts/check_doc_refs.py --changed origin/main
+    - name: Doc-chain diagram is current (regenerated == embedded)
+      run: python3 scripts/check_doc_refs.py --check-graph
   # Affected-set component host transport -- live fail-closed receipt.
   # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:
