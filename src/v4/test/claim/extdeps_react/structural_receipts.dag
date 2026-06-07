@@ -2,20 +2,14 @@
 // Scope: Exemplar E2 — T-4.7 React extdeps structural receipts as discriminating
 // claim-run witnesses, routed through v2 (`dag run --claim-run`).
 //
-// These witnesses migrate the behavioral content of
-// src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs structural
-// receipts (19-arm ReactHookSite roster pin, createElement partition, use(resource)
-// placement, …) from frozen-v3 compile_to_dag introspection into executable
-// `fn -> Bool` witnesses that pattern-match substrate carriers and pin/compare via
-// the `discriminant(v)` intrinsic (constructor-name Symbols from coproduct shape),
-// coproduct arms (ReactOptKey/ReactOptRef), List length, and stored cross-decl refs.
+// Seven **A-class** behavioral receipts migrated from frozen-v3 smoke into executable
+// `fn -> Bool` witnesses (typed probe construction, exhaustive `match`, discriminant,
+// coproduct arms, List element typing). **B-class** split (operator 2026-06-07):
+// react.dev-cited EXTERNAL-ORACLE receipts stay in the .rs smoke; dual-representation
+// declaration-shape receipts deleted (no substrate migration).
 //
-// ReactElement partition arm-set: SOLE authority is smoke B-INTERIM (no .dag mirror,
-// no standalone guard). Migrate when ctrl#1476 READ axis lands (sleek-carp-651).
-// Seven A-class receipts are witnesses below; five B-class remain in smoke until substrate.
-//
-// Status: Wave-A additive only. The frozen .rs smoke + SG-0 census stay until the
-// batch-delete gate clears (0-diag compile gate waits on substrate lane).
+// React-spec oracle receipts (partition, hooks roster, use∉HookSite) are smoke-only —
+// see `v4_extdeps_react_dag_smoke_test.rs` with cited https://react.dev authorities.
 
 module v4.test.claim.extdeps_react.structural_receipts
 
@@ -31,7 +25,6 @@ import v4.extdeps.frameworks.react {
   KeyPresent,
   NoCleanup,
   ReactCompositeElement,
-  ReactContextBinding,
   ReactCreateElementChild,
   ReactCrossDeclRef,
   ReactElement,
@@ -40,7 +33,6 @@ import v4.extdeps.frameworks.react {
   ReactOptKey,
   ReactOptRef,
   ReactPropsSite,
-  ReactUseCallSite,
   RefAbsent,
   RefPresent,
   Text,
@@ -59,7 +51,6 @@ import v4.extdeps.frameworks.react {
   UseOptimistic,
   UseReducer,
   UseRef,
-  UseResource,
   UseState,
   UseSyncExternalStore,
   UseTransition,
@@ -197,10 +188,6 @@ fn react_probe_hook_use_optimistic() -> ReactHookSite {
 
 fn react_probe_hook_custom_hook() -> ReactHookSite {
   CustomHook { implementation_ref: react_probe_cross_decl_ref }
-}
-
-fn react_probe_use_resource_call() -> ReactUseCallSite {
-  UseResource { resource_ref: react_probe_cross_decl_ref }
 }
 
 fn react_probe_host_element() -> ReactHostElement {
