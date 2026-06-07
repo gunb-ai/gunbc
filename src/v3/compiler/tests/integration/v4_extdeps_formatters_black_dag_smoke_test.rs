@@ -4,9 +4,12 @@
 //!
 //! Single-file [`compile_to_dag`] cannot load `v4.std.patch` peers; this harness
 //! lowers `node` → `algebra` → `patch` → `black` in order (flat declaration table).
+//!
+//! **White-box sweep (operator 2026-06-07):** declaration-shape pin slices deleted —
+//! the `.dag` model is the authority. This harness retains only the **0-diag compile**
+//! consumer.
 
 use v3_compiler::compile_to_dag_modules_in_order;
-use v3_compiler::dag::TypeConnective;
 use v3_compiler::CompileError;
 
 const NODE_DAG: &str = include_str!("../../../../v4/std/node.dag");
@@ -38,41 +41,11 @@ fn black_dag_or_panic() -> v3_compiler::dag::Dag {
 }
 
 #[test]
-fn v4_extdeps_formatters_black_dag_compiles_with_config_patch_projection() {
+fn v4_extdeps_formatters_black_dag_compiles_with_zero_diagnostics() {
     let dag = black_dag_or_panic();
     assert!(
         dag.diagnostics().is_empty(),
         "{BLACK_PATH}: expected empty diagnostics, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
-    let patch = dag
-        .declaration_by_name("BlackConfigPatch")
-        .expect("BlackConfigPatch type alias should exist");
-    let field_patch = dag
-        .declaration_by_name("FieldPatch")
-        .expect("FieldPatch template should resolve");
-    let TypeConnective::Conj { children } = &patch.connective else {
-        panic!(
-            "BlackConfigPatch: expected materialized Conj, got {:?}",
-            patch.connective
-        );
-    };
-    assert!(
-        !children.is_empty(),
-        "BlackConfigPatch should have at least one FieldPatch field"
-    );
-    for field in children {
-        let TypeConnective::Instantiation { template, .. } = &dag.declaration(field.ty).connective
-        else {
-            panic!(
-                "BlackConfigPatch field `{}` should be FieldPatch<T>",
-                field.label
-            );
-        };
-        assert_eq!(
-            *template, field_patch.id,
-            "BlackConfigPatch field `{}` should instantiate FieldPatch",
-            field.label
-        );
-    }
 }
