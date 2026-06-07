@@ -86,10 +86,10 @@ import v4.std.model_core {
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   PrimitiveOperationRef,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth
 }
 import v4.std.diagnostic {
   Accepted,
@@ -1997,11 +1997,11 @@ fn ts_language_model_canonical_symbols() -> Set<Symbol> {
 fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_width {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: ts_inhabitant_atom(id: ts_tag_bits64) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
           Violates {
@@ -2015,9 +2015,9 @@ fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<Symbol, Node> {
 fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
           Violates {
@@ -2031,9 +2031,9 @@ fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<Symbol, Node> {
 fn ts_bool_spec_facts(facts: TsBooleanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
           Violates {
@@ -3120,12 +3120,12 @@ fn ts_string_spec_facts(facts: TsStringPrimitiveFacts) -> Map<Symbol, Node> {
   let m0 = empty_map()
   let m1 = map_insert(
     m: m0,
-    key: primitive_fact_axis_surface_spelling,
+    key: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
     value: ts_inhabitant_atom(id: facts.surface_spelling)
   )
   let m2 = map_insert(
     m: m1,
-    key: primitive_fact_axis_encoding,
+    key: discriminant(v: ModelCoreFactAxisEncoding {}),
     value: ts_inhabitant_atom(id: facts.encoding)
   )
   m2
@@ -3292,38 +3292,6 @@ type TsModelCoreLawKey
   | TsLawStringConcatLeftIdentity
   | TsLawStringConcatRightIdentity
 
-data ts_law_kind_number_ieee754_rounding: Symbol = ts_law_kind_number_ieee754_rounding
-data ts_law_kind_number_nan_inf_carried_by_ieee754: Symbol = ts_law_kind_number_nan_inf_carried_by_ieee754
-data ts_law_kind_bigint_add_associative: Symbol = ts_law_kind_bigint_add_associative
-data ts_law_kind_bigint_add_commutative: Symbol = ts_law_kind_bigint_add_commutative
-data ts_law_kind_bigint_mul_associative: Symbol = ts_law_kind_bigint_mul_associative
-data ts_law_kind_bigint_mul_commutative: Symbol = ts_law_kind_bigint_mul_commutative
-data ts_law_kind_bigint_distributive: Symbol = ts_law_kind_bigint_distributive
-data ts_law_kind_bigint_total_order: Symbol = ts_law_kind_bigint_total_order
-data ts_law_kind_bool_bounded_lattice: Symbol = ts_law_kind_bool_bounded_lattice
-data ts_law_kind_bool_complement: Symbol = ts_law_kind_bool_complement
-data ts_law_kind_string_concat_associative: Symbol = ts_law_kind_string_concat_associative
-data ts_law_kind_string_concat_left_identity: Symbol = ts_law_kind_string_concat_left_identity
-data ts_law_kind_string_concat_right_identity: Symbol = ts_law_kind_string_concat_right_identity
-
-fn ts_law_kind_symbol(key: TsModelCoreLawKey) -> Symbol {
-  match key {
-    TsLawNumberIeee754Rounding => ts_law_kind_number_ieee754_rounding
-    TsLawNumberNanInfCarriedByIeee754 => ts_law_kind_number_nan_inf_carried_by_ieee754
-    TsLawBigIntAddAssociative => ts_law_kind_bigint_add_associative
-    TsLawBigIntAddCommutative => ts_law_kind_bigint_add_commutative
-    TsLawBigIntMulAssociative => ts_law_kind_bigint_mul_associative
-    TsLawBigIntMulCommutative => ts_law_kind_bigint_mul_commutative
-    TsLawBigIntDistributive => ts_law_kind_bigint_distributive
-    TsLawBigIntTotalOrder => ts_law_kind_bigint_total_order
-    TsLawBoolBoundedLattice => ts_law_kind_bool_bounded_lattice
-    TsLawBoolComplement => ts_law_kind_bool_complement
-    TsLawStringConcatAssociative => ts_law_kind_string_concat_associative
-    TsLawStringConcatLeftIdentity => ts_law_kind_string_concat_left_identity
-    TsLawStringConcatRightIdentity => ts_law_kind_string_concat_right_identity
-  }
-}
-
 fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -3332,7 +3300,7 @@ fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) 
       ts_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       ts_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: ts_inhabitant_atom(id: ts_law_kind_symbol(key: key))
+        target: ts_inhabitant_atom(id: discriminant(v: key))
       )
     ]
   }

@@ -812,6 +812,27 @@ fn serialize_source_token_targets(serialize_source: Node) -> Outcome<List<Node>>
       conj_positional_targets(parent: serialize_source)
   }
 }
+// Token-target sequence of a grammar-relation `tokens` node (the fold_list_node spine from
+// grammar_relation_tokens_node after B5, or legacy positional-Conj token edges).
+fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
+  bind_outcome(
+    o: optional_named_child_ignoring_positional(
+      parent: tokens_node,
+      edge_name: fold_list_node_head
+    ),
+    f: fn(maybe_head) {
+      match maybe_head {
+        Some { value: _ } =>
+          serialize_source_fold_list_targets(
+            remaining: node_subtree_count(n: tokens_node),
+            node: tokens_node
+          )
+        None =>
+          conj_positional_targets(parent: tokens_node)
+      }
+    }
+  )
+}
 fn grammar_serialize_source_matches_row(
   serialize_source: Node,
   row: Node
@@ -824,7 +845,7 @@ fn grammar_serialize_source_matches_row(
           o: serialize_source_token_targets(serialize_source: serialize_source),
           f: fn(source_targets) {
             bind_outcome(
-              o: conj_positional_targets(parent: tokens_root),
+              o: grammar_tokens_node_targets(tokens_node: tokens_root),
               f: fn(row_targets) {
                 if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
                   Accepted { value: serialize_source, diagnostics: None }
@@ -889,7 +910,7 @@ fn target_serialize_relation_row_from_model_bounded(
               o: grammar_relation_row_tokens_root(row: row),
               f: fn(tokens_root) {
                 bind_outcome(
-                  o: conj_positional_targets(parent: tokens_root),
+                  o: grammar_tokens_node_targets(tokens_node: tokens_root),
                   f: fn(tokens) {
                     fold_list(
                       xs: tokens,
