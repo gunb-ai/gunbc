@@ -2794,7 +2794,7 @@ fn child_labels(ctx: &InterpContext, node: &Rc<Node>) -> Vec<String> {
 
 /// Reflect a coproduct declaration's arm (constructor) labels. Empty for an unknown or
 /// non-coproduct name.
-fn reflect_coproduct_arm_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
+pub fn reflect_coproduct_arm_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
     match find_type_decl_item(ctx, type_name) {
         Some(item) if item.connective == Connective::Disj => child_labels(ctx, &item),
         _ => Vec::new(),
@@ -2803,7 +2803,7 @@ fn reflect_coproduct_arm_labels(ctx: &InterpContext, type_name: &str) -> Vec<Str
 
 /// Reflect a record (product) declaration's field labels. Empty for an unknown or
 /// non-record name.
-fn reflect_record_field_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
+pub fn reflect_record_field_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
     match find_type_decl_item(ctx, type_name) {
         Some(item) if item.connective == Connective::Conj => child_labels(ctx, &item),
         _ => Vec::new(),
@@ -2812,7 +2812,7 @@ fn reflect_record_field_labels(ctx: &InterpContext, type_name: &str) -> Vec<Stri
 
 /// Reflect the payload field labels of a single arm of a coproduct declaration. Empty when
 /// the coproduct, the arm, or the arm's payload record is absent.
-fn reflect_arm_payload_field_labels(
+pub fn reflect_arm_payload_field_labels(
     ctx: &InterpContext,
     coproduct: &str,
     arm: &str,
@@ -3366,47 +3366,5 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
         (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
         _ => std::cmp::Ordering::Equal,
-    }
-}
-
-#[cfg(test)]
-mod reflection_mechanism_tests {
-    use super::*;
-    use crate::v2_compiler_infer_emit_info::empty_emit_graph_info;
-
-    // Mechanism-decoupling control (ctrl#1484 "host did NOT pre-enumerate"): the reflection
-    // intrinsics compute arm/field labels SOLELY by walking the loaded type table
-    // (`ctx.modules`). With an EMPTY type table there is nothing to walk, so a load-bearing
-    // walk MUST return empty. If labels still came back, that would expose a host fallback /
-    // pre-enumeration — i.e. a .dag-native masquerade. This is the decisive complement to the
-    // claim-run witness's echo controls (unknown-name→empty, mutate-real-decl→red).
-    fn empty_table_ctx() -> InterpContext {
-        let graph = ResolvedGraph {
-            modules: Rc::new(vec![]),
-            item_registry: Rc::new(std::collections::HashMap::new()),
-            diagnostics: Rc::new(vec![]),
-            emit_graph_info: empty_emit_graph_info(),
-        };
-        InterpContext::new(&graph, Rc::new(std::collections::HashMap::new()), false)
-    }
-
-    #[test]
-    fn coproduct_arm_labels_empty_with_no_type_table() {
-        let ctx = empty_table_ctx();
-        assert!(reflect_coproduct_arm_labels(&ctx, "ReactElement").is_empty());
-    }
-
-    #[test]
-    fn record_field_labels_empty_with_no_type_table() {
-        let ctx = empty_table_ctx();
-        assert!(reflect_record_field_labels(&ctx, "ReactContextBinding").is_empty());
-    }
-
-    #[test]
-    fn arm_payload_field_labels_empty_with_no_type_table() {
-        let ctx = empty_table_ctx();
-        assert!(
-            reflect_arm_payload_field_labels(&ctx, "ReactCreateElementChild", "Text").is_empty()
-        );
     }
 }

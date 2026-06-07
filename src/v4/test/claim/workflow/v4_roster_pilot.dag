@@ -98,6 +98,23 @@ data v4_roster_pilot_row_mvp1_rust_emit_add_fn: V4RosterPilotClaimRunRow = V4Ros
   function: "mvp1_rust_emit_add_fn_accepts_holds"
 }
 
+// Type-decl reflection primitive (operator option-ii). Folds a coproduct/record DECLARATION's
+// arm/field labels BY EXECUTION via the coproduct_arm_labels / record_field_labels /
+// coproduct_arm_payload_field_labels intrinsics. The synthetic witness covers all three
+// projections + echo/arm-sharp controls; the react witness validates against the REAL E2
+// declaration shapes (mutate react.dag → red, the test-4 mirror-tautology killer).
+data v4_roster_pilot_row_coproduct_reflection: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "coproduct/record decl reflection folds real declaration by execution",
+  entry: "src/v4/test/claim/manual/coproduct_reflection.dag",
+  function: "coproduct_reflection_folds_real_declaration_by_execution"
+}
+
+data v4_roster_pilot_row_react_decl_shape_reflection: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "react declaration-shape reflection (E2 real-consumer validation)",
+  entry: "src/v4/test/claim/manual/react_declaration_shape_reflection.dag",
+  function: "react_declaration_shapes_reflect_by_execution"
+}
+
 
 data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_edit_locus_narrow,
@@ -111,11 +128,13 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_std_text_roundtrip,
   v4_roster_pilot_row_std_text_empty_roundtrip,
   v4_roster_pilot_row_std_text_field_text,
-  v4_roster_pilot_row_mvp1_rust_emit_add_fn
+  v4_roster_pilot_row_mvp1_rust_emit_add_fn,
+  v4_roster_pilot_row_coproduct_reflection,
+  v4_roster_pilot_row_react_decl_shape_reflection
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "12"
+data v4_roster_pilot_claim_run_row_count: String = "14"
 
 
 fn v4_roster_pilot_row_matches(
@@ -151,12 +170,14 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_empty_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_field_text)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_mvp1_rust_emit_add_fn)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_coproduct_reflection)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_react_decl_shape_reflection)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 12)
-    && (v4_roster_pilot_claim_run_row_count == "12")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 14)
+    && (v4_roster_pilot_claim_run_row_count == "14")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -217,6 +238,16 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_mvp1_rust_emit_add_fn,
       entry: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
       function: "mvp1_rust_emit_add_fn_accepts_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_coproduct_reflection,
+      entry: "src/v4/test/claim/manual/coproduct_reflection.dag",
+      function: "coproduct_reflection_folds_real_declaration_by_execution"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_react_decl_shape_reflection,
+      entry: "src/v4/test/claim/manual/react_declaration_shape_reflection.dag",
+      function: "react_declaration_shapes_reflect_by_execution"
     )
 }
 

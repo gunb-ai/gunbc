@@ -1,0 +1,111 @@
+// src/v4/test/claim/manual/react_declaration_shape_reflection.dag
+// Scope: real-consumer validation of the type-decl reflection primitive (operator directive:
+//        validate by EXECUTION against a real declaration, not a synthetic one). Reflects the
+//        ACTUAL v4.extdeps.frameworks.react declarations that E2 (crisp-hawk-780, #4480) needs,
+//        proving coproduct_arm_labels / record_field_labels / coproduct_arm_payload_field_labels
+//        let a witness fold a real coproduct/record DECLARATION cleanly.
+// Status: claim-run witness (fn () -> Bool). Discriminates: add/remove a variant or field in
+//         react.dag and these predicates go RED (folds the compiled type-table, not a mirror).
+//         The import below pulls react.dag into the resolved module set so the intrinsics can
+//         walk its declarations.
+
+module v4.test.claim.manual.react_declaration_shape_reflection
+
+
+import v4.std.reflection {
+  reflect_arm_payload_decl,
+  reflect_coproduct_decl,
+  reflect_record_decl
+}
+import v4.extdeps.frameworks.react { ReactElement }
+
+
+// Consumer 1: ReactElement partition is exactly {Host, Composite, Fragment} — Text is NOT an
+// element arm (it lives under ReactCreateElementChild). The headline declaration-shape receipt.
+fn react_element_partition_holds() -> Bool {
+  let labels = reflect_coproduct_decl(declared_type: "ReactElement").arm_labels
+  let count_right = labels.length() == 3
+  let has_partition = labels.contains("Host")
+    && labels.contains("Composite")
+    && labels.contains("Fragment")
+  let excludes_text = labels.contains("Text") == false
+  count_right && has_partition && excludes_text
+}
+
+
+// Consumer 2: ReactHookSite is the full 19-arm roster (pin by execution, not a hand mirror).
+fn react_hook_site_roster_holds() -> Bool {
+  let labels = reflect_coproduct_decl(declared_type: "ReactHookSite").arm_labels
+  let count_right = labels.length() == 19
+  let has_core = labels.contains("UseState")
+    && labels.contains("UseReducer")
+    && labels.contains("UseContext")
+    && labels.contains("UseRef")
+    && labels.contains("UseImperativeHandle")
+    && labels.contains("UseEffect")
+    && labels.contains("UseLayoutEffect")
+    && labels.contains("UseInsertionEffect")
+    && labels.contains("UseEffectEvent")
+    && labels.contains("UseMemo")
+    && labels.contains("UseCallback")
+    && labels.contains("UseTransition")
+    && labels.contains("UseDeferredValue")
+    && labels.contains("UseId")
+    && labels.contains("UseSyncExternalStore")
+    && labels.contains("UseDebugValue")
+    && labels.contains("UseActionState")
+    && labels.contains("UseOptimistic")
+    && labels.contains("CustomHook")
+  count_right && has_core
+}
+
+
+// Consumer 3: ReactUseCallSite carries exactly the one UseResource arm.
+fn react_use_call_site_holds() -> Bool {
+  let labels = reflect_coproduct_decl(declared_type: "ReactUseCallSite").arm_labels
+  let count_right = labels.length() == 1
+  let has_use_resource = labels.contains("UseResource")
+  count_right && has_use_resource
+}
+
+
+// Consumer 4: UseResource is a use()-call site, NOT a hook site — disjoint arm-sets.
+fn use_resource_not_a_hook_site_holds() -> Bool {
+  let hook_labels = reflect_coproduct_decl(declared_type: "ReactHookSite").arm_labels
+  let use_labels = reflect_coproduct_decl(declared_type: "ReactUseCallSite").arm_labels
+  let not_a_hook = hook_labels.contains("UseResource") == false
+  let is_a_use_call = use_labels.contains("UseResource")
+  not_a_hook && is_a_use_call
+}
+
+
+// Consumer 5: the Text arm of ReactCreateElementChild carries text_value_ref and has NO `key`
+// field (field-absence receipt over a coproduct arm's payload record).
+fn react_text_child_field_set_holds() -> Bool {
+  let fields = reflect_arm_payload_decl(coproduct: "ReactCreateElementChild", arm: "Text").field_labels
+  let has_text_value = fields.contains("text_value_ref")
+  let no_key = fields.contains("key") == false
+  has_text_value && no_key
+}
+
+
+// Consumer 6: ReactContextBinding has exactly {context_ref, default_value_ref} — no invented
+// field (field-absence receipt over a record declaration).
+fn react_context_binding_field_set_holds() -> Bool {
+  let fields = reflect_record_decl(declared_type: "ReactContextBinding").field_labels
+  let count_right = fields.length() == 2
+  let has_fields = fields.contains("context_ref")
+    && fields.contains("default_value_ref")
+  let no_invented = fields.contains("context_pair_ref") == false
+  count_right && has_fields && no_invented
+}
+
+
+fn react_declaration_shapes_reflect_by_execution() -> Bool {
+  react_element_partition_holds()
+    && react_hook_site_roster_holds()
+    && react_use_call_site_holds()
+    && use_resource_not_a_hook_site_holds()
+    && react_text_child_field_set_holds()
+    && react_context_binding_field_set_holds()
+}
