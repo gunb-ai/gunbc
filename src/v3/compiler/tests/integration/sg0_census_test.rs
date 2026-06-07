@@ -1093,8 +1093,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // added inside the existing harness only. Explicit deferral: **ROADMAP.md** **T-PB-B** /
     // `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:43` Public Operational Lanes,
     // `ROADMAP.md:63` Nine lanes);
-    // dissolves when T-22 evaluates `lens_testgen/generator_provenance.dag` and
-    // `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses without this Rust string ratchet.
+    // W4 fold-delete: generator_provenance/shadow_ci/dag_input_surface behavioral receipts
+    // promoted to v4_roster_pilot claim-run witnesses; B-interim host-AST slices remain.
     "src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs",
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.

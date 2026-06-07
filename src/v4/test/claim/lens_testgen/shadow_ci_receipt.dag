@@ -1,5 +1,7 @@
 // src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag
 // Scope: F.2-P2 / F.2.6 — T-38 witness pins for scheduled-generator roster + TestgenRunReceipt.
+// W4 fold-delete: witness_lens_testgen_shadow_ci_run_receipt_green promoted to v4_roster_pilot
+// (mutation-proven claim-run; retires the smoke string-ratchet slice).
 
 module v4.test.claim.lens_testgen.shadow_ci_receipt
 

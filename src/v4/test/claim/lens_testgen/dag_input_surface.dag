@@ -2,6 +2,9 @@
 // Scope: T-19 lens_testgen activation — generated testgen surface accepts .dag language inputs.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 // Status: activated — structural EqualsClaim + witness receipts prove scheduled/bootstrap .dag LBE input surface.
+// W4 fold-delete: witness_lens_testgen_schedules_dag_input_surface_green and
+// witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green promoted to
+// v4_roster_pilot (mutation-proven claim-run; retires smoke string-ratchet slices).
 
 module v4.test.claim.lens_testgen.dag_input_surface
 
