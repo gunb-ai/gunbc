@@ -140,7 +140,8 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
 }
 
 pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
-    path.starts_with("src/v4/test/claim/")
+    ci_changed_path_affects_v4(path)
+        || path.starts_with("src/v4/test/claim/")
         || path == "scripts/v4-testclaim-corpus-eval.sh"
         || path == "scripts/v4-testclaim-smoke-roster.sh"
 }
@@ -213,6 +214,20 @@ mod tests {
     }
 
     #[test]
+    fn gram_emit_substrate_triggers_testclaim_corpus() {
+        assert!(ci_changed_path_affects_v4("src/v4/std/grammar.dag"));
+        assert!(ci_changed_path_affects_testclaim_corpus("src/v4/std/grammar.dag"));
+        assert!(!ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/claim/parse/grammar_validation.dag"
+        ) == !ci_changed_path_affects_v4(
+            "src/v4/test/claim/parse/grammar_validation.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/claim/parse/grammar_validation.dag"
+        ));
+    }
+
+    #[test]
     fn testclaim_corpus_includes_all_v4_claim_paths() {
         assert!(ci_changed_path_affects_testclaim_corpus(
             "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
@@ -268,7 +283,7 @@ mod tests {
         assert!(!flags.v2);
         assert!(!flags.v3);
         assert!(flags.v4);
-        assert!(!flags.testclaim_corpus);
+        assert!(flags.testclaim_corpus);
         assert!(flags.workflow_policy);
         assert!(!flags.release_distribution);
     }
