@@ -10,9 +10,11 @@
 //! to discriminating `.dag` witnesses in
 //! `src/v4/test/claim/extdeps_react/structural_receipts.dag` (mutation-proven).
 //!
-//! **B-INTERIM dissolution trigger:** ctrl#1476 READ axis / type-decl reflection
-//! substrate (sleek-carp-651); migrate each receipt to `.dag` intrinsic witnesses,
-//! then delete this file + SG-0 census row (full E2 clean).
+//! **P5 receipt (INVARIANTS §P5(b)):** Explicit deferral ROADMAP.md § "Nine lanes" row
+//! **T-PB-B** / `pb_rust_tests_outside_residual_zero` (ROADMAP.md:74). B-INTERIM
+//! dissolution trigger: ctrl#1476 READ axis / type-decl reflection substrate
+//! (sleek-carp-651); migrate each receipt to `.dag` intrinsic witnesses, then delete
+//! this file + SG-0 census row (full E2 clean).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::TypeConnective;
@@ -66,7 +68,7 @@ fn react_extdeps_dag_or_panic() -> v3_compiler::Dag {
 }
 
 // B-INTERIM consumer 4 (+3): UseResource ∉ ReactHookSite; ReactUseCallSite 1-arm UseResource.
-// TRIGGER: ctrl#1476 coproduct_arm_labels + cross-membership on READ axis.
+// P5 deferral: ROADMAP T-PB-B (ROADMAP.md:74); TRIGGER: ctrl#1476 READ axis.
 fn assert_use_resource_is_react_use_call_site_not_hook_site(dag: &v3_compiler::Dag) {
     let hook_site = dag
         .declaration_by_name("ReactHookSite")
@@ -106,7 +108,7 @@ fn assert_use_resource_is_react_use_call_site_not_hook_site(dag: &v3_compiler::D
 }
 
 // B-INTERIM consumer 2: ReactHookSite 19-arm roster (count + labels).
-// TRIGGER: ctrl#1476 coproduct_arm_labels on READ axis.
+// P5 deferral: ROADMAP T-PB-B (ROADMAP.md:74); TRIGGER: ctrl#1476 READ axis.
 fn assert_react_hook_site_roster_matches_pin(dag: &v3_compiler::Dag) {
     let hook_site = dag
         .declaration_by_name("ReactHookSite")
@@ -133,7 +135,8 @@ fn assert_react_hook_site_roster_matches_pin(dag: &v3_compiler::Dag) {
 }
 
 // B-INTERIM consumer 1: ReactElement partition arm-set (Host|Composite|Fragment, no Text).
-// TRIGGER: ctrl#1476 coproduct_arm_labels on READ axis.
+// P5 deferral: ROADMAP T-PB-B (ROADMAP.md:74); TRIGGER: ctrl#1476 READ axis.
+// SOLE authority for partition (no standalone guard file; no .dag mirror witness).
 fn assert_react_element_partition_is_create_element_return_only(dag: &v3_compiler::Dag) {
     let react_element = dag
         .declaration_by_name("ReactElement")
