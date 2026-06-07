@@ -165,15 +165,6 @@ fn v4_leaf_model_rust_r3_internal_lens_oracle_labels_match_projection_replay() {
     let baseline = baseline_symbol_row_config();
     let mutated = mutated_symbol_row_config();
 
-    let to_owned = extract_data_symbol_binding(
-        FIXTURE_DAG,
-        "rust_r3_internal_emit_kind_symbol_to_owned_string",
-    )
-    .expect("lens kind label for ToOwnedString");
-    let identity =
-        extract_data_symbol_binding(FIXTURE_DAG, "rust_r3_internal_emit_kind_symbol_identity")
-            .expect("lens kind label for SymbolIdentity");
-
     assert_eq!(
         replay_value_projection_kind_label(&baseline),
         "TargetValueExprSymbolToOwnedString"
@@ -183,12 +174,16 @@ fn v4_leaf_model_rust_r3_internal_lens_oracle_labels_match_projection_replay() {
         "TargetValueExprSymbolIdentity"
     );
     assert!(
-        FIXTURE_DAG.contains(&format!("TargetValueExprSymbolToOwnedString => {to_owned}")),
-        "lens oracle must label ToOwnedString arm consistently"
+        FIXTURE_DAG.contains("discriminant(v: expr.kind)"),
+        "lens oracle must key value projection kind via discriminant() on TargetValueExpressionKind"
     );
     assert!(
-        FIXTURE_DAG.contains(&format!("TargetValueExprSymbolIdentity => {identity}")),
-        "lens oracle must label SymbolIdentity arm consistently"
+        !FIXTURE_DAG.contains("rust_r3_internal_emit_kind_symbol_to_owned_string"),
+        "shadow Symbol tags for TargetValueExpressionKind arms were dissolved into discriminant()"
+    );
+    assert!(
+        !FIXTURE_DAG.contains("rust_r3_internal_emit_kind_symbol_identity"),
+        "shadow Symbol tags for TargetValueExpressionKind arms were dissolved into discriminant()"
     );
 }
 
