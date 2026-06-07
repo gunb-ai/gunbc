@@ -86,10 +86,10 @@ import v4.std.model_core {
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   PrimitiveOperationRef,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth
 }
 import v4.std.diagnostic {
   Accepted,
@@ -1997,11 +1997,11 @@ fn ts_language_model_canonical_symbols() -> Set<Symbol> {
 fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_width {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: ts_inhabitant_atom(id: ts_tag_bits64) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
           Violates {
@@ -2015,9 +2015,9 @@ fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<Symbol, Node> {
 fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
           Violates {
@@ -2031,9 +2031,9 @@ fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<Symbol, Node> {
 fn ts_bool_spec_facts(facts: TsBooleanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ts_inhabitant_atom(id: facts.encoding) }
       } else {
           Violates {
@@ -3120,12 +3120,12 @@ fn ts_string_spec_facts(facts: TsStringPrimitiveFacts) -> Map<Symbol, Node> {
   let m0 = empty_map()
   let m1 = map_insert(
     m: m0,
-    key: primitive_fact_axis_surface_spelling,
+    key: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
     value: ts_inhabitant_atom(id: facts.surface_spelling)
   )
   let m2 = map_insert(
     m: m1,
-    key: primitive_fact_axis_encoding,
+    key: discriminant(v: ModelCoreFactAxisEncoding {}),
     value: ts_inhabitant_atom(id: facts.encoding)
   )
   m2

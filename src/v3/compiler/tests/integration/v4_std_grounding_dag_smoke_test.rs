@@ -306,8 +306,8 @@ fn v4_std_grounding_primitive_fact_bundle_model_core_projection_aggregates_subje
         "projection must enumerate typed model_core axes rather than folding raw rows"
     );
     assert!(
-        GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol(axis: fact_axis)"),
-        "spec_facts projection uses model_core Symbol authority at bundle boundary"
+        GROUNDING_DAG.contains("discriminant(v: fact_axis)"),
+        "spec_facts projection uses discriminant() Symbol authority at bundle boundary"
     );
     assert!(
         !GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry("),

@@ -66,6 +66,8 @@ See [docs/thesis/compositional-layering.md](docs/thesis/compositional-layering.m
 
 The same substrate that models user programs should be able to model and analyze the compiler’s own structures.
 
+This is the read axis of **programmatic access to the code** (paired with the write axis, "show the correct code", below). The roof over both axes — and the measured current-state — is assessed in ctrl planning doc `gunbc-planning/programmatic-access-single-roof-2026-06-07.md` (ctrl#1481): the substrate's *types-as-data* half is real, but the runtime *reflection-by-execution* half is **measured unbuilt** (ctrl#1480 Q2) — a build, not a settled fact.
+
 See [docs/thesis/self-inspection.md](docs/thesis/self-inspection.md).
 
 ### Compiler–`std/` consolidation: no dual representations at the compiler/user boundary

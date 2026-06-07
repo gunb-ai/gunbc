@@ -14,6 +14,9 @@ import v4.std.logic {
   bool_width_fact_node
 }
 import v4.std.model_core {
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisWidth,
   ModelCoreWave1BoolBoundedLatticeIdentities,
   ModelCoreWave1BoolComplementBounds,
   ModelCoreWave1BoolComplementInvolution,
@@ -22,9 +25,6 @@ import v4.std.model_core {
   model_core_wave1_bool_inhabitance,
   model_core_wave1_bool_law_obligation,
   model_core_wave1_bool_primitive_bundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_width,
   wave1_model_core,
   wave1_void
 }
@@ -52,7 +52,7 @@ fn model_core_wave1_payload_fail_node() -> Node {
 fn wave1_model_core_bool_width_fact_holds() -> Bool {
   match model_core_wave1_bool_fact_lookup(
     facts: bool_primitive_facts,
-    axis: primitive_fact_axis_width
+    axis: discriminant(v: ModelCoreFactAxisWidth {})
   ) {
     Holds { value } => value == bool_width_fact_node(width: bool_primitive_facts.width)
     Violates { diagnostic: _ } => false
@@ -62,7 +62,7 @@ fn wave1_model_core_bool_width_fact_holds() -> Bool {
 fn wave1_model_core_bool_encoding_fact_holds() -> Bool {
   match model_core_wave1_bool_fact_lookup(
     facts: bool_primitive_facts,
-    axis: primitive_fact_axis_encoding
+    axis: discriminant(v: ModelCoreFactAxisEncoding {})
   ) {
     Holds { value } => value == bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
     Violates { diagnostic: _ } => false
@@ -72,7 +72,7 @@ fn wave1_model_core_bool_encoding_fact_holds() -> Bool {
 fn wave1_model_core_bool_unbound_axes_fail_closed() -> Bool {
   match model_core_wave1_bool_fact_lookup(
     facts: bool_primitive_facts,
-    axis: primitive_fact_axis_signedness
+    axis: discriminant(v: ModelCoreFactAxisSignedness {})
   ) {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true

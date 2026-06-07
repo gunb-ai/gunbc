@@ -71,8 +71,8 @@ import v4.std.model_core {
   ModelCore,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic
 }
 import v4.std.witness { Holds, Violates }
@@ -533,9 +533,9 @@ fn ecmascript_singleton_facts_node(facts: EcmascriptSingletonPrimitiveFacts) -> 
 fn ecmascript_number_spec_facts(facts: EcmascriptNumberPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.machine_representation) }
       } else {
           Violates {
@@ -549,9 +549,9 @@ fn ecmascript_number_spec_facts(facts: EcmascriptNumberPrimitiveFacts) -> Map<Sy
 fn ecmascript_bigint_spec_facts(facts: EcmascriptBigIntPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
       } else {
           Violates {
@@ -565,9 +565,9 @@ fn ecmascript_bigint_spec_facts(facts: EcmascriptBigIntPrimitiveFacts) -> Map<Sy
 fn ecmascript_boolean_spec_facts(facts: EcmascriptBooleanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
       } else {
           Violates {
@@ -581,9 +581,9 @@ fn ecmascript_boolean_spec_facts(facts: EcmascriptBooleanPrimitiveFacts) -> Map<
 fn ecmascript_symbol_spec_facts(facts: EcmascriptSymbolPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
       } else {
           Violates {
@@ -597,9 +597,9 @@ fn ecmascript_symbol_spec_facts(facts: EcmascriptSymbolPrimitiveFacts) -> Map<Sy
 fn ecmascript_string_spec_facts(facts: EcmascriptStringPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
       } else {
           Violates {
@@ -613,9 +613,9 @@ fn ecmascript_string_spec_facts(facts: EcmascriptStringPrimitiveFacts) -> Map<Sy
 fn ecmascript_singleton_spec_facts(facts: EcmascriptSingletonPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: ecmascript_inhabitant_atom(id: ecmascript_repr_singleton_sole_inhabitant) }
       } else {
           Violates {

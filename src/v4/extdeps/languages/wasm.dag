@@ -69,12 +69,12 @@ import v4.std.model_core {
   model_core_wave1_law_field_algebra,
   model_core_wave1_law_field_kind,
   model_core_wave1_law_field_subject,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
@@ -1824,15 +1824,15 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
 fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_width {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: wasm_int_width_node(width: facts.width) }
-      } else if axis == primitive_fact_axis_signedness {
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           Holds { value: wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: wasm_inhabitant_atom(id: wasm_repr_sign_agnostic_modular) }
-      } else if axis == primitive_fact_axis_overflow_disposition {
+      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
           Holds { value: wasm_inhabitant_atom(id: wasm_tag_modular_wrap) }
       } else {
           Violates {
@@ -1846,11 +1846,11 @@ fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<Symbol, Node
 fn wasm_float_spec_facts(facts: WasmFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_width {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: wasm_float_width_node(width: facts.width) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: wasm_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
           Violates {
@@ -1982,11 +1982,11 @@ fn wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
         target: wasm_inhabitant_atom(id: facts.std_projection)
       ),
       wasm_named_edge(
-        name: primitive_fact_axis_signedness,
+        name: discriminant(v: ModelCoreFactAxisSignedness {}),
         target: wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular)
       ),
       wasm_named_edge(
-        name: primitive_fact_axis_overflow_disposition,
+        name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
         target: wasm_inhabitant_atom(id: wasm_tag_modular_wrap)
       )
     ]
