@@ -36,6 +36,26 @@ data v4_roster_pilot_row_generator_provenance: V4RosterPilotClaimRunRow = V4Rost
   function: "witness_lens_testgen_scheduled_generators_carry_provenance_green"
 }
 
+// W4 fold-delete: F.2-P2 shadow CI TestgenRunReceipt roster witness (mutation-proven).
+data v4_roster_pilot_row_lens_testgen_shadow_ci: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens_testgen shadow CI run receipt",
+  entry: "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag",
+  function: "witness_lens_testgen_shadow_ci_run_receipt_green"
+}
+
+// W4 fold-delete: T-19 scheduled LBE .dag input surface witness (mutation-proven).
+data v4_roster_pilot_row_lens_testgen_dag_input_scheduled: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens_testgen scheduled dag input surface",
+  entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
+  function: "witness_lens_testgen_schedules_dag_input_surface_green"
+}
+
+data v4_roster_pilot_row_lens_testgen_dag_input_bootstrap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens_testgen bootstrap dag input surface",
+  entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
+  function: "witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green"
+}
+
 data v4_roster_pilot_row_grounding_ts_symbol_carrier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "grounding_typescript SG-1 symbol carrier",
   entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
@@ -90,6 +110,49 @@ data v4_roster_pilot_row_std_text_field_text: V4RosterPilotClaimRunRow = V4Roste
   function: "text_host_string_field_text_holds"
 }
 
+// Exemplar E2: v4.extdeps.frameworks.react A-class structural receipts (7 witnesses).
+data v4_roster_pilot_row_extdeps_react_use_memo_callback_deps: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "extdeps_react UseMemo/UseCallback required List deps",
+  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+  function: "extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds"
+}
+
+data v4_roster_pilot_row_extdeps_react_effect_setup_ref: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "extdeps_react effect hooks require setup_ref",
+  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+  function: "extdeps_react_effect_hooks_require_setup_ref_holds"
+}
+
+data v4_roster_pilot_row_extdeps_react_host_key_ref: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "extdeps_react ReactHostElement key and ref fields",
+  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+  function: "extdeps_react_host_element_declares_key_and_ref_holds"
+}
+
+data v4_roster_pilot_row_extdeps_react_composite_key_ref: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "extdeps_react ReactCompositeElement key and ref fields",
+  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+  function: "extdeps_react_composite_element_declares_key_and_ref_holds"
+}
+
+data v4_roster_pilot_row_extdeps_react_fragment_key: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "extdeps_react Fragment arm declares key",
+  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+  function: "extdeps_react_fragment_arm_declares_key_holds"
+}
+
+data v4_roster_pilot_row_extdeps_react_element_children: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "extdeps_react element children are List<ReactCreateElementChild>",
+  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+  function: "extdeps_react_element_children_are_list_create_element_child_holds"
+}
+
+data v4_roster_pilot_row_extdeps_react_child_element_wraps: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "extdeps_react CreateElementChild Element wraps ReactElement",
+  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+  function: "extdeps_react_create_element_child_element_arm_wraps_react_element_holds"
+}
+
 // R2 keystone execution cert — emit(add) must produce the canonical rust_mvp1 add-fn source
 // (ctrl#1476 B5 grammar-inverse consumer; execution not structural grep).
 data v4_roster_pilot_row_mvp1_rust_emit_add_fn: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
@@ -98,11 +161,78 @@ data v4_roster_pilot_row_mvp1_rust_emit_add_fn: V4RosterPilotClaimRunRow = V4Ros
   function: "mvp1_rust_emit_add_fn_accepts_holds"
 }
 
+// Wave-A W2: lens smoke→witness fold-delete (application, idempotency, identical_variant,
+// affected_set IRT-1 remainder, registry). Discriminating claim-run witnesses carry the
+// behavioral content of retired parse-only smokes; B declaration-shape receipts remain
+// host-AST interim in the surviving smoke harnesses.
+data v4_roster_pilot_row_lens_application_introspect_advisory: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens application introspect advisory demotion",
+  entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+  function: "lens_application_introspect_advisory_holds"
+}
+
+data v4_roster_pilot_row_lens_application_synthesis_gap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens application synthesis gap polynomial advisory",
+  entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+  function: "lens_application_synthesis_gap_polynomial_holds"
+}
+
+data v4_roster_pilot_row_lens_idempotency_write_effect: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens idempotency write-effect witness",
+  entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
+  function: "lens_idempotency_write_effect_holds"
+}
+
+data v4_roster_pilot_row_lens_identical_variant_unrealized: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens identical_variant_payload unrealized scaffold",
+  entry: "src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag",
+  function: "lens_identical_variant_payload_unrealized_scaffold_holds"
+}
+
+data v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens affected_set IRT-1 boundary prune",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_boundary_prune_holds"
+}
+
+data v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens affected_set IRT-1 fail-closed pending escalation",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_fail_closed_pending_escalation_holds"
+}
+
+data v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens affected_set IRT-1 fail-closed absorption",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_fail_closed_absorption_holds"
+}
+
+data v4_roster_pilot_row_lens_affected_set_irt1_empty_diff: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens affected_set IRT-1 empty diff frontier",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_empty_diff_frontier_holds"
+}
+
+data v4_roster_pilot_row_lens_registry_required_ids_resolve: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens registry required ids resolve",
+  entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+  function: "lens_registry_required_ids_resolve_holds"
+}
+
+data v4_roster_pilot_row_lens_registry_singleton_row_counts: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens registry singleton row counts",
+  entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+  function: "lens_registry_singleton_row_counts_holds"
+}
+
 
 data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_edit_locus_narrow,
   v4_roster_pilot_row_edit_locus_fail_closed,
   v4_roster_pilot_row_generator_provenance,
+  v4_roster_pilot_row_lens_testgen_shadow_ci,
+  v4_roster_pilot_row_lens_testgen_dag_input_scheduled,
+  v4_roster_pilot_row_lens_testgen_dag_input_bootstrap,
   v4_roster_pilot_row_grounding_ts_symbol_carrier,
   v4_roster_pilot_row_grounding_ts_absence_fail_closed,
   v4_roster_pilot_row_discriminant_intrinsic,
@@ -111,11 +241,28 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_std_text_roundtrip,
   v4_roster_pilot_row_std_text_empty_roundtrip,
   v4_roster_pilot_row_std_text_field_text,
-  v4_roster_pilot_row_mvp1_rust_emit_add_fn
+  v4_roster_pilot_row_extdeps_react_use_memo_callback_deps,
+  v4_roster_pilot_row_extdeps_react_effect_setup_ref,
+  v4_roster_pilot_row_extdeps_react_host_key_ref,
+  v4_roster_pilot_row_extdeps_react_composite_key_ref,
+  v4_roster_pilot_row_extdeps_react_fragment_key,
+  v4_roster_pilot_row_extdeps_react_element_children,
+  v4_roster_pilot_row_extdeps_react_child_element_wraps,
+  v4_roster_pilot_row_mvp1_rust_emit_add_fn,
+  v4_roster_pilot_row_lens_application_introspect_advisory,
+  v4_roster_pilot_row_lens_application_synthesis_gap,
+  v4_roster_pilot_row_lens_idempotency_write_effect,
+  v4_roster_pilot_row_lens_identical_variant_unrealized,
+  v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune,
+  v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending,
+  v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption,
+  v4_roster_pilot_row_lens_affected_set_irt1_empty_diff,
+  v4_roster_pilot_row_lens_registry_required_ids_resolve,
+  v4_roster_pilot_row_lens_registry_singleton_row_counts
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "12"
+data v4_roster_pilot_claim_run_row_count: String = "32"
 
 
 fn v4_roster_pilot_row_matches(
@@ -142,6 +289,9 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
   v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_narrow)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_fail_closed)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_generator_provenance)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_testgen_shadow_ci)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_testgen_dag_input_scheduled)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_testgen_dag_input_bootstrap)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_symbol_carrier)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_grounding_ts_absence_fail_closed)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_discriminant_intrinsic)
@@ -150,13 +300,30 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_empty_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_field_text)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_use_memo_callback_deps)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_effect_setup_ref)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_host_key_ref)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_composite_key_ref)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_fragment_key)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_element_children)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_extdeps_react_child_element_wraps)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_mvp1_rust_emit_add_fn)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_introspect_advisory)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_synthesis_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_idempotency_write_effect)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_identical_variant_unrealized)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_empty_diff)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_required_ids_resolve)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_singleton_row_counts)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 12)
-    && (v4_roster_pilot_claim_run_row_count == "12")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 32)
+    && (v4_roster_pilot_claim_run_row_count == "32")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -172,6 +339,21 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_generator_provenance,
       entry: "src/v4/test/claim/lens_testgen/generator_provenance.dag",
       function: "witness_lens_testgen_scheduled_generators_carry_provenance_green"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_testgen_shadow_ci,
+      entry: "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag",
+      function: "witness_lens_testgen_shadow_ci_run_receipt_green"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_testgen_dag_input_scheduled,
+      entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
+      function: "witness_lens_testgen_schedules_dag_input_surface_green"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_testgen_dag_input_bootstrap,
+      entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
+      function: "witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_grounding_ts_symbol_carrier,
@@ -214,9 +396,95 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "text_host_string_field_text_holds"
     )
     && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_extdeps_react_use_memo_callback_deps,
+      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+      function: "extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_extdeps_react_effect_setup_ref,
+      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+      function: "extdeps_react_effect_hooks_require_setup_ref_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_extdeps_react_host_key_ref,
+      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+      function: "extdeps_react_host_element_declares_key_and_ref_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_extdeps_react_composite_key_ref,
+      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+      function: "extdeps_react_composite_element_declares_key_and_ref_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_extdeps_react_fragment_key,
+      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+      function: "extdeps_react_fragment_arm_declares_key_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_extdeps_react_element_children,
+      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+      function: "extdeps_react_element_children_are_list_create_element_child_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_extdeps_react_child_element_wraps,
+      entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+      function: "extdeps_react_create_element_child_element_arm_wraps_react_element_holds"
+    )
+    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_mvp1_rust_emit_add_fn,
       entry: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
       function: "mvp1_rust_emit_add_fn_accepts_holds"
     )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_application_introspect_advisory,
+      entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+      function: "lens_application_introspect_advisory_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_application_synthesis_gap,
+      entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+      function: "lens_application_synthesis_gap_polynomial_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_idempotency_write_effect,
+      entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
+      function: "lens_idempotency_write_effect_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_identical_variant_unrealized,
+      entry: "src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag",
+      function: "lens_identical_variant_payload_unrealized_scaffold_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune,
+      entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+      function: "lens_affected_set_irt1_boundary_prune_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending,
+      entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+      function: "lens_affected_set_irt1_fail_closed_pending_escalation_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption,
+      entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+      function: "lens_affected_set_irt1_fail_closed_absorption_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_affected_set_irt1_empty_diff,
+      entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+      function: "lens_affected_set_irt1_empty_diff_frontier_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_registry_required_ids_resolve,
+      entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+      function: "lens_registry_required_ids_resolve_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_registry_singleton_row_counts,
+      entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+      function: "lens_registry_singleton_row_counts_holds"
+    )
 }
+
 

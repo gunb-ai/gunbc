@@ -62,7 +62,7 @@ import v4.std.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
@@ -963,13 +963,6 @@ fn ecmascript_mvp1_emitted_add_fn_node() -> Node {
   }
 }
 
-fn ecmascript_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
-  match token {
-    FixedToken { token_class: c } => c
-    BoundToken { token_class: c, binding: _ } => c
-  }
-}
-
 fn ecmascript_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   // T-11: serialize through the single shared morphism (no parallel wire authority).
   concrete_syntax_token_to_node(token: token)
@@ -1011,7 +1004,7 @@ fn ecmascript_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: ecmascript_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )
