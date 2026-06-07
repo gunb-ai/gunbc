@@ -182,7 +182,6 @@ import v4.std.target_model {
   target_collection_row_field_primary,
   target_collection_row_field_alternatives,
   target_collection_row_field_fallback,
-  target_collection_repr_kind_atom,
   target_collection_set_no_representation,
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
@@ -1638,7 +1637,7 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
     children: [
       rust_named_edge(
         name: target_collection_repr_field_kind,
-        target: rust_inhabitant_atom(id: target_collection_repr_kind_atom(kind: form.kind))
+        target: rust_inhabitant_atom(id: discriminant(v: form.kind))
       ),
       rust_named_edge(
         name: target_collection_repr_field_apply,
