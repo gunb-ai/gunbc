@@ -144,17 +144,21 @@ fn react_probe_hook_use_effect_event() -> ReactHookSite {
   UseEffectEvent { callback_ref: react_probe_cross_decl_ref }
 }
 
+fn react_probe_hook_dependencies_list() -> List<ReactCrossDeclRef> {
+  Cons { head: react_probe_cross_decl_ref, tail: Empty }
+}
+
 fn react_probe_hook_use_memo() -> ReactHookSite {
   UseMemo {
     factory_ref: react_probe_cross_decl_ref,
-    dependencies: Empty
+    dependencies: react_probe_hook_dependencies_list()
   }
 }
 
 fn react_probe_hook_use_callback() -> ReactHookSite {
   UseCallback {
     callback_ref: react_probe_cross_decl_ref,
-    dependencies: Empty
+    dependencies: react_probe_hook_dependencies_list()
   }
 }
 
@@ -422,7 +426,18 @@ fn extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds() -
     UseMemo { factory_ref: _, dependencies: memo_deps } =>
       match react_probe_hook_use_callback() {
         UseCallback { callback_ref: _, dependencies: callback_deps } =>
-          length(xs: memo_deps) == 0 && length(xs: callback_deps) == 0
+          match memo_deps {
+            Cons { head: memo_head, tail: memo_tail } =>
+              match callback_deps {
+                Cons { head: callback_head, tail: callback_tail } =>
+                  memo_head == react_probe_cross_decl_ref
+                    && callback_head == react_probe_cross_decl_ref
+                    && length(xs: memo_tail) == 0
+                    && length(xs: callback_tail) == 0
+                _ => false
+              }
+            _ => false
+          }
         _ => false
       }
     _ => false
