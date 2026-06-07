@@ -102,7 +102,7 @@ arms + `emit_host` execution rows (T-22).
 **Scope:** `type Task = { ... }` via grammar-inverse round-trip on derive path — still fixture
 `InferredTree`, not source ingest.
 
-**Depends on:** T1 TS TargetModel wave2a grammar rows populated.
+**Depends on:** T0.5 green; T1 TS TargetModel wave2a grammar rows populated.
 
 ### T3 — SG-2 type-expression projection (grammar-matched types)
 
@@ -115,7 +115,7 @@ arms + `emit_host` execution rows (T-22).
 `06_translate`. Dissolves `ProjectionAbsent` shim per mark
 `feature:sg-2-mvp1-projection-absent-shim`.
 
-**Depends on:** T0 (serialize path live); `target_model_edge_type_expression_projection` on
+**Depends on:** T0.5 green; T0 (serialize path live); `target_model_edge_type_expression_projection` on
 every active `TargetModel`.
 
 ### T4 — SG-2 mode-2: non-grammar-matched type nodes
@@ -191,14 +191,15 @@ is tier-dependent:
 |-----------------|-------------------|-------------------|
 | **Multi-target platform** (RR-C/D, RCA mgrs) | T1 | Same IR → N `TargetModel`s; `post_emit_verifier` per target (`multi_target_emit_verification_gate.dag`) |
 | **ci.dag conformance** (`workflow/ci.dag`) | T0 + T1 (probe) | `m1_rust_emit_probe_execution` graduates from v2 emit to v4 `emit` receipt; shadow selection receipts need executed claim verdicts |
-| **Coercion engine** (`find_witness` dissolution) | T0–T3 | Translate calls `find_witness` instead of inline `coercion_fold` arms; negative claims (WouldLoseInformation, NoTargetCandidate) become executable |
-| **Omni-ingestion** | T7–T8 | Ingest is coercion reversed; without emit that executes, round-trip claims are unfalsifiable |
+| **Coercion engine** (translate sprawl + fixture grounding dissolution) | T0.5–T3 | `find_witness` engine exists today (`coercion_fold` / `solve_constraints`); dissolution target is projection sprawl + hand fixture grounding — negative claims become executable as tiers land |
+| **Omni-ingestion** | T0.5 (minimal) + T7–T8 (breadth) | T0.5 home round-trip on `add` proves faithfulness early; T7–T8 remain arbitrary-source + full-form coverage |
 | **Lenses** (cost/CX/parallelism on compiler) | T0 + executing spine | `claim_pipeline/translate.dag` (G3.4) needs translate to run, not just compile; lens claims over CI workflow pull emit verdicts |
 | **Self-host fixed point** | T6–T7 | `compiler.dag` emits stage0 Rust; requires value-expression + full compile, not add-only |
 | **Shape B omni-emission** (OpenAPI/SQL/React) | **Out of scope** | User `.dag` programs per RR-D GUARDED — not compiler `emit()` |
 
-**Critical path:** T0 (keystone execute) → T1 (multi-target add) → T3/T4 (type expr) → T6
-(value expr) → T7 (ingest) → self-host. T5 (RC layering) parallels T3–T4. T8 follows T7.
+**Critical path:** T0 (keystone execute) → **T0.5 (faithfulness on `add` — blocks T2+)** → T1
+(multi-target add, may parallel T0.5) → T3/T4 (type expr) → T6 (value expr) → T7 (ingest
+breadth) → self-host. T5 (RC layering) parallels T3–T4. T8 (full round-trip coverage) follows T7.
 
 ---
 
@@ -226,20 +227,22 @@ From THESIS, INVARIANTS, RR-C, RR-D:
 | Lane | GO when | NO-GO now because |
 |------|---------|-------------------|
 | T0 keystone execute | Interpreter perf fix + emit logic bugs from running witness | S0 done; S1/S2 open — **no emit executes** |
-| T1 multi-target add | T0 green + per-target serialize verified | Depends on T0 |
-| T2 wave2a type alias | T1 TS row + grammar rows | Fixture-only; no new consumer beyond existing claims |
-| T3 SG-2 projection | T0 green + `ProjectionAbsent` shim dissolved | Translate edits need executing spine |
+| T0.5 faithfulness (`add`) | T0 green + `dag_mvp1_target_model` + W1b round-trip + infer-authored grounding | **Mandatory gate before T2–T6** — see §2 T0.5 |
+| T1 multi-target add | T0 green + per-target serialize verified | Depends on T0; may parallel T0.5 |
+| T2 wave2a type alias | T0.5 green + T1 TS row + grammar rows | Fixture-only; no new consumer beyond existing claims |
+| T3 SG-2 projection | T0.5 green + `ProjectionAbsent` shim dissolved | Translate edits need executing spine + faithfulness proof |
 | T4 SG-2 mode-2 | #4462 merged + T3 receipts | Explicitly blocked (design-closure doc) |
 | T5 SG-RC layering | T3–T4 + `lookup` interpreter | ERROR bucket in claim map |
 | T6 value expressions | New claims authored + T0–T5 | **No executable consumer** — design map only |
 | T7 ingest | Ingest staging replaced in `00_compile` | Separate arc; don't conflate with emit tiers |
 | T8 round-trip | T7 + emit coverage | Staged claims only |
 | Substrate: `fold_node` memoization | T0 shows fold-family blowup after runtime fix | S0 refuted fold-as-root-cause for keystone |
-| Substrate: `find_witness` dissolution | Coercion claims execute on translate path | Inline coercion works for MVP-1 fixtures |
+| Substrate: translate sprawl + fixture grounding dissolution | T0.5 green + executing negative coercion claims | Engine exists (`coercion_fold`/`solve_constraints` → `find_witness`); deferral is projection sprawl + hand `mvp1_rust_canonical_grounding_for` — not "engine unbuilt" |
 | `06_translate` bulk port from v2 | Never as a lump | Violates execution-first rebuild (Part 5) |
 
 **Operator NO-GO (this scoping pass):** no implementation PRs against `06_translate` except
-hotfix to make T0 green once interpreter fix lands. Scoping does not authorize tier ≥1 work.
+hotfix to make T0 green once interpreter fix lands. Scoping does not authorize T1+ work without
+T0 receipt; does not authorize **T2–T6** without **T0.5** receipt.
 
 ---
 
@@ -249,12 +252,16 @@ hotfix to make T0 green once interpreter fix lands. Scoping does not authorize t
 Phase 0 (keystone — BLOCKING EVERYTHING)
   └─ Fix v2 interpreter runtime (v2_rt share/memo) → executed emit(add) Rust witness green
 
-Phase 1 (parallel after Phase 0)
+Phase 0.5 (faithfulness gate — BLOCKING T2–T6; may overlap Phase 1)
+  ├─ T0.5a: dag_mvp1_target_model + emit(add) golden + W1b home round-trip claim
+  └─ T0.5b: infer-authored grounding replaces hand fixture enumeration on mvp1 claims
+
+Phase 1 (parallel after Phase 0; finish before T2)
   ├─ T1a: Python/Go add execute + emit_host rows (T-22)
   ├─ T1b: C++/TS add execute
   └─ G3.4: claim_pipeline/translate.dag spine claim (executes once T0 green)
 
-Phase 2 (type surface)
+Phase 2 (type surface — requires Phase 0.5 green)
   ├─ T3: SG-2 projection — dissolve ProjectionAbsent shim
   ├─ T4: SG-2 mode-2 (after #4462) — per design-closure checklist
   └─ T5: SG-RC layering (parallel if lookup lands)
