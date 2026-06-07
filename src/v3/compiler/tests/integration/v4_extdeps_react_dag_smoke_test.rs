@@ -165,7 +165,7 @@ fn assert_react_element_partition_is_create_element_return_only(dag: &v3_compile
 }
 
 // B-INTERIM consumer 5: ReactCreateElementChild::Text record field-set (key absence).
-// TRIGGER: ctrl#1476 record field-label projection on READ axis.
+// P5 deferral: ROADMAP T-PB-B (ROADMAP.md:74); TRIGGER: ctrl#1476 READ axis.
 fn assert_react_create_element_child_text_has_no_element_key_field(dag: &v3_compiler::Dag) {
     let create_element_child = dag
         .declaration_by_name("ReactCreateElementChild")
@@ -207,7 +207,7 @@ fn assert_react_create_element_child_text_has_no_element_key_field(dag: &v3_comp
 }
 
 // B-INTERIM consumer 6: ReactContextBinding record field-set (invented-field absence).
-// TRIGGER: ctrl#1476 record field-label projection on READ axis.
+// P5 deferral: ROADMAP T-PB-B (ROADMAP.md:74); TRIGGER: ctrl#1476 READ axis.
 fn assert_react_context_binding_fields_match_create_context_surface(dag: &v3_compiler::Dag) {
     let binding = dag
         .declaration_by_name("ReactContextBinding")
