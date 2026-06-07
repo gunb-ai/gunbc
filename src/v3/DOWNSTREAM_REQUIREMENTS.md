@@ -276,13 +276,13 @@ forces the upgrade.
 
 **Status (as of 2026-04-17):** partial — parser foundation + `Declaration.refinement: Option<DeclarationId>` substrate edge landed via PR #496. Full semantics (predicate lowering, call-site structural-DAG check, Branch-arm narrowing extension) deferred; now tracked as **DB-11** and as **Deferral: 3a.3-full** in [`ROADMAP.md` §Active deferrals](../../ROADMAP.md).
 
-The original entry is preserved in the historical enumeration file; the active tracker for remaining work is the DB/ROADMAP pair. This is the canonical pattern: once a class-5 entry lands a dedicated DB doc, its live description lives there — not duplicated here.
+The active tracker for remaining work is the DB/ROADMAP pair. This is the canonical pattern: once a class-5 entry lands a dedicated DB doc, its live description lives there — not duplicated here.
 
 ## Historical enumeration — preserved verbatim
 
-The original substrate-consumer gap enumeration (Consumer 1 through Consumer 4, Methodology, M1(2.7) Resolution summary, Round 9 / M1(2.8) / R16 audit sections, Write-pipeline gap summary, Substrate cross-reference) was pruned from this file in the docs-pruning pass on 2026-04-17. All 14 original gaps closed structurally at M1(2.7); R9 and M1(2.8) addendums landed; the R16 scaffold-boundary audit completed. Retained there for audit traceability — not for active consumption.
+The original substrate-consumer gap enumeration (Consumer 1 through Consumer 4, Methodology, M1(2.7) Resolution summary, Round 9 / M1(2.8) / R16 audit sections, Write-pipeline gap summary, Substrate cross-reference) was pruned from this file in the docs-pruning pass on 2026-04-17. All 14 original gaps closed structurally at M1(2.7); R9 and M1(2.8) addendums landed; the R16 scaffold-boundary audit completed.
 
-Active substrate-consumer gaps (Class 5 items above, class-6 tokenizer escapes, class-7 realization narrowing, PR-B validation summary) remain in this file. When a new lens or surface form joins the pipeline, run the enumeration discipline against it; the history file shows the methodology.
+Active substrate-consumer gaps (Class 5 items above, class-6 tokenizer escapes, class-7 realization narrowing, PR-B validation summary) remain in this file. When a new lens or surface form joins the pipeline, run the enumeration discipline against it.
 
 ## The meta-pattern
 
