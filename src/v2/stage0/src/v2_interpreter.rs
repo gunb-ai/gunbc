@@ -2757,6 +2757,31 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
 // Built-in functions (v2_rt equivalents)
 // ---------------------------------------------------------------------------
 
+/// Reflect a coproduct type DECLARATION's arm (constructor) labels by walking the loaded
+/// program's type table. Mirrors the compiler's own coproduct-arm enumeration
+/// (`variant_locals_from_items`): a coproduct is the `Connective::Disj` item whose authored
+/// name matches `type_name`; its arm labels are the authored names of its children. Returns
+/// the empty vec for an unknown or non-coproduct name. This is reflection BY EXECUTION — the
+/// labels come from the live declaration, never pre-enumerated by the host.
+fn reflect_coproduct_arm_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            if item.connective == Connective::Disj {
+                let name = authored_name_at(ctx.source_indices.clone(), item.clone());
+                if name == type_name {
+                    return item
+                        .children
+                        .iter()
+                        .map(|c| authored_name_at(ctx.source_indices.clone(), c.clone()))
+                        .filter(|n| !n.is_empty())
+                        .collect();
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
 fn eval_builtin(
     name: &str,
     args: &[(Option<String>, Value)],
@@ -2781,6 +2806,25 @@ fn eval_builtin(
         "discriminant" => match positional.first() {
             Some(Value::Variant { variant_name, .. }) => Ok(Some(Value::Str(variant_name.clone()))),
             Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(type_name.clone()))),
+            _ => Ok(None),
+        },
+
+        // `coproduct_arm_labels(name)` reflects a coproduct type DECLARATION's arm-label set
+        // BY EXECUTION: given the declared type's own name (a Symbol/interned string), it walks
+        // the loaded program's type table (`ctx.modules`) for the coproduct (`Connective::Disj`)
+        // of that name and returns its constructor names as a `List<Symbol>`. The host does NOT
+        // pre-enumerate — the labels are derived from the live declaration, the read-axis
+        // counterpart to `discriminant(v)` (which reflects a VALUE's own constructor). An unknown
+        // or non-coproduct name yields the empty list (deterministic, discriminable from a real
+        // arm-set), so the builtin always returns a `List`. See std/reflection.dag for the
+        // CoproductDeclShape domain type that composes this door.
+        "coproduct_arm_labels" => match positional.first() {
+            Some(Value::Str(type_name)) => {
+                let labels = reflect_coproduct_arm_labels(ctx, type_name);
+                Ok(Some(Value::List(Rc::new(
+                    labels.into_iter().map(Value::Str).collect(),
+                ))))
+            }
             _ => Ok(None),
         },
 
