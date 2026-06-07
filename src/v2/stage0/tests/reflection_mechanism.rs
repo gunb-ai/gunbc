@@ -17,10 +17,7 @@ use std::rc::Rc;
 
 use v2_compiler::v2_compiler_infer_emit_info::empty_emit_graph_info;
 use v2_compiler::v2_compiler_infer_items::ResolvedGraph;
-use v2_compiler::v2_interpreter::{
-    reflect_arm_payload_field_labels, reflect_coproduct_arm_labels, reflect_record_field_labels,
-    InterpContext,
-};
+use v2_compiler::v2_interpreter::{reflect_coproduct_arm_labels, InterpContext};
 
 fn empty_table_ctx() -> InterpContext {
     let graph = ResolvedGraph {
@@ -38,23 +35,5 @@ fn coproduct_arm_labels_empty_with_no_type_table() {
     assert!(
         reflect_coproduct_arm_labels(&ctx, "ReactElement").is_empty(),
         "reflection returned arms with no type table to walk — host pre-enumeration leak"
-    );
-}
-
-#[test]
-fn record_field_labels_empty_with_no_type_table() {
-    let ctx = empty_table_ctx();
-    assert!(
-        reflect_record_field_labels(&ctx, "ReactContextBinding").is_empty(),
-        "reflection returned fields with no type table to walk — host pre-enumeration leak"
-    );
-}
-
-#[test]
-fn arm_payload_field_labels_empty_with_no_type_table() {
-    let ctx = empty_table_ctx();
-    assert!(
-        reflect_arm_payload_field_labels(&ctx, "ReactCreateElementChild", "Text").is_empty(),
-        "reflection returned arm-payload fields with no type table to walk — host leak"
     );
 }

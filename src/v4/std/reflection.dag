@@ -6,9 +6,11 @@
 // Status: T-REFLECT-1 modeled. Builds on the `coproduct_arm_labels(name)` interpreter
 //         intrinsic (single-source registry row in src/v2/04_method.dag), the read-axis
 //         counterpart to discriminant(v) (#4488, which reflects a VALUE's own constructor).
-//         Consumer: declaration-shape witnesses (E2 partition / arm-set roster receipts).
-//         Dissolve-on-arrival target: the gated hand-enumerated ConnectiveCoproductVariant /
-//         behavior_coproduct_variants mirrors in std/node.dag derive from this instead.
+//         Intended code consumer: the gated hand-enumerated ConnectiveCoproductVariant /
+//         behavior_coproduct_variants mirrors in std/node.dag. NOTE: those mirrors produce
+//         typed Connective/Behavior VALUES (consumed by lens/coverage.dag), so fully
+//         dissolving them additionally requires a CONSTRUCTION-reflection sibling
+//         (build-variant-value-from-label) — pending operator A/B; not built here.
 
 module v4.std.reflection
 
@@ -27,14 +29,6 @@ type CoproductDeclShape {
 }
 
 
-// The reflected shape of a record (product) type DECLARATION — or of a coproduct ARM's
-// payload record — as its declared name plus its field-label set, derived by execution.
-type RecordDeclShape {
-  declared_type: Symbol,
-  field_labels: List<Symbol>,
-}
-
-
 // Reflect the coproduct declaration named `declared_type` into its declaration shape.
 // `coproduct_arm_labels` is the interpreter intrinsic door: it walks the live type table
 // for the `Connective::Disj` declaration of that name and returns its arm labels. The host
@@ -43,24 +37,5 @@ fn reflect_coproduct_decl(declared_type: Symbol) -> CoproductDeclShape {
   CoproductDeclShape {
     declared_type: declared_type,
     arm_labels: coproduct_arm_labels(name: declared_type),
-  }
-}
-
-
-// Reflect a record (Conj) declaration's field-label set. Empty for an unknown/non-record name.
-fn reflect_record_decl(declared_type: Symbol) -> RecordDeclShape {
-  RecordDeclShape {
-    declared_type: declared_type,
-    field_labels: record_field_labels(name: declared_type),
-  }
-}
-
-
-// Reflect the payload-record field-label set of one ARM of a coproduct declaration. The
-// resulting shape's declared_type is the arm label. Empty when coproduct/arm/payload absent.
-fn reflect_arm_payload_decl(coproduct: Symbol, arm: Symbol) -> RecordDeclShape {
-  RecordDeclShape {
-    declared_type: arm,
-    field_labels: coproduct_arm_payload_field_labels(coproduct: coproduct, arm: arm),
   }
 }

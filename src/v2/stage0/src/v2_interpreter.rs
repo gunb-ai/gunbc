@@ -2760,14 +2760,14 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
 // ---------------------------------------------------------------------------
 // Type-declaration reflection (read-axis substrate)
 //
-// The intrinsics below let a `.dag` witness fold a type DECLARATION's structure BY
-// EXECUTION — they walk the loaded program's type table (`ctx.modules`), never a host
-// pre-enumeration. They mirror the compiler's own type-item shape conventions
-// (`variant_locals_from_items` / `field_to_child_node` in 02_parse): a top-level type
-// item is the declaration node; a coproduct is `Connective::Disj` with one child per arm;
-// a record (and a coproduct arm's payload) is `Connective::Conj` with one child per field;
-// the authored name of each node is its arm/field label. The read-axis counterpart to
-// `discriminant(v)`, which reflects a VALUE's own constructor.
+// `coproduct_arm_labels` lets a `.dag` witness fold a coproduct type DECLARATION's arm-set BY
+// EXECUTION — it walks the loaded program's type table (`ctx.modules`), never a host
+// pre-enumeration. It mirrors the compiler's own type-item shape conventions
+// (`variant_locals_from_items` in 02_parse): a top-level type item is the declaration node; a
+// coproduct is `Connective::Disj` with one child per arm; the authored name of each child is
+// its arm label. The read-axis counterpart to `discriminant(v)`, which reflects a VALUE's own
+// constructor. (`find_type_decl_item` / `child_labels` are kept general so a future
+// construction-reflection sibling and any record/field-label projection can reuse them.)
 // ---------------------------------------------------------------------------
 
 /// Find the top-level type-declaration item whose authored name is `type_name`.
@@ -2797,35 +2797,6 @@ fn child_labels(ctx: &InterpContext, node: &Rc<Node>) -> Vec<String> {
 pub fn reflect_coproduct_arm_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
     match find_type_decl_item(ctx, type_name) {
         Some(item) if item.connective == Connective::Disj => child_labels(ctx, &item),
-        _ => Vec::new(),
-    }
-}
-
-/// Reflect a record (product) declaration's field labels. Empty for an unknown or
-/// non-record name.
-pub fn reflect_record_field_labels(ctx: &InterpContext, type_name: &str) -> Vec<String> {
-    match find_type_decl_item(ctx, type_name) {
-        Some(item) if item.connective == Connective::Conj => child_labels(ctx, &item),
-        _ => Vec::new(),
-    }
-}
-
-/// Reflect the payload field labels of a single arm of a coproduct declaration. Empty when
-/// the coproduct, the arm, or the arm's payload record is absent.
-pub fn reflect_arm_payload_field_labels(
-    ctx: &InterpContext,
-    coproduct: &str,
-    arm: &str,
-) -> Vec<String> {
-    match find_type_decl_item(ctx, coproduct) {
-        Some(item) if item.connective == Connective::Disj => {
-            for child in item.children.iter() {
-                if authored_name_at(ctx.source_indices.clone(), child.clone()) == arm {
-                    return child_labels(ctx, child);
-                }
-            }
-            Vec::new()
-        }
         _ => Vec::new(),
     }
 }
@@ -2874,26 +2845,6 @@ fn eval_builtin(
         "coproduct_arm_labels" => match positional.first() {
             Some(Value::Str(type_name)) => Ok(Some(labels_to_list_value(
                 reflect_coproduct_arm_labels(ctx, type_name),
-            ))),
-            _ => Ok(None),
-        },
-
-        // `record_field_labels(name)` reflects a record (product / `Connective::Conj`) type
-        // DECLARATION's field labels as a `List<Symbol>`, by execution; empty for an unknown
-        // or non-record name. Read-axis door for declaration-shape consumers over records.
-        "record_field_labels" => match positional.first() {
-            Some(Value::Str(type_name)) => Ok(Some(labels_to_list_value(
-                reflect_record_field_labels(ctx, type_name),
-            ))),
-            _ => Ok(None),
-        },
-
-        // `coproduct_arm_payload_field_labels(coproduct, arm)` reflects the payload field
-        // labels of one ARM of a coproduct declaration (the arm's `Connective::Conj` record)
-        // as a `List<Symbol>`, by execution; empty when coproduct/arm/payload is absent.
-        "coproduct_arm_payload_field_labels" => match (positional.first(), positional.get(1)) {
-            (Some(Value::Str(coproduct)), Some(Value::Str(arm))) => Ok(Some(labels_to_list_value(
-                reflect_arm_payload_field_labels(ctx, coproduct, arm),
             ))),
             _ => Ok(None),
         },
