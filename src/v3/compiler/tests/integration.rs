@@ -217,8 +217,6 @@ mod r3_substrate_gap_reflection_closure_test;
 mod r3_v3_self_host_demonstration_dag_test;
 #[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
 mod r3_verification_l4_l7_l5_skeleton_test;
-#[path = "integration/services_carrier_shape_test.rs"]
-mod services_carrier_shape_test;
 #[path = "integration/sg0_census_test.rs"]
 mod sg0_census_test;
 #[path = "integration/sg1_tokenize_authority_test.rs"]
@@ -279,30 +277,12 @@ mod timing_lens_substrate_carrier_test;
 mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/v4_bin_main_dag_smoke_test.rs"]
 mod v4_bin_main_dag_smoke_test;
-#[path = "integration/v4_claim_pipeline_spine_smoke_test.rs"]
-mod v4_claim_pipeline_spine_smoke_test;
-#[path = "integration/v4_compiler_compile_public_terminal_smoke_test.rs"]
-mod v4_compiler_compile_public_terminal_smoke_test;
-#[path = "integration/v4_compiler_emit_translate_smoke_test.rs"]
-mod v4_compiler_emit_translate_smoke_test;
-#[path = "integration/v4_compiler_parse_table_dag_smoke_test.rs"]
-mod v4_compiler_parse_table_dag_smoke_test;
 #[path = "integration/v4_emit_host_eval_dispatch_test.rs"]
 mod v4_emit_host_eval_dispatch_test;
 #[path = "integration/v4_emit_host_harness_test.rs"]
 mod v4_emit_host_harness_test;
-#[path = "integration/v4_extdeps_coordination_dag_smoke_test.rs"]
-mod v4_extdeps_coordination_dag_smoke_test;
-#[path = "integration/v4_extdeps_file_system_dag_smoke_test.rs"]
-mod v4_extdeps_file_system_dag_smoke_test;
-#[path = "integration/v4_extdeps_formatters_black_dag_smoke_test.rs"]
-mod v4_extdeps_formatters_black_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
-#[path = "integration/v4_extdeps_typescript_g14_grounding_smoke_test.rs"]
-mod v4_extdeps_typescript_g14_grounding_smoke_test;
-#[path = "integration/v4_grounding_typescript_g2_smoke_test.rs"]
-mod v4_grounding_typescript_g2_smoke_test;
 #[path = "boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"]
 mod v4_leaf_model_go_r1_r2_r3_external_test;
 #[path = "boundary/v4_leaf_model_python_cross_runtime_drift_test.rs"]
@@ -323,38 +303,14 @@ mod v4_leaf_model_rust_r2_r3_external_rustc_test;
 mod v4_leaf_model_rust_r3_internal_emit_coupling_test;
 #[path = "boundary/v4_leaf_model_typescript_r2_r3_external_test.rs"]
 mod v4_leaf_model_typescript_r2_r3_external_test;
-#[path = "integration/v4_lens_affected_set_dag_smoke_test.rs"]
-mod v4_lens_affected_set_dag_smoke_test;
-#[path = "integration/v4_lens_application_dag_smoke_test.rs"]
-mod v4_lens_application_dag_smoke_test;
-#[path = "integration/v4_lens_idempotency_claim_dag_smoke_test.rs"]
-mod v4_lens_idempotency_claim_dag_smoke_test;
-#[path = "integration/v4_lens_identical_variant_payload_dag_smoke_test.rs"]
-mod v4_lens_identical_variant_payload_dag_smoke_test;
-#[path = "integration/v4_lens_registry_dag_smoke_test.rs"]
-mod v4_lens_registry_dag_smoke_test;
-#[path = "integration/v4_lens_testgen_dag_smoke_test.rs"]
-mod v4_lens_testgen_dag_smoke_test;
 #[path = "integration/v4_p9_llvm_instruction_cost_single_owner_test.rs"]
 mod v4_p9_llvm_instruction_cost_single_owner_test;
-#[path = "integration/v4_source_authority_contract_smoke_test.rs"]
-mod v4_source_authority_contract_smoke_test;
-#[path = "integration/v4_std_grounding_dag_smoke_test.rs"]
-mod v4_std_grounding_dag_smoke_test;
-#[path = "integration/v4_std_model_core_dag_smoke_test.rs"]
-mod v4_std_model_core_dag_smoke_test;
-#[path = "integration/v4_std_target_realization_dag_smoke_test.rs"]
-mod v4_std_target_realization_dag_smoke_test;
 #[path = "integration/v4_std_text_boundary_carrier_guard_test.rs"]
 mod v4_std_text_boundary_carrier_guard_test;
 #[path = "integration/v4_t15_self_host_fixed_point_harness_test.rs"]
 mod v4_t15_self_host_fixed_point_harness_test;
 #[path = "integration/v4_test_bootstrap_infra_closeout_test.rs"]
 mod v4_test_bootstrap_infra_closeout_test;
-#[path = "integration/v4_test_fixture_task_manager_demo_smoke_test.rs"]
-mod v4_test_fixture_task_manager_demo_smoke_test;
-#[path = "integration/v4_workflow_release_dag_smoke_test.rs"]
-mod v4_workflow_release_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/common/wiring_scanner_test.rs"]
