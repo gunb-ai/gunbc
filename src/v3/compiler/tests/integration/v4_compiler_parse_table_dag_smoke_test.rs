@@ -90,10 +90,22 @@ fn v4_compiler_parse_table_entrypoints_and_claim_wiring() {
             "{PARSE_DAG_PATH}: must declare {name}"
         );
     }
-    assert!(
-        !PARSE_DAG.contains("item: length(xs: tokens)"),
-        "{PARSE_DAG_PATH}: token_position_indices fold must produce 0..N without an extra final append"
-    );
+    // Wave-A W1 (iii) fold-delete: the `token_position_indices` no-extra-append property
+    // (formerly the host source-grep `!PARSE_DAG.contains("item: length(xs: tokens)")`) is now
+    // carried by the EXECUTABLE, mutation-proven witness
+    // `parse_table_token_position_indices_no_extra_append_holds` in
+    // src/v4/test/claim/parse/parse_table_claims.dag (roster row in v4_roster_pilot.dag), which
+    // runs token_position_indices and discriminates the produced 0..N index count (mutate the
+    // fold → witness red), strictly stronger than the source-grep.
+    //
+    // The remaining receipts below are B and stay host-AST:
+    //   - fn/type/data declaration-shape (build_parse_table/parse_production/parse_table_empty/
+    //     ListTailResult/claim_right_recursive_parse_succeeds/fixture) → READ-axis-reflection
+    //     consumer (ctrl#1476 reflection substrate).
+    //   - the parse_table GRAMMAR core (parse_production / grammar_has_* / parse_skip_to_sync) is
+    //     NOT foldable through v2 today: it CRASHES `contains expects a string argument, got
+    //     Variant` (the 'contains-Variant-gap' v2-interpreter builtin gap). TRIGGER: migrate to
+    //     executable claim-run witnesses when that builtin handles Variant args.
 
     let algebra = parse_module(ALGEBRA_DAG, ALGEBRA_PATH);
     assert!(
