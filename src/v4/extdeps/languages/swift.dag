@@ -2273,48 +2273,6 @@ type SwiftModelCoreLawKey
   | SwiftLawStringConcatLeftIdentity
   | SwiftLawStringConcatRightIdentity
 
-data swift_law_kind_signed_int_add_associative: Symbol = swift_law_kind_signed_int_add_associative
-data swift_law_kind_signed_int_add_commutative: Symbol = swift_law_kind_signed_int_add_commutative
-data swift_law_kind_signed_int_mul_associative: Symbol = swift_law_kind_signed_int_mul_associative
-data swift_law_kind_signed_int_mul_commutative: Symbol = swift_law_kind_signed_int_mul_commutative
-data swift_law_kind_signed_int_distributive: Symbol = swift_law_kind_signed_int_distributive
-data swift_law_kind_signed_int_total_order: Symbol = swift_law_kind_signed_int_total_order
-data swift_law_kind_unsigned_int_add_associative: Symbol = swift_law_kind_unsigned_int_add_associative
-data swift_law_kind_unsigned_int_add_commutative: Symbol = swift_law_kind_unsigned_int_add_commutative
-data swift_law_kind_unsigned_int_mul_associative: Symbol = swift_law_kind_unsigned_int_mul_associative
-data swift_law_kind_unsigned_int_mul_commutative: Symbol = swift_law_kind_unsigned_int_mul_commutative
-data swift_law_kind_unsigned_int_distributive: Symbol = swift_law_kind_unsigned_int_distributive
-data swift_law_kind_float_ieee754_rounding: Symbol = swift_law_kind_float_ieee754_rounding
-data swift_law_kind_float_nan_inf_carried_by_ieee754: Symbol = swift_law_kind_float_nan_inf_carried_by_ieee754
-data swift_law_kind_bool_bounded_lattice: Symbol = swift_law_kind_bool_bounded_lattice
-data swift_law_kind_bool_complement: Symbol = swift_law_kind_bool_complement
-data swift_law_kind_string_concat_associative: Symbol = swift_law_kind_string_concat_associative
-data swift_law_kind_string_concat_left_identity: Symbol = swift_law_kind_string_concat_left_identity
-data swift_law_kind_string_concat_right_identity: Symbol = swift_law_kind_string_concat_right_identity
-
-fn swift_law_kind_symbol(key: SwiftModelCoreLawKey) -> Symbol {
-  match key {
-    SwiftLawSignedIntAddAssociative => swift_law_kind_signed_int_add_associative
-    SwiftLawSignedIntAddCommutative => swift_law_kind_signed_int_add_commutative
-    SwiftLawSignedIntMulAssociative => swift_law_kind_signed_int_mul_associative
-    SwiftLawSignedIntMulCommutative => swift_law_kind_signed_int_mul_commutative
-    SwiftLawSignedIntDistributive => swift_law_kind_signed_int_distributive
-    SwiftLawSignedIntTotalOrder => swift_law_kind_signed_int_total_order
-    SwiftLawUnsignedIntAddAssociative => swift_law_kind_unsigned_int_add_associative
-    SwiftLawUnsignedIntAddCommutative => swift_law_kind_unsigned_int_add_commutative
-    SwiftLawUnsignedIntMulAssociative => swift_law_kind_unsigned_int_mul_associative
-    SwiftLawUnsignedIntMulCommutative => swift_law_kind_unsigned_int_mul_commutative
-    SwiftLawUnsignedIntDistributive => swift_law_kind_unsigned_int_distributive
-    SwiftLawFloatIeee754Rounding => swift_law_kind_float_ieee754_rounding
-    SwiftLawFloatNanInfCarriedByIeee754 => swift_law_kind_float_nan_inf_carried_by_ieee754
-    SwiftLawBoolBoundedLattice => swift_law_kind_bool_bounded_lattice
-    SwiftLawBoolComplement => swift_law_kind_bool_complement
-    SwiftLawStringConcatAssociative => swift_law_kind_string_concat_associative
-    SwiftLawStringConcatLeftIdentity => swift_law_kind_string_concat_left_identity
-    SwiftLawStringConcatRightIdentity => swift_law_kind_string_concat_right_identity
-  }
-}
-
 fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2323,7 +2281,7 @@ fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLa
       swift_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       swift_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: swift_atom(id: swift_law_kind_symbol(key: key))
+        target: swift_atom(id: discriminant(v: key))
       )
     ]
   }

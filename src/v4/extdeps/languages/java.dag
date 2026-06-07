@@ -365,15 +365,6 @@ type JavaModelCoreLawKey
   | JavaLawBoolBoundedLattice
   | JavaLawBoolComplement
 
-data java_law_kind_integer_add_associative_modular: Symbol = java_law_kind_integer_add_associative_modular
-data java_law_kind_integer_add_commutative_modular: Symbol = java_law_kind_integer_add_commutative_modular
-data java_law_kind_integer_mul_associative_modular: Symbol = java_law_kind_integer_mul_associative_modular
-data java_law_kind_integer_mul_commutative_modular: Symbol = java_law_kind_integer_mul_commutative_modular
-data java_law_kind_integer_distributive_modular: Symbol = java_law_kind_integer_distributive_modular
-data java_law_kind_integer_modular_wrap: Symbol = java_law_kind_integer_modular_wrap
-data java_law_kind_bool_bounded_lattice: Symbol = java_law_kind_bool_bounded_lattice
-data java_law_kind_bool_complement: Symbol = java_law_kind_bool_complement
-
 data java_witness_integer_commutative_semiring_modular: Symbol = java_witness_integer_commutative_semiring_modular
 data java_witness_bool_boolean_algebra: Symbol = java_witness_bool_boolean_algebra
 
@@ -2088,19 +2079,6 @@ fn java_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn java_law_kind_symbol(key: JavaModelCoreLawKey) -> Symbol {
-  match key {
-    JavaLawIntegerAddAssociativeModular => java_law_kind_integer_add_associative_modular
-    JavaLawIntegerAddCommutativeModular => java_law_kind_integer_add_commutative_modular
-    JavaLawIntegerMulAssociativeModular => java_law_kind_integer_mul_associative_modular
-    JavaLawIntegerMulCommutativeModular => java_law_kind_integer_mul_commutative_modular
-    JavaLawIntegerDistributiveModular => java_law_kind_integer_distributive_modular
-    JavaLawIntegerModularWrap => java_law_kind_integer_modular_wrap
-    JavaLawBoolBoundedLattice => java_law_kind_bool_bounded_lattice
-    JavaLawBoolComplement => java_law_kind_bool_complement
-  }
-}
-
 fn java_model_core_law_node(witness: Node, algebra: Node, key: JavaModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2109,7 +2087,7 @@ fn java_model_core_law_node(witness: Node, algebra: Node, key: JavaModelCoreLawK
       java_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       java_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: java_inhabitant_atom(id: java_law_kind_symbol(key: key))
+        target: java_inhabitant_atom(id: discriminant(v: key))
       )
     ]
   }
