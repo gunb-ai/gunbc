@@ -107,7 +107,7 @@ import v4.std.grounding {
   insert_per_language_fact_bundle_entry
 }
 import v4.std.node_query { find_named_child }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -642,13 +642,6 @@ fn ts_mvp1_source_text_authority() -> String {
   ts_mvp1_source_text
 }
 
-fn ts_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
-  match token {
-    FixedToken { token_class: c } => c
-    BoundToken { token_class: c, binding: _ } => c
-  }
-}
-
 fn ts_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   // T-11: serialize through the single shared morphism (no parallel wire authority).
   concrete_syntax_token_to_node(token: token)
@@ -709,13 +702,13 @@ fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
       match state {
         TsGramBuild1StateInit =>
           TsGramBuild1StateReady {
-            expr: ts_grammar_terminal(token_class: ts_concrete_token_class(token: token))
+            expr: ts_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         TsGramBuild1StateReady { expr: acc } =>
           TsGramBuild1StateReady {
             expr: Sequence {
               left: acc,
-              right: ts_grammar_terminal(token_class: ts_concrete_token_class(token: token))
+              right: ts_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }

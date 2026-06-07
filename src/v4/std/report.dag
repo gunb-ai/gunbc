@@ -13,16 +13,6 @@ type ReportReason
   = SynthesisGapDecisionTree
   | SynthesisGapInformationTheoretic
 
-data synthesis_gap_decision_tree_reason: Symbol = synthesis_gap_decision_tree_reason
-data synthesis_gap_information_theoretic_reason: Symbol = synthesis_gap_information_theoretic_reason
-
-fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
-  match reason {
-    SynthesisGapDecisionTree => synthesis_gap_decision_tree_reason
-    SynthesisGapInformationTheoretic => synthesis_gap_information_theoretic_reason
-  }
-}
-
 type Report {
   reason: ReportReason
   at: Locus

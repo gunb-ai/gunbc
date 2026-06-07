@@ -68,7 +68,7 @@ import v4.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
   grammar_relation_field_emitted,
@@ -1248,13 +1248,6 @@ fn kotlin_mvp1_source_text_authority() -> String {
   kotlin_mvp1_source_text
 }
 
-fn kotlin_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
-  match token {
-    FixedToken { token_class: c } => c
-    BoundToken { token_class: c, binding: _ } => c
-  }
-}
-
 fn kotlin_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   // T-11: serialize through the single shared morphism (no parallel wire authority).
   concrete_syntax_token_to_node(token: token)
@@ -1319,11 +1312,11 @@ fn kotlin_grammar_sequence_from_nonempty(
 ) -> GrammarExpr {
   fold_list(
     xs: tail,
-    empty: kotlin_grammar_terminal(token_class: kotlin_concrete_token_class(token: head)),
+    empty: kotlin_grammar_terminal(token_class: concrete_syntax_token_class(token: head)),
     cons: fn(acc, token) {
       Sequence {
         left: acc,
-        right: kotlin_grammar_terminal(token_class: kotlin_concrete_token_class(token: token))
+        right: kotlin_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
       }
     }
   )
@@ -1838,7 +1831,7 @@ fn kotlin_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Form
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: kotlin_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )
