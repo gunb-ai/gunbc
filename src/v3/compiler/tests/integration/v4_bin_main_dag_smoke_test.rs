@@ -9,6 +9,13 @@
 //! **Dissolution:** remove when `main.dag` is exercised only by `.dag` `TestClaim` rows /
 //! generated harness without this per-file Rust probe (or when a single-file `compile_to_dag`
 //! path links `v4.std.node` without substrate collision).
+//!
+//! **Wave-A W1 classification (B-interim, stays as-is):** every receipt here is a
+//! declaration-shape / source-presence check over a trampoline file with no executable
+//! behavior (data-id presence, the `include!` spelling, digest-stub ids). There is no
+//! foldable-now-A chunk. These are **READ-axis-reflection consumers** — they migrate to a
+//! `.dag` reflection witness over the parsed module only when the ctrl#1476 READ-axis
+//! reflection substrate lands (TRIGGER). No standalone migration PR / no new guard file.
 
 const MAIN_DAG: &str = include_str!("../../../../v4/bin/main.dag");
 const MAIN_DAG_PATH: &str = "src/v4/bin/main.dag";

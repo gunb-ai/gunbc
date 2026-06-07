@@ -115,6 +115,16 @@ data v4_roster_pilot_row_coordination_obligation_settlement: V4RosterPilotClaimR
   function: "coordination_obligation_settlement_arm_sharp_holds"
 }
 
+// Wave-A W1: v4.compiler.parse token_position_indices smoke→witness (iii) A-fold-delete.
+// Mutation-proven (mutate the fold → witness red) execution of the 0..N no-extra-append index
+// sequence; carries the receipt removed from v4_compiler_parse_table_dag_smoke_test.rs. The
+// parse_table GRAMMAR core stays host-AST (contains-Variant-gap; not foldable through v2).
+data v4_roster_pilot_row_parse_table_token_position_indices: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "parse_table token_position_indices no-extra-append",
+  entry: "src/v4/test/claim/parse/parse_table_claims.dag",
+  function: "parse_table_token_position_indices_no_extra_append_holds"
+}
+
 
 data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_edit_locus_narrow,
@@ -130,11 +140,12 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_std_text_field_text,
   v4_roster_pilot_row_mvp1_rust_emit_add_fn,
   v4_roster_pilot_row_coordination_obligation_exchange,
-  v4_roster_pilot_row_coordination_obligation_settlement
+  v4_roster_pilot_row_coordination_obligation_settlement,
+  v4_roster_pilot_row_parse_table_token_position_indices
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "14"
+data v4_roster_pilot_claim_run_row_count: String = "15"
 
 
 fn v4_roster_pilot_row_matches(
@@ -172,12 +183,13 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_mvp1_rust_emit_add_fn)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_coordination_obligation_exchange)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_coordination_obligation_settlement)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_parse_table_token_position_indices)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 14)
-    && (v4_roster_pilot_claim_run_row_count == "14")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 15)
+    && (v4_roster_pilot_claim_run_row_count == "15")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -248,6 +260,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_coordination_obligation_settlement,
       entry: "src/v4/test/claim/extdeps/coordination_claims.dag",
       function: "coordination_obligation_settlement_arm_sharp_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_parse_table_token_position_indices,
+      entry: "src/v4/test/claim/parse/parse_table_claims.dag",
+      function: "parse_table_token_position_indices_no_extra_append_holds"
     )
 }
 

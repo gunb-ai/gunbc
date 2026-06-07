@@ -11,6 +11,13 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS table row land in the same PR.
+//!
+//! **Wave-A W1 classification (B-interim, stays as-is):** this is a pure data-model surface
+//! (record-field sets, type-alias targets, modeled-effect Arrow signatures, type-absence
+//! checks) with no executable function bodies — 0 foldable-now-A. Every receipt is
+//! declaration-shape, so these are **READ-axis-reflection consumers**: they migrate to a
+//! `.dag` reflection witness over the parsed module when the ctrl#1476 READ-axis reflection
+//! substrate lands (TRIGGER). No standalone migration PR / no new guard file.
 
 use std::collections::BTreeSet;
 

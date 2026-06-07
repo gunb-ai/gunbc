@@ -4,6 +4,14 @@
 //!
 //! Single-file [`compile_to_dag`] cannot load `v4.std.patch` peers; this harness
 //! lowers `node` → `algebra` → `patch` → `black` in order (flat declaration table).
+//!
+//! **Wave-A W1 classification (B-interim, stays as-is):** 0 foldable-now-A. The behavioral
+//! content (config-patch projection) is NOT witnessable through v2 `run --claim-run`:
+//! `config_patch_layer` is a v3-lowerer-expanded stub (its surface body is identity and the
+//! lowerer rejects direct execution), and `ConfigPatchRecord` is not constructible in plain
+//! v4 surface. Tag: **config_patch-v3lowerer-gap** (a construction/lowerer dependency, NOT a
+//! v2 crash) — distinct from the reflection consumers. TRIGGER: migrate when the config-patch
+//! record can be constructed + projected through v2 (substrate lane). No standalone PR.
 
 use v3_compiler::compile_to_dag_modules_in_order;
 use v3_compiler::dag::TypeConnective;
