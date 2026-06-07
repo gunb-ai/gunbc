@@ -15,6 +15,7 @@ import v4.std.target_model {
   target_atom_realization_lookup_in_catalog_node,
   target_function_boundary_site_decode_invalid,
   target_function_boundary_site_from_node,
+  target_function_boundary_site_param,
   target_function_signature_realization_lookup_in_catalog_node,
   target_function_signature_realization_row_decode_invalid
 }
@@ -64,7 +65,7 @@ fn sg1b_fc_probe_node() -> Node {
 // Boundary-site atom carrying a child — violates the declared nullary shape.
 fn sg1b_fc_boundary_param_with_children() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
+    kind: TypeNode { connective: Atom { identity: target_function_boundary_site_param } },
     children: [
       Edge { label: Positional, target: sg1b_fc_probe_node() }
     ]
@@ -74,7 +75,7 @@ fn sg1b_fc_boundary_param_with_children() -> Node {
 // Well-formed nullary boundary-site atom (happy-path sanity).
 fn sg1b_fc_boundary_param_nullary() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
+    kind: TypeNode { connective: Atom { identity: target_function_boundary_site_param } },
     children: []
   }
 }
