@@ -1,6 +1,5 @@
 // src/v4/test/claim/lens_affected_set/sg_claims.dag
 // Scope: Wave-A W2 — foldable-now claim-run witnesses for IRT-1 affected_set leaf receipts.
-// The retired v4_lens_affected_set_dag_smoke_test.rs and its SG-0 census row land in the same PR.
 // Excluded (A-blocked-v2-crash, not in roster): dimension_seed, excluded_propagation, leaf_suite.
 
 module v4.test.claim.lens_affected_set.sg_claims
