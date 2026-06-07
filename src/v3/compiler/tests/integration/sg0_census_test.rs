@@ -1116,11 +1116,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
     // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
     "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
-    // E0308 W1-A2: `src/v4/std/text.dag` HostStringText host-string/text-carrier boundary.
-    // Explicit P5 deferral: ROADMAP.md § "Nine lanes" row `T-PB-B` /
-    // `pb_rust_tests_outside_residual_zero`; dissolves when `.dag` TestClaim or
-    // generated harness coverage asserts this carrier shape and its consumers directly.
-    "src/v3/compiler/tests/integration/v4_std_text_dag_smoke_test.rs",
+    // Host-test preservation justification (W1-W4 qualifying bar — provably runtime-inexpressible):
+    // non-behavioral: asserts type-ABSENCE of ByteString/FileBody/FileContent/TargetSource in
+    // text.dag — no runtime witness can express type-non-existence. (Behavioral content folded
+    // to discriminating .dag witnesses in src/v4/test/claim/std_text/carrier_claims.dag.)
+    // Dissolves when a .dag/host mechanism asserts a module's declared-type set as data.
+    "src/v3/compiler/tests/integration/v4_std_text_boundary_carrier_guard_test.rs",
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
