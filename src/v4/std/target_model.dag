@@ -241,11 +241,7 @@ data target_type_expression_decode_invalid: Symbol = target_type_expression_deco
 data target_atom_realization_display_name_decode_invalid: Symbol = target_atom_realization_display_name_decode_invalid
 data target_constructor_template_decode_invalid: Symbol = target_constructor_template_decode_invalid
 data target_type_alias_field_spelling: Symbol = target_type_alias_field_spelling
-data target_value_template_symbol_identity_passthrough: Symbol = target_value_template_symbol_identity_passthrough
-data target_value_template_symbol_to_owned_string: Symbol = target_value_template_symbol_to_owned_string
-data target_value_template_bool_literal: Symbol = target_value_template_bool_literal
-data target_value_template_char_unicode_scalar: Symbol = target_value_template_char_unicode_scalar
-data target_value_template_string_literal: Symbol = target_value_template_string_literal
+
 data target_model_edge_value_expression: Symbol = target_model_edge_value_expression
 data target_value_expression_symbol_identity_atom: Symbol = target_value_expression_symbol_identity
 data target_value_expression_symbol_to_owned_string_atom: Symbol = target_value_expression_symbol_to_owned_string
@@ -453,19 +449,9 @@ fn target_value_template_for_kind(kind: TargetValueTemplateKind) -> TargetValueT
 fn target_value_template_tag_node(kind: TargetValueTemplateKind) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: target_value_template_kind_tag(kind: kind) }
+      connective: Atom { identity: discriminant(v: kind) }
     },
     children: []
-  }
-}
-
-fn target_value_template_kind_tag(kind: TargetValueTemplateKind) -> Symbol {
-  match kind {
-    ValueSymbolIdentityPassthrough => target_value_template_symbol_identity_passthrough
-    ValueSymbolToOwnedString => target_value_template_symbol_to_owned_string
-    ValueBoolLiteral => target_value_template_bool_literal
-    ValueCharUnicodeScalar => target_value_template_char_unicode_scalar
-    ValueStringLiteral => target_value_template_string_literal
   }
 }
 
@@ -1093,32 +1079,32 @@ fn target_value_template_from_node(
 ) -> Outcome<TargetValueTemplate> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == target_value_template_symbol_identity_passthrough {
+      if id == discriminant(v: ValueSymbolIdentityPassthrough) {
         outcome_accepted(
           TargetValueTemplate {
             kind: ValueSymbolIdentityPassthrough,
             node: n
           }
         )
-      } else if id == target_value_template_symbol_to_owned_string {
+      } else if id == discriminant(v: ValueSymbolToOwnedString) {
         outcome_accepted(
           TargetValueTemplate {
             kind: ValueSymbolToOwnedString,
             node: n
           }
         )
-      } else if id == target_value_template_bool_literal {
+      } else if id == discriminant(v: ValueBoolLiteral) {
         outcome_accepted(
           TargetValueTemplate { kind: ValueBoolLiteral, node: n }
         )
-      } else if id == target_value_template_char_unicode_scalar {
+      } else if id == discriminant(v: ValueCharUnicodeScalar) {
         outcome_accepted(
           TargetValueTemplate {
             kind: ValueCharUnicodeScalar,
             node: n
           }
         )
-      } else if id == target_value_template_string_literal {
+      } else if id == discriminant(v: ValueStringLiteral) {
         outcome_accepted(
           TargetValueTemplate {
             kind: ValueStringLiteral,
@@ -1206,9 +1192,6 @@ fn target_atom_realization_lookup_in_catalog_node(
 // TargetFunctionSignatureRealization is a product (heterogeneous fields), not an N-arm
 // identical-payload coproduct.
 
-data target_function_boundary_site_param: Symbol = target_function_boundary_site_param
-data target_function_boundary_site_return: Symbol = target_function_boundary_site_return
-
 data target_function_signature_realization_field_source_carrier: Symbol = target_function_signature_realization_field_source_carrier
 data target_function_signature_realization_field_target_model_bundle: Symbol = target_function_signature_realization_field_target_model_bundle
 data target_function_signature_realization_field_boundary_site: Symbol = target_function_signature_realization_field_boundary_site
@@ -1238,24 +1221,17 @@ type TargetFunctionSignatureRealization {
   signature_type_form: TargetTypeExpression
 }
 
-fn target_function_boundary_site_symbol(site: FunctionBoundarySite) -> Symbol {
-  match site {
-    FunctionBoundaryParam => target_function_boundary_site_param
-    FunctionBoundaryReturn => target_function_boundary_site_return
-  }
-}
-
 fn target_function_boundary_site_to_node(site: FunctionBoundarySite) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: target_function_boundary_site_symbol(site: site) }
+      connective: Atom { identity: discriminant(v: site) }
     },
     children: []
   }
 }
 
 fn target_function_boundary_site_eq(a: FunctionBoundarySite, b: FunctionBoundarySite) -> Bool {
-  target_function_boundary_site_symbol(site: a) == target_function_boundary_site_symbol(site: b)
+  discriminant(v: a) == discriminant(v: b)
 }
 
 fn target_function_signature_realization_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
@@ -1305,9 +1281,9 @@ fn target_function_boundary_site_from_node(
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if is_empty(xs: n.children) {
-        if id == target_function_boundary_site_param {
+        if id == discriminant(v: FunctionBoundaryParam) {
           outcome_accepted(FunctionBoundaryParam)
-        } else if id == target_function_boundary_site_return {
+        } else if id == discriminant(v: FunctionBoundaryReturn) {
           outcome_accepted(FunctionBoundaryReturn)
         } else {
           outcome_rejected(
@@ -1535,12 +1511,6 @@ data target_model_edge_type_expression_projection: Symbol = target_model_edge_ty
 // Emitted type-expression Conj fields — declared kind coproduct tag + surface + positional slots.
 data target_type_expr_field_kind: Symbol = target_type_expr_field_kind
 data target_type_expr_field_surface: Symbol = target_type_expr_field_surface
-data target_type_expr_kind_atom: Symbol = target_type_expr_kind_atom
-data target_type_expr_kind_instantiation: Symbol = target_type_expr_kind_instantiation
-data target_type_expr_kind_cardinality: Symbol = target_type_expr_kind_cardinality
-data target_type_expr_kind_record: Symbol = target_type_expr_kind_record
-data target_type_expr_kind_sum: Symbol = target_type_expr_kind_sum
-data target_type_expr_kind_arrow: Symbol = target_type_expr_kind_arrow
 
 // 🟢 coproduct dissolution — SG-2 emitted type-expression wire-shape tag (six projection row forms).
 type TargetTypeExprKind
@@ -1673,34 +1643,23 @@ fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
   }
 }
 
-fn target_type_expr_kind_atom_for(kind: TargetTypeExprKind) -> Symbol {
-  match kind {
-    TargetTypeExprAtom => target_type_expr_kind_atom
-    TargetTypeExprInstantiation => target_type_expr_kind_instantiation
-    TargetTypeExprCardinality => target_type_expr_kind_cardinality
-    TargetTypeExprRecord => target_type_expr_kind_record
-    TargetTypeExprSum => target_type_expr_kind_sum
-    TargetTypeExprArrow => target_type_expr_kind_arrow
-  }
-}
-
 fn target_type_expr_kind_from_atom(id: Symbol) -> Optional<TargetTypeExprKind> {
-  if id == target_type_expr_kind_atom {
+  if id == discriminant(v: TargetTypeExprAtom) {
     optional_present(value: TargetTypeExprAtom)
   } else {
-    if id == target_type_expr_kind_instantiation {
+    if id == discriminant(v: TargetTypeExprInstantiation) {
       optional_present(value: TargetTypeExprInstantiation)
     } else {
-      if id == target_type_expr_kind_cardinality {
+      if id == discriminant(v: TargetTypeExprCardinality) {
         optional_present(value: TargetTypeExprCardinality)
       } else {
-        if id == target_type_expr_kind_record {
+        if id == discriminant(v: TargetTypeExprRecord) {
           optional_present(value: TargetTypeExprRecord)
         } else {
-          if id == target_type_expr_kind_sum {
+          if id == discriminant(v: TargetTypeExprSum) {
             optional_present(value: TargetTypeExprSum)
           } else {
-            if id == target_type_expr_kind_arrow {
+            if id == discriminant(v: TargetTypeExprArrow) {
               optional_present(value: TargetTypeExprArrow)
             } else {
               optional_absent()
@@ -1787,7 +1746,7 @@ fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
     label: Named { name: target_type_expr_field_kind },
     target: Node {
       kind: TypeNode {
-        connective: Atom { identity: target_type_expr_kind_atom_for(kind: kind) }
+        connective: Atom { identity: discriminant(v: kind) }
       },
       children: []
     }
@@ -2496,26 +2455,14 @@ fn target_collection_set_carrier_node() -> Node {
   }
 }
 
-fn target_collection_repr_kind_atom(kind: TargetCollectionReprKind) -> Symbol {
-  match kind {
-    TargetCollectionReprBTreeSet => target_collection_repr_kind_btree_set
-    TargetCollectionReprHashSet => target_collection_repr_kind_hash_set
-    TargetCollectionReprVec => target_collection_repr_kind_vec
-  }
-}
-
-data target_collection_repr_kind_btree_set: Symbol = target_collection_repr_kind_btree_set
-data target_collection_repr_kind_hash_set: Symbol = target_collection_repr_kind_hash_set
-data target_collection_repr_kind_vec: Symbol = target_collection_repr_kind_vec
-
 fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectionReprKind> {
-  if id == target_collection_repr_kind_btree_set {
+  if id == discriminant(v: TargetCollectionReprBTreeSet) {
     optional_present(value: TargetCollectionReprBTreeSet)
   } else {
-    if id == target_collection_repr_kind_hash_set {
+    if id == discriminant(v: TargetCollectionReprHashSet) {
       optional_present(value: TargetCollectionReprHashSet)
     } else {
-      if id == target_collection_repr_kind_vec {
+      if id == discriminant(v: TargetCollectionReprVec) {
         optional_present(value: TargetCollectionReprVec)
       } else {
         optional_absent()
@@ -2730,21 +2677,10 @@ type TargetCarrierOwnership
   = CarrierOwnershipByValue
   | CarrierOwnershipByReference { realization: TargetUseSiteOwnershipRealization }
 
-data target_ownership_use_site_function_return: Symbol = target_ownership_use_site_function_return
-data target_ownership_use_site_function_parameter: Symbol = target_ownership_use_site_function_parameter
-data target_ownership_use_site_struct_field: Symbol = target_ownership_use_site_struct_field
-data target_ownership_use_site_binding_projection: Symbol = target_ownership_use_site_binding_projection
-
-data target_reference_layer_owned: Symbol = target_reference_layer_owned
-data target_reference_layer_rc: Symbol = target_reference_layer_rc
-data target_reference_layer_box: Symbol = target_reference_layer_box
-
 data target_use_site_ownership_field_source_carrier: Symbol = target_use_site_ownership_field_source_carrier
 data target_use_site_ownership_field_source_projection: Symbol = target_use_site_ownership_field_source_projection
 data target_use_site_ownership_field_use_site: Symbol = target_use_site_ownership_field_use_site
 data target_use_site_ownership_field_reference_layer: Symbol = target_use_site_ownership_field_reference_layer
-data target_use_site_ownership_source_projection_exact_carrier: Symbol = target_use_site_ownership_source_projection_exact_carrier
-data target_use_site_ownership_source_projection_instantiation_head_carrier: Symbol = target_use_site_ownership_source_projection_instantiation_head_carrier
 
 data target_value_expr_kind_reference_rc_new: Symbol = target_value_expr_kind_reference_rc_new
 data target_value_expr_kind_reference_box_new: Symbol = target_value_expr_kind_reference_box_new
@@ -2804,26 +2740,17 @@ fn target_carrier_probe_heap_node() -> Node {
   target_carrier_type_node(identity: target_carrier_probe_heap)
 }
 
-fn target_ownership_use_site_atom(use_site: TargetOwnershipUseSite) -> Symbol {
-  match use_site {
-    OwnershipAtFunctionReturn => target_ownership_use_site_function_return
-    OwnershipAtFunctionParameter => target_ownership_use_site_function_parameter
-    OwnershipAtStructField => target_ownership_use_site_struct_field
-    OwnershipAtBindingProjection => target_ownership_use_site_binding_projection
-  }
-}
-
 fn target_ownership_use_site_from_atom(id: Symbol) -> Optional<TargetOwnershipUseSite> {
-  if id == target_ownership_use_site_function_return {
+  if id == discriminant(v: OwnershipAtFunctionReturn) {
     optional_present(value: OwnershipAtFunctionReturn)
   } else {
-    if id == target_ownership_use_site_function_parameter {
+    if id == discriminant(v: OwnershipAtFunctionParameter) {
       optional_present(value: OwnershipAtFunctionParameter)
     } else {
-      if id == target_ownership_use_site_struct_field {
+      if id == discriminant(v: OwnershipAtStructField) {
         optional_present(value: OwnershipAtStructField)
       } else {
-        if id == target_ownership_use_site_binding_projection {
+        if id == discriminant(v: OwnershipAtBindingProjection) {
           optional_present(value: OwnershipAtBindingProjection)
         } else {
           optional_absent()
@@ -2833,23 +2760,13 @@ fn target_ownership_use_site_from_atom(id: Symbol) -> Optional<TargetOwnershipUs
   }
 }
 
-fn target_use_site_ownership_source_projection_atom(
-  projection: TargetUseSiteOwnershipSourceProjection
-) -> Symbol {
-  match projection {
-    UseSiteOwnershipExactCarrier => target_use_site_ownership_source_projection_exact_carrier
-    UseSiteOwnershipInstantiationHeadCarrier =>
-      target_use_site_ownership_source_projection_instantiation_head_carrier
-  }
-}
-
 fn target_use_site_ownership_source_projection_from_atom(
   id: Symbol
 ) -> Optional<TargetUseSiteOwnershipSourceProjection> {
-  if id == target_use_site_ownership_source_projection_exact_carrier {
+  if id == discriminant(v: UseSiteOwnershipExactCarrier) {
     optional_present(value: UseSiteOwnershipExactCarrier)
   } else {
-    if id == target_use_site_ownership_source_projection_instantiation_head_carrier {
+    if id == discriminant(v: UseSiteOwnershipInstantiationHeadCarrier) {
       optional_present(value: UseSiteOwnershipInstantiationHeadCarrier)
     } else {
       optional_absent()
@@ -2857,22 +2774,14 @@ fn target_use_site_ownership_source_projection_from_atom(
   }
 }
 
-fn target_reference_layer_atom(layer: TargetReferenceLayer) -> Symbol {
-  match layer {
-    ReferenceLayerOwned => target_reference_layer_owned
-    ReferenceLayerRc => target_reference_layer_rc
-    ReferenceLayerBox => target_reference_layer_box
-  }
-}
-
 fn target_reference_layer_from_atom(id: Symbol) -> Optional<TargetReferenceLayer> {
-  if id == target_reference_layer_owned {
+  if id == discriminant(v: ReferenceLayerOwned) {
     optional_present(value: ReferenceLayerOwned)
   } else {
-    if id == target_reference_layer_rc {
+    if id == discriminant(v: ReferenceLayerRc) {
       optional_present(value: ReferenceLayerRc)
     } else {
-      if id == target_reference_layer_box {
+      if id == discriminant(v: ReferenceLayerBox) {
         optional_present(value: ReferenceLayerBox)
       } else {
         optional_absent()
@@ -3209,9 +3118,7 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
         target: Node {
           kind: TypeNode {
             connective: Atom {
-              identity: target_use_site_ownership_source_projection_atom(
-                projection: row.source_projection
-              )
+              identity: discriminant(v: row.source_projection)
             }
           },
           children: []
@@ -3221,7 +3128,7 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
         name: target_use_site_ownership_field_use_site,
         target: Node {
           kind: TypeNode {
-            connective: Atom { identity: target_ownership_use_site_atom(use_site: row.use_site) }
+            connective: Atom { identity: discriminant(v: row.use_site) }
           },
           children: []
         }
@@ -3230,7 +3137,7 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
         name: target_use_site_ownership_field_reference_layer,
         target: Node {
           kind: TypeNode {
-            connective: Atom { identity: target_reference_layer_atom(layer: row.reference_layer) }
+            connective: Atom { identity: discriminant(v: row.reference_layer) }
           },
           children: []
         }
