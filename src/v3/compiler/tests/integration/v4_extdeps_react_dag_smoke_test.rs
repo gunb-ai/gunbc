@@ -435,32 +435,8 @@ fn assert_react_element_records_children_are_create_element_child_lists(dag: &v3
     assert_children_field_is_list_create_element_child(dag, "Fragment", children);
 }
 
-fn assert_react_element_partition_is_create_element_return_only(dag: &v3_compiler::Dag) {
-    let react_element = dag
-        .declaration_by_name("ReactElement")
-        .expect("ReactElement should exist after compiling react.dag");
-    let TypeConnective::Disj { variants } = &react_element.connective else {
-        panic!(
-            "ReactElement: expected coproduct (Disj), got {:?}",
-            react_element.connective
-        );
-    };
-    for expected in ["Host", "Composite", "Fragment"] {
-        assert!(
-            variants.iter().any(|v| v.label == expected),
-            "ReactElement should include `{expected}` (createElement-returned object partition)"
-        );
-    }
-    assert!(
-        !variants.iter().any(|v| v.label == "Text"),
-        "primitive `Text` must not be a `ReactElement` arm — use `ReactCreateElementChild::Text`"
-    );
-    assert_eq!(
-        variants.len(),
-        3,
-        "ReactElement should carry exactly Host | Composite | Fragment at this substrate layer"
-    );
-}
+// ReactElement partition arm-set (Host|Composite|Fragment, no Text): extracted to
+// v4_extdeps_react_element_partition_guard_test.rs (B-INTERIM host-AST; see SG-0 census row).
 
 fn assert_react_create_element_child_text_has_no_element_key_field(dag: &v3_compiler::Dag) {
     let create_element_child = dag
