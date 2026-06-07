@@ -5,6 +5,13 @@
 //! settlement / consistency facts, `CoordinationBind` carries the closed
 //! `CoordinationEffectKind`, and WIRECONTRACT-OBLIGATION-TABLE-T4.8 is visible
 //! as executable per-effect obligation rows.
+//!
+//! **Wave-A W1 (iii) migration:** the obligation-table per-arm mapping is now carried by
+//! executable, mutation-proven claim-run witnesses in
+//! `src/v4/test/claim/extdeps/coordination_claims.dag` (roster rows in `v4_roster_pilot.dag`);
+//! the host source-grep loop for that mapping was fold-deleted from this file. The remaining
+//! assertions are B (declaration-shape / shared-discriminant source structure) and stay
+//! host-AST until the ctrl#1476 READ-axis reflection substrate lands.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
@@ -155,18 +162,18 @@ fn v4_extdeps_coordination_effect_kind_has_obligation_table() {
             && COORDINATION_DAG.contains("coordination_effect_obligation(effect: PubSub)\n  ]"),
         "WIRECONTRACT-OBLIGATION-TABLE-T4.8 must use the v4 list literal surface and enumerate every effect arm"
     );
-    for (effect, exchange) in [
-        ("Http", "RequestReply"),
-        ("Queue", "FireAndForget"),
-        ("Stream", "StreamExchange"),
-        ("PubSub", "PublishSubscribe"),
-    ] {
-        let expected = format!(
-            "{effect} => CoordinationEffectObligation {{\n      effect: {effect},\n      required_exchange: {exchange},"
-        );
-        assert!(
-            COORDINATION_DAG.contains(&expected),
-            "CoordinationEffectKind arm {effect} must route through its executable obligation row with exchange fact {exchange}"
-        );
-    }
+    // Wave-A W1 (iii) fold-delete: the per-effect arm→exchange/settlement mapping
+    // (formerly a host source-grep loop over each `Effect => CoordinationEffectObligation
+    // { ..., required_exchange: ... }` spelling) is now carried by EXECUTABLE, mutation-proven
+    // claim-run witnesses — `coordination_obligation_exchange_arm_sharp_holds` and
+    // `coordination_obligation_settlement_arm_sharp_holds` in
+    // src/v4/test/claim/extdeps/coordination_claims.dag (roster rows in v4_roster_pilot.dag).
+    // Those execute `coordination_effect_obligation(effect: ...)` and discriminate the per-arm
+    // mapping (mutate any obligation arm → witness red), strictly stronger than the source-grep.
+    //
+    // The remaining assertions above are B (declaration-shape / shared-discriminant source
+    // structure): record-field shapes and the `SettlementGuarantee<Bound>` / `ConsistencyGuarantee
+    // <Bound>` shared-discriminant + the obligation-table list-literal enumeration. They stay
+    // host-AST until the ctrl#1476 READ-axis reflection substrate lands (TRIGGER: migrate to a
+    // .dag reflection witness over the parsed module when that substrate exists).
 }
