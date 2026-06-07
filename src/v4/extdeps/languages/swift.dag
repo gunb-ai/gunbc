@@ -71,12 +71,12 @@ import v4.std.model_core {
   PartialOperationDecl,
   PrimitiveFactBundle,
   PrimitiveOperationRef,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
@@ -1876,13 +1876,13 @@ fn swift_primitive_bundle_from_integer_facts(facts: SwiftIntegerPrimitiveFacts) 
   PrimitiveFactBundle {
     substrate_carrier: swift_integer_facts_node(facts: facts),
     spec_facts: swift_primitive_fact_map_4(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: swift_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_signedness,
+      axis1: discriminant(v: ModelCoreFactAxisSignedness {}),
       fact1: swift_signedness_node(signedness: facts.signedness),
-      axis2: primitive_fact_axis_width,
+      axis2: discriminant(v: ModelCoreFactAxisWidth {}),
       fact2: swift_width_node(width: facts.width),
-      axis3: primitive_fact_axis_overflow_disposition,
+      axis3: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
       fact3: swift_overflow_node(overflow: facts.overflow)
     )
   }
@@ -1892,11 +1892,11 @@ fn swift_primitive_bundle_from_float_facts(facts: SwiftFloatPrimitiveFacts) -> P
   PrimitiveFactBundle {
     substrate_carrier: swift_float_facts_node(facts: facts),
     spec_facts: swift_primitive_fact_map_3(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: swift_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
+      axis1: discriminant(v: ModelCoreFactAxisWidth {}),
       fact1: swift_float_width_node(width: facts.width),
-      axis2: primitive_fact_axis_encoding,
+      axis2: discriminant(v: ModelCoreFactAxisEncoding {}),
       fact2: swift_atom(id: facts.ieee754_binary)
     )
   }
@@ -1908,7 +1908,7 @@ fn swift_primitive_bundle_from_nonnumeric_facts(
   PrimitiveFactBundle {
     substrate_carrier: swift_nonnumeric_facts_node(facts: facts),
     spec_facts: swift_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: swift_atom(id: swift_nonnumeric_surface_spelling(facts: facts)),
       axis1: swift_primitive_fact_axis_scalar_classifier,
       fact1: swift_nonnumeric_scalar_classifier_node(facts: facts)
@@ -2273,48 +2273,6 @@ type SwiftModelCoreLawKey
   | SwiftLawStringConcatLeftIdentity
   | SwiftLawStringConcatRightIdentity
 
-data swift_law_kind_signed_int_add_associative: Symbol = swift_law_kind_signed_int_add_associative
-data swift_law_kind_signed_int_add_commutative: Symbol = swift_law_kind_signed_int_add_commutative
-data swift_law_kind_signed_int_mul_associative: Symbol = swift_law_kind_signed_int_mul_associative
-data swift_law_kind_signed_int_mul_commutative: Symbol = swift_law_kind_signed_int_mul_commutative
-data swift_law_kind_signed_int_distributive: Symbol = swift_law_kind_signed_int_distributive
-data swift_law_kind_signed_int_total_order: Symbol = swift_law_kind_signed_int_total_order
-data swift_law_kind_unsigned_int_add_associative: Symbol = swift_law_kind_unsigned_int_add_associative
-data swift_law_kind_unsigned_int_add_commutative: Symbol = swift_law_kind_unsigned_int_add_commutative
-data swift_law_kind_unsigned_int_mul_associative: Symbol = swift_law_kind_unsigned_int_mul_associative
-data swift_law_kind_unsigned_int_mul_commutative: Symbol = swift_law_kind_unsigned_int_mul_commutative
-data swift_law_kind_unsigned_int_distributive: Symbol = swift_law_kind_unsigned_int_distributive
-data swift_law_kind_float_ieee754_rounding: Symbol = swift_law_kind_float_ieee754_rounding
-data swift_law_kind_float_nan_inf_carried_by_ieee754: Symbol = swift_law_kind_float_nan_inf_carried_by_ieee754
-data swift_law_kind_bool_bounded_lattice: Symbol = swift_law_kind_bool_bounded_lattice
-data swift_law_kind_bool_complement: Symbol = swift_law_kind_bool_complement
-data swift_law_kind_string_concat_associative: Symbol = swift_law_kind_string_concat_associative
-data swift_law_kind_string_concat_left_identity: Symbol = swift_law_kind_string_concat_left_identity
-data swift_law_kind_string_concat_right_identity: Symbol = swift_law_kind_string_concat_right_identity
-
-fn swift_law_kind_symbol(key: SwiftModelCoreLawKey) -> Symbol {
-  match key {
-    SwiftLawSignedIntAddAssociative => swift_law_kind_signed_int_add_associative
-    SwiftLawSignedIntAddCommutative => swift_law_kind_signed_int_add_commutative
-    SwiftLawSignedIntMulAssociative => swift_law_kind_signed_int_mul_associative
-    SwiftLawSignedIntMulCommutative => swift_law_kind_signed_int_mul_commutative
-    SwiftLawSignedIntDistributive => swift_law_kind_signed_int_distributive
-    SwiftLawSignedIntTotalOrder => swift_law_kind_signed_int_total_order
-    SwiftLawUnsignedIntAddAssociative => swift_law_kind_unsigned_int_add_associative
-    SwiftLawUnsignedIntAddCommutative => swift_law_kind_unsigned_int_add_commutative
-    SwiftLawUnsignedIntMulAssociative => swift_law_kind_unsigned_int_mul_associative
-    SwiftLawUnsignedIntMulCommutative => swift_law_kind_unsigned_int_mul_commutative
-    SwiftLawUnsignedIntDistributive => swift_law_kind_unsigned_int_distributive
-    SwiftLawFloatIeee754Rounding => swift_law_kind_float_ieee754_rounding
-    SwiftLawFloatNanInfCarriedByIeee754 => swift_law_kind_float_nan_inf_carried_by_ieee754
-    SwiftLawBoolBoundedLattice => swift_law_kind_bool_bounded_lattice
-    SwiftLawBoolComplement => swift_law_kind_bool_complement
-    SwiftLawStringConcatAssociative => swift_law_kind_string_concat_associative
-    SwiftLawStringConcatLeftIdentity => swift_law_kind_string_concat_left_identity
-    SwiftLawStringConcatRightIdentity => swift_law_kind_string_concat_right_identity
-  }
-}
-
 fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2323,7 +2281,7 @@ fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLa
       swift_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       swift_named_edge(
         name: model_core_wave1_law_field_kind,
-        target: swift_atom(id: swift_law_kind_symbol(key: key))
+        target: swift_atom(id: discriminant(v: key))
       )
     ]
   }

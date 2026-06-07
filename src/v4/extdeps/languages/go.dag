@@ -56,12 +56,7 @@ import v4.std.model_core {
   ModelCorePrimitiveFactAxis,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
-  primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  primitive_fact_axis_unbound_diagnostic
 }
 import v4.std.grounding {
   empty_per_language_fact_bundle_registry,
@@ -858,17 +853,17 @@ fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> Pri
     } => PrimitiveFactBundle {
       substrate_carrier: go_integer_facts_node(facts: facts),
       spec_facts: go_primitive_fact_map_5(
-        axis0: primitive_fact_axis_surface_spelling,
+        axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         fact0: go_inhabitant_atom(id: surface_spelling),
-        axis1: primitive_fact_axis_width,
+        axis1: discriminant(v: ModelCoreFactAxisWidth {}),
         fact1: go_signed_int_width_node(width: width),
-        axis2: primitive_fact_axis_signedness,
+        axis2: discriminant(v: ModelCoreFactAxisSignedness {}),
         fact2: go_int_kind_node(kind: Signed),
-        axis3: primitive_fact_axis_overflow_disposition,
+        axis3: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
         fact3: go_overflow_node(
           overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
         ),
-        axis4: primitive_fact_axis_encoding,
+        axis4: discriminant(v: ModelCoreFactAxisEncoding {}),
         fact4: go_inhabitant_atom(id: encoding)
       )
     }
@@ -880,17 +875,17 @@ fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> Pri
     } => PrimitiveFactBundle {
       substrate_carrier: go_integer_facts_node(facts: facts),
       spec_facts: go_primitive_fact_map_5(
-        axis0: primitive_fact_axis_surface_spelling,
+        axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         fact0: go_inhabitant_atom(id: surface_spelling),
-        axis1: primitive_fact_axis_width,
+        axis1: discriminant(v: ModelCoreFactAxisWidth {}),
         fact1: go_unsigned_int_width_node(width: width),
-        axis2: primitive_fact_axis_signedness,
+        axis2: discriminant(v: ModelCoreFactAxisSignedness {}),
         fact2: go_int_kind_node(kind: Unsigned),
-        axis3: primitive_fact_axis_overflow_disposition,
+        axis3: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
         fact3: go_overflow_node(
           overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
         ),
-        axis4: primitive_fact_axis_encoding,
+        axis4: discriminant(v: ModelCoreFactAxisEncoding {}),
         fact4: go_inhabitant_atom(id: encoding)
       )
     }
@@ -901,11 +896,11 @@ fn go_primitive_bundle_from_float_facts(facts: GoFloatPrimitiveFacts) -> Primiti
   PrimitiveFactBundle {
     substrate_carrier: go_float_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_3(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: go_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
+      axis1: discriminant(v: ModelCoreFactAxisWidth {}),
       fact1: go_float_width_node(width: facts.width),
-      axis2: primitive_fact_axis_encoding,
+      axis2: discriminant(v: ModelCoreFactAxisEncoding {}),
       fact2: go_inhabitant_atom(id: facts.ieee754_binary)
     )
   }
@@ -915,11 +910,11 @@ fn go_primitive_bundle_from_complex_facts(facts: GoComplexPrimitiveFacts) -> Pri
   PrimitiveFactBundle {
     substrate_carrier: go_complex_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_3(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: go_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
+      axis1: discriminant(v: ModelCoreFactAxisWidth {}),
       fact1: go_complex_width_node(width: facts.width),
-      axis2: primitive_fact_axis_encoding,
+      axis2: discriminant(v: ModelCoreFactAxisEncoding {}),
       fact2: go_inhabitant_atom(id: facts.component_ieee754_binary)
     )
   }
@@ -929,9 +924,9 @@ fn go_primitive_bundle_from_bool_facts(facts: GoBoolPrimitiveFacts) -> Primitive
   PrimitiveFactBundle {
     substrate_carrier: go_bool_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: go_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
+      axis1: discriminant(v: ModelCoreFactAxisEncoding {}),
       fact1: go_inhabitant_atom(id: facts.encoding)
     )
   }
@@ -941,9 +936,9 @@ fn go_primitive_bundle_from_string_facts(facts: GoStringPrimitiveFacts) -> Primi
   PrimitiveFactBundle {
     substrate_carrier: go_string_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: go_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
+      axis1: discriminant(v: ModelCoreFactAxisEncoding {}),
       fact1: go_inhabitant_atom(id: facts.encoding)
     )
   }

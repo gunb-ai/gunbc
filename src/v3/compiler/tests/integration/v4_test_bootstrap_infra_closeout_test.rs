@@ -422,8 +422,11 @@ fn coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
             && TESTGEN_DAG.contains("variant: coproduct_exhaustiveness_anchor_omitted_variant(")
             && TESTGEN_DAG.contains("anchor: anchor")
             && TESTGEN_DAG.contains("at: node_locus(node: input)")
-            && !TESTGEN_DAG.contains("NodeLocus { node: input }"),
-        "coproduct-exhaustiveness generation must carry omitted variant into the input node and use canonical node_locus"
+            && !TESTGEN_DAG.contains("NodeLocus { node: input }")
+            && TESTGEN_DAG.contains("identity: discriminant(v: variant)")
+            && !TESTGEN_DAG.contains("fn test_claim_coproduct_variant_symbol")
+            && !TESTGEN_DAG.contains("coproduct_exhaustiveness_compiles_claim_variant"),
+        "coproduct-exhaustiveness generation must carry omitted variant into the input node, use canonical node_locus, and project variant identity via discriminant()"
     );
     assert!(
         COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG

@@ -266,26 +266,23 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
         ],
         "PrimitiveFactBundle.spec_facts must be axis-keyed Map<Symbol, Node> (duplicate axes structurally unrepresentable), not an opaque Node"
     );
-    for axis in [
-        "primitive_fact_axis_width",
-        "primitive_fact_axis_signedness",
-        "primitive_fact_axis_range",
-        "primitive_fact_axis_encoding",
-        "primitive_fact_axis_surface_spelling",
-        "primitive_fact_axis_overflow_disposition",
-    ] {
-        assert!(
-            surface_declares_data(&module, axis, "Symbol"),
-            "declared axis Symbol `{axis}` is the canonical key for PrimitiveFactBundle.spec_facts"
-        );
-    }
+    assert!(
+        !MODEL_CORE_DAG.contains("data primitive_fact_axis_width: Symbol")
+            && !MODEL_CORE_DAG.contains("data primitive_fact_axis_encoding: Symbol"),
+        "model_core must not declare parallel Symbol-tag shadow taxonomy for fact axes"
+    );
     assert!(
         MODEL_CORE_DAG.contains("type ModelCorePrimitiveFactAxis")
             && MODEL_CORE_DAG.contains("= ModelCoreFactAxisWidth {}")
             && MODEL_CORE_DAG.contains("| ModelCoreFactAxisEncoding {}")
             && MODEL_CORE_DAG.contains("| ModelCoreFactAxisSurfaceSpelling {}")
-            && MODEL_CORE_DAG.contains("fn model_core_primitive_fact_axis_symbol(axis: ModelCorePrimitiveFactAxis) -> Symbol"),
-        "ModelCorePrimitiveFactAxis must be the typed canonical carrier for new grounding registries, with a single Symbol projection at the legacy spec_facts boundary"
+            && !MODEL_CORE_DAG.contains("fn model_core_primitive_fact_axis_symbol("),
+        "ModelCorePrimitiveFactAxis must be the typed canonical carrier; spec_facts keys derive via discriminant() at the legacy Map boundary"
+    );
+    assert!(
+        MODEL_CORE_DAG.contains("discriminant(v: ModelCoreFactAxisWidth {})")
+            && MODEL_CORE_DAG.contains("discriminant(v: ModelCoreFactAxisEncoding {})"),
+        "bool fact lookup must key spec_facts via discriminant() on typed axis constructors"
     );
 }
 
@@ -297,9 +294,9 @@ enum BoolFactAxisDispatch {
 }
 
 fn bool_fact_axis_dispatch(axis: &str) -> BoolFactAxisDispatch {
-    if axis == "primitive_fact_axis_width" {
+    if axis == "ModelCoreFactAxisWidth" {
         BoolFactAxisDispatch::Width
-    } else if axis == "primitive_fact_axis_encoding" {
+    } else if axis == "ModelCoreFactAxisEncoding" {
         BoolFactAxisDispatch::Encoding
     } else {
         BoolFactAxisDispatch::Unbound
@@ -310,19 +307,19 @@ fn bool_fact_axis_dispatch(axis: &str) -> BoolFactAxisDispatch {
 fn v4_std_model_core_bool_fact_lookup_is_discriminating_and_fail_closed() {
     let _module = model_core_surface_or_panic();
     assert!(
-        MODEL_CORE_DAG.contains("if axis == primitive_fact_axis_width {")
-            && MODEL_CORE_DAG.contains("} else if axis == primitive_fact_axis_encoding {")
+        MODEL_CORE_DAG.contains("if axis == discriminant(v: ModelCoreFactAxisWidth {}) {")
+            && MODEL_CORE_DAG.contains("} else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {")
             && MODEL_CORE_DAG.contains("primitive_fact_axis_unbound_diagnostic(axis: axis)")
             && !MODEL_CORE_DAG.contains("match axis {\n    primitive_fact_axis_width =>"),
-        "{MODEL_CORE_PATH}: bool fact lookup must use explicit Symbol equality dispatch with an unbound fail-closed else"
+        "{MODEL_CORE_PATH}: bool fact lookup must use discriminant()-keyed equality dispatch with an unbound fail-closed else"
     );
     assert_eq!(
-        bool_fact_axis_dispatch("primitive_fact_axis_encoding"),
+        bool_fact_axis_dispatch("ModelCoreFactAxisEncoding"),
         BoolFactAxisDispatch::Encoding,
         "discriminating second-arm axis must not return the width fact"
     );
     assert_eq!(
-        bool_fact_axis_dispatch("primitive_fact_axis_signedness"),
+        bool_fact_axis_dispatch("ModelCoreFactAxisSignedness"),
         BoolFactAxisDispatch::Unbound,
         "unsupported bool fact axes must fail closed"
     );
