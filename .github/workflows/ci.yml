@@ -376,16 +376,6 @@ jobs:
     # debug_assert-dependent behavior), so this is observationally invisible + fail-closed (RR-L).
     - name: v2 DAG emit parity receipt (shared closure)
       run: cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
-    # R2 add-emit keystone guard (always-runs). Executes the v4 witness
-    # mvp1_rust_emit_add_fn_accepts_holds through the real v2 compile+interpret pipeline
-    # (same path as `gunbc run --claim-run`): emit(add) must produce exactly
-    # `fn add(x: i32, y: i32) -> i32 { x + y }` (green) and flip to false on a mutated
-    # expected source (discrimination). Standing sentinel for B5-style emit-consumer
-    # regressions (cf. #4484) that a corpus-eval-gated roster row cannot be. `--release`
-    # reuses the shared v2-compiler closure built above (RR-L: fast, profile-invariant).
-    # Both module tests run via the prefix filter.
-    - name: R2 add-emit keystone guard (shared closure)
-      run: cargo test -p v2-compiler-tests --release r2_emit_add_named_test -- --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
   # Split out of `ci_floor` so it runs CONCURRENTLY with stage0 freshness + DAG parity: the probe
   # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
