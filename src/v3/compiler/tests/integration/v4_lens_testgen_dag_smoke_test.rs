@@ -16,14 +16,19 @@
 //! construction until M2 can compile this module end-to-end (codex **#14839** — bounded parse
 //! ratchet, not a permanent substitute for `.dag` `TestClaim` coverage).
 //!
+//! **W4 fold-delete (ctrl#1476):** behavioral receipts for `generator_provenance`,
+//! `shadow_ci_receipt`, and `dag_input_surface` migrated to discriminating claim-run witnesses
+//! (`v4_roster_pilot` rows + `scripts/v4-testclaim-smoke-roster.sh`; mutation-proven). Parse
+//! surface for those modules rides every witness import. Remaining `#[test]` slices are **B-interim**
+//! host-AST declaration-shape receipts (~86% B-fraction for this row; substrate consumers for
+//! sleek-carp-651 READ-axis reflection).
+//!
+//! **B-interim justification (operator 2026-06-07):** expressible-in-principle; host-AST until the
+//! ctrl#1476 READ-axis reflection substrate lands. TRIGGER: migrate to `.dag` witness when it exists.
+//!
 //! **INVARIANTS §P5 checkable receipt (mechanism (b), SG-0 delta 0):** this file's row in
-//! `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` is unchanged — no new hand-Rust path;
-//! `sg0_v3_test_hand_authored_subratchet` enforces disk-vs-list parity on that invariant.
-//! F.2-P1/F.2-P2 same-path tests expand inside this harness only. Explicit deferral:
-//! **ROADMAP.md** **T-PB-B** / `pb_rust_tests_outside_residual_zero`
-//! (`ROADMAP.md:43` Public Operational Lanes, `ROADMAP.md:63` Nine lanes); dissolve when T-22 runs
-//! `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` end-to-end (`generator_provenance` promoted
-//! to roster pilot via ctrl#1476 B3). PR #4265 added T-38B `lens_effect/effect_depends_on` pins the same way.
+//! `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` is unchanged — net-Rust-negative fold-delete
+//! inside the same path; `sg0_v3_test_hand_authored_subratchet` enforces disk-vs-list parity.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
@@ -40,17 +45,9 @@ const NAT_SUBSTRATE_DAG: &str = include_str!("../../../../v4/std/nat.dag");
 const WITNESS_VALIDITY_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/witness_validity.dag");
 const WITNESS_VALIDITY_PATH: &str = "src/v4/test/claim/generated/witness_validity.dag";
-const LENS_TESTGEN_DAG_INPUT_SURFACE_DAG: &str =
-    include_str!("../../../../v4/test/claim/lens_testgen/dag_input_surface.dag");
-const LENS_TESTGEN_DAG_INPUT_SURFACE_PATH: &str =
-    "src/v4/test/claim/lens_testgen/dag_input_surface.dag";
 const LENS_EFFECT_DEPENDS_ON_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_effect/effect_depends_on.dag");
 const LENS_EFFECT_DEPENDS_ON_PATH: &str = "src/v4/test/claim/lens_effect/effect_depends_on.dag";
-const LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG: &str =
-    include_str!("../../../../v4/test/claim/lens_testgen/shadow_ci_receipt.dag");
-const LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH: &str =
-    "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag";
 const ROADMAP: &str = include_str!("../../../../../ROADMAP.md");
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
@@ -75,80 +72,7 @@ fn v4_lens_testgen_p9_registry_owner_claim_parses_and_checks_registry_exclusivit
     );
 }
 
-#[test]
-fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
-    let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
-    let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
-    let lens_testgen_claim = parse_module(
-        LENS_TESTGEN_DAG_INPUT_SURFACE_DAG,
-        LENS_TESTGEN_DAG_INPUT_SURFACE_PATH,
-    );
-    assert_eq!(
-        module_paths(&testgen),
-        vec![vec!["v4", "lens", "testgen"]],
-        "T-19 authority module should remain v4.lens.testgen"
-    );
-    assert_eq!(
-        module_paths(&verification),
-        vec![vec!["v4", "std", "verification"]],
-        "`TestClaim` schema should remain v4.std.verification"
-    );
-    assert_eq!(
-        module_paths(&lens_testgen_claim),
-        vec![vec![
-            "v4",
-            "test",
-            "claim",
-            "lens_testgen",
-            "dag_input_surface"
-        ]],
-        "lens_testgen claim module should stay under recursive T-22 discovery"
-    );
-}
-
-#[test]
-fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
-    let module = parse_module(
-        LENS_TESTGEN_DAG_INPUT_SURFACE_DAG,
-        LENS_TESTGEN_DAG_INPUT_SURFACE_PATH,
-    );
-    assert!(
-        function_count(&module, "language_behavior_generator_uses_conj_dag_input") == 1
-            && function_count(&module, "language_behavior_generator_uses_disj_dag_input") == 1
-            && function_count(&module, "language_behavior_generator_uses_transform_dag_input") == 1
-            && function_count(&module, "language_behavior_generator_uses_dag_input") == 1
-            && function_count(&module, "scheduled_language_behavior_generators_cover_dag_inputs")
-                == 1
-            && function_count(&module, "bootstrap_generator_has_conj_dag_input_surface") == 1,
-        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: claim file must prove scheduled + bootstrap .dag input surface"
-    );
-    assert!(
-        LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("dag_language_model_surface_id")
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("testgen_scheduled_language_behavior_generators")
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("bootstrap_claim_generator_for_manual_anchor")
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim")
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim")
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
-                "data witness_lens_testgen_schedules_dag_input_surface_green: Bool"
-            )
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
-                "data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool"
-            )
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("for_all(")
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
-                "language_behavior_generator_uses_disj_dag_input"
-            )
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
-                "language_behavior_generator_uses_transform_dag_input"
-            )
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("stub_empty_disj")
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("stub_empty_transform")
-            && !LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("compile-only until T-19"),
-        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring or green witnesses"
-    );
-}
-
-// F.2-P1 / F.2-P2 — three same-path `#[test]` slices below; census row unchanged (see module doc).
+// B-interim host-AST slices below (see module doc).
 #[test]
 fn v4_lens_testgen_generator_carries_provenance_and_profile_fields() {
     // F.2-P1: Generator<C> gains a provenance bundle (GeneratorProvenance, authored in
@@ -221,38 +145,6 @@ fn v4_lens_testgen_p5_roadmap_t_pb_b_deferral_is_checkable() {
             && ROADMAP.contains("| **T-PB-B** | `pb_rust_tests_outside_residual_zero`")
             && ROADMAP.contains("T-PB-B / `pb_rust_tests_outside_residual_zero`"),
         "P5 deferral must bind to checkable T-PB-B authority (Nine lanes + Public Operational Lanes)"
-    );
-}
-
-#[test]
-fn v4_lens_testgen_shadow_ci_receipt_claim_parses_and_pins_witness() {
-    let module = parse_module(
-        LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG,
-        LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH,
-    );
-    assert_eq!(
-        module_paths(&module),
-        vec![vec![
-            "v4",
-            "test",
-            "claim",
-            "lens_testgen",
-            "shadow_ci_receipt"
-        ]],
-        "shadow CI receipt claim module should stay under recursive T-22 discovery"
-    );
-    assert!(
-        LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
-            "import v4.lens.testgen {"
-        ) && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains("testgen_run_receipt_carries_profile_roster")
-            && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains("testgen_run_receipt_outcome")
-            && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
-                "data claim_lens_testgen_shadow_ci_run_receipt: TestClaim = EqualsClaim"
-            )
-            && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
-                "data witness_lens_testgen_shadow_ci_run_receipt_green: Bool = lens_testgen_shadow_ci_run_receipt_holds()"
-            ),
-        "{LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH}: must pin F.2-P2 TestgenRunReceipt witness via EqualsClaim + green Bool"
     );
 }
 
