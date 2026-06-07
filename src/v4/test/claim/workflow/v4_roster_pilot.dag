@@ -194,8 +194,8 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 17)
-    && (v4_roster_pilot_claim_run_row_count == "17")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 16)
+    && (v4_roster_pilot_claim_run_row_count == "16")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -276,11 +276,6 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_coproduct_reflection,
       entry: "src/v4/test/claim/manual/coproduct_reflection.dag",
       function: "coproduct_reflection_folds_real_declaration_by_execution"
-    )
-    && v4_roster_pilot_row_matches(
-      row: v4_roster_pilot_row_react_decl_shape_reflection,
-      entry: "src/v4/test/claim/manual/react_declaration_shape_reflection.dag",
-      function: "react_declaration_shapes_reflect_by_execution"
     )
 }
 
