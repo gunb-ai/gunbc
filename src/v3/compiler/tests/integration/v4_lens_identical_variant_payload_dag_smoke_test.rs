@@ -4,11 +4,10 @@
 //! IdenticalVariantPayload sub-signature substrate (Carrier-clone family;
 //! shared `coverage_defect_carrier_clone` acceptance key).
 //!
-//! **Wave-A W2 fold-delete:** `identical_variant_payload_fact_for_type` Unrealized scaffold
-//! migrated to `src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag`. Remaining
-//! source-shape assertions are **B-INTERIM** host-AST declaration-shape — expressible in
-//! principle; host-AST until ctrl#1476 READ-axis reflection substrate lands; TRIGGER: migrate
-//! to `.dag` witness when substrate exists (route substrate consumers to sleek-carp-651).
+//! **Wave-A W2 fold-delete (GO iii):** A-fold-deleted: parse-only gate + unrealized_scaffold
+//! witness → `lens_identical_variant_payload/sg_claims.dag` (mutation-witnessed).
+//! Remaining receipt tags:
+//! - B-TEXTGREP: all module_authority source.contains needles (9)
 
 const IDENTICAL_VARIANT_PAYLOAD_DAG: &str =
     include_str!("../../../../v4/lens/identical_variant_payload.dag");

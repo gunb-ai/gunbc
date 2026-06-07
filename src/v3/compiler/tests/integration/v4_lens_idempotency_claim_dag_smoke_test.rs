@@ -11,11 +11,11 @@
 //! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:57); dissolves when T-38B
 //! `.dag` TestClaim execution replaces this hand-Rust parse harness.
 //!
-//! **Wave-A W2 fold-delete:** `idempotency_write_effect_claim_holds` migrated to
-//! `src/v4/test/claim/lens_idempotency/sg_claims.dag` (consolidated roster). Remaining
-//! wiring assertions are **B-INTERIM** host-AST declaration-shape — expressible in principle;
-//! host-AST until ctrl#1476 READ-axis reflection substrate lands; TRIGGER: migrate to
-//! `.dag` witness when substrate exists (route substrate consumers to sleek-carp-651).
+//! **Wave-A W2 fold-delete (GO iii):** A-fold-deleted: parse-only gate + write_effect witness
+//! → `lens_idempotency/sg_claims.dag` (mutation-witnessed).
+//! Remaining receipt tags:
+//! - B-TEXTGREP: WRITE_EFFECT/SUBJECT_ROSTER/FAMILY_RECEIPT .contains wiring greps
+//! - B-REFLECTABLE: subject_roster module_path
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;

@@ -18,12 +18,12 @@
 //! `INVARIANTS.md` table row land in the same PR as the harness (home-of-record for the
 //! hand-Rust receipt).
 //!
-//! **Wave-A W2 fold-delete:** registry query behavioral receipts migrated to
-//! `src/v4/test/claim/lens_registry/sg_claims.dag` (consolidated roster). Remaining
-//! assertions are **B-INTERIM** host-AST declaration-shape (registry row pins, ci.dag consumer
-//! wiring, string-grep bound-module receipts) — expressible in principle; host-AST until
-//! ctrl#1476 READ-axis reflection substrate lands; TRIGGER: migrate to `.dag` witness when
-//! substrate exists (route substrate consumers to sleek-carp-651).
+//! **Wave-A W2 fold-delete (GO iii):** A-fold-deleted: required_ids_resolve + singleton_row_counts
+//! witnesses → `lens_registry/sg_claims.dag` (mutation-witnessed each).
+//! Remaining receipt tags:
+//! - B-REFLECTABLE: tokenizes module_path/type_sum/data/fn, ci_workflow host-AST consumer wiring,
+//!   structural_similarity module_path/fn/data
+//! - B-TEXTGREP: t23_closed_lens_ids REGISTRY_DAG.contains, bound-module string greps, p9_owned_fn
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
