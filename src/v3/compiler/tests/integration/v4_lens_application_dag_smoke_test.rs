@@ -153,10 +153,10 @@ fn v4_std_report_dag_advisory_carrier_shape() {
         surface_declares_type_sum(&module, "ReportReason"),
         "{REPORT_PATH}: ReportReason closed enum"
     );
-    assert!(
-        surface_declares_fn(&module, "report_reason_to_diagnostic_reason"),
-        "{REPORT_PATH}: advisory→diagnostic reason seam"
-    );
+    // The advisory→diagnostic reason seam is now the `discriminant(v: report.reason)` call in
+    // lens/application.dag's advisory_report_diagnostic — the hand-rolled
+    // `report_reason_to_diagnostic_reason` bridge + its shadow Symbol tags were dissolved into the
+    // canonical `discriminant` intrinsic, so report.dag no longer declares that fn.
     assert!(
         type_sum_has_variant(&module, "ReportReason", "SynthesisGapDecisionTree"),
         "{REPORT_PATH}: ReportReason must declare SynthesisGapDecisionTree arm"
