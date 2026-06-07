@@ -12,6 +12,8 @@ module v4.test.claim.std_grounding.terminal_gate
 
 import v4.std.logic { Bool }
 import v4.std.text { String }
+import v4.std.collection { List }
+import v4.std.machine { Byte }
 import v4.std.diagnostic { Accepted, None }
 import v4.std.witness { Holds }
 import v4.std.host_run {
@@ -33,6 +35,11 @@ import v4.std.grounding {
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
 
 
+fn terminal_gate_empty_bytes() -> List<Byte> {
+  []
+}
+
+
 fn terminal_gate_receipt(status: HostVerdictSurfaceExecutionStatus) -> PerTargetTestClaimReceipt {
   PerTargetTestClaimReceipt {
     host_run: EmitHostRunReceipt {
@@ -42,10 +49,10 @@ fn terminal_gate_receipt(status: HostVerdictSurfaceExecutionStatus) -> PerTarget
         outcome: Accepted { value: Holds { value: ExitOk { code: 0 } }, diagnostics: None }
       },
       logical_run: Accepted {
-        value: HostLogicalRun { stdout: HostRunStdout { bytes: [] } },
+        value: HostLogicalRun { stdout: HostRunStdout { bytes: terminal_gate_empty_bytes() } },
         diagnostics: None
       },
-      stderr_bytes: [],
+      stderr_bytes: terminal_gate_empty_bytes(),
       build_log: BuildLog { lines: [] }
     },
     execution_status: status,

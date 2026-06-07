@@ -339,12 +339,6 @@ mod v4_lens_testgen_dag_smoke_test;
 mod v4_p9_llvm_instruction_cost_single_owner_test;
 #[path = "integration/v4_source_authority_contract_smoke_test.rs"]
 mod v4_source_authority_contract_smoke_test;
-#[path = "integration/v4_std_grounding_dag_smoke_test.rs"]
-mod v4_std_grounding_dag_smoke_test;
-#[path = "integration/v4_std_model_core_dag_smoke_test.rs"]
-mod v4_std_model_core_dag_smoke_test;
-#[path = "integration/v4_std_target_realization_dag_smoke_test.rs"]
-mod v4_std_target_realization_dag_smoke_test;
 #[path = "integration/v4_std_text_boundary_carrier_guard_test.rs"]
 mod v4_std_text_boundary_carrier_guard_test;
 #[path = "integration/v4_t15_self_host_fixed_point_harness_test.rs"]

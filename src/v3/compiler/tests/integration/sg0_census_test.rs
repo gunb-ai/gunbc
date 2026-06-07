@@ -1105,17 +1105,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `pb_rust_tests_outside_residual_zero`; dissolves when a `.dag` TestClaim or
     // generated harness executes the source-authority receipt directly.
     "src/v3/compiler/tests/integration/v4_source_authority_contract_smoke_test.rs",
-    // G.0: parse ratchet on `src/v4/std/grounding.dag` — Branch G.0 schema carriers.
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_grounding_dag_smoke_test.rs` in EXPECTED_HAND_AUTHORED_TEST.
-    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
-    // (ROADMAP.md:62); dissolves when `.dag` TestClaim coverage asserts PerLanguageFactBundleRegistry
-    // + GroundingEvidenceSchema directly.
-    "src/v3/compiler/tests/integration/v4_std_grounding_dag_smoke_test.rs",
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
-    "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
-    // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
-    "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
+    // W3 B-class delete (operator 2026-06-07: declaration-shape tests are dual-representations of
+    // our own std structure — change-detectors with zero external-oracle coverage; correctness-by-
+    // construction, not 2FA-for-code). The three v4_std_{grounding,model_core,target_realization}_dag
+    // smoke files (44 parse-surface/source-grep receipts) are DELETED, not deferred. Their two
+    // behavioral receipts are migrated to mutation-proven .dag claim-run witnesses on v4_roster_pilot:
+    //   - src/v4/test/claim/std_model_core/bool_fact_lookup.dag (also retires the hand-Rust MIRROR
+    //     helper bool_fact_axis_dispatch — a tautology that re-stated the fold in Rust); and
+    //   - src/v4/test/claim/std_grounding/terminal_gate.dag.
+    // No INVARIANTS.md per-file rows exist for these (the §P5(b) references were the general gate).
     // Host-test preservation justification (W1-W4 qualifying bar — provably runtime-inexpressible):
     // non-behavioral: asserts type-ABSENCE of ByteString/FileBody/FileContent/TargetSource in
     // text.dag — no runtime witness can express type-non-existence. (Behavioral content folded
