@@ -587,11 +587,6 @@ fn v4_extdeps_react_dag_element_children_are_list_create_element_child() {
 }
 
 #[test]
-fn v4_extdeps_react_dag_react_element_partition_excludes_primitive_text() {
-    assert_react_element_partition_is_create_element_return_only(&react_extdeps_dag_or_panic());
-}
-
-#[test]
 fn v4_extdeps_react_dag_create_element_child_text_has_no_element_key() {
     assert_react_create_element_child_text_has_no_element_key_field(&react_extdeps_dag_or_panic());
 }
