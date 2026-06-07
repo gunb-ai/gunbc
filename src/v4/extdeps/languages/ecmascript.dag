@@ -1,20 +1,4 @@
 // src/v4/extdeps/languages/ecmascript.dag
-// Scope: ECMAScript ES2022 (ECMA-262 13th Edition) primitive fact-bundles + T-11 MVP-1 grammar-data target model.
-// Owns: EcmascriptSingletonKind, EcmascriptScalar, EcmascriptCost,
-//   EcmascriptGrammarRelationRow, EcmascriptLanguageModel, EcmascriptNumberPrimitiveFacts,
-//   EcmascriptBigIntPrimitiveFacts, EcmascriptBooleanPrimitiveFacts, EcmascriptStringPrimitiveFacts,
-//   EcmascriptSingletonPrimitiveFacts, ecmascript_language_model_wave1 (+ supporting fns).
-// Consumes: v4.std.model_core, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra,
-//   v4.std.lexing, v4.std.grammar, v4.std.target_model, v4.std.witness, v4.std.text.
-// Status: T-4.17 ecmascript slice (NEW) — ECMA-262 ES2022 primitives; ModelCore inhabitance for
-//   number/bigint/boolean; string inhabitance deferred; laws/effects/partiality empty (wave-2b);
-//   🟡 gated feature:T-6-token-layout-trivia-policy + feature:ecmascript-wave2a-decimal-int-literal
-//   (decimal `0` | [1-9][0-9]* only; not 0b/0o/0x/numeric-separators); canonical_symbols via catalog
-//   + wave-1 lex/grammar/MVP; bool canonical-B decl-ref — 🟡 E-6(b) staging. NO TypeScript type
-//   annotations — base ES surface only; `typescript.dag` is the TS surface authority.
-// Anchor: https://tc39.es/ecma262/2022/ (ECMA-262, 13th Edition, June 2022).
-// Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW.
-// 🟡
 
 module v4.extdeps.languages.ecmascript
 

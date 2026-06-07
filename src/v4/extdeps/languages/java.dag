@@ -1,7 +1,4 @@
 // src/v4/extdeps/languages/java.dag
-// Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Status: T-4.17 Wave 2a/2b — wave-1 MVP-1 + wave-2 lex/grammar aligned to JLS production boundaries (§8.1.7 ClassBodyDeclaration, §8.4 MethodHeader/MethodBody/MethodDeclarator/FormalParameterList, §14.17 optional return Expression). Wave-2 productions declared as `FormalProduction` flat rhs (`java_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence. canonical_symbols via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. ModelCore wave-2b: primitive storage on full integer catalog; arithmetic inhabitance/laws on `int`/`long` only (JLS §5.6 promotion — byte/short/char stay primitives-only); wrapping int/long → commutative_semiring modular laws; float/double primitives-only (JLS §15.20.1 NaN compare); bool algebra; div/rem-by-zero partiality only. bool canonical-B decl-ref — 🟡 E-6(b) staging.
-// Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 
 module v4.extdeps.languages.java
 

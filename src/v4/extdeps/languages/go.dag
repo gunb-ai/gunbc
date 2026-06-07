@@ -1,7 +1,4 @@
 // src/v4/extdeps/languages/go.dag
-// Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, wave-2a lex/grammar-data target model.
-// Status: T-4.17 Wave 2b go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; integer/float/bool/string inhabitance populated via grounded std.algebra Node constructors; Go complex primitive bundles remain present but withheld from AlgebraInhabitanceDecl until std exports a complex-specific approximate algebra constructor; laws/effects/partiality empty (wave-2+); wave-1 MVP-1 grammar declared as `FormalProduction` flat rhs (`go_wave1_formal_productions`); `GrammarExpr`/`GrammarProduction` below remain operational parse scaffold until CP-1b convergence; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; GO-SG-1 TargetAtomRealization rows (Symbol/Bool/Char→rune) + atom_realizations catalog edge; platform Int atom row 🟡 gated until shared carrier gains integer value template (R1 uses go_surface_spelling_int / go_facts_int facts directly); bool canonical-B decl-ref — 🟡 E-6(b) staging.
-// Anchor: https://go.dev/ref/spec
 
 module v4.extdeps.languages.go
 
