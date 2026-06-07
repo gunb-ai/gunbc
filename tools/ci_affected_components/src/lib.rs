@@ -140,7 +140,8 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
 }
 
 pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
-    path.starts_with("src/v4/test/claim/")
+    ci_changed_path_affects_v4(path)
+        || path.starts_with("src/v4/test/claim/")
         || path == "scripts/v4-testclaim-corpus-eval.sh"
         || path == "scripts/v4-testclaim-smoke-roster.sh"
 }
@@ -213,6 +214,17 @@ mod tests {
     }
 
     #[test]
+    fn gram_emit_substrate_triggers_testclaim_corpus() {
+        assert!(ci_changed_path_affects_v4("src/v4/std/grammar.dag"));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/std/grammar.dag"
+        ));
+        assert!(!ci_changed_path_affects_workflow_policy(
+            "src/v4/std/grammar.dag"
+        ));
+    }
+
+    #[test]
     fn testclaim_corpus_includes_all_v4_claim_paths() {
         assert!(ci_changed_path_affects_testclaim_corpus(
             "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
@@ -226,7 +238,7 @@ mod tests {
         assert!(ci_changed_path_affects_testclaim_corpus(
             "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag"
         ));
-        assert!(!ci_changed_path_affects_testclaim_corpus(
+        assert!(ci_changed_path_affects_testclaim_corpus(
             "src/v4/workflow/ci.dag"
         ));
         assert!(ci_changed_path_affects_testclaim_corpus(
@@ -268,7 +280,7 @@ mod tests {
         assert!(!flags.v2);
         assert!(!flags.v3);
         assert!(flags.v4);
-        assert!(!flags.testclaim_corpus);
+        assert!(flags.testclaim_corpus);
         assert!(flags.workflow_policy);
         assert!(!flags.release_distribution);
     }
@@ -287,15 +299,18 @@ mod tests {
     }
 
     #[test]
-    fn v4_compile_harness_paths_outside_claim_bucket() {
+    fn v4_compile_harness_paths_inherit_testclaim_corpus_via_affects_v4() {
         assert!(ci_changed_path_affects_v4(
             "src/v4/test/coercion_fold_int_rust_fixture.dag"
         ));
         assert!(ci_changed_path_affects_v4(
             "src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
         ));
-        assert!(!ci_changed_path_affects_testclaim_corpus(
+        assert!(ci_changed_path_affects_testclaim_corpus(
             "src/v4/test/coercion_fold_int_rust_fixture.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
         ));
     }
 

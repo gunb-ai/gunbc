@@ -82,7 +82,7 @@ import v4.std.model_core {
   PrimitiveOperationRef
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
@@ -182,7 +182,6 @@ import v4.std.target_model {
   target_collection_row_field_primary,
   target_collection_row_field_alternatives,
   target_collection_row_field_fallback,
-  target_collection_repr_kind_atom,
   target_collection_set_no_representation,
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
@@ -1409,15 +1408,6 @@ fn rust_mvp1_source_text_authority() -> String {
   rust_mvp1_source_text
 }
 
-// MVP serialize_source — literal symbol + grammar production + token relation (aligned with source text).
-// dissolve-on: T-10 literal Node + bidirectional grammar-as-bidir emit/ingest round-trip.
-fn rust_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
-  match token {
-    FixedToken { token_class: c } => c
-    BoundToken { token_class: c, binding: _ } => c
-  }
-}
-
 fn rust_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   // T-11: serialize through the single shared morphism (no parallel wire authority).
   concrete_syntax_token_to_node(token: token)
@@ -1483,13 +1473,13 @@ fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
       match state {
         RustGramBuild1StateInit =>
           RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
           RustGramBuild1StateReady {
             expr: Sequence {
               left: acc,
-              right: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
           }
       }
@@ -1627,7 +1617,7 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
     children: [
       rust_named_edge(
         name: target_collection_repr_field_kind,
-        target: rust_inhabitant_atom(id: target_collection_repr_kind_atom(kind: form.kind))
+        target: rust_inhabitant_atom(id: discriminant(v: form.kind))
       ),
       rust_named_edge(
         name: target_collection_repr_field_apply,
@@ -2029,7 +2019,7 @@ fn rust_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Formal
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: rust_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )

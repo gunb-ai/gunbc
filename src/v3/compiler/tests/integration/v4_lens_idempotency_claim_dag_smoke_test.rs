@@ -10,6 +10,12 @@
 //! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
 //! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:57); dissolves when T-38B
 //! `.dag` TestClaim execution replaces this hand-Rust parse harness.
+//!
+//! **Wave-A W2 fold-delete (GO iii):** A-fold-deleted: parse-only gate + write_effect witness
+//! → `lens_idempotency/sg_claims.dag` (mutation-witnessed).
+//! Remaining receipt tags:
+//! - B-TEXTGREP: WRITE_EFFECT/SUBJECT_ROSTER/FAMILY_RECEIPT .contains wiring greps
+//! - B-REFLECTABLE: subject_roster module_path
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
@@ -42,13 +48,6 @@ fn module_path(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<&str> 
             _ => None,
         })
         .unwrap_or_default()
-}
-
-#[test]
-fn v4_lens_idempotency_claim_dags_tokenize_and_parse() {
-    let _ = parse_module(WRITE_EFFECT_DAG, WRITE_EFFECT_PATH);
-    let _ = parse_module(SUBJECT_ROSTER_DAG, SUBJECT_ROSTER_PATH);
-    let _ = parse_module(FAMILY_RECEIPT_DAG, FAMILY_RECEIPT_PATH);
 }
 
 #[test]
