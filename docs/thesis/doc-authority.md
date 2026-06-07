@@ -44,7 +44,7 @@ in `THESIS.md` and `ROADMAP.md`, which now carry a one-line "see doc-authority" 
 | [`MODELING.md`](../../MODELING.md) | how to extend the language (M1–M10) |
 | [`ROADMAP.md`](../../ROADMAP.md) | current **state / plan** (what works, what's landing, lanes, deferrals) — *not* claims |
 | [`CODING.md`](../../CODING.md) / [`TESTING.md`](../../TESTING.md) | implementation / test discipline |
-| `DIRECTION-CHECKLIST.md` *(in flight, PR #4518)* `[target]` | the derived design-scan; **owns zero facts** — every item links to its authority |
+| [`DIRECTION-CHECKLIST.md`](../../DIRECTION-CHECKLIST.md) `[live]` | the derived design-scan; **owns zero facts** — every item names its `→` authority home |
 
 **Tier 2 — `docs/` is the fact home:**
 
