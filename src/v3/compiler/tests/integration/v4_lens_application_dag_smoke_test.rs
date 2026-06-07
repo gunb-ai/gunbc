@@ -7,6 +7,12 @@
 //!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full `compile_to_dag` import merge
 //! deferred until cross-module v4 load lands (peer v4 smoke posture).
+//!
+//! **Wave-A W2 fold-delete (GO iii):** A-fold-deleted: parse-only gate + introspect_advisory +
+//! synthesis_gap_polynomial → `lens_application/sg_claims.dag` (mutation-witnessed).
+//! Remaining receipt tags:
+//! - B-REFLECTABLE: synthesis/report/application module_path, type_sum, surface_declares_fn
+//! - B-TEXTGREP: import_includes_name, APPLICATION_DAG.contains carrier strings
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
@@ -106,13 +112,6 @@ fn import_includes_name(
                 .all(|(a, &b)| a.as_str() == b)
             && names.iter().any(|n| n == name)
     })
-}
-
-#[test]
-fn v4_lens_application_dag_tokenizes_and_parses() {
-    let _ = parse_module(REPORT_DAG, REPORT_PATH);
-    let _ = parse_module(APPLICATION_DAG, APPLICATION_PATH);
-    let _ = parse_module(SYNTHESIS_DAG, SYNTHESIS_PATH);
 }
 
 #[test]
