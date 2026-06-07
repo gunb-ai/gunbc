@@ -13,15 +13,9 @@ type ReportReason
   = SynthesisGapDecisionTree
   | SynthesisGapInformationTheoretic
 
-data synthesis_gap_decision_tree_reason: Symbol = synthesis_gap_decision_tree_reason
-data synthesis_gap_information_theoretic_reason: Symbol = synthesis_gap_information_theoretic_reason
-
-fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
-  match reason {
-    SynthesisGapDecisionTree => synthesis_gap_decision_tree_reason
-    SynthesisGapInformationTheoretic => synthesis_gap_information_theoretic_reason
-  }
-}
+// The diagnostic reason is the ReportReason constructor's own name, via the `discriminant`
+// intrinsic — no shadow `data ..._reason: Symbol` tags and no hand-written bridge fn. Callers use
+// `discriminant(v: report.reason)` directly (see lens/application.dag advisory_report_diagnostic).
 
 type Report {
   reason: ReportReason
