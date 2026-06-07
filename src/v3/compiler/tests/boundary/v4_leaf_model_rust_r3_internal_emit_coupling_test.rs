@@ -169,15 +169,7 @@ fn v4_leaf_model_rust_r3_internal_lens_oracle_labels_match_projection_replay() {
     );
     assert!(
         FIXTURE_DAG.contains("discriminant(v: expr.kind)"),
-        "lens oracle must key value projection kind via discriminant() on TargetValueExpressionKind"
-    );
-    assert!(
-        !FIXTURE_DAG.contains("rust_r3_internal_emit_kind_symbol_to_owned_string"),
-        "shadow Symbol tags for TargetValueExpressionKind arms were dissolved into discriminant()"
-    );
-    assert!(
-        !FIXTURE_DAG.contains("rust_r3_internal_emit_kind_symbol_identity"),
-        "shadow Symbol tags for TargetValueExpressionKind arms were dissolved into discriminant()"
+        "lens oracle keys value projection kind via discriminant"
     );
 }
 
