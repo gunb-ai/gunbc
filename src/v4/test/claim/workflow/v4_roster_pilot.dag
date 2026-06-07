@@ -110,13 +110,7 @@ data v4_roster_pilot_row_std_text_field_text: V4RosterPilotClaimRunRow = V4Roste
   function: "text_host_string_field_text_holds"
 }
 
-// Exemplar E2: v4.extdeps.frameworks.react smoke→witness migration (structural receipts).
-data v4_roster_pilot_row_extdeps_react_hook_site_roster: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
-  label: "extdeps_react ReactHookSite 19-arm roster pin",
-  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_hook_site_roster_matches_pin_holds"
-}
-
+// Exemplar E2: v4.extdeps.frameworks.react A-class structural receipts (7 witnesses).
 data v4_roster_pilot_row_extdeps_react_use_memo_callback_deps: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "extdeps_react UseMemo/UseCallback required List deps",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
@@ -127,12 +121,6 @@ data v4_roster_pilot_row_extdeps_react_effect_setup_ref: V4RosterPilotClaimRunRo
   label: "extdeps_react effect hooks require setup_ref",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
   function: "extdeps_react_effect_hooks_require_setup_ref_holds"
-}
-
-data v4_roster_pilot_row_extdeps_react_use_resource_placement: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
-  label: "extdeps_react use(resource) is ReactUseCallSite not HookSite",
-  entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_use_resource_is_react_use_call_site_not_hook_site_holds"
 }
 
 data v4_roster_pilot_row_extdeps_react_host_key_ref: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
