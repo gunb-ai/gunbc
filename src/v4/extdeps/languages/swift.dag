@@ -71,12 +71,18 @@ import v4.std.model_core {
   PartialOperationDecl,
   PrimitiveFactBundle,
   PrimitiveOperationRef,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_overflow_disposition,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth,
+}),
+  discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+  discriminant(v: ModelCoreFactAxisSignedness {}),
+  discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+  primitive_fact_axis_unbound_diagnostic,
+  discriminant(v: ModelCoreFactAxisWidth {})
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
@@ -1876,13 +1882,13 @@ fn swift_primitive_bundle_from_integer_facts(facts: SwiftIntegerPrimitiveFacts) 
   PrimitiveFactBundle {
     substrate_carrier: swift_integer_facts_node(facts: facts),
     spec_facts: swift_primitive_fact_map_4(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: swift_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_signedness,
+      axis1: discriminant(v: ModelCoreFactAxisSignedness {}),
       fact1: swift_signedness_node(signedness: facts.signedness),
-      axis2: primitive_fact_axis_width,
+      axis2: discriminant(v: ModelCoreFactAxisWidth {}),
       fact2: swift_width_node(width: facts.width),
-      axis3: primitive_fact_axis_overflow_disposition,
+      axis3: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
       fact3: swift_overflow_node(overflow: facts.overflow)
     )
   }
@@ -1892,11 +1898,11 @@ fn swift_primitive_bundle_from_float_facts(facts: SwiftFloatPrimitiveFacts) -> P
   PrimitiveFactBundle {
     substrate_carrier: swift_float_facts_node(facts: facts),
     spec_facts: swift_primitive_fact_map_3(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: swift_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
+      axis1: discriminant(v: ModelCoreFactAxisWidth {}),
       fact1: swift_float_width_node(width: facts.width),
-      axis2: primitive_fact_axis_encoding,
+      axis2: discriminant(v: ModelCoreFactAxisEncoding {}),
       fact2: swift_atom(id: facts.ieee754_binary)
     )
   }
@@ -1908,7 +1914,7 @@ fn swift_primitive_bundle_from_nonnumeric_facts(
   PrimitiveFactBundle {
     substrate_carrier: swift_nonnumeric_facts_node(facts: facts),
     spec_facts: swift_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
       fact0: swift_atom(id: swift_nonnumeric_surface_spelling(facts: facts)),
       axis1: swift_primitive_fact_axis_scalar_classifier,
       fact1: swift_nonnumeric_scalar_classifier_node(facts: facts)

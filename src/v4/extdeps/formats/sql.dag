@@ -14,9 +14,13 @@ import v4.std.cardinality { NonZeroNat }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.model_core {
   PrimitiveFactBundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  primitive_fact_axis_unbound_diagnostic,
+}),
+  discriminant(v: ModelCoreFactAxisSignedness {}),
+  discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
   primitive_fact_axis_unbound_diagnostic
 }
 import v4.std.witness { Holds, Violates }
@@ -270,7 +274,7 @@ fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       sql_named_edge(
-        name: primitive_fact_axis_surface_spelling,
+        name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
@@ -282,7 +286,7 @@ fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       sql_named_edge(
-        name: primitive_fact_axis_surface_spelling,
+        name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
@@ -294,11 +298,11 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       sql_named_edge(
-        name: primitive_fact_axis_surface_spelling,
+        name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
       sql_named_edge(
-        name: primitive_fact_axis_encoding,
+        name: discriminant(v: ModelCoreFactAxisEncoding {}),
         target: sql_inhabitant_atom(id: facts.representation),
       ),
     ],
@@ -308,9 +312,9 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
 fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_signedness {
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           Holds { value: sql_inhabitant_atom(id: sql_tag_signed) }
       } else {
           Violates {
@@ -324,7 +328,7 @@ fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> 
 fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else {
           Violates {
@@ -338,9 +342,9 @@ fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
 fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: sql_inhabitant_atom(id: facts.representation) }
       } else {
           Violates {

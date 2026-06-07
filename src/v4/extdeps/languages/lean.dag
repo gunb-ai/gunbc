@@ -54,11 +54,16 @@ import v4.std.model_core {
   ModelCore,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
-  primitive_fact_axis_encoding,
-  primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
   primitive_fact_axis_unbound_diagnostic,
-  primitive_fact_axis_width
+  ModelCoreFactAxisWidth,
+}),
+  discriminant(v: ModelCoreFactAxisSignedness {}),
+  discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+  primitive_fact_axis_unbound_diagnostic,
+  discriminant(v: ModelCoreFactAxisWidth {})
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.node {
@@ -519,13 +524,13 @@ fn lean_inhabitant_int32_node() -> Node {
 fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_width {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: lean_int_width_node(width: width) }
-      } else if axis == primitive_fact_axis_signedness {
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           Holds { value: lean_int_kind_node(kind: kind) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
           Violates {
@@ -539,9 +544,9 @@ fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: Lean
 fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == primitive_fact_axis_surface_spelling {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == primitive_fact_axis_encoding {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           Holds { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
           Violates {
