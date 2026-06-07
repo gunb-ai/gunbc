@@ -13,10 +13,6 @@ type ReportReason
   = SynthesisGapDecisionTree
   | SynthesisGapInformationTheoretic
 
-// The diagnostic reason is the ReportReason constructor's own name, via the `discriminant`
-// intrinsic — no shadow `data ..._reason: Symbol` tags and no hand-written bridge fn. Callers use
-// `discriminant(v: report.reason)` directly (see lens/application.dag advisory_report_diagnostic).
-
 type Report {
   reason: ReportReason
   at: Locus
