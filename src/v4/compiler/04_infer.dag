@@ -152,8 +152,6 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
 }
 
 
-// Diagnostic reason is the BoundedLatticeMissingWitness constructor name via discriminant —
-// no shadow Symbol tags or hand-written bridge fn.
 fn infer_bounded_lattice_partial_instance_diagnostic(
   at: Locus,
   missing: BoundedLatticeMissingWitness,
