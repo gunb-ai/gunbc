@@ -134,33 +134,7 @@ See [docs/thesis/what-dag-catches-that-normal-compilers-dont.md](docs/thesis/wha
 
 ## How the docs connect
 
-```
-/ (direction — start here)
-  THESIS.md .............. this file — the goal
-  ROADMAP.md ............. current state and work plan
-  INVARIANTS.md .......... rules that protect the thesis
-  MODELING.md ............ how to extend the language safely
-
-docs/ (project-wide design — read for understanding)
-  architecture.md ........ substrate design (Node + Edge)
-  algebraic-type-spec.md . type system semantics
-  coercion-design.md ..... type coercion algebra (Tier 1, DONE)
-  error-examples.md ...... concrete .dag code + expected errors (TDD targets)
-
-src/v2/ (compiler implementation — read when working)
-  DESIGN.md .............. compiler design principles
-  dimensions-design.md ... general correctness dimension mechanism
-  cx-design.md ........... complexity (first dimension instance)
-  cx-computation-model.md  CX core model and evidence system
-  cx-violation-triage.md . CX violation snapshot
-  ownership-design.md .... ownership (second dimension instance)
-  compiler-laws.md ....... compiler structural laws
-  CM.md .................. concept model gaps
-  CM-inventory.md ........ heuristic inventory
-
-src/v2/tests/ (testing — read for verification)
-  testing-strategy.md .... generated tests (Tier 3)
-```
+The doc map and the single-authority rule (one fact, one home; every other mention links to it) live in one place: see [docs/thesis/doc-authority.md](docs/thesis/doc-authority.md).
 
 ## Thesis claims — complete list
 

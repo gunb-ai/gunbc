@@ -2,11 +2,7 @@
 
 # DAG Modeling Guidelines
 
-Companion to [INVARIANTS.md](INVARIANTS.md) (compiler invariants). This file is now the slim rule surface; worked examples, audits, and implementation targets live under `docs/modeling/`.
-
-## How this doc is organized
-
-Read this file for the active modeling rules and principle names. Read `docs/modeling/` for extended examples, per-file audits, and appendix material.
+Companion to [INVARIANTS.md](INVARIANTS.md) (compiler invariants). This is the slim rule surface: the active modeling rules and principle names.
 
 ## Core principle: shared facts, not preferences
 
@@ -14,103 +10,71 @@ Every node in a `.dag` model should be either an axiom grounded in an external s
 
 > **Purpose.** This modeling philosophy serves the project's core theme: the **derived homomorphism**. The compiler derives cross-target translation from correctly-modeled facts (N+M models, not N×M adapters) — so a faithful model is what the derivation rests on. See [THESIS.md](THESIS.md) → "The derived homomorphism" and [docs/thesis/the-derived-homomorphism.md](docs/thesis/the-derived-homomorphism.md).
 
-This codebase treats modeling as a deductive system, not a preference document. See [docs/modeling/core-principle-shared-facts-not-preferences.md](docs/modeling/core-principle-shared-facts-not-preferences.md).
+This codebase treats modeling as a deductive system, not a preference document.
 
 ### No meta-language on top
 
 If the current structure is missing a fact, the fix is to extend the structure rather than add annotations or metadata.
 
-See [docs/modeling/core-principle-shared-facts-not-preferences.md](docs/modeling/core-principle-shared-facts-not-preferences.md#no-meta-language-on-top).
-
 ### Start with the fact
 
 Every new construct starts by naming the external fact it models.
 
-See [docs/modeling/core-principle-shared-facts-not-preferences.md](docs/modeling/core-principle-shared-facts-not-preferences.md#start-with-the-fact).
-
 ## Foundational primitive: truth-valued structure
 
-The system’s foundation is intentionally small: truth-valued structure justifies the richer engineering primitives the compiler actually reasons over.
-
-The long-form derivation and worked examples live across the linked modeling notes below.
+The system's foundation is intentionally small: truth-valued structure justifies the richer engineering primitives the compiler actually reasons over.
 
 ### The single primitive
 
-`Bool` is the unambiguous primitive; wider “primitives” like `Int` and `String` hide decisions that should be modeled explicitly.
-
-See [docs/modeling/the-single-primitive.md](docs/modeling/the-single-primitive.md).
+`Bool` is the unambiguous primitive; wider "primitives" like `Int` and `String` hide decisions that should be modeled explicitly.
 
 ### Why classical logic (and not something else)
 
 The foundation matches classical digital computing, while the composition layer remains more general.
 
-See [docs/modeling/why-classical-logic-and-not-something-else.md](docs/modeling/why-classical-logic-and-not-something-else.md).
-
 ### Why Int and String are too wide
 
 Named engineering primitives are useful, but their hidden decisions need explicit structural backing.
-
-See [docs/modeling/why-int-and-string-are-too-wide.md](docs/modeling/why-int-and-string-are-too-wide.md).
 
 ### The four-layer model
 
 Surface sugar, composition, semantic kernel, and foundation are distinct layers that should not be collapsed.
 
-See [docs/modeling/the-four-layer-model.md](docs/modeling/the-four-layer-model.md).
-
 ### Foundational vs engineering primitives
 
 The compiler reasons at the engineering-primitive layer, but those primitives still need a denotational story.
-
-See [docs/modeling/foundational-vs-engineering-primitives.md](docs/modeling/foundational-vs-engineering-primitives.md).
 
 ### Worked examples: how operations fall out
 
 Operations should emerge from structure and declared laws, not from ad hoc feature-specific mechanisms.
 
-See [docs/modeling/worked-examples-how-operations-fall-out.md](docs/modeling/worked-examples-how-operations-fall-out.md).
-
 ### Worked examples: how test generation falls out
 
 Test generation should likewise arise from declared structure, contracts, and composition.
-
-See [docs/modeling/worked-examples-how-test-generation-falls-out.md](docs/modeling/worked-examples-how-test-generation-falls-out.md).
 
 ### Set operations as compositions on truth
 
 Collection and set operations are modeled as compositions over truth-valued structure rather than separate magic.
 
-See [docs/modeling/set-operations-as-compositions-on-truth.md](docs/modeling/set-operations-as-compositions-on-truth.md).
-
 ### Abstraction as surface choice
 
 Abstraction is a surface decision over the same underlying structural facts, not a separate semantic layer.
-
-See [docs/modeling/abstraction-as-surface-choice.md](docs/modeling/abstraction-as-surface-choice.md).
 
 ### What qualifies as a shared fact
 
 Facts are shared when disagreement resolves by reading a cited authority or objective structural derivation.
 
-See [docs/modeling/what-qualifies-as-a-shared-fact.md](docs/modeling/what-qualifies-as-a-shared-fact.md).
-
 ### What does NOT qualify
 
 Preferences, invented canonicalizations, and hidden policy choices are not shared facts.
-
-See [docs/modeling/what-does-not-qualify.md](docs/modeling/what-does-not-qualify.md).
 
 ### Objective relationships
 
 Cross-file and cross-domain links must reflect objective relationships rather than convenience groupings.
 
-See [docs/modeling/objective-relationships.md](docs/modeling/objective-relationships.md).
-
 ### Layering
 
 Layering exists to preserve authority and keep derivations readable across the ontology.
-
-See [docs/modeling/layering.md](docs/modeling/layering.md).
 
 ## Principles
 
@@ -118,13 +82,11 @@ See [docs/modeling/layering.md](docs/modeling/layering.md).
 
 Types decompose into smaller types that each assert one fact.
 
-The canonical carrier for a compositional type is a **fact-bundle**: a `Conj` / record whose fields are **named edges** (`Edge { label: Named { name: … }, target: … }`), each field asserting one spec-read fact. Bare aliases (`type X = Y`) and positional-only `Conj` without named fields are under-modeled carriers — they assert an identity or shape while reading zero facts. Practice 8 in [docs/modeling-discipline.md](docs/modeling-discipline.md#8-fact-bundle-modeling) is the operational rubric (good/bad examples, hollow-alias discriminator, structural T-30 gate); the worked target-by-target forms live in [docs/modeling/grounding-worked-examples.md](docs/modeling/grounding-worked-examples.md).
+The canonical carrier for a compositional type is a **fact-bundle**: a `Conj` / record whose fields are **named edges** (`Edge { label: Named { name: … }, target: … }`), each field asserting one spec-read fact. Bare aliases (`type X = Y`) and positional-only `Conj` without named fields are under-modeled carriers — they assert an identity or shape while reading zero facts.
 
-> Fact modeling is the **inputs facet** of the derived homomorphism: the facts a type asserts are what the compiler derives the cross-target map *from* (see [docs/modeling-discipline.md](docs/modeling-discipline.md) "The three facets").
+> Fact modeling is the **inputs facet** of the derived homomorphism: the facts a type asserts are what the compiler derives the cross-target map *from*.
 
 Do not hand-roll a derived operation. If a function's behavior is determined entirely by the shape of a modeled type, it is re-deriving something the compiler already derives. The deficiency is in the model, not the code — model the missing fact; do not hand-roll the operation.
-
-Practice 10 in [docs/modeling-discipline.md](docs/modeling-discipline.md#10-dont-hand-roll-a-derived-operation) is the operational checklist for this rule: identify the derived operation, then either consume the declared substrate primitive, model the missing fact, or record a tracked dissolution gate when the primitive is not yet present.
 
 ### M2: No duplicate type authorities
 
@@ -162,50 +124,6 @@ New concepts need real files and models before they get referenced from higher-l
 
 Every new construct should trace to its parent in the ontology before new ad hoc vocabulary is introduced.
 
-See [docs/modeling/m9-dfs-the-ontology.md](docs/modeling/m9-dfs-the-ontology.md).
-
 ### Navigating the concept DAG: where to start
 
 The `dsl/std/` tree is the concept DAG; read it from roots to compositions to domain vocabularies.
-
-See [docs/modeling/navigating-the-concept-dag.md](docs/modeling/navigating-the-concept-dag.md).
-
-## Exemplary models
-
-The strongest reference models are preserved out of line so this file stays rule-sized.
-
-### Foundation chain (reference implementation)
-
-See [docs/modeling/foundation-chain-reference-implementation.md](docs/modeling/foundation-chain-reference-implementation.md).
-
-### Other strong models
-
-See [docs/modeling/other-strong-models.md](docs/modeling/other-strong-models.md).
-
-## Per-file findings
-
-The detailed per-file audit now lives under `docs/modeling/`.
-
-### dsl/std/
-
-See [docs/modeling/per-file-findings-dsl-std.md](docs/modeling/per-file-findings-dsl-std.md).
-
-### dsl/extdeps/
-
-See [docs/modeling/per-file-findings-dsl-extdeps.md](docs/modeling/per-file-findings-dsl-extdeps.md).
-
-### src/v2/ (compiler)
-
-See [docs/modeling/per-file-findings-src-v2-compiler.md](docs/modeling/per-file-findings-src-v2-compiler.md).
-
-## Deleted files (this session)
-
-The current deleted-file ledger stays intentionally brief here because the detailed implementation analysis moved out of line.
-
-## Known future work
-
-The full future-work queue and accepted debt are preserved in [docs/modeling/known-future-work.md](docs/modeling/known-future-work.md).
-
-## Appendix: Preferred implementations
-
-Preferred target implementations, design sketches, and replacement shapes now live in [docs/modeling/appendix-preferred-implementations.md](docs/modeling/appendix-preferred-implementations.md).

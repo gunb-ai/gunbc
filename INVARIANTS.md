@@ -2,7 +2,7 @@
 
 # Compiler and Runtime Invariants
 
-This is the reviewer-facing invariant index. Five principles anchor everything else. Per-rule long-form rationale lives under [`docs/invariants/`](docs/invariants/) and related design docs.
+This is the reviewer-facing invariant index. Five principles anchor everything else.
 
 ## The five principles
 
@@ -16,7 +16,7 @@ Every rule in this repo descends from one of five first principles. Growing sub-
 
 Two load-bearing headings from the previous organization map directly into these principles: **Verifiability** rolls into Decidability (verification is a structural consequence of a closed system), and **Sustainability** rolls into Progress Is Dissolution (sustainability is the long-run framing of cost-of-change). Their sub-rules distribute into the principles where their motivating teeth live — detailed in the appendix.
 
-Each principle below carries: the rule, why it stands alone, problem/solution shapes for pattern-matching, a historical dissolution receipt, and a cross-reference to the related rule IDs that elaborate it. Per-rule long-form rationale lives in subdocs under [`docs/invariants/`](docs/invariants/) and [`docs/design-*.md`](docs/); the appendix below names the exact subdoc per ID and each numbered rule has a stable `#id` anchor for in-file citation (e.g., `INVARIANTS.md#c-8`, `INVARIANTS.md#e-9`).
+Each principle below carries: the rule, why it stands alone, problem/solution shapes for pattern-matching, a historical dissolution receipt, and a cross-reference to the related rule IDs that elaborate it. Each numbered rule has a stable `#id` anchor for in-file citation (e.g., `INVARIANTS.md#c-8`, `INVARIANTS.md#e-9`); the appendix below indexes every ID to its home principle.
 
 ---
 
@@ -115,9 +115,9 @@ External authority: well-founded relations (Zermelo 1904, von Neumann 1929), ran
 
 The 5-Behavior substrate (`Behavior::Value | Transform | Branch | Loop | Bind` in `src/v3/std/substrate.dag`) is a *typed total* fragment of lambda calculus + structural coproducts + bounded recursion. The mapping is direct: `Transform` is application `(M N)`; `Bind` is let-binding (sugar for `(λx.N) M`); `Arrow.body` is the lambda abstraction `λ(params).body`; `Branch` extends with primitive coproducts (System F + sums); `Loop` replaces the Y-combinator with bounded recursion (totality choice — same as Coq/Agda/Idris-with-totality).
 
-α-conversion is satisfied by construction (NodeId-based binding has no name shadowing); β-reduction is being reified as a substrate citizen via the PB-Runtime interpreter-as-data work (see [`docs/design-pb-runtime-interpreter.md`](docs/design-pb-runtime-interpreter.md)); capture-avoiding substitution is structurally satisfied by DAG-reference identity. The lens framework + `Witness<C>` + `DimensionReport` are **analyses on top of the calculus** (algebraic-effect-handler-shaped per Plotkin & Pretnar 2009), not calculus citizens.
+α-conversion is satisfied by construction (NodeId-based binding has no name shadowing); β-reduction is being reified as a substrate citizen via the PB-Runtime interpreter-as-data work; capture-avoiding substitution is structurally satisfied by DAG-reference identity. The lens framework + `Witness<C>` + `DimensionReport` are **analyses on top of the calculus** (algebraic-effect-handler-shaped per Plotkin & Pretnar 2009), not calculus citizens.
 
-External authority: Church (1932/1936), Curry-Howard correspondence, System F (Girard 1972 / Reynolds 1974), Calculus of Inductive Constructions (Coquand & Huet 1986), Agda's totality discipline. Long-form: [`docs/design-substrate-lambda-calculus-grounding.md`](docs/design-substrate-lambda-calculus-grounding.md) — names the 3 intentional divergences (Loop / Branch / n-ary) + 3 research-level open questions (η-equivalence, confluence, strong normalization).
+External authority: Church (1932/1936), Curry-Howard correspondence, System F (Girard 1972 / Reynolds 1974), Calculus of Inductive Constructions (Coquand & Huet 1986), Agda's totality discipline. The grounding carries 3 intentional divergences (Loop / Branch / n-ary) and 3 research-level open questions (η-equivalence, confluence, strong normalization).
 
 ### Problem shape: Ungrounded heuristic
 
@@ -353,7 +353,7 @@ A PR's brief assigns a bounded scope (language fill, extdeps/ substrate, refacto
 
 ### Reflection evidence is not structural proof
 
-`reflect_program_dag_nodes_in_file` (via `lens_apply::substrate_reflection::reflect_behavior_list`) projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` per [`docs/design-reflection-completeness.md`](docs/design-reflection-completeness.md) (LOCKED 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
+`reflect_program_dag_nodes_in_file` (via `lens_apply::substrate_reflection::reflect_behavior_list`) projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` (reflection-completeness contract, locked 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
 
 Reflection is **authored against** `src/v3/std/substrate.dag` and uses the same **positional variant-payload** contract as bounded lens projection (`sum_variant_payload` ↔ `variant_payload_for_binding` in `lens_apply.rs`). **That is not yet a closed mechanical theorem** over the whole nested `FieldValue` tree: conformance is enforced where sums are built, and integration tests ratchet **record field order vs. named substrate `Conj`** for selected carriers (`ValueNode`, `TransformNode`, `BindNode`). Extend those tests (or add a walker) as new reflected shapes land—do not treat “no lossy mirror” as automatic proof against every `TypeConnective` row.
 
@@ -500,7 +500,7 @@ A model, function, type, or field is written ahead of anything that uses it — 
 - **Escape Hatches** — recurring violations come from API surfaces that make the wrong thing easier than the right thing
 - **Scaffold receipts** — every new interim scaffold lands with a named dissolution trigger and a checkable completion condition in the same change.
 
-- **Dispatch-Discipline Mechanisms (a–c)** and **SG-0 receipt tables** — operational P5 enforcement for hand-Rust under `src/v3/`; see [`_internal/INVARIANTS_OPS.md`](_internal/INVARIANTS_OPS.md) (mechanism **(b)** is what `.github/PULL_REQUEST_TEMPLATE.md` cites for the per-PR dissolution gate).
+- **Dispatch-Discipline Mechanisms (a–c)** and **SG-0 receipt tables** — operational P5 enforcement for hand-Rust under `src/v3/` (mechanism **(b)** is what `.github/PULL_REQUEST_TEMPLATE.md` cites for the per-PR dissolution gate).
 - **E-5: Clean-Emission Contract Is Satisfied By Construction** — clean-emission obligations belong in declared contracts, not hand-maintained target-side conventions (replacing-convention-by-construction is a progress move, not a boundary clarification)
 - **E-7: No Target-Private Realization Schema Without A Dissolution Ratchet** — explicitly names the dissolution discipline in the rule title
 - **DB-4: Clean-Emission Behavior Is A Declared Contract With Real Consumers** — same by-construction framing as E-5
@@ -510,39 +510,36 @@ A model, function, type, or field is written ahead of anything that uses it — 
 
 Every numbered ID (C-N, E-N, L-N, DB-N) descends from one principle. The prose-name invariants are indexed under their principle above; this appendix exists so PR-history references like "violates C-8" or "see E-9" resolve quickly.
 
-| ID | Home principle | Short form | Subdoc |
-|---|---|---|---|
-| <a id="c-1"></a>C-1 | P3: Fail-Closed | missing args fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| <a id="c-2"></a>C-2 | P3: Fail-Closed | missing defaults / config fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| <a id="c-3"></a>C-3 | P3: Fail-Closed | parser recovery may not fabricate dummy `LitNull` nodes | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| <a id="c-4"></a>C-4 | P3: Fail-Closed | placeholder `<error:*>` types forbidden as live carriers | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| <a id="c-5"></a>C-5 | P3: Fail-Closed | error detection may not rely on string-sentinel probing | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| <a id="c-6"></a>C-6 | P3: Fail-Closed | emit may not use `<error:unknown_*>` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| <a id="c-7"></a>C-7 | P3: Fail-Closed | `Dynamic` is not a universal compatibility fallback | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| <a id="c-8"></a>C-8 | P3: Fail-Closed | fail-closed compilation (canonical) | [invariants/decidability-invariant.md#fail-closed-compilation](docs/invariants/decidability-invariant.md#fail-closed-compilation) |
-| <a id="c-9"></a>C-9 | P3: Fail-Closed | missing fields / values may not fabricate empty nodes or strings | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| <a id="c-10"></a>C-10 | P3: Fail-Closed | ownership gaps may not silently clone for progress | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| <a id="db-1"></a>DB-1 | P3: Fail-Closed (cross-ref P2) | typed diagnostic carriers, not ad hoc warning text | [design-correction-shape.md](docs/design-correction-shape.md) |
-| <a id="db-4"></a>DB-4 | P5: Progress Is Dissolution | clean-emission as declared contract with real consumers | [design-clean-emission-contract.md](docs/design-clean-emission-contract.md) |
-| <a id="db-5"></a>DB-5 | P2: Boundary Discipline | substrate keyed lookup single-authority | [design-substrate-keyed-lookup-api.md](docs/design-substrate-keyed-lookup-api.md) |
-| <a id="db-8"></a>DB-8 | P4: Decidability | deterministic emission | [invariants/deterministic-emission-db-8.md](docs/invariants/deterministic-emission-db-8.md) |
-| <a id="db-9"></a>DB-9 | P4: Decidability | mutual recursion lowers structurally | [design-mutual-recursion-lowering.md](docs/design-mutual-recursion-lowering.md) |
-| <a id="db-14"></a>DB-14 | P2: Boundary Discipline | external primitives materialize through `Arrow.body` | [design-substrate-external-primitives.md](docs/design-substrate-external-primitives.md) |
-| <a id="e-5"></a>E-5 | P5: Progress Is Dissolution | clean-emission contract by construction | [invariants/e-5-…](docs/invariants/e-5-clean-emission-contract-is-satisfied-by-construction.md) |
-| <a id="e-6"></a>E-6 | P2: Boundary Discipline | no target-spec field without a same-PR consumer | [invariants/e-6-…](docs/invariants/e-6-no-target-spec-field-without-a-same-pr-consumer.md) |
-| <a id="e-7"></a>E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet | [invariants/e-7-…](docs/invariants/e-7-no-target-private-realization-schema-without-a-dissolution-ratchet.md) |
-| <a id="e-8"></a>E-8 | P3: Fail-Closed | unsupported core behaviors fail closed, never collapse semantically | [invariants/e-8-…](docs/invariants/e-8-unsupported-core-behaviors-fail-closed-never-collapse-semantically.md) |
-| <a id="e-9"></a>E-9 | P2: Boundary Discipline | external realization lives on `Arrow.body` | [invariants/e-9-…](docs/invariants/e-9-external-realization-lives-on-arrow-body.md) |
-| <a id="e-10"></a>E-10 | P5: Progress Is Dissolution (generalizes E-6, DB-4) | no model/function/field without a real consumer; route the code (no-consumer → archive-by-default `src/v4/experimental/`), block the claim (done → executed-green + red-when-wrong) | [v4-compiler-migration.md](docs/v4-compiler-migration.md) |
-| <a id="l-7"></a>L-7 | P2: Boundary Discipline | lenses consume declared substrate query functions | [invariants/l-7-…](docs/invariants/l-7-lenses-consume-declared-substrate-query-functions.md) |
-| <a id="l-8"></a>L-8 | P2: Boundary Discipline | lens Rust surfaces preserve typed failure carriers | [invariants/l-8-…](docs/invariants/l-8-lens-rust-surfaces-preserve-typed-failure-carriers.md) |
-| <a id="t-11"></a>T11 | P4: Decidability | tiered test execution (Tier 1/2/3 sub-rules) | [invariants/tiered-test-execution-t11.md](docs/invariants/tiered-test-execution-t11.md) |
+| ID | Home principle | Short form |
+|---|---|---|
+| <a id="c-1"></a>C-1 | P3: Fail-Closed | missing args fail closed; no `LitNull` sentinels |
+| <a id="c-2"></a>C-2 | P3: Fail-Closed | missing defaults / config fail closed; no `LitNull` sentinels |
+| <a id="c-3"></a>C-3 | P3: Fail-Closed | parser recovery may not fabricate dummy `LitNull` nodes |
+| <a id="c-4"></a>C-4 | P3: Fail-Closed | placeholder `<error:*>` types forbidden as live carriers |
+| <a id="c-5"></a>C-5 | P3: Fail-Closed | error detection may not rely on string-sentinel probing |
+| <a id="c-6"></a>C-6 | P3: Fail-Closed | emit may not use `<error:unknown_*>` sentinels |
+| <a id="c-7"></a>C-7 | P3: Fail-Closed | `Dynamic` is not a universal compatibility fallback |
+| <a id="c-8"></a>C-8 | P3: Fail-Closed | fail-closed compilation (canonical) |
+| <a id="c-9"></a>C-9 | P3: Fail-Closed | missing fields / values may not fabricate empty nodes or strings |
+| <a id="c-10"></a>C-10 | P3: Fail-Closed | ownership gaps may not silently clone for progress |
+| <a id="db-1"></a>DB-1 | P3: Fail-Closed (cross-ref P2) | typed diagnostic carriers, not ad hoc warning text |
+| <a id="db-4"></a>DB-4 | P5: Progress Is Dissolution | clean-emission as declared contract with real consumers |
+| <a id="db-5"></a>DB-5 | P2: Boundary Discipline | substrate keyed lookup single-authority |
+| <a id="db-8"></a>DB-8 | P4: Decidability | deterministic emission |
+| <a id="db-9"></a>DB-9 | P4: Decidability | mutual recursion lowers structurally |
+| <a id="db-14"></a>DB-14 | P2: Boundary Discipline | external primitives materialize through `Arrow.body` |
+| <a id="e-5"></a>E-5 | P5: Progress Is Dissolution | clean-emission contract by construction |
+| <a id="e-6"></a>E-6 | P2: Boundary Discipline | no target-spec field without a same-PR consumer |
+| <a id="e-7"></a>E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet |
+| <a id="e-8"></a>E-8 | P3: Fail-Closed | unsupported core behaviors fail closed, never collapse semantically |
+| <a id="e-9"></a>E-9 | P2: Boundary Discipline | external realization lives on `Arrow.body` |
+| <a id="e-10"></a>E-10 | P5: Progress Is Dissolution (generalizes E-6, DB-4) | no model/function/field without a real consumer; route the code (no-consumer → archive-by-default `src/v4/experimental/`), block the claim (done → executed-green + red-when-wrong) |
+| <a id="l-7"></a>L-7 | P2: Boundary Discipline | lenses consume declared substrate query functions |
+| <a id="l-8"></a>L-8 | P2: Boundary Discipline | lens Rust surfaces preserve typed failure carriers |
+| <a id="t-11"></a>T11 | P4: Decidability | tiered test execution (Tier 1/2/3 sub-rules) |
 
 ---
 
 ## Pointers
 
-- [`docs/invariants/`](docs/invariants/) — per-rule long-form rationale (covers the prose-named rules, the E/L series, DB-8, T11)
-- [`docs/design-*.md`](docs/) — long-form rationale for most DB-series design decisions (DB-1, DB-4, DB-5, DB-9, DB-14). DB-8 is the exception and lives under `docs/invariants/`. See appendix for per-ID paths.
-- [`docs/invariants/engineering-standards.md`](docs/invariants/engineering-standards.md) — engineering standards
 - [`docs/thesis/`](docs/thesis/) — thesis essays, including `epistemic-stacking.md` and `structural-decompression.md` referenced from P1
