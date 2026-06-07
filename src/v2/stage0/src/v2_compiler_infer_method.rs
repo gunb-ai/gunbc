@@ -120,16 +120,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "coproduct_arm_labels".to_string(),
             list_of_element(string_type()),
         );
-        let m = v2_rt::rc_map_insert(
-            m.clone(),
-            "record_field_labels".to_string(),
-            list_of_element(string_type()),
-        );
-        let m = v2_rt::rc_map_insert(
-            m.clone(),
-            "coproduct_arm_payload_field_labels".to_string(),
-            list_of_element(string_type()),
-        );
         let m = v2_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
         let m = v2_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
         let m = v2_rt::rc_map_insert(m.clone(), "map_merge".to_string(), map_of_type_variables());
