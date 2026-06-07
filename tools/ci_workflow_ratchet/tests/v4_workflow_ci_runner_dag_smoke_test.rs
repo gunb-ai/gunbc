@@ -622,67 +622,6 @@ fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
     &rest[..end]
 }
 
-fn is_ci_yml_job_name_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_' || c == '-'
-}
-
-/// True for a workflow top-level job header line (`  job_id:`), not nested `    key:` rows.
-fn ci_yml_line_is_top_level_job_header(line: &str) -> bool {
-    let rest = match line.strip_prefix("  ") {
-        Some(r) if !r.starts_with(' ') => r,
-        _ => return false,
-    };
-    let Some(colon) = rest.find(':') else {
-        return false;
-    };
-    let name = &rest[..colon];
-    !name.is_empty() && name.chars().all(is_ci_yml_job_name_char)
-}
-
-/// Byte index in `rest` (suffix after `  {job_id}:`) of the next sibling top-level job, if any.
-fn ci_yml_next_sibling_job_index(rest: &str) -> Option<usize> {
-    let mut offset = 0;
-    while offset < rest.len() {
-        let newline_rel = rest[offset..].find('\n')?;
-        let line_start = offset + newline_rel + 1;
-        if line_start >= rest.len() {
-            break;
-        }
-        let line = rest[line_start..].split('\n').next().unwrap_or("");
-        if ci_yml_line_is_top_level_job_header(line) {
-            return Some(line_start - 1);
-        }
-        offset = line_start;
-    }
-    None
-}
-
-/// Slice one top-level job block from `.github/workflows/ci.yml`.
-fn ci_yml_job_block<'a>(workflow_yml: &'a str, job_id: &str) -> &'a str {
-    let marker = format!("  {job_id}:");
-    let start = workflow_yml
-        .find(&marker)
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing job `{job_id}`"));
-    let rest = &workflow_yml[start + marker.len()..];
-    let end = ci_yml_next_sibling_job_index(rest)
-        .map(|i| start + marker.len() + i)
-        .unwrap_or(workflow_yml.len());
-    &workflow_yml[start..end]
-}
-
-/// True for a workflow job field line (`    key:`), not step list rows (`    - name:`) or nested keys.
-fn ci_yml_line_is_job_level_field(line: &str) -> bool {
-    line.strip_prefix("    ")
-        .is_some_and(|rest| !rest.starts_with(' ') && !rest.starts_with('-'))
-}
-
-/// Live receipt: sliced job must not declare job-level `continue-on-error` anywhere (keys are order-insensitive).
-fn ci_yml_job_level_omits_continue_on_error(job_block: &str) -> bool {
-    !job_block.lines().any(|line| {
-        ci_yml_line_is_job_level_field(line) && line.trim_start().starts_with("continue-on-error:")
-    })
-}
-
 fn surface_declares_test_claim_data(
     module: &v3_compiler::parse_surface::SurfaceModule,
     name: &str,

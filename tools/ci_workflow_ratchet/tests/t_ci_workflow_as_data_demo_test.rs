@@ -637,7 +637,6 @@ fn workflow_topology<'a>(
     (name, node_ids, edges)
 }
 
-
 fn workflow_gate_records<'a>(
     dag: &'a v3_compiler::dag::Dag,
     fields: &'a [(String, FieldValue)],
@@ -792,7 +791,9 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
 fn recursive_flex_demonstration_landed() {
     let ci_fields = structural_value_body(&gate57_ci_artifacts().dag, "ci_workflow_dag");
     assert!(
-        !ci_fields.iter().any(|(label, _)| label == "github_actions_workflow"),
+        !ci_fields
+            .iter()
+            .any(|(label, _)| label == "github_actions_workflow"),
         "gate #59: `CIWorkflowDag` must not carry a hand-synced Actions workflow carrier"
     );
     assert!(
@@ -818,7 +819,8 @@ fn gunbc_ci_emission_substrate_contract_is_present() {
         "{GUNBC_CI_EMISSION_FILE} must declare the T-WAD projection-function contract"
     );
     assert!(
-        GUNBC_CI_EMISSION_SOURCE.contains("fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow"),
+        GUNBC_CI_EMISSION_SOURCE
+            .contains("fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow"),
         "{GUNBC_CI_EMISSION_FILE} must declare the BinaryShim workflow projection"
     );
 }
