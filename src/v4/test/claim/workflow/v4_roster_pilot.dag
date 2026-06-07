@@ -119,14 +119,77 @@ data v4_roster_pilot_row_mvp1_rust_emit_add_fn: V4RosterPilotClaimRunRow = V4Ros
 }
 
 // Type-decl reflection primitive (operator option-ii). The coproduct_reflection witness is a
-// BEHAVIORAL unit test of the coproduct_arm_labels / record_field_labels /
-// coproduct_arm_payload_field_labels intrinsics on LOCAL probe types (declared only in the
-// witness) — it folds a real declaration by execution + echo/arm-sharp controls, and is NOT a
-// mirror of any production code (so it is not a white-box dual-representation).
+// BEHAVIORAL unit test of the coproduct_arm_labels intrinsic on LOCAL probe types (declared
+// only in the witness) — it folds a real declaration by execution + echo/arm-sharp controls,
+// and is NOT a mirror of any production code (so it is not a white-box dual-representation).
 data v4_roster_pilot_row_coproduct_reflection: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "coproduct/record decl reflection folds real declaration by execution",
   entry: "src/v4/test/claim/manual/coproduct_reflection.dag",
   function: "coproduct_reflection_folds_real_declaration_by_execution"
+}
+
+// Wave-A W2: lens smoke→witness fold-delete (application, idempotency, identical_variant,
+// affected_set IRT-1 remainder, registry). Discriminating claim-run witnesses carry the
+// behavioral content of retired parse-only smokes; B declaration-shape receipts remain
+// host-AST interim in the surviving smoke harnesses.
+data v4_roster_pilot_row_lens_application_introspect_advisory: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens application introspect advisory demotion",
+  entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+  function: "lens_application_introspect_advisory_holds"
+}
+
+data v4_roster_pilot_row_lens_application_synthesis_gap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens application synthesis gap polynomial advisory",
+  entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+  function: "lens_application_synthesis_gap_polynomial_holds"
+}
+
+data v4_roster_pilot_row_lens_idempotency_write_effect: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens idempotency write-effect witness",
+  entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
+  function: "lens_idempotency_write_effect_holds"
+}
+
+data v4_roster_pilot_row_lens_identical_variant_unrealized: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens identical_variant_payload unrealized scaffold",
+  entry: "src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag",
+  function: "lens_identical_variant_payload_unrealized_scaffold_holds"
+}
+
+data v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens affected_set IRT-1 boundary prune",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_boundary_prune_holds"
+}
+
+data v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens affected_set IRT-1 fail-closed pending escalation",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_fail_closed_pending_escalation_holds"
+}
+
+data v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens affected_set IRT-1 fail-closed absorption",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_fail_closed_absorption_holds"
+}
+
+data v4_roster_pilot_row_lens_affected_set_irt1_empty_diff: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens affected_set IRT-1 empty diff frontier",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_empty_diff_frontier_holds"
+}
+
+data v4_roster_pilot_row_lens_registry_required_ids_resolve: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens registry required ids resolve",
+  entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+  function: "lens_registry_required_ids_resolve_holds"
+}
+
+data v4_roster_pilot_row_lens_registry_singleton_row_counts: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens registry singleton row counts",
+  entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+  function: "lens_registry_singleton_row_counts_holds"
 }
 
 
@@ -146,11 +209,21 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_std_text_empty_roundtrip,
   v4_roster_pilot_row_std_text_field_text,
   v4_roster_pilot_row_mvp1_rust_emit_add_fn,
+  v4_roster_pilot_row_lens_application_introspect_advisory,
+  v4_roster_pilot_row_lens_application_synthesis_gap,
+  v4_roster_pilot_row_lens_idempotency_write_effect,
+  v4_roster_pilot_row_lens_identical_variant_unrealized,
+  v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune,
+  v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending,
+  v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption,
+  v4_roster_pilot_row_lens_affected_set_irt1_empty_diff,
+  v4_roster_pilot_row_lens_registry_required_ids_resolve,
+  v4_roster_pilot_row_lens_registry_singleton_row_counts,
   v4_roster_pilot_row_coproduct_reflection
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "16"
+data v4_roster_pilot_claim_run_row_count: String = "26"
 
 
 fn v4_roster_pilot_row_matches(
@@ -189,13 +262,31 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_empty_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_field_text)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_mvp1_rust_emit_add_fn)
+<<<<<<< HEAD
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_coproduct_reflection)
+=======
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_introspect_advisory)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_synthesis_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_idempotency_write_effect)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_identical_variant_unrealized)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_empty_diff)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_required_ids_resolve)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_singleton_row_counts)
+>>>>>>> origin/main
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
+<<<<<<< HEAD
   (length(xs: v4_roster_pilot_claim_run_rows) == 16)
     && (v4_roster_pilot_claim_run_row_count == "16")
+=======
+  (length(xs: v4_roster_pilot_claim_run_rows) == 25)
+    && (v4_roster_pilot_claim_run_row_count == "25")
+>>>>>>> origin/main
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -273,9 +364,60 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "mvp1_rust_emit_add_fn_accepts_holds"
     )
     && v4_roster_pilot_row_matches(
+<<<<<<< HEAD
       row: v4_roster_pilot_row_coproduct_reflection,
       entry: "src/v4/test/claim/manual/coproduct_reflection.dag",
       function: "coproduct_reflection_folds_real_declaration_by_execution"
+=======
+      row: v4_roster_pilot_row_lens_application_introspect_advisory,
+      entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+      function: "lens_application_introspect_advisory_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_application_synthesis_gap,
+      entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+      function: "lens_application_synthesis_gap_polynomial_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_idempotency_write_effect,
+      entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
+      function: "lens_idempotency_write_effect_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_identical_variant_unrealized,
+      entry: "src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag",
+      function: "lens_identical_variant_payload_unrealized_scaffold_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune,
+      entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+      function: "lens_affected_set_irt1_boundary_prune_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending,
+      entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+      function: "lens_affected_set_irt1_fail_closed_pending_escalation_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption,
+      entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+      function: "lens_affected_set_irt1_fail_closed_absorption_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_affected_set_irt1_empty_diff,
+      entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+      function: "lens_affected_set_irt1_empty_diff_frontier_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_registry_required_ids_resolve,
+      entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+      function: "lens_registry_required_ids_resolve_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_registry_singleton_row_counts,
+      entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+      function: "lens_registry_singleton_row_counts_holds"
+>>>>>>> origin/main
     )
 }
 
