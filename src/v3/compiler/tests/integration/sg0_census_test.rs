@@ -1047,6 +1047,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
+    // Host-test preservation justification (W1-W4 B-INTERIM — DISTINCT from E1 type-absence):
+    // expressible-in-principle; host-AST until compiler type-decl reflection substrate lands;
+    // TRIGGER: migrate to .dag witness when reflection-substrate (ctrl#1476 programmatic-access
+    // READ axis) exists. Named consumer: extdeps_react_element_partition (E2).
+    // (Other E2 receipts remain discriminating .dag witnesses; only partition arm-set is host-interim.)
+    "src/v3/compiler/tests/integration/v4_extdeps_react_element_partition_guard_test.rs",
     // G.1.4: parse-surface ratchet on `typescript.dag` PerLanguageFactBundleRegistry
     // population (wave-2b primitive fact axes via insert_per_language_fact_bundle_entry).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_extdeps_typescript_g14_grounding_smoke_test.rs`.

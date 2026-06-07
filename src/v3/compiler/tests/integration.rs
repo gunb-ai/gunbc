@@ -299,6 +299,8 @@ mod v4_extdeps_file_system_dag_smoke_test;
 mod v4_extdeps_formatters_black_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
+#[path = "integration/v4_extdeps_react_element_partition_guard_test.rs"]
+mod v4_extdeps_react_element_partition_guard_test;
 #[path = "integration/v4_extdeps_typescript_g14_grounding_smoke_test.rs"]
 mod v4_extdeps_typescript_g14_grounding_smoke_test;
 #[path = "integration/v4_grounding_typescript_g2_smoke_test.rs"]

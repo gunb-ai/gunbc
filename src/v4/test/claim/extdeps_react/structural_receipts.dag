@@ -1,0 +1,544 @@
+// src/v4/test/claim/extdeps_react/structural_receipts.dag
+// Scope: Exemplar E2 — T-4.7 React extdeps structural receipts as discriminating
+// claim-run witnesses, routed through v2 (`dag run --claim-run`).
+//
+// These witnesses migrate the behavioral content of
+// src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs structural
+// receipts (19-arm ReactHookSite roster pin, createElement partition, use(resource)
+// placement, …) from frozen-v3 compile_to_dag introspection into executable
+// `fn -> Bool` witnesses that pattern-match substrate carriers and pin/compare via
+// the `discriminant(v)` intrinsic (constructor-name Symbols from coproduct shape),
+// coproduct arms (ReactOptKey/ReactOptRef), List length, and stored cross-decl refs.
+//
+// ReactElement partition arm-set (Host|Composite|Fragment, no Text): B-INTERIM host-AST guard
+// v4_extdeps_react_element_partition_guard_test.rs (type-table via compile_to_dag) until
+// compiler type-decl reflection substrate lands (ctrl#1476 READ axis).
+//
+// Status: Wave-A additive only. The frozen .rs smoke + SG-0 census stay until the
+// batch-delete gate clears (0-diag compile gate waits on substrate lane).
+
+module v4.test.claim.extdeps_react.structural_receipts
+
+
+import v4.extdeps.frameworks.react {
+  CustomHook,
+  Composite,
+  DependenciesArgOmitted,
+  Element,
+  Fragment,
+  Host,
+  KeyAbsent,
+  KeyPresent,
+  NoCleanup,
+  ReactCompositeElement,
+  ReactContextBinding,
+  ReactCreateElementChild,
+  ReactCrossDeclRef,
+  ReactElement,
+  ReactHookSite,
+  ReactHostElement,
+  ReactOptKey,
+  ReactOptRef,
+  ReactPropsSite,
+  ReactUseCallSite,
+  RefAbsent,
+  RefPresent,
+  Text,
+  UseActionState,
+  UseCallback,
+  UseContext,
+  UseDebugValue,
+  UseDeferredValue,
+  UseEffect,
+  UseEffectEvent,
+  UseId,
+  UseImperativeHandle,
+  UseInsertionEffect,
+  UseLayoutEffect,
+  UseMemo,
+  UseOptimistic,
+  UseReducer,
+  UseRef,
+  UseResource,
+  UseState,
+  UseSyncExternalStore,
+  UseTransition,
+  ValueAbsent
+}
+import v4.std.algebra { Cons, Empty, count_equal, length }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.node { Symbol }
+
+
+data react_probe_cross_decl_ref: ReactCrossDeclRef = react_probe_cross_decl_ref
+
+fn react_symbol_roster_contains_once(roster: List<Symbol>, item: Symbol) -> Bool {
+  count_equal(xs: roster, item: item, eq: fn(left, right) { left == right }) == 1
+}
+
+fn react_symbol_roster_excludes(roster: List<Symbol>, item: Symbol) -> Bool {
+  count_equal(xs: roster, item: item, eq: fn(left, right) { left == right }) == 0
+}
+
+fn react_probe_props_site() -> ReactPropsSite {
+  ReactPropsSite {
+    props_type_ref: react_probe_cross_decl_ref,
+    props_value_ref: react_probe_cross_decl_ref
+  }
+}
+
+fn react_probe_hook_use_state() -> ReactHookSite {
+  UseState { initial_ref: react_probe_cross_decl_ref }
+}
+
+fn react_probe_hook_use_reducer() -> ReactHookSite {
+  UseReducer {
+    reducer_ref: react_probe_cross_decl_ref,
+    initial_arg_ref: react_probe_cross_decl_ref,
+    init: ValueAbsent
+  }
+}
+
+fn react_probe_hook_use_context() -> ReactHookSite {
+  UseContext { context_ref: react_probe_cross_decl_ref }
+}
+
+fn react_probe_hook_use_ref() -> ReactHookSite {
+  UseRef { initial_ref: react_probe_cross_decl_ref }
+}
+
+fn react_probe_hook_use_imperative_handle() -> ReactHookSite {
+  UseImperativeHandle {
+    ref_target: react_probe_cross_decl_ref,
+    factory_ref: react_probe_cross_decl_ref,
+    dependencies: DependenciesArgOmitted
+  }
+}
+
+fn react_probe_hook_use_effect() -> ReactHookSite {
+  UseEffect {
+    setup_ref: react_probe_cross_decl_ref,
+    dependencies: DependenciesArgOmitted,
+    cleanup: NoCleanup
+  }
+}
+
+fn react_probe_hook_use_layout_effect() -> ReactHookSite {
+  UseLayoutEffect {
+    setup_ref: react_probe_cross_decl_ref,
+    dependencies: DependenciesArgOmitted,
+    cleanup: NoCleanup
+  }
+}
+
+fn react_probe_hook_use_insertion_effect() -> ReactHookSite {
+  UseInsertionEffect {
+    setup_ref: react_probe_cross_decl_ref,
+    dependencies: DependenciesArgOmitted,
+    cleanup: NoCleanup
+  }
+}
+
+fn react_probe_hook_use_effect_event() -> ReactHookSite {
+  UseEffectEvent { callback_ref: react_probe_cross_decl_ref }
+}
+
+fn react_probe_hook_use_memo() -> ReactHookSite {
+  UseMemo {
+    factory_ref: react_probe_cross_decl_ref,
+    dependencies: Empty
+  }
+}
+
+fn react_probe_hook_use_callback() -> ReactHookSite {
+  UseCallback {
+    callback_ref: react_probe_cross_decl_ref,
+    dependencies: Empty
+  }
+}
+
+fn react_probe_hook_use_deferred_value() -> ReactHookSite {
+  UseDeferredValue {
+    value_ref: react_probe_cross_decl_ref,
+    initial_value: ValueAbsent
+  }
+}
+
+fn react_probe_hook_use_sync_external_store() -> ReactHookSite {
+  UseSyncExternalStore {
+    subscribe_ref: react_probe_cross_decl_ref,
+    get_snapshot_ref: react_probe_cross_decl_ref,
+    get_server_snapshot: ValueAbsent
+  }
+}
+
+fn react_probe_hook_use_debug_value() -> ReactHookSite {
+  UseDebugValue {
+    value_ref: react_probe_cross_decl_ref,
+    format: ValueAbsent
+  }
+}
+
+fn react_probe_hook_use_action_state() -> ReactHookSite {
+  UseActionState {
+    action_ref: react_probe_cross_decl_ref,
+    initial_state_ref: react_probe_cross_decl_ref,
+    permalink: ValueAbsent
+  }
+}
+
+fn react_probe_hook_use_optimistic() -> ReactHookSite {
+  UseOptimistic {
+    value_ref: react_probe_cross_decl_ref,
+    reducer: ValueAbsent
+  }
+}
+
+fn react_probe_hook_custom_hook() -> ReactHookSite {
+  CustomHook { implementation_ref: react_probe_cross_decl_ref }
+}
+
+fn react_probe_use_resource_call() -> ReactUseCallSite {
+  UseResource { resource_ref: react_probe_cross_decl_ref }
+}
+
+fn react_probe_host_element() -> ReactHostElement {
+  ReactHostElement {
+    tag_ref: react_probe_cross_decl_ref,
+    key: KeyAbsent,
+    ref: RefAbsent,
+    props: react_probe_props_site(),
+    children: Empty
+  }
+}
+
+fn react_probe_composite_element() -> ReactCompositeElement {
+  ReactCompositeElement {
+    component_ref: react_probe_cross_decl_ref,
+    key: KeyAbsent,
+    ref: RefAbsent,
+    props: react_probe_props_site(),
+    children: Empty
+  }
+}
+
+fn react_probe_react_element_host() -> ReactElement {
+  Host { host: react_probe_host_element() }
+}
+
+fn react_probe_react_element_composite() -> ReactElement {
+  Composite { composite: react_probe_composite_element() }
+}
+
+fn react_probe_react_element_fragment() -> ReactElement {
+  Fragment { key: KeyAbsent, children: Empty }
+}
+
+fn react_probe_create_element_child_text() -> ReactCreateElementChild {
+  Text { text_value_ref: react_probe_cross_decl_ref }
+}
+
+fn react_probe_create_element_child_element() -> ReactCreateElementChild {
+  Element { element: react_probe_react_element_host() }
+}
+
+// Typed non-empty child lists: compile-time proof `children` accepts `ReactCreateElementChild`
+// (wrong list element type fails probe construction before claim-run).
+fn react_probe_host_element_with_typed_children() -> ReactHostElement {
+  ReactHostElement {
+    tag_ref: react_probe_cross_decl_ref,
+    key: KeyAbsent,
+    ref: RefAbsent,
+    props: react_probe_props_site(),
+    children: Cons { head: react_probe_create_element_child_text(), tail: Empty }
+  }
+}
+
+fn react_probe_composite_element_with_typed_children() -> ReactCompositeElement {
+  ReactCompositeElement {
+    component_ref: react_probe_cross_decl_ref,
+    key: KeyAbsent,
+    ref: RefAbsent,
+    props: react_probe_props_site(),
+    children: Cons { head: react_probe_create_element_child_text(), tail: Empty }
+  }
+}
+
+fn react_probe_react_element_fragment_with_typed_children() -> ReactElement {
+  Fragment {
+    key: KeyAbsent,
+    children: Cons { head: react_probe_create_element_child_text(), tail: Empty }
+  }
+}
+
+fn react_probe_context_binding() -> ReactContextBinding {
+  ReactContextBinding {
+    context_ref: react_probe_cross_decl_ref,
+    default_value_ref: react_probe_cross_decl_ref
+  }
+}
+
+// Pin rosters derived from `discriminant(v)` on locally-constructed probes — constructor-name
+// Symbols from substrate coproduct shape (matches v3 pin labels in EXPECTED_REACT_HOOK_SITE_ARMS).
+fn react_hook_site_roster_pin_from_probes() -> List<Symbol> {
+  [
+    discriminant(v: react_probe_hook_use_state()),
+    discriminant(v: react_probe_hook_use_reducer()),
+    discriminant(v: react_probe_hook_use_context()),
+    discriminant(v: react_probe_hook_use_ref()),
+    discriminant(v: react_probe_hook_use_imperative_handle()),
+    discriminant(v: react_probe_hook_use_effect()),
+    discriminant(v: react_probe_hook_use_layout_effect()),
+    discriminant(v: react_probe_hook_use_insertion_effect()),
+    discriminant(v: react_probe_hook_use_effect_event()),
+    discriminant(v: react_probe_hook_use_memo()),
+    discriminant(v: react_probe_hook_use_callback()),
+    discriminant(v: UseTransition),
+    discriminant(v: react_probe_hook_use_deferred_value()),
+    discriminant(v: UseId),
+    discriminant(v: react_probe_hook_use_sync_external_store()),
+    discriminant(v: react_probe_hook_use_debug_value()),
+    discriminant(v: react_probe_hook_use_action_state()),
+    discriminant(v: react_probe_hook_use_optimistic()),
+    discriminant(v: react_probe_hook_custom_hook())
+  ]
+}
+
+fn react_use_call_site_roster_pin_from_probes() -> List<Symbol> {
+  [ discriminant(v: react_probe_use_resource_call()) ]
+}
+
+// Compile-time coupling: exhaustive match on `ReactHookSite` fails if `react.dag` adds/removes
+// an arm without updating this witness module (declaration-shape authority via type exhaustiveness).
+fn react_hook_site_exhaustive_match(site: ReactHookSite) -> Bool {
+  match site {
+    UseState { initial_ref: _ } => true
+    UseReducer { reducer_ref: _, initial_arg_ref: _, init: _ } => true
+    UseContext { context_ref: _ } => true
+    UseRef { initial_ref: _ } => true
+    UseImperativeHandle { ref_target: _, factory_ref: _, dependencies: _ } => true
+    UseEffect { setup_ref: _, dependencies: _, cleanup: _ } => true
+    UseLayoutEffect { setup_ref: _, dependencies: _, cleanup: _ } => true
+    UseInsertionEffect { setup_ref: _, dependencies: _, cleanup: _ } => true
+    UseEffectEvent { callback_ref: _ } => true
+    UseMemo { factory_ref: _, dependencies: _ } => true
+    UseCallback { callback_ref: _, dependencies: _ } => true
+    UseTransition => true
+    UseDeferredValue { value_ref: _, initial_value: _ } => true
+    UseId => true
+    UseSyncExternalStore { subscribe_ref: _, get_snapshot_ref: _, get_server_snapshot: _ } => true
+    UseDebugValue { value_ref: _, format: _ } => true
+    UseActionState { action_ref: _, initial_state_ref: _, permalink: _ } => true
+    UseOptimistic { value_ref: _, reducer: _ } => true
+    CustomHook { implementation_ref: _ } => true
+  }
+}
+
+fn extdeps_react_hook_site_roster_matches_pin_holds() -> Bool {
+  react_hook_site_exhaustive_match(site: react_probe_hook_use_state())
+    && react_hook_site_exhaustive_match(site: UseTransition)
+    && length(xs: react_hook_site_roster_pin_from_probes()) == 19
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_state())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_reducer())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_context())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_ref())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_imperative_handle())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_effect())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_layout_effect())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_insertion_effect())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_effect_event())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_memo())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_callback())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: UseTransition)
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_deferred_value())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: UseId)
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_sync_external_store())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_debug_value())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_action_state())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_use_optimistic())
+    )
+    && react_symbol_roster_contains_once(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_hook_custom_hook())
+    )
+}
+
+fn extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds() -> Bool {
+  match react_probe_hook_use_memo() {
+    UseMemo { factory_ref: _, dependencies: memo_deps } =>
+      match react_probe_hook_use_callback() {
+        UseCallback { callback_ref: _, dependencies: callback_deps } =>
+          length(xs: memo_deps) == 0 && length(xs: callback_deps) == 0
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn extdeps_react_effect_hooks_require_setup_ref_holds() -> Bool {
+  match react_probe_hook_use_effect() {
+    UseEffect { setup_ref: effect_setup, dependencies: _, cleanup: _ } =>
+      match react_probe_hook_use_layout_effect() {
+        UseLayoutEffect { setup_ref: layout_setup, dependencies: _, cleanup: _ } =>
+          match react_probe_hook_use_insertion_effect() {
+            UseInsertionEffect { setup_ref: insertion_setup, dependencies: _, cleanup: _ } =>
+              effect_setup == react_probe_cross_decl_ref
+                && layout_setup == react_probe_cross_decl_ref
+                && insertion_setup == react_probe_cross_decl_ref
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn extdeps_react_use_resource_is_react_use_call_site_not_hook_site_holds() -> Bool {
+  length(xs: react_use_call_site_roster_pin_from_probes()) == 1
+    && react_symbol_roster_contains_once(
+      roster: react_use_call_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_use_resource_call())
+    )
+    && react_symbol_roster_excludes(
+      roster: react_hook_site_roster_pin_from_probes(),
+      item: discriminant(v: react_probe_use_resource_call())
+    )
+}
+
+fn extdeps_react_host_element_key_ref_coproduct_holds(key: ReactOptKey, ref: ReactOptRef) -> Bool {
+  match key {
+    KeyAbsent =>
+      match ref {
+        RefAbsent => true
+        RefPresent { ref: _ } => false
+      }
+    KeyPresent { key_ref: _ } => false
+  }
+}
+
+fn extdeps_react_host_element_declares_key_and_ref_holds() -> Bool {
+  match react_probe_host_element() {
+    ReactHostElement { tag_ref: tr, key: k, ref: r, props: _, children: _ } =>
+      tr == react_probe_cross_decl_ref
+        && extdeps_react_host_element_key_ref_coproduct_holds(key: k, ref: r)
+  }
+}
+
+fn extdeps_react_composite_element_declares_key_and_ref_holds() -> Bool {
+  match react_probe_composite_element() {
+    ReactCompositeElement { component_ref: cr, key: k, ref: r, props: _, children: _ } =>
+      cr == react_probe_cross_decl_ref
+        && extdeps_react_host_element_key_ref_coproduct_holds(key: k, ref: r)
+  }
+}
+
+fn extdeps_react_fragment_arm_declares_key_holds() -> Bool {
+  match react_probe_react_element_fragment() {
+    Fragment { key: k, children: _ } =>
+      match k {
+        KeyAbsent => true
+        KeyPresent { key_ref: _ } => false
+      }
+    Host { host: _ } => false
+    Composite { composite: _ } => false
+  }
+}
+
+fn extdeps_react_element_children_are_list_create_element_child_holds() -> Bool {
+  match react_probe_host_element_with_typed_children() {
+    ReactHostElement { tag_ref: _, key: _, ref: _, props: _, children: host_children } =>
+      match react_probe_composite_element_with_typed_children() {
+        ReactCompositeElement { component_ref: _, key: _, ref: _, props: _, children: composite_children } =>
+          match react_probe_react_element_fragment_with_typed_children() {
+            Fragment { key: _, children: fragment_children } =>
+              length(xs: host_children) == 1
+                && length(xs: composite_children) == 1
+                && length(xs: fragment_children) == 1
+            Host { host: _ } => false
+            Composite { composite: _ } => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn extdeps_react_create_element_child_text_has_no_element_key_holds() -> Bool {
+  match react_probe_create_element_child_text() {
+    Text { text_value_ref: _ } => true
+    Element { element: _ } => false
+  }
+}
+
+fn extdeps_react_create_element_child_element_arm_wraps_react_element_holds() -> Bool {
+  match react_probe_create_element_child_element() {
+    Element { element: el } =>
+      match el {
+        Host { host: _ } => true
+        Composite { composite: _ } => false
+        Fragment { key: _, children: _ } => false
+      }
+    Text { text_value_ref: _ } => false
+  }
+}
+
+fn extdeps_react_context_binding_matches_create_context_surface_holds() -> Bool {
+  match react_probe_context_binding() {
+    ReactContextBinding { context_ref: ctx, default_value_ref: def } =>
+      ctx == react_probe_cross_decl_ref && def == react_probe_cross_decl_ref
+  }
+}
