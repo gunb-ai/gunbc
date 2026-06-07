@@ -111,14 +111,14 @@ data manual_corpus_eval_host_run_specs: List<CorpusEvalHostRunSpec> = [
 data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
   CorpusEvalExpectedPin {
     claim_id: claim_eval_mvp2_test_claim_route,
-    observation: ExecutedFail,
-    primary_reason: eval_rejected_invalid_node,
+    observation: ExecutedPass,
+    primary_reason: corpus_eval_verdict_pass_reason,
     dissolution_target: dissolution_target_transform_eval
   },
   CorpusEvalExpectedPin {
     claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
-    observation: ExecutedFail,
-    primary_reason: eval_rejected_invalid_node,
+    observation: ExecutedPass,
+    primary_reason: corpus_eval_verdict_pass_reason,
     dissolution_target: dissolution_target_transform_eval
   },
   CorpusEvalExpectedPin {
