@@ -1063,6 +1063,22 @@ fn match_pattern(
                     fields,
                     ..
                 } => {
+                    // Bridge Witness (v4.std.witness) to legacy Option-style Some/None patterns.
+                    // Map.lookup returns Witness<V>; bootstrap map_get (collection.dag
+                    // B-LOOKUP-1) still matches Some/None before projecting Present/Absent.
+                    if variant_name == "Holds" && name == "Some" {
+                        let inner = fields.get("value").cloned().unwrap_or(Value::Null);
+                        let mut bindings = HashMap::new();
+                        for fb in field_bindings.iter() {
+                            let fb_pat = field_binding_pattern(fb.clone());
+                            let sub_bindings = match_pattern(&fb_pat, &inner, ctx)?;
+                            bindings.extend(sub_bindings);
+                        }
+                        return Some(bindings);
+                    }
+                    if variant_name == "Violates" && (name == "None" || name == "none") {
+                        return Some(HashMap::new());
+                    }
                     if variant_name != name {
                         return None;
                     }
