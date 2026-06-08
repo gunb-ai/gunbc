@@ -58,6 +58,62 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
+pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        name: structural.name.clone(),
+        ident: structural.ident.clone(),
+        span: structural.span.clone(),
+        ident_span: identity.ident_span.clone(),
+        children: structural.children.clone(),
+        connective: structural.connective.clone(),
+        params: structural.params.clone(),
+        inferred: structural.inferred.clone(),
+        return_cardinality: structural.return_cardinality.clone(),
+        uses: structural.uses.clone(),
+        body: structural.body.clone(),
+        transport: structural.transport.clone(),
+        properties: structural.properties.clone(),
+        type_annotation: structural.type_annotation.clone(),
+        is_self_recursive: structural.is_self_recursive.clone(),
+        has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
+        match_pattern: structural.match_pattern.clone(),
+        expr_data: structural.expr_data.clone(),
+    })
+}
+
+pub fn peel_nominal_alias_identity(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Node> {
+    match lookup_type_for(env.clone(), n.clone()) {
+        Some(resolved) => {
+            if (resolved.connective.clone() == NoConnective)
+                && ((resolved.children.clone().len() as i64) == 0)
+                && (resolved.inferred.clone() != None)
+            {
+                match resolved.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        let target_resolved = resolve_node_bounded(
+                            target.clone(),
+                            env.clone(),
+                            module_name,
+                            0,
+                        )
+                        .resolved
+                        .clone();
+                        with_authored_identity(n.clone(), target_resolved)
+                    }
+                    _ => resolved,
+                }
+            } else {
+                resolved
+            }
+        }
+        None => n,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeResolveResult {
     pub resolved: Rc<Node>,
@@ -1224,7 +1280,10 @@ pub fn resolve_node_bounded(
                                                     Some(InferredNode::Resolved {
                                                         node: target,
                                                         ..
-                                                    }) => target.clone(),
+                                                    }) => with_authored_identity(
+                                                        n.clone(),
+                                                        target.clone(),
+                                                    ),
                                                     _ => resolved.clone(),
                                                 }
                                             } else {

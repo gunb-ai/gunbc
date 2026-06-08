@@ -146,6 +146,46 @@ pub fn canonical_template_name(
     }
 }
 
+pub fn is_declared_container_alias_spelling(name: String) -> bool {
+    match container_template_algebra(name) {
+        Some(_) => true,
+        None => false,
+    }
+}
+
+pub fn structural_carrier_template_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if n.name.as_str() != "" {
+        canonical_template_name(
+            Rc::new(Node {
+                name: n.name.clone(),
+                ident: n.ident.clone(),
+                span: n.span.clone(),
+                ident_span: Some(kernel_span(n.name.clone())),
+                children: n.children.clone(),
+                connective: n.connective.clone(),
+                params: n.params.clone(),
+                inferred: n.inferred.clone(),
+                return_cardinality: n.return_cardinality.clone(),
+                uses: n.uses.clone(),
+                body: n.body.clone(),
+                transport: n.transport.clone(),
+                properties: n.properties.clone(),
+                type_annotation: n.type_annotation.clone(),
+                is_self_recursive: n.is_self_recursive.clone(),
+                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                match_pattern: n.match_pattern.clone(),
+                expr_data: n.expr_data.clone(),
+            }),
+            source_indices,
+        )
+    } else {
+        canonical_template_name(n, source_indices)
+    }
+}
+
 pub fn is_product_type(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::Conj)
 }
@@ -1779,8 +1819,11 @@ pub fn node_type_compatible(
                                 }
                             }
                         } else {
-                            if ((((canonical_template_name(left.clone(), source_indices.clone())
-                                .as_str()
+                            if (((((canonical_template_name(
+                                left.clone(),
+                                source_indices.clone(),
+                            )
+                            .as_str()
                                 == canonical_template_name(
                                     right.clone(),
                                     source_indices.clone(),
@@ -1792,6 +1835,13 @@ pub fn node_type_compatible(
                                         .as_str()))
                                 && ((left.children.clone().len() as i64) == 1))
                                 && ((right.children.clone().len() as i64) == 1))
+                                && (is_declared_container_alias_spelling(authored_name_at(
+                                    source_indices.clone(),
+                                    left.clone(),
+                                )) || is_declared_container_alias_spelling(authored_name_at(
+                                    source_indices.clone(),
+                                    right.clone(),
+                                ))))
                             {
                                 match left.children.clone().first().cloned() {
                                     Some(left_ch) => {
