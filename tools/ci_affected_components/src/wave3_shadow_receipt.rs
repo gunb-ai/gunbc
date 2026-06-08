@@ -1,6 +1,7 @@
 //! Wave 3 §11.7.2 shadow receipt — Phase 2 live CI host transport (queued eval).
 //!
-//! Modeled authority: `src/v4/workflow/ci.dag` (`CiSelectionReceipt`, `ci_selection_receipt_shadow_from_git_diff`).
+//! Authority: `.github/workflows/ci.yml` (Wave 3 shadow emit step); modeled `CiSelectionReceipt`
+//! eval remains queued on bootstrap (`node://adhoc-331899f9-19a`).
 //!
 //! **This is a transport STATUS envelope, NOT a `CiSelectionReceipt` serialization (INVARIANTS P2/P3).**
 //! The host cannot construct a faithful `CiSelectionReceipt` for a PR: `pr: ChangeSet` needs
