@@ -1957,7 +1957,7 @@ fn edge_list_head_and_tail(edges: List<Edge>, node: Node) -> Outcome<EdgeHeadTai
     Present { value: head } =>
       match list_tail(xs: edges) {
         TailAbsent =>
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+          Accepted { value: EdgeHeadTail { head: head, tail: Empty }, diagnostics: None }
         TailFound { tail: t } =>
           Accepted { value: EdgeHeadTail { head: head, tail: t }, diagnostics: None }
       }
@@ -2036,7 +2036,7 @@ fn list_head_and_tail(xs: List<Node>, node: Node) -> Outcome<TypeExprHeadTail> {
     Present { value: head } =>
       match list_tail(xs: xs) {
         TailAbsent =>
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+          Accepted { value: TypeExprHeadTail { head: head, tail: Empty }, diagnostics: None }
         TailFound { tail: t } =>
           Accepted { value: TypeExprHeadTail { head: head, tail: t }, diagnostics: None }
       }
@@ -2252,7 +2252,7 @@ fn project_type_expression_conj_fields(
 ) -> Outcome<List<TargetTypeExprFieldSlot>> {
   bind_outcome(
     o: project_type_expression_field_slots(
-      remaining: remaining - 1,
+      remaining: remaining,
       node: node,
       target: target,
       projection: projection
@@ -2278,7 +2278,7 @@ fn project_type_expression_disj_variants(
 ) -> Outcome<List<TargetTypeExprVariantSlot>> {
   bind_outcome(
     o: project_type_expression_variant_slots(
-      remaining: remaining - 1,
+      remaining: remaining,
       node: node,
       target: target,
       projection: projection

@@ -35,6 +35,7 @@ import v4.extdeps.languages.rust {
   rust_sg2_malformed_sum_extra_positional_emitted,
   rust_sg2_rc_foobar_xy_emitted,
   rust_sg2_sum_xy_emitted,
+  rust_sg2_type_expr_projection_probe_target_model,
   rust_sg2_type_expr_target_model,
   rust_token_comma,
   rust_token_gt,
@@ -91,10 +92,12 @@ fn sg2_claim_input(ok: Bool) -> Node {
   }
 }
 
+data sg2_type_expr_target: TargetModel = rust_sg2_type_expr_projection_probe_target_model()
+
 fn sg2_project_instantiation_emitted() -> Node {
   match project_type_expression_node(
     node: rust_sg2_instantiation_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
+    target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
@@ -110,7 +113,7 @@ fn sg2_projection_matches_golden() -> Bool {
 fn sg2_project_arrow_emitted() -> Node {
   match project_type_expression_node(
     node: rust_sg2_arrow_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
+    target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
@@ -121,7 +124,7 @@ fn sg2_project_arrow_emitted() -> Node {
 fn sg2_project_conj_emitted() -> Node {
   match project_type_expression_node(
     node: rust_sg2_conj_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
+    target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
@@ -132,7 +135,7 @@ fn sg2_project_conj_emitted() -> Node {
 fn sg2_project_disj_emitted() -> Node {
   match project_type_expression_node(
     node: rust_sg2_disj_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
+    target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
@@ -143,7 +146,7 @@ fn sg2_project_disj_emitted() -> Node {
 fn sg2_binary_fn_projection_accepts() -> Bool {
   match project_type_expression_node(
     node: rust_sg2_binary_fn_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
+    target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => true
@@ -154,7 +157,7 @@ fn sg2_binary_fn_projection_accepts() -> Bool {
 fn sg2_arrow_malformed_projection_rejects() -> Bool {
   match project_type_expression_node(
     node: rust_sg2_arrow_malformed_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
+    target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => false
@@ -164,7 +167,7 @@ fn sg2_arrow_malformed_projection_rejects() -> Bool {
 
 fn sg2_serialize_accepts(emitted: Node) -> Bool {
   match target_serialize_source_from_model(
-    target: rust_sg2_type_expr_target_model(),
+    target: sg2_type_expr_target,
     emitted: emitted
   ) {
     Accepted { value: _, diagnostics: _ } => true
@@ -174,7 +177,7 @@ fn sg2_serialize_accepts(emitted: Node) -> Bool {
 
 fn sg2_serialized_text(emitted: Node) -> String {
   match target_serialize_source_from_model(
-    target: rust_sg2_type_expr_target_model(),
+    target: sg2_type_expr_target,
     emitted: emitted
   ) {
     Accepted { value: source, diagnostics: _ } => source
@@ -457,7 +460,7 @@ fn sg2_projected_instantiation_text() -> String {
 fn sg2_projected_no_rc_instantiation_text() -> String {
   match project_type_expression_node(
     node: rust_sg2_foobar_xy_no_rc_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
+    target: sg2_type_expr_target,
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => sg2_serialized_text(emitted: emitted)
@@ -496,6 +499,17 @@ fn witness_sg2_conj_holds() -> Bool {
 fn witness_sg2_sum_holds() -> Bool {
   sg2_projected_sum_text() == sg2_expected_sum_text
     && !sg2_serialize_accepts(emitted: rust_sg2_malformed_sum_extra_positional_emitted())
+}
+
+fn debug_sg2_conj_project_accepts() -> Bool {
+  match project_type_expression_node(
+    node: rust_sg2_conj_source_type_node(),
+    target: sg2_type_expr_target,
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn witness_sg2_projection_falsification_holds() -> Bool {
