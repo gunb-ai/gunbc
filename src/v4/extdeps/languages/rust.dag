@@ -1288,6 +1288,17 @@ fn rust_declared_inhabitants_root() -> Node {
 // in sync with the Rust scalar set by hand. (A `rust_scalar_is_copy` classifier was
 // removed here: with no co-indexed scalar↔atom table it had no live caller, so it was
 // a second, drift-prone authority for Copy-ness rather than the single source.)
+// SG-2 probe type parameters (X, Y, FooBar, Rc) are Copy/by-value at arrow boundaries so
+// projection/serialize does not require SG-RC catalog rows for every probe atom.
+fn rust_sg2_value_semantics_carrier_atoms() -> List<Symbol> {
+  [
+    rust_binding_sg2_x,
+    rust_binding_sg2_y,
+    rust_binding_sg2_foobar,
+    rust_binding_sg2_rc
+  ]
+}
+
 fn rust_value_semantics_carrier_atoms() -> List<Symbol> {
   // Both carrier-identity forms a Copy scalar can present as at the lookup: the
   // surface spelling (type-shell path) and the inhabitant identity (value-expr
@@ -3741,6 +3752,12 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
         name: target_model_edge_use_site_ownership_realizations,
         target: target_use_site_ownership_catalog_node(
           rows: rust_sg_rc_use_site_ownership_catalog()
+        )
+      ),
+      rust_named_edge(
+        name: target_model_edge_value_semantics_carriers,
+        target: target_value_semantics_carriers_node(
+          atoms: rust_sg2_value_semantics_carrier_atoms()
         )
       )
     ]

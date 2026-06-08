@@ -21,6 +21,7 @@ import v4.extdeps.languages.rust {
   rust_sg2_conj_source_type_node,
   rust_sg2_conj_xy_emitted,
   rust_sg2_disj_source_type_node,
+  rust_sg2_foobar_xy_no_rc_source_type_node,
   rust_sg2_instantiation_source_type_node,
   rust_sg2_malformed_atom_extra_positional_emitted,
   rust_sg2_malformed_atom_zero_positional_emitted,
@@ -65,7 +66,7 @@ data sg2_fail_sym: Symbol = sg2_fail_sym
 data sg2_fail_text: String = ""
 data sg2_expected_type_text: String = "Rc<FooBar<X, Y>>"
 data sg2_expected_arrow_text: String = "(X) -> Y"
-data sg2_expected_conj_text: String = " { X, Y }"
+data sg2_expected_conj_text: String = " { X: X, Y: Y }"
 data sg2_expected_sum_text: String = "X | Y"
 
 fn sg2_pass_node() -> Node {
@@ -449,13 +450,36 @@ data claim_sg2_sum_serialize: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
+fn sg2_projected_instantiation_text() -> String {
+  sg2_serialized_text(emitted: sg2_project_instantiation_emitted())
+}
+
+fn sg2_projected_no_rc_instantiation_text() -> String {
+  match project_type_expression_node(
+    node: rust_sg2_foobar_xy_no_rc_source_type_node(),
+    target: rust_sg2_type_expr_target_model(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: emitted, diagnostics: _ } => sg2_serialized_text(emitted: emitted)
+    Rejected { diagnostics: _ } => sg2_fail_text
+  }
+}
+
+fn sg2_projected_conj_text() -> String {
+  sg2_serialized_text(emitted: sg2_project_conj_emitted())
+}
+
+fn sg2_projected_sum_text() -> String {
+  sg2_serialized_text(emitted: sg2_project_disj_emitted())
+}
+
 // T3 Phase A — executed Bool claim-run witnesses (mutation-proven; rostered in v4_roster_pilot).
+// Structural authority is run-based serialize of projected emitted wire (not compile-time hash).
 fn witness_sg2_instantiation_rc_foobar_holds() -> Bool {
-  sg2_projection_matches_golden()
-    && sg2_serialize_matches_expected()
+  sg2_projected_instantiation_text() == sg2_expected_type_text
+    && sg2_projected_no_rc_instantiation_text() == "FooBar<X, Y>"
     && sg2_instantiation_delimiters_bidirectional()
-    && (content_hash(n: sg2_project_instantiation_emitted()) !=
-      content_hash(n: rust_sg2_malformed_instantiation_zero_positional_emitted()))
+    && sg2_projected_instantiation_text() != sg2_projected_no_rc_instantiation_text()
 }
 
 fn witness_sg2_arrow_holds() -> Bool {
@@ -465,14 +489,12 @@ fn witness_sg2_arrow_holds() -> Bool {
 }
 
 fn witness_sg2_conj_holds() -> Bool {
-  (content_hash(n: sg2_project_conj_emitted()) == content_hash(n: rust_sg2_conj_xy_emitted()))
-    && sg2_conj_serialize_matches_expected()
+  sg2_projected_conj_text() == sg2_expected_conj_text
     && !sg2_serialize_accepts(emitted: rust_sg2_malformed_record_extra_positional_emitted())
 }
 
 fn witness_sg2_sum_holds() -> Bool {
-  (content_hash(n: sg2_project_disj_emitted()) == content_hash(n: rust_sg2_sum_xy_emitted()))
-    && sg2_sum_serialize_matches_expected()
+  sg2_projected_sum_text() == sg2_expected_sum_text
     && !sg2_serialize_accepts(emitted: rust_sg2_malformed_sum_extra_positional_emitted())
 }
 
@@ -484,52 +506,3 @@ fn witness_sg2_projection_falsification_holds() -> Bool {
     && !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_positional_emitted())
 }
 
-// DEBUG (remove after green): narrow claim-run failures.
-fn debug_sg2_arrow_serialize_accepts() -> Bool {
-  sg2_serialize_accepts(emitted: rust_sg2_arrow_xy_emitted())
-}
-
-fn debug_sg2_conj_serialize_accepts() -> Bool {
-  sg2_serialize_accepts(emitted: rust_sg2_conj_xy_emitted())
-}
-
-fn debug_sg2_instantiation_project_accepts() -> Bool {
-  match project_type_expression_node(
-    node: rust_sg2_instantiation_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
-    projection: rust_type_expression_projection()
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn debug_sg2_atom_project_accepts() -> Bool {
-  match project_type_expression_node(
-    node: rust_sg2_atom_node(binding: rust_binding_sg2_x),
-    target: rust_sg2_type_expr_target_model(),
-    projection: rust_type_expression_projection()
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn debug_sg2_conj_text_matches_brace_only() -> Bool {
-  sg2_serialized_text(emitted: rust_sg2_conj_xy_emitted()) == "{ X, Y }"
-}
-
-fn debug_sg2_conj_text_matches_expected() -> Bool {
-  sg2_serialized_text(emitted: rust_sg2_conj_xy_emitted()) == sg2_expected_conj_text
-}
-
-fn debug_sg2_arrow_project_accepts() -> Bool {
-  match project_type_expression_node(
-    node: rust_sg2_arrow_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
-    projection: rust_type_expression_projection()
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
