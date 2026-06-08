@@ -5,7 +5,8 @@
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::{
-    compile_sources_with_options, CompilePipelineOptions, PipelineResult, SourceFile,
+    compile_sources_with_options, compile_to_resolved, CompilePipelineOptions, PipelineResult,
+    ResolvedPipelineResult, SourceFile,
 };
 use v2_compiler::v2_compiler_parse::ParseResult;
 use v2_compiler::v2_std_core::Token;
@@ -277,6 +278,11 @@ pub fn compile_multi_analyze_complexity(files: &[(&str, &str)]) -> Rc<PipelineRe
 
 pub fn compile_dag(source: &str) -> Rc<PipelineResult> {
     compile_dag_named("test.dag", source, RenderTarget::Rust)
+}
+
+pub fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
+    let sources = resolve_imports_transitively("test.dag", source);
+    compile_to_resolved(Rc::new(sources))
 }
 
 pub fn compile_dag_target(source: &str, target: RenderTarget) -> Rc<PipelineResult> {

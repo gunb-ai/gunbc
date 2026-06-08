@@ -893,6 +893,47 @@ data lens_ci_required_lenses: List<LensIdV0> = [
   UnusedParameters
 ]
 
+// M2 Lens-CI claim-run transport authority. The live shell gate projects this list;
+// it does not own a parallel witness roster.
+type LensCiClaimRunRow {
+  label: String
+  entry: String
+  function: String
+}
+
+data lens_ci_claim_run_row_cost_atom_zero: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/atom_zero",
+  entry: "src/v4/test/claim/lens_cost/atom_zero.dag",
+  function: "atom_zero_claim_holds"
+}
+
+data lens_ci_claim_run_row_synthesis_polynomial_dominates_linear: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/polynomial_dominates_linear",
+  entry: "src/v4/test/claim/lens_synthesis/polynomial_dominates_linear.dag",
+  function: "polynomial_dominates_linear_claim_holds"
+}
+
+data lens_ci_claim_run_row_coverage_hollow_type_defect_key: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_coverage/hollow_type_defect_key",
+  entry: "src/v4/test/claim/lens_coverage/hollow_type_defect_key.dag",
+  function: "hollow_type_defect_key_claim_holds"
+}
+
+data lens_ci_claim_run_row_structural_resolution_binds_to_resolved: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_structural_resolution/binds_to_resolved",
+  entry: "src/v4/test/claim/lens_structural_resolution/binds_to_resolved.dag",
+  function: "binds_to_resolved_claim_holds"
+}
+
+data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
+  lens_ci_claim_run_row_cost_atom_zero,
+  lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
+  lens_ci_claim_run_row_coverage_hollow_type_defect_key,
+  lens_ci_claim_run_row_structural_resolution_binds_to_resolved
+]
+
+data lens_ci_claim_run_row_count: String = "4"
+
 data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
   smoke_step_name: "Lens-CI registry activation smoke"
   semantic_step_name: "Lens-CI registry semantic v4 compile (rust target)"
