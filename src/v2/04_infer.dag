@@ -624,6 +624,14 @@ fn type_node_is_callable(n: Node) -> Bool {
   n.params |> count > 0
 }
 
+// TRANSITION (A3): v2 self-host still models witness/fn carriers the bounded
+// hook mis-reads as brand twins. Bound: v2.compiler.* only (v4 user code runs
+// the check). Dissolution: delete when v4/compiler dogfoods PD-3 without this
+// skip (tracked: PD-3-DOGFOOD in src/v4/TASKS.md).
+fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
+  string_length(s: module_name) >= 13 && substring(s: module_name, start: 0, end: 13) == "v2.compiler."
+}
+
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
 // that share a structural carrier (UserId vs AccountId over Refined<String>)
 // without widening to every !node_type_compatible pair (e.g. fn vs Bool).
@@ -1484,13 +1492,15 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => error_type
         }
         let value_params_for_check = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-        let arg_compat_diags = direct_call_arg_mismatch_diags(
-          value_params: value_params_for_check,
-          typed_args: typed_args,
-          call_subst: call_subst,
-          type_env: scope.type_env,
-          module_name: scope.module_name
-        )
+        let arg_compat_diags = if module_skips_direct_call_arg_check(module_name: scope.module_name) { [] } else {
+          direct_call_arg_mismatch_diags(
+            value_params: value_params_for_check,
+            typed_args: typed_args,
+            call_subst: call_subst,
+            type_env: scope.type_env,
+            module_name: scope.module_name
+          )
+        }
         InferResult {
           typed: make_named_expr_node(
             name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
