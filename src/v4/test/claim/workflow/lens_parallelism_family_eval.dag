@@ -58,7 +58,7 @@ fn lens_parallelism_family_all_pass(report: LensParallelismFamilyEvalReport) -> 
 
 
 fn lens_parallelism_family_gate(report: LensParallelismFamilyEvalReport) -> Bool {
-  if is_empty(xs: lens_parallelism_runtime_value_rows) {
+  if is_empty(xs: report.runs) {
     false
   } else {
     lens_parallelism_family_all_pass(report: report)

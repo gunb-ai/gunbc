@@ -58,7 +58,7 @@ fn lens_idempotency_family_all_pass(report: LensIdempotencyFamilyEvalReport) -> 
 
 
 fn lens_idempotency_family_gate(report: LensIdempotencyFamilyEvalReport) -> Bool {
-  if is_empty(xs: lens_idempotency_runtime_value_rows) {
+  if is_empty(xs: report.runs) {
     false
   } else {
     lens_idempotency_family_all_pass(report: report)
