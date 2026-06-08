@@ -97,13 +97,13 @@ flowchart TB
       C["CiCommand coproduct"]
       WF["ci_pipeline_well_formed"]
       SEL["ci_select_ci_jobs_from_affected_set<br/>CiComponentAffected<br/>CiSelectionReceipt"]
-      UPS["CiUpsertStep rows<br/>per-op inputs + cache_digest"]
+      UPS_AUTH["CiUpsertStep rows<br/>per-op inputs + cache_digest"]
       CACHE["cache_interface facts<br/>key = content_hash(upsert)"]
       T38["TestClaimCorpusEvalCommand<br/>T-38 structural bridge"]
     end
     subgraph GONE["Deleted in Stage (a) — dual-rep sprawl"]
       LWS["CiLiveWorkflowStepSignal<br/>YAML step mirrors"]
-      UPS["Per-step CiUpsertStep rows<br/>shadowing ci.yml"]
+      UPS_SHADOW["YAML-shadow upsert rows<br/>duplicate shell text only"]
       FIX["Shadow receipt fixtures<br/>superseded by runner"]
     end
     KEPT --> P
@@ -111,8 +111,8 @@ flowchart TB
     P --> WF
     SEL --> P
     T38 --> P
-    UPS --> CACHE
-    UPS --> SEL
+    UPS_AUTH --> CACHE
+    UPS_AUTH --> SEL
   end
 
   subgraph EMIT["Stage (b): Shape-B projection"]
@@ -168,7 +168,7 @@ flowchart TB
 | Box | Role |
 |-----|------|
 | **Green (`ci.dag` retained)** | Pipeline membership, command taxonomy, well-formedness, affected-set selection — runner reads these at execution time |
-| **Red dashed (`ci.dag` deleted)** | Descriptive bridges that duplicated YAML step text; gone after Stage (a) cut list |
+| **Red dashed (`ci.dag` deleted)** | `UPS_SHADOW` — YAML-shell duplicates only; not `UPS_AUTH` cache/selection rows |
 | **Blue (`ci.yml`)** | Thin emitted shell: GHA triggers, required job names, checkout/toolchain/cache/secrets, one runner invocation |
 | **Yellow (`gunbc-ci`)** | Selection, per-operation execute, and **per-operation cache** keyed by `CiUpsertStep` digest |
 | **Upsert rows** | One cache identity per build/test operation — not a single job-wide cache key |
@@ -239,8 +239,8 @@ Requires per-PR cut list to Mgr-C:
 | L1–320 | 320 | Keep types; delete live-workflow bridges when YAML thinned |
 | L1163–2200 | 1038 | **Primary delete candidate** — upsert rows mirroring YAML |
 | L3471–5677 | ~2300 | Keep selection logic; delete fixtures when runner receipts land |
-| L5894–6228 | 335 | **Move to runner** (Rust); keep `.dag` types if claims import |
-| L6229–6337 | 108 | Runner policy may stay modeled for `infra_isolation` comment anchor |
+| L5894–6228 | 335 | **Keep in `ci.dag`** — `ci_select_ci_jobs_from_affected_set`, masks, scheduling; runner **calls** this API at runtime (P2: realization ≠ parallel authority) |
+| L6231–6337 | 107 | Runner pool / isolation policy (`infra_isolation` anchor); SG-7 witnesses may move to claims |
 
 **Target after Stage (a) (indicative, not ratified):** `ci.dag` loses descriptive sprawl; modeled authority compacts but remains one module until Mgr-C says otherwise. **Not** a target of 12 files.
 
