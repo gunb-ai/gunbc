@@ -1,7 +1,9 @@
 # Thin-Shim CI — Plain-Language Design
 
-**Status:** design note (docs only — no code changes in this PR)  
+**Status:** design note (**docs only** — no `ci.dag`, `ci.yml`, ratchet, or `ci_affected_components` edits in this PR)  
 **Parent plan:** ctrl#1490 (manager cluster owns ordering; this doc explains the shape)
+
+**Scope discipline:** Any load-bearing cut (including deleting `ci.dag`, migrating authority to hand-Rust/YAML, or removing ratchets) lands in a **separate Mgr-C-gated implementation PR** with an explicit before/after cut list — not bundled here.
 
 ---
 
