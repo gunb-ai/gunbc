@@ -1243,16 +1243,23 @@ fn match_pattern(
                     if variant_name == "Violates" && (name == "None" || name == "none") {
                         return Some(HashMap::new());
                     }
-                    // A present coproduct value bridges to `Some { value: <self> }`,
+                    // A *present* coproduct value bridges to `Some { value: <self> }`,
                     // symmetric with the `_ if name == "Some"` bridge below for present
                     // non-Variant values. A native `Value::Map` lookup returns the raw
                     // stored value (not Holds-wrapped), so a present lookup of a coproduct
                     // value (e.g. `Excluded`) must still satisfy a std `map_get`-style
-                    // `Some { value: v }` arm. Genuine `Some`/`None` variants are handled by
-                    // nominal matching (variant_name == name) below; a `Some` pattern only
-                    // appears where the scrutinee is Option/Witness-typed, so wrapping any
-                    // other present variant is the intended Option projection.
-                    if name == "Some" && variant_name != "Some" {
+                    // `Some { value: v }` arm. Absent-witness/option arms are EXCLUDED so
+                    // this never fabricates presence (P3 fail-closed): `Violates` and a
+                    // nominal `None`/`none` must fall through to the `None` arm (handled by
+                    // the Violates→None bridge above and nominal None matching), not match
+                    // `Some`. `Holds` is already unwrapped to `Some` above. Genuine `Some`
+                    // variants are handled by nominal matching (variant_name == name) below.
+                    if name == "Some"
+                        && variant_name != "Some"
+                        && variant_name != "Violates"
+                        && variant_name != "None"
+                        && variant_name != "none"
+                    {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
                             let fb_pat = field_binding_pattern(fb.clone());
