@@ -618,6 +618,26 @@ fn set_element_types_mismatch(recv_elem: Node, operand_elem: Node, source_indice
     && !node_type_compatible(left: recv_elem, right: operand_elem, source_indices: source_indices)
 }
 
+// Immediate RHS name of `type Name = …` (one lookup hop; empty when not a type alias).
+fn type_alias_immediate_rhs_name(name: String, env: TypeEnv) -> String {
+  match lookup_type_by_name(env: env, name: name) {
+    Some { value: decl } =>
+      match decl.inferred {
+        Some { value: Resolved { node: target } } =>
+          authored_name_at(source_indices: env.source_indices, node: target)
+        _ => ""
+      }
+    None => ""
+  }
+}
+
+// Transparent structural aliases (e.g. `type ParseTree = Node`) — not PD-3 brand twins.
+fn is_transparent_type_alias_pair(formal_name: String, actual_name: String, env: TypeEnv) -> Bool {
+  let formal_rhs = type_alias_immediate_rhs_name(name: formal_name, env: env)
+  let actual_rhs = type_alias_immediate_rhs_name(name: actual_name, env: env)
+  formal_rhs == actual_name || actual_rhs == formal_name
+}
+
 // One-level structural target of a brand alias leaf (carrier only; ignores ident_span).
 fn structural_alias_target(n: Node, env: TypeEnv) -> Node {
   match lookup_type_for(env: env, node: n) {
@@ -629,6 +649,20 @@ fn structural_alias_target(n: Node, env: TypeEnv) -> Node {
         }
       } else { binding_resolved }
     None => n
+  }
+}
+
+fn call_arg_declaration_name(ta: Node, scope: InferScope) -> String {
+  let val = arg_value(n: ta)
+  match val.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let var_name = expr_var_name_at(texpr: val, source_indices: scope.type_env.source_indices)
+      match map_get(scope.locals, var_name) {
+        Some { value: binding } =>
+          authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved)
+        None => authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: val))
+      }
+    _ => authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: val))
   }
 }
 
@@ -651,6 +685,7 @@ fn nominal_call_arg_brand_mismatch(
     && node_type_compatible(left: formal_carrier, right: actual_carrier, source_indices: source_indices)
     && !is_declared_container_alias_spelling(name: formal_name)
     && !is_declared_container_alias_spelling(name: actual_name)
+    && !is_transparent_type_alias_pair(formal_name: formal_name, actual_name: actual_name, env: env)
 }
 
 fn direct_call_arg_mismatch_diags(
@@ -665,13 +700,13 @@ fn direct_call_arg_mismatch_diags(
     pair =>
       let formal_raw = param_node_type_expr(n: pair.second)
       let formal_sub = substitute_generics(n: formal_raw, subst: call_subst, source_indices: scope.type_env.source_indices)
+      let formal_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal_sub)
       let formal = resolve_node(n: formal_sub, env: scope.type_env, module_name: module_name).resolved
       match typed_args |> skip(pair.first) |> first {
         Some { value: ta } =>
           let actual_sub = resolved_type(n: arg_value(n: ta))
+          let actual_name = call_arg_declaration_name(ta: ta, scope: scope)
           let actual = resolve_node(n: actual_sub, env: scope.type_env, module_name: module_name).resolved
-          let formal_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
-          let actual_name = authored_name_at(source_indices: scope.type_env.source_indices, node: actual)
           if nominal_call_arg_brand_mismatch(
             formal: formal,
             actual: actual,

@@ -999,6 +999,28 @@ pub fn set_element_types_mismatch(
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
 }
 
+pub fn type_alias_immediate_rhs_name(name: String, env: Rc<TypeEnv>) -> String {
+    match lookup_type_by_name(env.clone(), name.clone()) {
+        Some(decl) => match decl.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => {
+                authored_name_at(env.source_indices.clone(), target.clone())
+            }
+            _ => String::new(),
+        },
+        None => String::new(),
+    }
+}
+
+pub fn is_transparent_type_alias_pair(
+    formal_name: String,
+    actual_name: String,
+    env: Rc<TypeEnv>,
+) -> bool {
+    let formal_rhs = type_alias_immediate_rhs_name(formal_name.clone(), env.clone());
+    let actual_rhs = type_alias_immediate_rhs_name(actual_name.clone(), env.clone());
+    formal_rhs.as_str() == actual_name.as_str() || actual_rhs.as_str() == formal_name.as_str()
+}
+
 pub fn structural_alias_target(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     match lookup_type_for(env.clone(), n.clone()) {
         Some(binding_resolved) => {
@@ -1022,7 +1044,8 @@ pub fn call_arg_declaration_name(ta: Rc<Node>, scope: Rc<InferScope>) -> String 
     let val = arg_value(ta.clone());
     match (*val.expr_data).clone() {
         ExprData::ExprVar { .. } => {
-            let var_name = expr_var_name_at(val.clone(), scope.type_env.clone().source_indices.clone());
+            let var_name =
+                expr_var_name_at(val.clone(), scope.type_env.clone().source_indices.clone());
             match v2_rt::map_get(&scope.locals.clone(), var_name.clone()) {
                 Some(binding) => authored_name_at(
                     scope.type_env.clone().source_indices.clone(),
@@ -1060,7 +1083,8 @@ pub fn nominal_call_arg_brand_mismatch(
             source_indices.clone(),
         )
         && !is_declared_container_alias_spelling(formal_name.clone())
-        && !is_declared_container_alias_spelling(actual_name.clone()))
+        && !is_declared_container_alias_spelling(actual_name.clone())
+        && !is_transparent_type_alias_pair(formal_name.clone(), actual_name.clone(), env.clone()))
 }
 
 pub fn direct_call_arg_mismatch_diags(
@@ -1091,6 +1115,10 @@ pub fn direct_call_arg_mismatch_diags(
                         call_subst.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     );
+                    let formal_name = authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        formal_sub.clone(),
+                    );
                     let formal = resolve_node(
                         formal_sub.clone(),
                         scope.type_env.clone(),
@@ -1101,6 +1129,7 @@ pub fn direct_call_arg_mismatch_diags(
                     match typed_args.clone().get(pair.0.clone() as usize).cloned() {
                         Some(ta) => {
                             let actual_sub = resolved_type(arg_value(ta.clone()));
+                            let actual_name = call_arg_declaration_name(ta.clone(), scope.clone());
                             let actual = resolve_node(
                                 actual_sub.clone(),
                                 scope.type_env.clone(),
@@ -1108,14 +1137,6 @@ pub fn direct_call_arg_mismatch_diags(
                             )
                             .resolved
                             .clone();
-                            let formal_name = authored_name_at(
-                                scope.type_env.clone().source_indices.clone(),
-                                formal.clone(),
-                            );
-                            let actual_name = authored_name_at(
-                                scope.type_env.clone().source_indices.clone(),
-                                actual.clone(),
-                            );
                             if nominal_call_arg_brand_mismatch(
                                 formal.clone(),
                                 actual.clone(),
