@@ -5,13 +5,15 @@
 **Work item:** `node://adhoc-e4390ffa-916` (`zesty-otter-154`)  
 **Gate:** Mgr-C / parent gate before any implementation PR lands
 
-**Scope discipline:** Load-bearing cuts (`05_eval.dag`, `verification.dag`, `testclaim_corpus_runner.dag`, lens-CI transport, per-family roster deletion) land in **separate Mgr-C-gated implementation PRs** with an explicit before/after cut list — not bundled here.
+**Scope discipline:** Load-bearing cuts (`verification.dag`, `05_eval.dag`, `testclaim_corpus_runner.dag`, lens-CI transport, roster deletion) land in **separate Mgr-C-gated implementation PRs** with an explicit before/after cut list — not bundled here.
+
+**Operator GO (parent revision):** The target is a **unified coproduct of both modalities** — existing Node-corpus `TestClaim` **plus** a new first-class Bool-witness claim modality that keeps `fn() -> Bool` witnesses as `fn() -> Bool`. Consolidation must **not** launder lens/manual families into `TestClaimEvalSubject<Node>` as the only path.
 
 ---
 
 ## 1. What exists today
 
-The v4 claim corpus under `src/v4/test/claim/` has grown three **parallel authorities** and four **parallel runners**. They overlap in intent but do not share a single execution receipt.
+The v4 claim corpus under `src/v4/test/claim/` has grown **parallel authorities** and **parallel runners**. They overlap in intent but do not share a single execution receipt or a single schema that names both modalities.
 
 ### 1.1 Fragmentation inventory (landed tree, 2026-06-08)
 
@@ -22,33 +24,33 @@ The v4 claim corpus under `src/v4/test/claim/` has grown three **parallel author
 | `data claim_*: TestClaim` rows | 179 | closed `TestClaim` coproduct declarations |
 | files calling `run_test_claim(` | 17 | T-22 `TestClaimRun` execution rows |
 | `workflow/*_eval.dag` orchestrators | 10 | per-family corpus eval folds |
+| `v4_roster_pilot.dag` explicit rows | 42 | list-based `{entry, function}` Bool-witness roster |
 | `family_receipt.dag` | 3 | T-38B receipt modules (`lens_idempotency`, `grounding_go`, `grounding_typescript`) |
 | `subject_roster.dag` | 4 | T-38B subject lists (+ `lens_ownership` roster-only) |
 
-### 1.2 Three parallel claim authorities
+### 1.2 Parallel authorities (the consolidation problem)
 
 | Authority | location | consumer | problem |
 | --------- | -------- | -------- | ------- |
-| **`TestClaim` coproduct** | `v4.std.verification` | `run_test_claim`, CI selection (`affected_set_selection.dag`) | canonical schema — but many families do not route through it |
-| **Family-specific carriers** | e.g. `LensStructuralResolutionClaim` in `claim_carrier.dag` | `*_claim_holds()` Bool gates | second schema parallel to `TestClaim`; no `TestClaimRun` receipt |
-| **Bool `*_claim_holds()`** | ~58 lens/manual files | `gunbc run --claim-run`, `lens_ci_gate.dag` | third authority; grep/typecheck passes without `TestClaimRun` verdict (E-10 vacuum) |
+| **`TestClaim` coproduct** | `v4.std.verification` | `run_test_claim`, CI selection | canonical Node-corpus schema — but Bool witnesses live outside it |
+| **Family-specific carriers** | e.g. `LensStructuralResolutionClaim` | `*_claim_holds()` | parallel schema; not registered in any unified coproduct |
+| **Bool `{entry, function}` rows** | `v4_roster_pilot`, `lens_ci_gate`, per-file `*_claim_holds` | `gunbc run --claim-run` | first-class execution surface with **no modeled claim type** |
+| **Per-family `*_eval.dag`** | `workflow/` | authoring-time `TestClaimRun` lists | third runner co-authoring verdict |
 
-The `lens_cost/atom_zero.dag` pattern illustrates the dual-authority smell: a lens-local `atom_zero_claim_holds()` **and** a `data claim_atom_zero: TestClaim` whose `rhs` is derived from the Bool — two surfaces for one fact.
+The `lens_cost/atom_zero.dag` pattern shows optional **dual surfacing** (Bool gate + `TestClaim` data row) — not a requirement that Bool rows collapse into Node projection.
 
-### 1.3 Four parallel runners
+### 1.3 Four parallel runners (today)
 
 | Runner | entry | actual type | CI binding |
 | ------ | ----- | ----------- | ---------- |
 | **`run_test_claim`** | `05_eval.dag` | `TestClaimEvalSubject<Node> → TestClaimRun<Node, RuntimeValue>` | manual corpus, T-38B families |
-| **`run_test_claim_emit_vs_eval`** | `emit_host.dag` | same subject type, emit→host→parse compare | nat_semiring / branch_dispatch / loop_linear_bound rung 3–6 |
-| **Per-family `*_eval.dag`** | `workflow/nat_semiring_rung*_eval.dag`, etc. | repackages pre-built `TestClaimRun` lists | authoring-time const rows (RR-A §6 forbidden as sole pass) |
-| **Bool `--claim-run`** | host CLI over `*_claim_holds` | `Bool` | `lens_ci_gate.dag` (4 rows), claim-corpus execution map (377 witnesses) |
+| **`run_test_claim_emit_vs_eval`** | `emit_host.dag` | same subject type, emit→host→parse compare | nat_semiring / branch_dispatch rung 3–6 |
+| **Per-family `*_eval.dag`** | `workflow/nat_semiring_rung*_eval.dag`, etc. | pre-built `TestClaimRun` lists | authoring-time const rows (RR-A §6 forbidden as sole pass) |
+| **Bool `--claim-run`** | host CLI over `fn() -> Bool` | `Bool` stdout | `v4_roster_pilot` (42 rows), `lens_ci_gate` (4 rows), claim-corpus map (377 witnesses) |
 
-`testclaim_corpus_runner.dag` is the closest thing to a unified fold, but it only covers the 5-row manual wedge and explicitly lists two **unsupported** subject families (`ci_pipeline`, `non_runtime_value`) per RR-I §3.
+### 1.4 Resolved-type witness (Node-corpus modality anchor)
 
-### 1.4 Resolved-type witness (the substrate anchor)
-
-Evaluation acceptance is already modeled at a single witness boundary in `05_eval.dag`:
+For the **Node-corpus** arm, evaluation acceptance is modeled at a single witness boundary in `05_eval.dag`:
 
 ```text
 RuntimeValueAcceptanceWitness {
@@ -58,234 +60,279 @@ RuntimeValueAcceptanceWitness {
 }
 ```
 
-`run_test_claim` routes claim variants through this stack (runtime eval for `EqualsClaim` / `CompilesClaim` / `DiagnosticClaim`; structural admission for `StructuralEqualsClaim`; round-trip preconditions for `RoundTripClaim`). The consolidation target is: **every executable claim row projects into this witness stack** — not a parallel Bool predicate or family-local carrier.
+`run_test_claim` routes `TestClaim` variants through this stack. The **Bool-witness** arm has a different resolved-type head (`Bool` verdict at the `fn() -> Bool` boundary) — consolidation names both heads explicitly rather than re-encoding Bool semantics as Node.
 
 ---
 
 ## 2. Problem statement
 
-**Representative failure:** A capable agent (or reviewer) can read a green `*_claim_holds()` Bool, a type-checking `TestClaim` data row, and a `family_receipt.dag` list — and still have **no single execution receipt** proving the claim ran through the eval interpreter with the bootstrap `v4_evaluator` pin. RR-A closed the structural bridge; the corpus still carries pre-folded `run_test_claim` const rows, Bool gates, and per-family eval orchestrators that co-author.
+**Representative failure:** Reviewers see green Bool witnesses, type-checking `TestClaim` rows, and per-family eval orchestrators — with **no unified schema** naming both modalities and **no single runner receipt** that preserves which modality executed. A consolidation that collapses everything into `TestClaimEvalSubject<Node>` is the laundering-prone "re-encode into Node-corpus" path the operator pinned against.
 
 **Why local patches are forbidden:**
 
 | patch | violation |
 | ----- | --------- |
+| Require every Bool witness to project to `TestClaimEvalSubject<Node>` | erases Bool modality; laundering path |
 | Add another `workflow/*_eval.dag` per family | P2 — N runners co-authoring verdict |
-| Keep `*_claim_holds()` as CI pass surface | E-10 — Bool without `TestClaimRun` consumer |
-| Fork `run_test_claim` per lens family | RR-I §6 — parametric fork instead of projection |
-| New `Lens*Claim` carrier per family | M2 — duplicate type authority |
+| Fork `run_test_claim` per lens family | RR-I §6 — parametric fork |
+| Delete `v4_roster_pilot` before discovery equivalence | silent roster drop (E-10) |
+| Implement without `verification.dag` Bool-witness arm | model-after-implement (INVARIANTS P1) |
 
-**Deepest unsound boundary:** `run_manual_testclaim_corpus_eval()` repackages compile-time `run_test_claim` results; lens CI invokes `*_claim_holds` directly; emit-vs-eval claims use a second verdict primitive. Three surfaces, one intended semantics.
+**Deepest unsound boundary:** Bool witnesses execute via `--claim-run` with no modeled claim type; Node corpus executes via `run_test_claim` with no registry link to the 42-row pilot roster. Two modalities, zero coproduct.
 
 ---
 
-## 3. Target: unified resolved-type claim system
+## 3. Target: unified representation (`UnifiedTestClaim`)
 
-### 3.1 Definition — resolved-type claim
+### 3.1 Explicit coproduct (both modalities, one authority)
 
-A **resolved-type claim** is an executable assertion whose verdict is decided at one of two **declared** boundaries — never by a hand-rolled Bool:
-
-| boundary | `TestClaim` arm | verdict mechanism |
-| -------- | --------------- | ----------------- |
-| **Runtime resolved-type** | `EqualsClaim`, `CompilesClaim`, `DiagnosticClaim` | `run_test_claim_runtime_assert` after `eval` produces `Outcome<RuntimeValue>`; acceptance uses `RuntimeValueAcceptanceWitness.resolved_type` |
-| **Structural resolved-type** | `StructuralEqualsClaim` | structural admission of lhs (well-formed, no runtime eval of receipt nodes) + node equality to rhs |
-| **Round-trip resolved-type** | `RoundTripClaim` | `dag_round_trip_wave1_authorities_ready` precondition + structural input admission |
-
-Lens and manual families **do not introduce a fourth boundary**. They declare:
-
-1. a `TestClaim` row (or a projection into one), and  
-2. a `TestClaimEvalSubject<Node>` built from shared fixtures (`lens_common/infer_fixture.dag` cost-of-change = 1).
-
-Family-specific carriers (`LensStructuralResolutionClaim`, etc.) are **migration scaffolding** with explicit dissolve marks — not steady-state authorities.
-
-### 3.2 Single schema authority (M2)
-
-**Steady state:** `v4.std.verification::TestClaim` remains the only closed assertion-shape coproduct. New claim shapes extend the coproduct via L2.5 model PR — not parallel `*Claim` types in family directories.
-
-**Projection, not parallel schema:** Where a lens fact is not natively an `EqualsClaim`/`DiagnosticClaim`, the family exports:
+**Steady-state schema** (names provisional until L2.5 model PR lands):
 
 ```text
-fn <family>_test_claim_subject(row: <Family>Claim) -> TestClaimEvalSubject<Node>
+type UnifiedTestClaim
+  = NodeCorpus {
+      claim: TestClaim
+      subject: TestClaimEvalSubject<Node>
+      transport: TestClaimTransportMode   // EvalOnly | EmitVsEval { target }
+    }
+  | BoolWitness {
+      entry: String                      // module relpath under src/v4/test/claim/
+      function: Symbol                   // nullary fn () -> Bool
+      receipt: BoolWitnessReceipt        // typed execution receipt (see §3.3)
+    }
 ```
 
-The family-local type is input to the projection only until T-19 item-registry reflection dissolves explicit rosters.
+**Resolved-type heads** — discovery and dispatch key off the modality tag, not string heuristics:
 
-### 3.3 Transport mode (not transport runner)
+| arm | resolved-type head | execution semantics |
+| --- | ---------------- | ------------------- |
+| `NodeCorpus` | `TestClaim` coproduct variant + `RuntimeValueAcceptanceWitness.resolved_type` at eval boundary | `run_test_claim` / `run_test_claim_emit_vs_eval` |
+| `BoolWitness` | `fn() -> Bool` (preserved — **not** re-encoded as Node) | host invokes named function; result is `Bool` |
 
-Emit-vs-eval is a **transport mode** on an existing subject, not a second corpus entry point:
+**Forbidden:** treating `BoolWitness` as a migration shim that must eventually become `NodeCorpus`. Optional cross-modality equivalence witnesses may exist (§6) but are **not** admission requirements.
 
-| mode | primitive | when |
-| ---- | --------- | ---- |
-| `EvalOnly` | `run_test_claim` | default — in-process evaluator |
-| `EmitVsEval { target: TargetModel }` | `run_test_claim_emit_vs_eval` | cross-target law rows (nat_semiring rung 3–6, MVP translate) |
+### 3.2 Model-first substrate delta (load-bearing — escalate before implementation)
 
-Mode is carried on `TestClaimEvalSubject` context (or a `TestClaimTransportMode` field on `EvalContext`) — **one** `run_corpus_eval` fold selects the primitive per subject. Forbidden: per-family `run_*_eval.dag` orchestrators that re-list the same rows.
+**Phase 0 implementation is blocked until this lands** (separate L2.5 / Mgr-C-gated model PR):
 
-### 3.4 Unsupported families (RR-I contract — consume, do not re-litigate)
+| file | delta |
+| ---- | ----- |
+| `v4.std.verification` | Add `BoolWitness` carrier + `BoolWitnessReceipt` + `UnifiedTestClaim` coproduct wrapping existing `TestClaim` **without** deleting or narrowing `TestClaim` arms |
+| `v4.compiler.eval` (or `verification.dag` accessors) | `unified_test_claim_modality(c: UnifiedTestClaim) -> UnifiedTestClaimModality` — structural tag for dispatch |
+| Registry projection fns | `bool_witness_from_roster_row(V4RosterPilotClaimRunRow) -> BoolWitness` — mechanical, not hand-maintained parallel lists |
 
-`ci_pipeline` and `non_runtime_value` stay in `testclaim_subject_roster_unsupported_rows` until a projection into `(Node, RuntimeValue)` or an escalated parametric `run_test_claim<A>` substrate PR lands. Consolidation does not widen the runner by copy.
+`TestClaim` coproduct arm changes for Node-corpus claims remain in scope of this consolidation — they are **not** listed as a non-goal. The **first** substrate landing is the Bool-witness arm so both modalities exist before runner migration.
+
+**Escalation:** any implementation touching `verification.dag` match arms without the model PR is a STOP per INVARIANTS load-bearing bar.
+
+### 3.3 `BoolWitnessReceipt` (one receipt shape, modality-preserved)
+
+The one runner emits a **unified receipt** whose entries tag modality:
+
+```text
+type UnifiedClaimRun
+  = NodeCorpusRun { run: TestClaimRun<Node, RuntimeValue> }
+  | BoolWitnessRun {
+      witness: BoolWitness
+      result: Bool
+      execution_status: HostVerdictSurfaceExecutionStatus  // runtime vs authoring-time
+    }
+
+type CorpusEvalReport {
+  entries: List<UnifiedClaimRun>
+}
+```
+
+CI consumers read `CorpusEvalReport` — not raw Bool stdout and not `TestClaimRun` alone. The receipt **preserves** which arm ran; it does not normalize Bool results into fake `TestClaimRun` rows.
+
+### 3.4 Node-corpus arm (consume, extend — do not replace)
+
+Existing `TestClaim` + `TestClaimEvalSubject<Node>` + T-38B `subject_roster` / `family_receipt` pattern remains the Node-corpus path. Emit-vs-eval is a **transport mode** on `NodeCorpus`, not a separate runner:
+
+| mode | primitive |
+| ---- | --------- |
+| `EvalOnly` | `run_test_claim` |
+| `EmitVsEval { target }` | `run_test_claim_emit_vs_eval` |
+
+RR-I unsupported families (`ci_pipeline`, `non_runtime_value`) stay explicit until a real projection or parametric substrate PR lands — consolidation does not fake them as either modality.
+
+### 3.5 Bool-witness arm (first-class, not derived)
+
+**Preserved semantics:**
+
+- Migrated roster rows keep `fn <name>() -> Bool` as the **authoritative** definition.
+- Runner dispatches: `gunbc run --entry <entry> --function <function>` (or bootstrap harness equivalent) and records `BoolWitnessRun.result`.
+- `data witness_*: Bool = <fn>()` rebindings remain valid; runner deduplicates per claim-corpus-map discipline.
+
+**Optional equivalence (not admission):** where a family *chooses* to also declare `NodeCorpus`, an equivalence witness may pin `bool_result == (node_run_verdict == Pass)`. Absence of Node projection is **not** a defect.
 
 ---
 
-## 4. Target: one runner
+## 4. Target: one runner (modality dispatch, boundary preserved)
 
 ### 4.1 Steady-state shape
 
 ```text
-run_corpus_eval(subjects: List<TestClaimEvalSubject<Node>>) -> CorpusEvalReport
+run_unified_corpus_eval(claims: List<UnifiedTestClaim>) -> CorpusEvalReport
 ```
 
-- **Single fold** in `testclaim_corpus_runner.dag` (name may stay `run_manual_testclaim_corpus_eval` for bootstrap pin compatibility until A.3b harness lands).
-- **Single roster authority** — T-19 item-registry reflection replaces explicit import rosters; until then, a `corpus_subject_registry.dag` aggregates `subject_roster.dag` exports (no per-family `*_eval.dag`).
-- **Single CI verdict surface** — `TestClaimRun` verdict tally, not `Bool` `*_claim_holds`.
-
-```mermaid
-flowchart TB
-  subgraph AUTH["Claim authority"]
-    TC[TestClaim coproduct]
-    SUB[TestClaimEvalSubject Node]
-    TC --> SUB
-  end
-
-  subgraph RUNNER["One runner"]
-    REG[corpus_subject_registry]
-    FOLD[run_corpus_eval]
-    REG --> FOLD
-  end
-
-  subgraph PRIM["Verdict primitives — not separate runners"]
-    RTE[run_test_claim]
-    EVE[run_test_claim_emit_vs_eval]
-  end
-
-  SUB --> FOLD
-  FOLD --> RTE
-  FOLD --> EVE
-  FOLD --> REPORT[CorpusEvalReport / TestClaimRun list]
-```
-
-### 4.2 What gets retired (implementation phase)
-
-| retire | replaced by |
-| ------ | ----------- |
-| `workflow/*_eval.dag` (10 files) | registry slice + `run_corpus_eval` |
-| `lens_ci_gate.dag` `*_claim_holds` transport | `TestClaimRun` roster rows projected from lens subjects |
-| `gunbc run --claim-run` as CI pass | `gunbc test` / bootstrap harness `TestClaimRun` receipt (RR-A A.1) |
-| Dual `*_claim_holds` + `data claim_*: TestClaim` | `claim_*` + subject projection; `*_claim_holds` becomes derived witness only |
-
-**Keep (not retired):** `run_test_claim` and `run_test_claim_emit_vs_eval` as **primitives inside** the one fold — RR-A §3 "landed, consume, do not fork."
-
-### 4.3 Lens CI gate migration
-
-Today `v4.workflow.lens_ci_gate` lists `{ entry, function }` pointing at `*_claim_holds`. Target:
+Single fold in `testclaim_corpus_runner.dag` (bootstrap pin may retain `run_manual_testclaim_corpus_eval` name until RR-A A.3b harness lands). Dispatch:
 
 ```text
-LensCiClaimRunRow {
-  label: String
-  subject: TestClaimEvalSubject<Node>   // or Symbol pin to registry row
+match claim {
+  NodeCorpus { subject, transport, ... } =>
+    NodeCorpusRun { run: <transport selects run_test_claim | run_test_claim_emit_vs_eval> }
+  BoolWitness { entry, function, ... } =>
+    BoolWitnessRun { result: invoke_fn(entry, function), ... }
 }
 ```
 
-The shell gate (`scripts/v4-lens-ci-gate.sh`) invokes the bootstrap harness path that returns `TestClaimRun`, not a Bool thunk. Discriminating perturb-check semantics are preserved on the **verdict+reason** projection (M2 discriminating gate — parent cluster).
+```mermaid
+flowchart TB
+  subgraph SCHEMA["UnifiedTestClaim — one coproduct"]
+    NC[NodeCorpus arm]
+    BW[BoolWitness arm]
+  end
+
+  subgraph RUNNER["One runner — one receipt"]
+    FOLD[run_unified_corpus_eval]
+    REPORT[CorpusEvalReport]
+    FOLD --> REPORT
+  end
+
+  subgraph DISPATCH["Modality dispatch — boundary preserved"]
+    RTE[run_test_claim / emit_vs_eval]
+    INV[invoke fn -> Bool]
+  end
+
+  NC --> FOLD
+  BW --> FOLD
+  FOLD --> RTE
+  FOLD --> INV
+  RTE --> NodeCorpusRun
+  INV --> BoolWitnessRun
+```
+
+### 4.2 Registry sources (until T-19 reflection)
+
+| source | maps to |
+| ------ | ------- |
+| `manual_corpus_roster` / family `subject_roster.dag` | `NodeCorpus` rows |
+| `v4_roster_pilot_claim_run_rows` | `BoolWitness` rows (mechanical projection) |
+| `lens_ci_gate` rows | `BoolWitness` rows (same shape) |
+| T-19 item-registry (future) | discovers both arms by resolved-type head |
+
+**Interim:** explicit import rosters remain until reflection lands; the unified coproduct is still the **named** authority.
+
+### 4.3 What gets retired (implementation phase)
+
+| retire | replaced by |
+| ------ | ----------- |
+| `workflow/*_eval.dag` (10 files) | `NodeCorpus` slices in unified registry + `run_unified_corpus_eval` |
+| Separate Bool CLI as **sole** CI pass without receipt | `BoolWitnessRun` inside `CorpusEvalReport` |
+| Parallel `{entry, function}` list types (`V4RosterPilotClaimRunRow`, `LensCiClaimRunRow`) | projections into `BoolWitness` (lists may remain as views until deletion gate) |
+
+**Keep:** `fn() -> Bool` function bodies; `TestClaim` data rows; `run_test_claim` / `run_test_claim_emit_vs_eval` as Node-corpus primitives inside the one fold.
+
+### 4.4 `v4_roster_pilot.dag` deletion gate
+
+`v4_roster_pilot.dag` is **not** deleted in early phases. Deletion requires **all** of:
+
+1. **Discovery completeness:** mechanically discovered `BoolWitness` set from corpus scan **equals** `v4_roster_pilot_claim_run_rows` (same 42 `{entry, function}` pairs, no silent drops).  
+2. **Run equivalence:** for every row, `BoolWitnessRun.result` from unified runner **equals** legacy `--claim-run` stdout on the same `{entry, function}`.  
+3. **Discrimination:** mutation-under-perturb checks (lens-CI M2 discriminating gate pattern) still fire red-on-mutation via unified receipt — not weakened by runner swap.
+
+Until C9–C11 (§6.2) pass, `v4_roster_pilot` stays authoritative for host transport projection (`v4_roster_pilot_claim_run_row_count`, shell scripts).
 
 ---
 
 ## 5. Migration plan
 
-Phased cuts; each phase is a separate implementation PR gated on §7 falsification receipts.
+Phased cuts; each phase is a separate Mgr-C-gated implementation PR.
 
 ### Phase 0 — Design gate (this doc)
 
-Mgr-C / parent accepts §3–§4 steady-state shape and §7 equivalence bar. No `.dag` edits.
+Mgr-C accepts §3–§4 dual-modality coproduct + §6 equivalence bar. No `.dag` edits.
 
-### Phase 1 — Bool → `TestClaimRun` equivalence shim (lens wedge)
+### Phase 1 — Substrate: `BoolWitness` + `UnifiedTestClaim` in `verification.dag`
 
-**Scope:** 4 lens-CI rows + `lens_cost` family (highest visibility, smallest surface).
+Land `BoolWitness`, `BoolWitnessReceipt`, `UnifiedTestClaim`, modality tag fns. **No runner changes** in same PR if it risks load-bearing match churn — split runner to Phase 2.
 
-For each `*_claim_holds` row:
+### Phase 2 — One runner dispatch (pilot slice)
 
-1. Add (or expose) `subject_*: TestClaimEvalSubject<Node>` projection.  
-2. Add equivalence witness: `claim_holds() == (verdict(run_test_claim(subject)) == Pass)`.  
-3. Pin in `manual_corpus_eval_expected.dag` or family `family_receipt.dag`.
+Wire `run_unified_corpus_eval` for:
 
-**Do not delete** `*_claim_holds` until Phase 4.
+- manual 5-row `NodeCorpus` wedge (existing T-38 path)  
+- `v4_roster_pilot` 42-row `BoolWitness` slice (projected, not hand-duplicated)
 
-### Phase 2 — T-38B roster expansion (A.2 families)
+Emit `CorpusEvalReport` with tagged entries. Legacy transports remain parallel until Phase 4.
 
-Per RR-A §2: each ACTIVE family gets `subject_roster.dag` + `family_receipt.dag` listing `TestClaimRun` rows — not `*_eval.dag` orchestrators.
+### Phase 3 — T-38B Node-corpus expansion + retire `*_eval.dag`
 
-Priority order (materiality):
+Per RR-A §2: families with `run_test_claim` rows get `subject_roster` + `family_receipt` as `NodeCorpus` registry slices. Delete per-family `workflow/*_eval.dag` orchestrators.
 
-1. Partial families already calling `run_test_claim`: `nat_semiring`, `branch_dispatch`, `loop_linear_bound`, `generated`, `lens_effect`  
-2. Lens families with Bool gates: `lens_cost`, `lens_synthesis`, `lens_coverage`, `lens_structural_resolution`, …  
-3. Scaffold-only families last
-
-### Phase 3 — Registry aggregation + retire `*_eval.dag`
-
-1. Land `corpus_subject_registry.dag` importing family `subject_roster` exports.  
-2. Point `run_corpus_eval` at registry (replaces `manual_corpus_roster` explicit import wedge).  
-3. Delete `workflow/nat_semiring_rung*_eval.dag`, `branch_dispatch_rung*_eval.dag`, etc. — receipts move to family `family_receipt.dag`.
+**Bool-only families** (lens_cost `*_claim_holds`, structural_resolution carriers, etc.) register as `BoolWitness` — **no** forced `TestClaimEvalSubject` projection.
 
 ### Phase 4 — CI transport unification (RR-A A.1 / A.3b)
 
-1. Bootstrap harness executes `run_corpus_eval` at runtime with `v4_evaluator` pin.  
-2. `lens_ci_gate` and `scripts/v4-testclaim-corpus-eval.sh` consume `TestClaimRun` JSON receipt.  
-3. Delete `*_claim_holds` as CI pass surface; retain only as derived compile-time witnesses until T-19 reflection.
+Bootstrap harness executes `run_unified_corpus_eval` at runtime. JSON receipt carries `CorpusEvalReport` with `execution_status=runtime_verdicts`. Lens CI + smoke roster scripts consume unified receipt.
 
-### Phase 5 — Family carrier dissolution
+### Phase 5 — `v4_roster_pilot` deletion
 
-Delete `claim_carrier.dag` family types when projections into `TestClaim` + `TestClaimEvalSubject` are total. Trigger: T-19 item-registry / coproduct reflection marks.
+Only after §6.2 C9–C11. Replace explicit list with discovered `BoolWitness` registry + equivalence witnesses.
+
+### Phase 6 — Family carrier dissolution (optional, per-family)
+
+`claim_carrier.dag` types dissolve when a family elects to register as `BoolWitness` or `NodeCorpus` via unified coproduct — not by mandatory Node re-encoding.
 
 ---
 
 ## 6. Equivalence plan
 
-### 6.1 Equivalence laws (must hold across every migration tranche)
+### 6.1 Equivalence laws
 
-| law | statement |
-| --- | --------- |
-| **E1 — Bool/run agreement** | For every row with `*_claim_holds` and `subject_*`: `claim_holds() == (test_claim_run_verdict(run_test_claim(subject)) == Pass)` |
-| **E2 — Harness/in-process agreement** | RR-A A.1.5a / `inprocess_equivalence.dag`: corpus-runner fold agrees with direct `run_test_claim` on the same subject list |
-| **E3 — Emit-vs-eval agreement** | `run_test_claim_emit_vs_eval(subject, target)` agrees with `run_test_claim(subject)` on rows where transport is `EvalOnly` (in-process target) |
-| **E4 — Registry completeness** | Every `data claim_*: TestClaim` in a merged family has exactly one `subject_*` in that family's `subject_roster.dag` |
-| **E5 — No silent drop** | Row removed from `*_claim_holds` transport ↔ row appears in `TestClaimRun` registry with matching `test_claim_label` |
+| law | statement | required? |
+| --- | --------- | --------- |
+| **E1 — Bool run equivalence** | For every `BoolWitness` row: unified runner `result` == legacy `--claim-run` stdout | **yes** (admission) |
+| **E2 — Node harness agreement** | RR-A A.1.5a: corpus fold agrees with direct `run_test_claim` on Node slice | **yes** (Node arm) |
+| **E3 — Emit-vs-eval agreement** | `EmitVsEval` mode agrees with `EvalOnly` on in-process targets | **yes** (Node arm) |
+| **E4 — Cross-modality optional** | Where both exist: `bool_fn() == (node_verdict == Pass)` | **optional** per family |
+| **E5 — No silent drop** | Row removed from `v4_roster_pilot` ↔ appears in discovered `BoolWitness` set | **yes** |
+| **E6 — Modality tag preserved** | `CorpusEvalReport` entries carry `NodeCorpusRun` or `BoolWitnessRun` — no normalization | **yes** |
 
 ### 6.2 Falsification table (implementation PROVEN)
 
 | ID | probe | receipt |
 | -- | ----- | ------- |
-| C1 | Lens CI executes via `TestClaimRun` verdict, not Bool stdout | `scripts/v4-lens-ci-gate.sh` log shows `--claim-run` retired; JSON receipt has `execution_status=runtime_verdicts` |
-| C2 | `workflow/*_eval.dag` count → 0 | `find src/v4/test/claim/workflow -name '*_eval.dag' \| wc -l` |
-| C3 | `family_receipt.dag` count ≥ partial-family count from RR-A §2 | filesystem receipt |
-| C4 | E1 pinned for lens-CI 4-row slice | `manual_corpus_eval_expected.dag` or lens family receipt witnesses |
-| C5 | E2 extended beyond 1-row slice | harness PR cites subjects from `inprocess_equivalence_slice` expansion |
-| C6 | No new `run_test_claim_*` fork per family | `rg 'fn run_.*_test_claim' src/v4/compiler` — only `run_test_claim`, `run_test_claim_emit_vs_eval` |
-| C7 | `testclaim_subject_roster_unsupported_rows` unchanged unless projection lands | RR-I §4 R6/R7 diff review |
-| C8 | Claim corpus map re-run: ERROR bucket not regressed by runner swap | `scripts/v4-claim-corpus-execution-map.sh` diff on touched families |
+| C1 | Unified receipt has `execution_status=runtime_verdicts` | RR-A A.3b JSON |
+| C2 | `workflow/*_eval.dag` count → 0 | filesystem |
+| C3 | `UnifiedTestClaim` in `verification.dag` with both arms | model PR diff |
+| C4 | E2 pinned for manual Node wedge | `inprocess_equivalence` expansion |
+| C5 | E1 pinned for lens-CI 4-row Bool slice | equivalence witness file |
+| C6 | No `run_<family>_test_claim` fork | `rg 'fn run_.*_test_claim' src/v4/compiler` |
+| C7 | Unsupported roster rows unchanged unless projection lands | RR-I R6/R7 |
+| C8 | Claim corpus map ERROR bucket not regressed on touched families | execution-map diff |
+| **C9** | Discovered `BoolWitness` set == `v4_roster_pilot` rows | mechanical diff script |
+| **C10** | E1 for all 42 pilot rows | batch equivalence log |
+| **C11** | Perturb-check discrimination survives runner swap | lens-CI / pilot mutation receipts |
 
-### 6.3 Tranche equivalence artifacts
+### 6.3 Tranche artifacts
 
-Each implementation PR ships:
-
-1. **Before snapshot** — `TestClaimRun` / Bool verdicts for the tranche's subject list (authoring-time is acceptable for the diff baseline; runtime after A.1).  
-2. **After snapshot** — same subjects through `run_corpus_eval`.  
-3. **Witness file** — `fn <tranche>_equivalence_holds() -> Bool` in `workflow/` (pattern: `inprocess_equivalence.dag`).
+Each implementation PR ships before/after snapshots and `fn <tranche>_equivalence_holds() -> Bool` in `workflow/` (pattern: `inprocess_equivalence.dag`).
 
 ---
 
 ## 7. Position in ctrl#1490
 
-This design is **downstream of** ratified worksheets and **upstream of** implementation workers:
-
 | ctrl#1490 lane | relationship |
 | -------------- | ------------ |
-| RR-A (A.1 runtime engine, A.2 families, A.3b receipt) | Consolidation **implements** A.2 T-38B at scale + unifies transport A.1/A.3b depend on |
-| RR-I (corpus-runner contract) | §3.4 / §4.1 **consumes** unsupported-family decision; no parametric fork |
-| thin-shim CI | `gunbc test` / `gunbc-ci` invokes **one** `run_corpus_eval` — aligns with single-runner thesis |
-| affected-set-3a | `ci_select_from_*` already projects `TestClaim`; registry must expose evaluation nodes for frontier |
-| lens-CI-gate (M2 discriminating) | Phase 1 migrates 4 rows to `TestClaimRun` without losing perturb-check |
+| RR-A (A.1/A.2/A.3b) | Node-corpus arm + unified CI receipt |
+| RR-I | Unsupported families; no parametric `run_test_claim` fork |
+| thin-shim CI | `gunbc test` invokes **one** `run_unified_corpus_eval` |
+| affected-set-3a | `NodeCorpus` claims expose `test_claim_evaluation_nodes`; Bool arm uses entry-path rules (separate) |
+| lens-CI-gate | Migrates to `BoolWitness` rows inside unified receipt; perturb-check preserved |
 
-**Ordering constraint:** Phase 4 (CI runtime) does not start before RR-A A.1 harness entry lands. Phases 1–3 can proceed in parallel with thin-shim / affected-set work if they touch disjoint files.
+**Ordering:** Phase 1 substrate before Phase 2 runner. Phase 4 blocks on RR-A A.1 harness. Phase 5 (`v4_roster_pilot` delete) is last.
 
 ---
 
@@ -293,34 +340,38 @@ This design is **downstream of** ratified worksheets and **upstream of** impleme
 
 | pattern | why |
 | ------- | --- |
-| New `workflow/<family>_eval.dag` orchestrator | recreates per-family runner |
-| `*_claim_holds` as sole CI pass | E-10 vacuum |
-| `fn run_<family>_test_claim` fork | RR-I §6 P2 eval fork |
-| Permanent `Lens*Claim` carrier type | M2 duplicate authority |
-| Authoring-time `data run_*: TestClaimRun = run_test_claim(...)` as CI pass | RR-A §6 |
-| Silent removal of unsupported roster rows | RR-I §4 R7 |
+| Mandatory Bool → `TestClaimEvalSubject<Node>` projection | laundering path; erases modality |
+| `*_claim_holds` as derived-only with no `BoolWitness` arm | Bool modality not first-class |
+| Delete `v4_roster_pilot` before C9–C11 | silent roster drop |
+| New `workflow/<family>_eval.dag` | per-family runner |
+| `fn run_<family>_test_claim` fork | RR-I P2 eval fork |
+| Normalize `BoolWitnessRun` into `TestClaimRun` | erases modality boundary in receipt |
+| Implement runner before `verification.dag` Bool arm | model-after-implement |
 
 ---
 
 ## 9. Non-goals
 
-- T-19 item-registry reflection implementation (roster dissolution — consume when landed)  
-- `eval_parallel` runtime (RR-I §5.0.2 — separate lane if metrics trip)  
-- Substrate changes to `TestClaim` coproduct arms (L2.5 gate)  
-- v3 `sg0_census` / hand-Rust test migration (T-PB-B — parallel track)  
+- T-19 item-registry implementation (consume when landed for discovery)  
+- `eval_parallel` runtime (RR-I §5.0.2)  
+- Forcing cross-modality equivalence (E4) on every family  
+- v3 `sg0_census` / hand-Rust migration (T-PB-B)  
 - Re-litigating RR-A structural bridge (#4115 CLOSED)
+
+**Removed from prior draft:** "Substrate changes to `TestClaim` coproduct arms" as non-goal — Node-corpus arm extensions remain in scope; **Bool-witness arm is the first substrate landing**.
 
 ---
 
 ## 10. Landing order (post-gate)
 
 ```text
-0. This doc merged — Mgr-C gate (zesty-otter-154 closeout).
-1. Phase 1 PR — lens-CI 4-row + lens_cost equivalence shim (C1/C4).
-2. Phase 2 PRs — per-family T-38B rosters (parallelizable across families).
-3. Phase 3 PR — corpus_subject_registry + delete *_eval.dag (C2).
-4. Phase 4 PR — RR-A A.1 harness + unified CI receipt (C1/C5, RR-A §4 R1–R3).
-5. Phase 5 PR — claim_carrier.dag dissolution (T-19 gated).
+0. This doc merged — Mgr-C gate.
+1. Phase 1 — verification.dag: BoolWitness + UnifiedTestClaim (C3).
+2. Phase 2 — run_unified_corpus_eval pilot (manual Node wedge + v4_roster_pilot Bool slice).
+3. Phase 3 — T-38B Node expansion; retire *_eval.dag (C2).
+4. Phase 4 — RR-A harness + unified CI receipt (C1, C4, C5).
+5. Phase 5 — v4_roster_pilot delete (C9–C11).
+6. Phase 6 — optional family carrier dissolution.
 ```
 
 ---
@@ -328,25 +379,24 @@ This design is **downstream of** ratified worksheets and **upstream of** impleme
 ## 11. Verification commands (re-run before dispatch)
 
 ```bash
-# Fragmentation baseline (should shrink post-implementation)
-find src/v4/test/claim -mindepth 1 -maxdepth 1 -type d ! -name workflow | wc -l
+# Modality inventory
 rg -l 'fn \w+_claim_holds\(' src/v4/test/claim --glob '*.dag' | wc -l
+rg -c 'V4RosterPilotClaimRunRow' src/v4/test/claim/workflow/v4_roster_pilot.dag
 find src/v4/test/claim/workflow -name '*_eval.dag' | wc -l
-find src/v4/test/claim -name 'family_receipt.dag' | wc -l
 
-# Single-runner discipline
+# Single-runner discipline (post-implementation)
 rg 'fn run_.*test_claim' src/v4/compiler --glob '*.dag'
 
-# RR-A equivalence pattern present
-rg -n 'inprocess_equivalence' src/v4/test/claim/workflow/
+# Substrate gate (post-Phase 1)
+rg 'UnifiedTestClaim|BoolWitness' src/v4/std/verification.dag
 ```
 
 ---
 
 ## 12. Escalation triggers
 
-Stop and escalate to parent (do not improvise) if:
+Stop and escalate if:
 
-1. A family genuinely cannot project to `TestClaimEvalSubject<Node>` without a new substrate coproduct arm.  
-2. Lens CI perturb-check cannot be expressed on `TestClaimRun` verdict+reason.  
-3. Implementation would touch `05_eval.dag` / `verification.dag` load-bearing match arms before L2.5 model PR.
+1. `BoolWitness` cannot be modeled in `verification.dag` without violating M2 or INVARIANTS load-bearing rules.  
+2. Unified receipt cannot preserve perturb-check discrimination for lens-CI Bool rows.  
+3. Discovered `BoolWitness` set cannot be made to match `v4_roster_pilot` without silent drops.
