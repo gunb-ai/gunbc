@@ -15,12 +15,22 @@ import v4.std.algebra {
 }
 import v4.std.dependency {
   BarrierBefore,
+  BindsTo,
   BootstrapDependsOn,
+  Contains,
   DataDependsOn,
   DependencyView,
   EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
   ReadinessLayer,
   ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy,
   topological_layers
 }
 import v4.std.node { Node }
@@ -51,7 +61,16 @@ fn scheduler_dependency_orders_execution(dependency: DependencyView) -> Bool {
     ResourceDependsOn => true
     BarrierBefore => true
     BootstrapDependsOn => true
-    _ => false
+    Contains => false
+    BindsTo => false
+    TypeDependsOn => false
+    ModuleDependsOn => false
+    PlacementDependsOn => false
+    ModelDependsOn => false
+    ProjectionDependsOn => false
+    GeneratedFrom => false
+    VerifiedBy => false
+    PromotedBy => false
   }
 }
 
