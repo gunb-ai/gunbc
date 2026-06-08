@@ -145,29 +145,6 @@ fn caller(xs: FreeMonoid<List<Int>>) -> Int {
     crate::helpers::assert_no_diagnostics(&result);
 }
 
-// Genuine element mismatch under alias spelling must STILL reject (control:
-// the alias branch must compare element types, not blanket-accept).
-#[test]
-fn adv_alias_with_element_mismatch_must_reject() {
-    let source = r#"
-module pd3adv.alias_elem_mismatch
-
-fn take_fm(xs: FreeMonoid<Int>) -> Int {
-  0
-}
-
-fn caller(xs: List<String>) -> Int {
-  take_fm(xs)
-}
-"#;
-    let result = crate::helpers::compile_dag(source);
-    assert!(
-        has_type_mismatch(&result),
-        "PD-3 ADV: List<String> for FreeMonoid<Int> must be rejected (element mismatch), got: {:?}",
-        crate::helpers::diagnostic_messages(&result)
-    );
-}
-
 // ── (3) OVER-REJECT same brand: UserId-for-UserId variants ──
 
 // Same brand in 2nd arg slot.

@@ -12,7 +12,7 @@ pub use crate::v2_compiler_infer_env::{
 };
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_types::{
-    child_type_node, node_is_keyed_collection, resolved_type,
+    child_type_node, is_declared_container_alias_spelling, node_is_keyed_collection, resolved_type,
 };
 use crate::v2_rt;
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
@@ -81,10 +81,54 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
     })
 }
 
+pub fn preserve_nominal_brand_on_resolve(
+    identity: Rc<Node>,
+    structural: Rc<Node>,
+    brand_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    if brand_name.as_str() != ""
+        && brand_name.as_str()
+            != authored_name_at(source_indices.clone(), structural.clone()).as_str()
+        && !is_declared_container_alias_spelling(brand_name.clone())
+    {
+        with_authored_identity(identity, structural)
+    } else {
+        structural
+    }
+}
+
 pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
+    let source_indices = env.source_indices.clone();
+    let brand = authored_name_at(source_indices.clone(), n.clone());
     match lookup_type_for(env.clone(), n.clone()) {
         Some(resolved) => {
-            if (((resolved.connective.clone() == Connective::NoConnective)
+            let structural = if (((resolved.connective.clone() == Connective::NoConnective)
+                && ((resolved.children.clone().len() as i64) == 0))
+                && (resolved.inferred.clone() != None))
+            {
+                match resolved.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        resolve_node_bounded(target.clone(), env.clone(), module_name.clone(), 0)
+                            .resolved
+                            .clone()
+                    }
+                    _ => resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
+                        .resolved
+                        .clone(),
+                }
+            } else {
+                resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
+                    .resolved
+                    .clone()
+            };
+            if brand.as_str() != ""
+                && brand.as_str()
+                    != authored_name_at(source_indices.clone(), structural.clone()).as_str()
+                && !is_declared_container_alias_spelling(brand.clone())
+            {
+                with_authored_identity(n.clone(), structural)
+            } else if (((resolved.connective.clone() == Connective::NoConnective)
                 && ((resolved.children.clone().len() as i64) == 0))
                 && (resolved.inferred.clone() != None))
             {

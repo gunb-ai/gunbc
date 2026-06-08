@@ -63,12 +63,39 @@ fn with_authored_identity(identity: Node, structural: Node) -> Node {
   }
 }
 
-// Peel AliasLeaf bindings for call-site arg check: structural carrier with
+// After env binding resolve, keep declaration-site brand on the structural carrier.
+fn preserve_nominal_brand_on_resolve(
+  identity: Node,
+  structural: Node,
+  brand_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Node {
+  if brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
+    && !is_declared_container_alias_spelling(name: brand_name) {
+    with_authored_identity(identity: identity, structural: structural)
+  } else { structural }
+}
+
+// Peel alias bindings for call-site arg check: structural carrier with
 // reference-site brand identity (bounded A3 — not a full re-resolve).
 fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
+  let source_indices = env.source_indices
+  let brand = authored_name_at(source_indices: source_indices, node: n)
   match lookup_type_for(env: env, node: n) {
     Some { value: resolved } =>
-      if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
+      let structural = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
+        match resolved.inferred {
+          Some { value: Resolved { node: target } } =>
+            resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
+          _ => resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0).resolved
+        }
+      } else {
+        resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0).resolved
+      }
+      if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
+        && !is_declared_container_alias_spelling(name: brand) {
+        with_authored_identity(identity: n, structural: structural)
+      } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Some { value: Resolved { node: target } } =>
             let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved

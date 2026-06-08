@@ -99,7 +99,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v2.compiler.infer_resolve {
-  resolve_node, resolve_item_types, peel_nominal_alias_identity,
+  resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   NodeResolveResult, ItemResult
 }
 import v2.compiler.infer_sigs {
@@ -5725,9 +5725,12 @@ fn topo_resolve_types(
       let ident = intern(table: env.intern_table, s: name).id
       match map_get(env.bindings, ident) {
         Some { value: binding } =>
-          let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+          let pre = binding.resolved
+          let result = resolve_node(n: pre, env: env, module_name: module_name)
+          let resolved = preserve_nominal_brand_on_resolve(
+            identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
           BindingsAccum {
-            bindings: map_insert(acc.bindings, ident, TypeBinding { name: name, resolved: result.resolved, provenance: SubValueUnknown }),
+            bindings: map_insert(acc.bindings, ident, TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }),
             diagnostics: concat(acc.diagnostics, result.diagnostics)
           }
         None => acc
@@ -5743,9 +5746,12 @@ fn topo_resolve_types(
     let ident = intern(table: env.intern_table, s: name).id
     match map_get(env.bindings, ident) {
       Some { value: binding } =>
-        let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+        let pre = binding.resolved
+        let result = resolve_node(n: pre, env: env, module_name: module_name)
+        let resolved = preserve_nominal_brand_on_resolve(
+          identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
         BindingsAccum {
-          bindings: map_insert(acc.bindings, ident, TypeBinding { name: name, resolved: result.resolved, provenance: SubValueUnknown }),
+          bindings: map_insert(acc.bindings, ident, TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }),
           diagnostics: concat(acc.diagnostics, result.diagnostics)
         }
       None => acc

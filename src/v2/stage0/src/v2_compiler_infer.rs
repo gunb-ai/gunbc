@@ -75,7 +75,8 @@ pub use crate::v2_compiler_infer_patterns::{
 };
 pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v2_compiler_infer_resolve::{
-    peel_nominal_alias_identity, resolve_item_types, resolve_node,
+    peel_nominal_alias_identity, preserve_nominal_brand_on_resolve, resolve_item_types,
+    resolve_node,
 };
 pub use crate::v2_compiler_infer_resolve::{ItemResult, NodeResolveResult};
 pub use crate::v2_compiler_infer_service::{
@@ -12427,10 +12428,17 @@ pub fn topo_resolve_types(
                         let ident = intern(env.intern_table.clone(), name.clone()).id.clone();
                         match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
                             Some(binding) => {
+                                let pre = binding.resolved.clone();
                                 let result = resolve_node(
-                                    binding.resolved.clone(),
+                                    pre.clone(),
                                     env.clone(),
                                     module_name.clone(),
+                                );
+                                let resolved = preserve_nominal_brand_on_resolve(
+                                    pre,
+                                    result.resolved.clone(),
+                                    binding.name.clone(),
+                                    env.source_indices.clone(),
                                 );
                                 Rc::new(BindingsAccum {
                                     bindings: v2_rt::rc_map_insert(
@@ -12438,7 +12446,7 @@ pub fn topo_resolve_types(
                                         ident.clone(),
                                         Rc::new(TypeBinding {
                                             name: name.clone(),
-                                            resolved: result.resolved.clone(),
+                                            resolved: resolved,
                                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                                         }),
                                     ),
@@ -12477,10 +12485,17 @@ pub fn topo_resolve_types(
                 let ident = intern(env.intern_table.clone(), name.clone()).id.clone();
                 match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
                     Some(binding) => {
+                        let pre = binding.resolved.clone();
                         let result = resolve_node(
-                            binding.resolved.clone(),
+                            pre.clone(),
                             env.clone(),
                             module_name.clone(),
+                        );
+                        let resolved = preserve_nominal_brand_on_resolve(
+                            pre,
+                            result.resolved.clone(),
+                            binding.name.clone(),
+                            env.source_indices.clone(),
                         );
                         Rc::new(BindingsAccum {
                             bindings: v2_rt::rc_map_insert(
@@ -12488,7 +12503,7 @@ pub fn topo_resolve_types(
                                 ident.clone(),
                                 Rc::new(TypeBinding {
                                     name: name.clone(),
-                                    resolved: result.resolved.clone(),
+                                    resolved: resolved,
                                     provenance: Rc::new(SubValueRelation::SubValueUnknown),
                                 }),
                             ),
