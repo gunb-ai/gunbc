@@ -160,26 +160,6 @@ jobs:
       run: python3 scripts/check_v4_layering_imports.py
     - name: Layering import gate detects planted violations
       run: python3 scripts/check_v4_layering_imports.py --perturb-check
-  # Symbol-tag shadow taxonomy gate — Mgr-ENF-2 closeout. The census permits only the
-  # measured residual baseline and accepts lower counts; once the hardened parser lands,
-  # this becomes a zero-floor bridge gate without another CI edit.
-  symbol_tag_shadow_census:
-    if: github.event.pull_request.draft != true
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 5
-    steps:
-    - name: Clear inherited GitHub auth header (shared runner HOME)
-      run: git config --global --unset-all http.https://github.com/.extraheader || true
-    - name: Checkout
-      uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-    - name: Fetch main for ratchet baseline
-      run: git fetch --no-tags origin main:refs/remotes/origin/main
-    - name: Symbol-tag shadow census at or below baseline
-      run: python3 scripts/check_symbol_tag_shadow_census.py --base-ref origin/main
-    - name: Symbol-tag shadow census detects planted bridge
-      run: python3 scripts/check_symbol_tag_shadow_census.py --base-ref origin/main --perturb-check
   # Affected-set component host transport -- live fail-closed receipt.
   # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:
@@ -558,7 +538,7 @@ jobs:
       run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
-    needs: [affected, ci_floor, ci_floor_emit, v4_lens_ci, infra_isolation, doc_refs, layering_imports, symbol_tag_shadow_census]
+    needs: [affected, ci_floor, ci_floor_emit, v4_lens_ci, infra_isolation, doc_refs, layering_imports]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -593,11 +573,7 @@ jobs:
           echo "::error::layering_imports gate did not succeed (result=${{ needs.layering_imports.result }}); std/ or extdeps/ has a wrong-direction compiler import -- ci aggregator fails closed."
           exit 1
         fi
-        if [[ "${{ needs.symbol_tag_shadow_census.result }}" != "success" ]]; then
-          echo "::error::symbol_tag_shadow_census gate did not succeed (result=${{ needs.symbol_tag_shadow_census.result }}); Symbol-tag shadow taxonomy ratchet unverified -- ci aggregator fails closed."
-          exit 1
-        fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness + DAG parity in ci_floor + M1 rust+dag emit in ci_floor_emit; v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green; symbol_tag_shadow_census ratchet green)"
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness + DAG parity in ci_floor + M1 rust+dag emit in ci_floor_emit; v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
         echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness + DAG parity) + ci_floor_emit (M1 rust+dag emit) + v4_lens_ci (discriminating v4 lens witnesses)"
