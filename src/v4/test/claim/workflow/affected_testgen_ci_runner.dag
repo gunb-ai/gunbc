@@ -73,12 +73,12 @@ data affected_testgen_graph_root: Node = Node {
 
 
 fn affected_testgen_path_regex_matches(changed: RepoPath, pattern: PathRegex) -> Bool {
-  match pattern {
-    affected_testgen_pattern_generated_witness_validity =>
-      changed == affected_testgen_path_witness_validity
-    affected_testgen_pattern_source_dependency =>
-      changed == affected_testgen_path_source_dependency
-    _ => false
+  if pattern == affected_testgen_pattern_generated_witness_validity {
+    changed == affected_testgen_path_witness_validity
+  } else if pattern == affected_testgen_pattern_source_dependency {
+    changed == affected_testgen_path_source_dependency
+  } else {
+    false
   }
 }
 

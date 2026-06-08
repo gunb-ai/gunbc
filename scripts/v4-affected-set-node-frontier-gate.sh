@@ -225,20 +225,37 @@ project_affected_testgen_row() {
 
 print_affected_testgen_real_diff_evidence() {
   local base_ref="${AFFECTED_TESTGEN_BASE_REF:-origin/${GITHUB_BASE_REF:-main}}"
-  if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
-    echo "::notice title=affected-testgen evidence::base ref ${base_ref} unavailable; skipping real diff evidence"
-    return 0
+  local diff_base=""
+  local diff_label=""
+
+  if git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+    if diff_base="$(git merge-base "$base_ref" HEAD 2>/dev/null)"; then
+      diff_label="${base_ref}...HEAD"
+    fi
+  fi
+
+  if [[ -z "$diff_base" ]]; then
+    if git rev-parse --verify "HEAD^1" >/dev/null 2>&1; then
+      diff_base="HEAD^1"
+      diff_label="HEAD^1..HEAD"
+      echo "::notice title=affected-testgen evidence::base ref ${base_ref} has no merge base; using ${diff_label}"
+    else
+      echo "::notice title=affected-testgen evidence::no usable base ref; skipping real diff evidence"
+      return 0
+    fi
   fi
 
   echo "::group::affected-testgen evidence: real PR diff files"
-  git diff --name-only "${base_ref}...HEAD" -- \
+  echo "diff-range: ${diff_label}"
+  git diff --name-only "$diff_base" HEAD -- \
     scripts/v4-affected-set-node-frontier-gate.sh \
     src/v4/test/claim/workflow/affected_testgen_ci_runner.dag \
     .github/workflows/ci.yml
   echo "::endgroup::"
 
   echo "::group::affected-testgen evidence: real PR changed lines"
-  git diff --unified=0 "${base_ref}...HEAD" -- \
+  echo "diff-range: ${diff_label}"
+  git diff --unified=0 "$diff_base" HEAD -- \
     scripts/v4-affected-set-node-frontier-gate.sh \
     src/v4/test/claim/workflow/affected_testgen_ci_runner.dag \
     .github/workflows/ci.yml \
