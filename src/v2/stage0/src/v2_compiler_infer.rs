@@ -999,6 +999,63 @@ pub fn set_element_types_mismatch(
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
 }
 
+pub fn direct_call_arg_mismatch_diags(
+    value_params: Rc<Vec<Rc<Node>>>,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    call_subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for pair in Rc::new(
+            value_params
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            __result.extend(
+                (*{
+                    let formal_raw = param_node_type_expr(pair.1.clone());
+                    let formal = substitute_generics(
+                        formal_raw.clone(),
+                        call_subst.clone(),
+                        source_indices.clone(),
+                    );
+                    match typed_args.clone().get(pair.0.clone() as usize).cloned() {
+                        Some(ta) => {
+                            let actual = resolved_type(arg_value(ta.clone()));
+                            if set_element_types_mismatch(
+                                formal.clone(),
+                                actual.clone(),
+                                source_indices.clone(),
+                            ) {
+                                Rc::new(vec![type_mismatch_error(
+                                    node_type_shape(formal.clone(), source_indices.clone()),
+                                    node_type_shape(actual.clone(), source_indices.clone()),
+                                    arg_value(ta.clone()).span.clone(),
+                                    module_name.clone(),
+                                )])
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
+                        None => Rc::new(vec![]),
+                    }
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tier2bBt {
     pub bt: Rc<Node>,
@@ -2730,11 +2787,30 @@ pub fn infer_expr(
                         let resolved_type = match sig.clone() {
                             Some(s) => substitute_generics(
                                 s.inferred.clone(),
-                                call_subst,
+                                call_subst.clone(),
                                 scope.type_env.clone().source_indices.clone(),
                             ),
                             None => error_type(),
                         };
+                        let value_params_for_check = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in sig_params.clone().iter().cloned() {
+                                if !param_is_generic_decl(
+                                    p.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    __result.push(p);
+                                }
+                            }
+                            __result
+                        });
+                        let arg_compat_diags = direct_call_arg_mismatch_diags(
+                            value_params_for_check,
+                            typed_args.clone(),
+                            call_subst.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            scope.module_name.clone(),
+                        );
                         Rc::new(InferResult {
                             typed: make_named_expr_node(
                                 func_name.clone(),
@@ -2749,7 +2825,7 @@ pub fn infer_expr(
                                 span.clone(),
                                 node_name_span(texpr.clone()),
                             ),
-                            diagnostics: arg_diags,
+                            diagnostics: v2_rt::concat(arg_diags, arg_compat_diags),
                         })
                     }
                 } else {
