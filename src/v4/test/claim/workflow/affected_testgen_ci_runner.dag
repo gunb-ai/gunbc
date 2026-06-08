@@ -21,7 +21,7 @@ import v4.lens.edit_locus {
 }
 import v4.std.algebra { fold_list, length }
 import v4.std.collection { List }
-import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.runtime { RuntimeValue }
@@ -32,9 +32,13 @@ import v4.std.verification {
   test_claim_evaluation_touches_rerun_frontier,
   test_claim_input
 }
-import v4.std.witness { Holds, Violates, Witness }
-import v4.test.claim.generated.witness_validity {
-  row_witness_validity_constraint_satisfaction_holds
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v4.std.find_witness {
+  PreservationPredicate,
+  preservation_rule_constraint_satisfaction
+}
+import v4.lens.testgen {
+  testgen_emit_witness_validity_claim
 }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 import v4.test.claim.rung_3_4_common { rung34_test_claim_subject }
@@ -50,8 +54,11 @@ data affected_testgen_type_symbol: Symbol = affected_testgen_type_symbol
 data affected_testgen_algebra_symbol: Symbol = affected_testgen_algebra_symbol
 data affected_testgen_descent_symbol: Symbol = affected_testgen_descent_symbol
 data affected_testgen_path_witness_validity: RepoPath = "src/v4/test/claim/generated/witness_validity.dag"
+data affected_testgen_path_source_dependency: RepoPath = "src/v4/test/claim/manual/connective_anchors.dag"
 data affected_testgen_path_unrelated: RepoPath = "src/v4/test/claim/generated/unrelated.dag"
 data affected_testgen_pattern_generated_witness_validity: PathRegex = affected_testgen_pattern_generated_witness_validity
+data affected_testgen_pattern_source_dependency: PathRegex = affected_testgen_pattern_source_dependency
+data affected_testgen_generated_claim_label: String = "witness-validity: constraint-satisfaction holds (positive)"
 
 
 data affected_testgen_graph_root: Node = Node {
@@ -69,6 +76,8 @@ fn affected_testgen_path_regex_matches(changed: RepoPath, pattern: PathRegex) ->
   match pattern {
     affected_testgen_pattern_generated_witness_validity =>
       changed == affected_testgen_path_witness_validity
+    affected_testgen_pattern_source_dependency =>
+      changed == affected_testgen_path_source_dependency
     _ => false
   }
 }
@@ -84,9 +93,19 @@ data affected_testgen_binding: EditLocusBinding = EditLocusBinding {
   locus: stub_empty_conj
 }
 
+data affected_testgen_dependency_binding: EditLocusBinding = EditLocusBinding {
+  pattern: affected_testgen_pattern_source_dependency,
+  locus: stub_empty_conj
+}
+
 
 data affected_testgen_git_diff: GitDiffNameOnly = GitDiffNameOnly {
   changed_paths: [affected_testgen_path_witness_validity]
+}
+
+
+data affected_testgen_dependency_git_diff: GitDiffNameOnly = GitDiffNameOnly {
+  changed_paths: [affected_testgen_path_source_dependency]
 }
 
 
@@ -114,7 +133,24 @@ fn affected_testgen_reading_from_fixture_diff(
     edit_read: affected_testgen_edit_read,
     graph: affected_testgen_claim_tree(),
     git_diff: git_diff,
-    bindings: [affected_testgen_binding]
+    bindings: [affected_testgen_binding, affected_testgen_dependency_binding]
+  )
+}
+
+
+fn affected_testgen_emit_generated_claim() -> Outcome<TestClaim> {
+  testgen_emit_witness_validity_claim(
+    label: affected_testgen_generated_claim_label,
+    source_facts: stub_empty_conj,
+    candidate: stub_empty_conj,
+    predicate: PreservationPredicate {
+      algebra: stub_empty_conj,
+      preservation_rule: preservation_rule_constraint_satisfaction,
+    },
+    witness: StructuralPropertyWitness {
+      property: preservation_rule_constraint_satisfaction,
+      evidence: stub_empty_conj,
+    }
   )
 }
 
@@ -122,7 +158,7 @@ fn affected_testgen_reading_from_fixture_diff(
 fn affected_testgen_generated_claims_for_reading(
   reading: AffectedSetReading
 ) -> List<TestClaim> {
-  match row_witness_validity_constraint_satisfaction_holds {
+  match affected_testgen_emit_generated_claim() {
     Accepted { value: claim, diagnostics: _ } =>
       if test_claim_evaluation_touches_rerun_frontier(c: claim, frontier: reading.affected) {
         [claim]
@@ -136,6 +172,15 @@ fn affected_testgen_generated_claims_for_reading(
 
 fn affected_testgen_selected_claims() -> List<TestClaim> {
   match affected_testgen_reading_from_fixture_diff(git_diff: affected_testgen_git_diff) {
+    Holds { value: reading } =>
+      affected_testgen_generated_claims_for_reading(reading: reading)
+    Violates { diagnostic: _ } => []
+  }
+}
+
+
+fn affected_testgen_dependency_selected_claims() -> List<TestClaim> {
+  match affected_testgen_reading_from_fixture_diff(git_diff: affected_testgen_dependency_git_diff) {
     Holds { value: reading } =>
       affected_testgen_generated_claims_for_reading(reading: reading)
     Violates { diagnostic: _ } => []
@@ -162,8 +207,22 @@ fn affected_testgen_selected_claim_runs_pass(claim: TestClaim) -> Bool {
 }
 
 
+fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
+  match affected_testgen_emit_generated_claim() {
+    Accepted { value: RoundTripClaim { label: label, anchor: _, input: _, classification: _ }, diagnostics: _ } =>
+      label == affected_testgen_generated_claim_label
+    _ => false
+  }
+}
+
+
 fn affected_testgen_selects_one_generated_claim_holds() -> Bool {
   length(xs: affected_testgen_selected_claims()) == 1
+}
+
+
+fn affected_testgen_dependency_diff_selects_generated_claim_holds() -> Bool {
+  length(xs: affected_testgen_dependency_selected_claims()) == 1
 }
 
 
@@ -189,7 +248,9 @@ fn affected_testgen_unrelated_diff_selects_no_claims_holds() -> Bool {
 
 
 fn affected_testgen_fusion_holds() -> Bool {
-  affected_testgen_selects_one_generated_claim_holds()
+  affected_testgen_generator_emits_expected_claim_holds()
+    && affected_testgen_selects_one_generated_claim_holds()
+    && affected_testgen_dependency_diff_selects_generated_claim_holds()
     && affected_testgen_generated_claim_run_passes_holds()
     && affected_testgen_unrelated_diff_selects_no_claims_holds()
 }
@@ -205,10 +266,24 @@ type AffectedTestgenClaimRunRow {
 data affected_testgen_gate_entry: String = "src/v4/test/claim/workflow/affected_testgen_ci_runner.dag"
 
 
+data affected_testgen_gate_row_generator_emits_expected_claim: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
+  label: "affected-testgen generator emits expected witness-validity claim",
+  entry: affected_testgen_gate_entry,
+  function: "affected_testgen_generator_emits_expected_claim_holds"
+}
+
+
 data affected_testgen_gate_row_selects_generated_claim: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
   label: "affected-testgen selects one generated witness-validity claim",
   entry: affected_testgen_gate_entry,
   function: "affected_testgen_selects_one_generated_claim_holds"
+}
+
+
+data affected_testgen_gate_row_dependency_selects_generated_claim: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
+  label: "affected-testgen dependency-path diff selects generated claim",
+  entry: affected_testgen_gate_entry,
+  function: "affected_testgen_dependency_diff_selects_generated_claim_holds"
 }
 
 
@@ -227,10 +302,12 @@ data affected_testgen_gate_row_fusion: AffectedTestgenClaimRunRow = AffectedTest
 
 
 data affected_testgen_claim_run_rows: List<AffectedTestgenClaimRunRow> = [
+  affected_testgen_gate_row_generator_emits_expected_claim,
   affected_testgen_gate_row_selects_generated_claim,
+  affected_testgen_gate_row_dependency_selects_generated_claim,
   affected_testgen_gate_row_generated_claim_runs,
   affected_testgen_gate_row_fusion
 ]
 
 
-data affected_testgen_claim_run_row_count: String = "3"
+data affected_testgen_claim_run_row_count: String = "5"

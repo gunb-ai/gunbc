@@ -223,6 +223,31 @@ project_affected_testgen_row() {
   ' "$root/$affected_testgen_gate_model"
 }
 
+print_affected_testgen_real_diff_evidence() {
+  local base_ref="${AFFECTED_TESTGEN_BASE_REF:-origin/${GITHUB_BASE_REF:-main}}"
+  if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+    echo "::notice title=affected-testgen evidence::base ref ${base_ref} unavailable; skipping real diff evidence"
+    return 0
+  fi
+
+  echo "::group::affected-testgen evidence: real PR diff files"
+  git diff --name-only "${base_ref}...HEAD" -- \
+    scripts/v4-affected-set-node-frontier-gate.sh \
+    src/v4/test/claim/workflow/affected_testgen_ci_runner.dag \
+    .github/workflows/ci.yml
+  echo "::endgroup::"
+
+  echo "::group::affected-testgen evidence: real PR changed lines"
+  git diff --unified=0 "${base_ref}...HEAD" -- \
+    scripts/v4-affected-set-node-frontier-gate.sh \
+    src/v4/test/claim/workflow/affected_testgen_ci_runner.dag \
+    .github/workflows/ci.yml \
+    | sed -n '1,220p'
+  echo "::endgroup::"
+}
+
+print_affected_testgen_real_diff_evidence
+
 expected_affected_testgen_count="$(affected_testgen_dag_string_data affected_testgen_claim_run_row_count)"
 if [[ -z "$expected_affected_testgen_count" ]]; then
   echo "error: missing affected_testgen_claim_run_row_count in $affected_testgen_gate_model" >&2
