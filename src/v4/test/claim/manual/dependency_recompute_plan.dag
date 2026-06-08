@@ -22,22 +22,13 @@ import v4.std.dependency {
 }
 import v4.std.diagnostic { Accepted, None }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
-
-data refinement_subject_symbol: Symbol = refinement_subject_symbol
-data refinement_new_field_symbol: Symbol = refinement_new_field_symbol
-data testclaim_lens_symbol: Symbol = testclaim_lens_symbol
-data boundary_test_lens_symbol: Symbol = boundary_test_lens_symbol
-data target_test_projection_symbol: Symbol = target_test_projection_symbol
-data dependency_recompute_ok: Symbol = dependency_recompute_ok
-data refinement_change_path_symbol: Symbol = refinement_change_path_symbol
-
 data refinement_subject_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: refinement_subject_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },
   children: []
 }
 
 data refinement_new_field_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: refinement_new_field_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^refinement_new_field_symbol } },
   children: []
 }
 
@@ -45,24 +36,24 @@ data refinement_after_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: refinement_new_field_symbol },
+      label: Named { name: ^refinement_new_field_symbol },
       target: refinement_new_field_node
     }
   ]
 }
 
 data testclaim_lens_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: testclaim_lens_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^testclaim_lens_symbol } },
   children: []
 }
 
 data boundary_test_lens_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: boundary_test_lens_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^boundary_test_lens_symbol } },
   children: []
 }
 
 data target_test_projection_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: target_test_projection_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^target_test_projection_symbol } },
   children: []
 }
 
@@ -70,22 +61,22 @@ data dependency_projection_subgraph: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: testclaim_lens_symbol },
+      label: Named { name: ^testclaim_lens_symbol },
       target: testclaim_lens_node
     },
     Edge {
-      label: Named { name: boundary_test_lens_symbol },
+      label: Named { name: ^boundary_test_lens_symbol },
       target: boundary_test_lens_node
     },
     Edge {
-      label: Named { name: target_test_projection_symbol },
+      label: Named { name: ^target_test_projection_symbol },
       target: target_test_projection_node
     }
   ]
 }
 
 data refinement_change_path: Path = Path {
-  steps: [refinement_change_path_symbol]
+  steps: [^refinement_change_path_symbol]
 }
 
 data refinement_change: Change = Change {
@@ -145,5 +136,5 @@ data refinement_affected_set: AffectedSet = AffectedSetProduced {
 data refinement_recompute_plan: RecomputePlan = RecomputePlan {
   affected: refinement_affected_set,
   layers: topological_layers(graph_node: dependency_projection_subgraph),
-  diagnostic: Accepted { value: dependency_recompute_ok, diagnostics: None }
+  diagnostic: Accepted { value: ^dependency_recompute_ok, diagnostics: None }
 }

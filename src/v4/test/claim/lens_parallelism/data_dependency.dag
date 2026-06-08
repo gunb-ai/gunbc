@@ -51,21 +51,12 @@ import v4.test.claim.manual.eval_runtime_mvp {
   eval_mvp2_evaluator_pin,
   eval_mvp2_inferred_tree
 }
-
-data parallelism_root_symbol: Symbol = parallelism_root_symbol
-data parallelism_child_symbol: Symbol = parallelism_child_symbol
-data parallelism_edge_symbol: Symbol = parallelism_edge_symbol
-data parallelism_type_symbol: Symbol = parallelism_type_symbol
-data parallelism_algebra_symbol: Symbol = parallelism_algebra_symbol
-data parallelism_descent_symbol: Symbol = parallelism_descent_symbol
-data parallelism_claim_pass_symbol: Symbol = parallelism_claim_pass_symbol
-data parallelism_claim_fail_symbol: Symbol = parallelism_claim_fail_symbol
-data parallelism_child: Node = claim_atom_node(s: parallelism_child_symbol)
+data parallelism_child: Node = claim_atom_node(s: ^parallelism_child_symbol)
 
 data parallelism_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: parallelism_root_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^parallelism_root_symbol } },
   children: [
-    Edge { label: Named { name: parallelism_edge_symbol }, target: parallelism_child }
+    Edge { label: Named { name: ^parallelism_edge_symbol }, target: parallelism_child }
   ]
 }
 
@@ -78,9 +69,9 @@ data parallelism_dependency: DependencyView = DependencyView {
 
 fn parallelism_claim_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: parallelism_type_symbol,
-    algebra_symbol: parallelism_algebra_symbol,
-    descent_symbol: parallelism_descent_symbol,
+    type_symbol: ^parallelism_type_symbol,
+    algebra_symbol: ^parallelism_algebra_symbol,
+    descent_symbol: ^parallelism_descent_symbol,
   )
 }
 
@@ -124,14 +115,14 @@ data parallelism_data_dependency_claim_passes: Bool = parallelism_data_dependenc
 
 fn parallelism_claim_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: parallelism_claim_pass_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^parallelism_claim_pass_symbol } },
     children: []
   }
 }
 
 fn parallelism_claim_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: parallelism_claim_fail_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^parallelism_claim_fail_symbol } },
     children: []
   }
 }

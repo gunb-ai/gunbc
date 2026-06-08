@@ -99,21 +99,6 @@ import v4.std.witness {
   Violates,
   Witness
 }
-
-
-data eval_mvp2_i64_symbol: Symbol = eval_mvp2_i64_symbol
-data eval_mvp2_algebra_symbol: Symbol = eval_mvp2_algebra_symbol
-data eval_mvp2_witness_symbol: Symbol = eval_mvp2_witness_symbol
-data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
-data eval_mvp2_args_not_two_literals: Symbol = eval_mvp2_args_not_two_literals
-data eval_mvp2_descent_dimension: Symbol = eval_mvp2_descent_dimension
-data eval_mvp2_interpretation_pin: Symbol = eval_mvp2_interpretation_pin
-data eval_mvp2_evaluator_pin: Symbol = eval_mvp2_evaluator_pin
-data eval_mvp2_allocate_literal_sym: Symbol = eval_mvp2_allocate_literal_sym
-data eval_mvp2_call_primitive_sym: Symbol = eval_mvp2_call_primitive_sym
-data eval_mvp2_choose_branch_sym: Symbol = eval_mvp2_choose_branch_sym
-data eval_mvp2_step_loop_sym: Symbol = eval_mvp2_step_loop_sym
-data eval_mvp2_bind_value_sym: Symbol = eval_mvp2_bind_value_sym
 fn eval_mvp2_byte() -> Byte {
   Byte { bits: [true] }
 }
@@ -121,7 +106,7 @@ fn eval_mvp2_byte() -> Byte {
 
 fn eval_mvp2_i64_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: eval_mvp2_i64_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^eval_mvp2_i64_symbol } },
     children: []
   }
 }
@@ -129,7 +114,7 @@ fn eval_mvp2_i64_node() -> Node {
 
 fn eval_mvp2_algebra_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: eval_mvp2_algebra_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^eval_mvp2_algebra_symbol } },
     children: []
   }
 }
@@ -199,7 +184,7 @@ fn eval_mvp2_arg_is_two_literal(value: RuntimeValue) -> Bool {
 
 
 fn eval_mvp2_args_absent_diagnostic() -> Diagnostic {
-  eval_diagnostic(reason: eval_mvp2_args_not_two_literals, node: eval_mvp2_add_subgraph_node)
+  eval_diagnostic(reason: ^eval_mvp2_args_not_two_literals, node: eval_mvp2_add_subgraph_node)
 }
 
 fn eval_mvp2_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
@@ -230,7 +215,7 @@ fn eval_mvp2_call_primitive(
   } else {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: eval_diagnostic(reason: eval_mvp2_args_not_two_literals, node: _node)
+        d: eval_diagnostic(reason: ^eval_mvp2_args_not_two_literals, node: _node)
       )
     }
   }
@@ -303,14 +288,14 @@ fn eval_mvp2_interpretation_algebra() -> InterpretationAlgebra {
 
 
 fn eval_mvp2_diagnostic(n: Node) -> Diagnostic {
-  eval_diagnostic(reason: eval_mvp2_descent_not_derived, node: n)
+  eval_diagnostic(reason: ^eval_mvp2_descent_not_derived, node: n)
 }
 
 
 fn eval_mvp2_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: eval_mvp2_descent_dimension }
+    strict: RankingDimension { measured: ^eval_mvp2_descent_dimension }
   }
 }
 
@@ -330,7 +315,7 @@ fn eval_mvp2_fact_lookup(node: Node) -> Witness<InferredFacts> {
     Holds { value: eval_mvp2_facts_for_node(node: eval_mvp2_add_subgraph_node) }
   } else {
     Violates {
-      diagnostic: eval_diagnostic(reason: eval_mvp2_descent_not_derived, node: node)
+      diagnostic: eval_diagnostic(reason: ^eval_mvp2_descent_not_derived, node: node)
     }
   }
 }
@@ -381,17 +366,17 @@ data witness_eval_mvp2_call_primitive_rejects_bad_args: Bool = match eval_mvp2_c
 
 fn eval_mvp2_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: eval_mvp2_allocate_literal_sym,
-    call_primitive: eval_mvp2_call_primitive_sym,
-    choose_branch: eval_mvp2_choose_branch_sym,
-    step_loop: eval_mvp2_step_loop_sym,
-    bind_value: eval_mvp2_bind_value_sym
+    allocate_literal: ^eval_mvp2_allocate_literal_sym,
+    call_primitive: ^eval_mvp2_call_primitive_sym,
+    choose_branch: ^eval_mvp2_choose_branch_sym,
+    step_loop: ^eval_mvp2_step_loop_sym,
+    bind_value: ^eval_mvp2_bind_value_sym
   }
 }
 
 fn eval_mvp2_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: eval_mvp2_interpretation_pin,
+    runtime_identity: ^eval_mvp2_interpretation_pin,
     interpretation: eval_mvp2_interpretation_algebra(),
     structure_witness: eval_mvp2_interpretation_structure_witness()
   )
@@ -411,7 +396,7 @@ data subject_eval_mvp2_test_claim_route: TestClaimEvalSubject<Node> = eval_test_
   claim: claim_eval_mvp2_test_claim_route,
   context: eval_mvp2_context(),
   tree: eval_mvp2_inferred_tree(),
-  evaluator_pin: eval_mvp2_evaluator_pin
+  evaluator_pin: ^eval_mvp2_evaluator_pin
 )
 
 

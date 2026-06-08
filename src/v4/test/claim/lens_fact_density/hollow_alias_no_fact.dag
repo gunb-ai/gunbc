@@ -16,11 +16,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data hollow_alias_int32_symbol: Symbol = hollow_alias_int32_symbol
-
 data hollow_alias_input: Node = Node {
-  kind: TypeNode { connective: Atom { identity: hollow_alias_int32_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^hollow_alias_int32_symbol } },
   children: []
 }
 

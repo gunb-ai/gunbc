@@ -71,22 +71,9 @@ import v4.std.effects {
   sample_upsert_subject
 }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-
-
-data idempotent_operation_eval_runtime: Symbol = idempotent_operation_eval_runtime
-data idempotent_operation_eval_missing_semantics: Symbol = idempotent_operation_eval_missing_semantics
-data idempotent_operation_eval_allocate_literal: Symbol = idempotent_operation_eval_allocate_literal
-data idempotent_operation_eval_call_primitive: Symbol = idempotent_operation_eval_call_primitive
-data idempotent_operation_eval_choose_branch: Symbol = idempotent_operation_eval_choose_branch
-data idempotent_operation_eval_step_loop: Symbol = idempotent_operation_eval_step_loop
-data idempotent_operation_eval_bind_value: Symbol = idempotent_operation_eval_bind_value
-data idempotent_operation_evaluator_pin: Symbol = idempotent_operation_evaluator_pin
-data idempotent_operation_descent_dimension: Symbol = idempotent_operation_descent_dimension
-
-
 fn idempotent_operation_missing_semantics_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: idempotent_operation_eval_missing_semantics,
+    reason: ^idempotent_operation_eval_missing_semantics,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -136,18 +123,18 @@ fn idempotent_operation_bind_value(
 
 fn idempotent_operation_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: idempotent_operation_eval_allocate_literal,
-    call_primitive: idempotent_operation_eval_call_primitive,
-    choose_branch: idempotent_operation_eval_choose_branch,
-    step_loop: idempotent_operation_eval_step_loop,
-    bind_value: idempotent_operation_eval_bind_value
+    allocate_literal: ^idempotent_operation_eval_allocate_literal,
+    call_primitive: ^idempotent_operation_eval_call_primitive,
+    choose_branch: ^idempotent_operation_eval_choose_branch,
+    step_loop: ^idempotent_operation_eval_step_loop,
+    bind_value: ^idempotent_operation_eval_bind_value
   }
 }
 
 
 fn idempotent_operation_eval_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: idempotent_operation_eval_runtime,
+    runtime_identity: ^idempotent_operation_eval_runtime,
     interpretation: InterpretationAlgebra {
       value: ValueInterpreter {
         allocate_literal: idempotent_operation_allocate_literal
@@ -177,7 +164,7 @@ fn idempotent_operation_inferred_facts(root: Node) -> InferredFacts {
     descent: Holds {
       value: TerminationProof {
         non_increasing: [],
-        strict: RankingDimension { measured: idempotent_operation_descent_dimension }
+        strict: RankingDimension { measured: ^idempotent_operation_descent_dimension }
       }
     }
   )
@@ -203,7 +190,7 @@ fn idempotent_operation_subject_from_claim(claim: TestClaim) -> TestClaimEvalSub
     claim: claim,
     context: idempotent_operation_eval_context(),
     tree: idempotent_operation_inferred_tree(root: input),
-    evaluator_pin: idempotent_operation_evaluator_pin
+    evaluator_pin: ^idempotent_operation_evaluator_pin
   )
 }
 

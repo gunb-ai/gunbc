@@ -57,14 +57,10 @@ import v4.std.verification {
   Boundary,
   manual_claim_anchor
 }
-
-data python_l1_static_claim_bool_true: Symbol = python_l1_static_claim_bool_true
-data python_l1_static_claim_bool_false: Symbol = python_l1_static_claim_bool_false
-
 fn python_l1_static_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: python_l1_static_claim_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: python_l1_static_claim_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^python_l1_static_claim_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^python_l1_static_claim_bool_false } }, children: [] }
   }
 }
 

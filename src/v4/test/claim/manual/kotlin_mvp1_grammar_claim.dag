@@ -31,13 +31,10 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data kotlin_claim_bool_true: Symbol = kotlin_claim_bool_true
-data kotlin_claim_bool_false: Symbol = kotlin_claim_bool_false
 fn kotlin_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: kotlin_claim_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: kotlin_claim_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^kotlin_claim_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^kotlin_claim_bool_false } }, children: [] }
   }
 }
 

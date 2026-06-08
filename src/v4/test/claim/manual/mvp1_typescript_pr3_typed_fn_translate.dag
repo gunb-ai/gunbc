@@ -66,16 +66,7 @@ import v4.std.verification {
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
-
-data mvp1_ts_pr3_grounding_miss: Symbol = mvp1_ts_pr3_grounding_miss
-data mvp1_ts_pr3_emit_source_mismatch: Symbol = mvp1_ts_pr3_emit_source_mismatch
-data mvp1_ts_pr3_compile_source_mismatch: Symbol = mvp1_ts_pr3_compile_source_mismatch
-
-data mvp1_ts_pr3_g3_grammar_inverse_production: Symbol = ts_production_pr3_typed_fn_decl
-data mvp1_ts_pr3_g3_type_annotation_production: Symbol = ts_production_wave2a_type_annotation
-data mvp1_ts_pr3_g3_typed_param_production: Symbol = ts_production_pr3_typed_param
-
-data mvp1_ts_pr3_emitted_root: Node = ts_pr3_identity_typed_fn_emitted()
+ata mvp1_ts_pr3_emitted_root: Node = ts_pr3_identity_typed_fn_emitted()
 
 fn mvp1_ts_pr3_target_model_for_emit() -> Witness<TargetModel> {
   ts_pr3_identity_target_model_witness()
@@ -121,7 +112,7 @@ fn mvp1_ts_pr3_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding
   } else {
     Violates {
       diagnostic: Diagnostic {
-        reason: mvp1_ts_pr3_grounding_miss,
+        reason: ^mvp1_ts_pr3_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
@@ -188,7 +179,7 @@ fn mvp1_ts_pr3_emit_claim_outcome() -> Outcome<Node> {
         Rejected {
           diagnostics: diagnostics_singleton(
             d: Diagnostic {
-              reason: mvp1_ts_pr3_emit_source_mismatch,
+              reason: ^mvp1_ts_pr3_emit_source_mismatch,
               at: node_locus(node: mvp1_ts_pr3_emitted_root),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
@@ -210,7 +201,7 @@ fn mvp1_ts_pr3_compile_inferred_claim_outcome() -> Outcome<Node> {
             Rejected {
               diagnostics: diagnostics_singleton(
                 d: Diagnostic {
-                  reason: mvp1_ts_pr3_compile_source_mismatch,
+                  reason: ^mvp1_ts_pr3_compile_source_mismatch,
                   at: node_locus(node: mvp1_ts_pr3_emitted_root),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 }
@@ -221,7 +212,7 @@ fn mvp1_ts_pr3_compile_inferred_claim_outcome() -> Outcome<Node> {
           Rejected {
             diagnostics: diagnostics_singleton(
               d: Diagnostic {
-                reason: mvp1_ts_pr3_compile_source_mismatch,
+                reason: ^mvp1_ts_pr3_compile_source_mismatch,
                 at: node_locus(node: mvp1_ts_pr3_emitted_root),
                 correction: Unavailable { reason: ExternalContractUnknown }
               }

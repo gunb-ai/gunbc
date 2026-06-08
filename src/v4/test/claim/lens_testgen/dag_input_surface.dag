@@ -45,14 +45,6 @@ import v4.test.claim.manual.connective_anchors {
   stub_empty_disj,
   stub_empty_transform
 }
-
-
-data lens_testgen_dag_input_surface_ok: Symbol = lens_testgen_dag_input_surface_ok
-data lens_testgen_dag_input_surface_failed: Symbol = lens_testgen_dag_input_surface_failed
-data lens_testgen_dag_generator_surface_ok: Symbol = lens_testgen_dag_generator_surface_ok
-data lens_testgen_dag_generator_surface_failed: Symbol = lens_testgen_dag_generator_surface_failed
-
-
 fn lens_testgen_marker_node(marker: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: marker } },
@@ -149,18 +141,18 @@ fn bootstrap_generator_has_conj_dag_input_surface() -> Bool {
 
 fn lens_testgen_dag_input_surface_rhs() -> Node {
   if scheduled_language_behavior_generators_cover_dag_inputs() {
-    lens_testgen_marker_node(marker: lens_testgen_dag_input_surface_ok)
+    lens_testgen_marker_node(marker: ^lens_testgen_dag_input_surface_ok)
   } else {
-    lens_testgen_marker_node(marker: lens_testgen_dag_input_surface_failed)
+    lens_testgen_marker_node(marker: ^lens_testgen_dag_input_surface_failed)
   }
 }
 
 
 fn lens_testgen_dag_generator_surface_rhs() -> Node {
   if bootstrap_generator_has_conj_dag_input_surface() {
-    lens_testgen_marker_node(marker: lens_testgen_dag_generator_surface_ok)
+    lens_testgen_marker_node(marker: ^lens_testgen_dag_generator_surface_ok)
   } else {
-    lens_testgen_marker_node(marker: lens_testgen_dag_generator_surface_failed)
+    lens_testgen_marker_node(marker: ^lens_testgen_dag_generator_surface_failed)
   }
 }
 
@@ -168,7 +160,7 @@ fn lens_testgen_dag_generator_surface_rhs() -> Node {
 data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim {
   label: "lens_testgen/dag_input_surface: scheduled LBE generators include .dag input surface",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: lens_testgen_marker_node(marker: lens_testgen_dag_input_surface_ok),
+  lhs: lens_testgen_marker_node(marker: ^lens_testgen_dag_input_surface_ok),
   rhs: lens_testgen_dag_input_surface_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -177,7 +169,7 @@ data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim {
 data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim {
   label: "lens_testgen/dag_input_surface: bootstrap generator reifies .dag input surface",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: lens_testgen_marker_node(marker: lens_testgen_dag_generator_surface_ok),
+  lhs: lens_testgen_marker_node(marker: ^lens_testgen_dag_generator_surface_ok),
   rhs: lens_testgen_dag_generator_surface_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

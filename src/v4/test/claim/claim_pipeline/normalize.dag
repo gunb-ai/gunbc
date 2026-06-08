@@ -20,18 +20,10 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-
-data spine_normalize_module: Symbol = spine_normalize_module
 data spine_normalize_module_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: spine_normalize_module } },
+  kind: TypeNode { connective: Atom { identity: ^spine_normalize_module } },
   children: []
 }
-data spine_normalize_pass: Symbol = spine_normalize_pass
-data spine_normalize_fail: Symbol = spine_normalize_fail
-data spine_normalize_service_decl: Symbol = spine_normalize_service_decl
-
-
 fn spine_normalize_service_parse_tree() -> Node {
   Node {
     kind: TypeNode {
@@ -39,7 +31,7 @@ fn spine_normalize_service_parse_tree() -> Node {
     },
     children: [
       Edge {
-        label: Named { name: spine_normalize_service_decl },
+        label: Named { name: ^spine_normalize_service_decl },
         target: Node {
           kind: TypeNode { connective: Conj },
           children: []
@@ -64,12 +56,12 @@ fn spine_normalize_bool_atom(b: Bool) -> Node {
   match b {
     true =>
       Node {
-        kind: TypeNode { connective: Atom { identity: spine_normalize_pass } },
+        kind: TypeNode { connective: Atom { identity: ^spine_normalize_pass } },
         children: []
       }
     false =>
       Node {
-        kind: TypeNode { connective: Atom { identity: spine_normalize_fail } },
+        kind: TypeNode { connective: Atom { identity: ^spine_normalize_fail } },
         children: []
       }
   }

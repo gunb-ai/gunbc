@@ -51,9 +51,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data ts_sg2_pass_sym: Symbol = ts_sg2_pass_sym
-data ts_sg2_fail_sym: Symbol = ts_sg2_fail_sym
 data ts_sg2_fail_text: String = ""
 data ts_sg2_expected_instantiation_text: String = "FooBar<X, Y>"
 data ts_sg2_expected_arrow_text: String = "(X) => Y"
@@ -63,14 +60,14 @@ data ts_sg2_expected_disj_text: String = "X | Y"
 
 fn ts_sg2_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ts_sg2_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^ts_sg2_pass_sym } },
     children: []
   }
 }
 
 fn ts_sg2_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ts_sg2_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^ts_sg2_fail_sym } },
     children: []
   }
 }

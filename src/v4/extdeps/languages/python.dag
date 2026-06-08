@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/python.dag
 // Scope: Python 3.14 Reference primitive fact-bundles + T-11 MVP-1 grammar-data target model.
-// Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonGrammarRelationRow, PythonLanguageModel, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_language_model_surface_id, python_surface_spelling_int, python_surface_spelling_float, python_surface_spelling_complex, python_surface_spelling_bool, python_surface_spelling_none, python_surface_spelling_notimplemented, python_surface_spelling_ellipsis, python_std_projection_int, python_std_projection_float, python_std_projection_complex, python_std_projection_bool, python_std_projection_none, python_std_projection_notimplemented, python_std_projection_ellipsis, python_repr_int_arbitrary_precision, python_repr_float_machine_double_precision, python_repr_complex_pair_machine_double_precision, python_repr_bool_int_subtype, python_repr_singleton_sole_inhabitant, python_facts_field_surface_spelling, python_facts_field_encoding, python_facts_field_machine_representation, python_facts_field_component_machine_representation, python_facts_field_std_projection, python_facts_field_singleton_kind, python_inhabitant_int, python_inhabitant_float, python_inhabitant_field_atom, python_inhabitant_field_facts, python_inhabitant_field_int, python_inhabitant_field_float, python_witness_int_ordered_ring_arbitrary_precision, python_witness_float_approximate_field, python_witness_bool_boolean_algebra, python_token_kw_def, python_token_kw_return, python_token_kw_if, python_token_ident, python_token_int_literal, python_token_colon, python_token_rparen_suite_indent, python_token_colon_if_suite_indent, python_token_newline_if_stmt, python_token_newline_return_outer, python_token_newline_return_inner, python_token_lparen, python_token_rparen, python_token_comma, python_token_equal, python_token_plus, python_token_greater, python_production_mvp1_fn_add, python_production_fn_def, python_production_suite, python_production_stmt, python_production_assign_stmt, python_production_if_stmt, python_production_return_stmt, python_production_comparison, python_production_additive, python_production_primary, python_production_additive_tail, python_production_comparison_tail, python_formal_epsilon_shim_terminal, python_surface_fn_item, python_surface_suite, python_surface_stmt, python_surface_assign_stmt, python_surface_if_stmt, python_surface_return_stmt, python_surface_comparison, python_surface_additive, python_surface_primary, python_surface_additive_tail, python_surface_comparison_tail, python_mvp1_parse_fixture_file, python_binding_fn_add, python_binding_param_x, python_binding_param_y, python_relation_rule_mvp1_fn_add, python_mvp1_source_literal, python_mvp1_source_text_field, python_mvp1_source_grammar_field, python_mvp1_source_text, python_mvp1_concrete_tokens, python_facts_int, python_facts_float, python_facts_complex, python_facts_bool, python_facts_none, python_facts_notimplemented, python_facts_ellipsis, python_integer_facts_catalog, python_float_facts_catalog, python_complex_facts_catalog, python_bool_facts_catalog, python_singleton_facts_catalog, py_bool_grounding, python_inhabitant_atom, python_named_edge, python_integer_facts_node, python_float_facts_node, python_complex_facts_node, python_bool_facts_node, python_singleton_facts_node, python_g1_2_fact_bundle_key, python_g1_2_fact_bundle_entry, python_g1_2_fact_bundle_entries, python_g1_2_fact_bundle_registry, python_g1_2_primitive_fact_bundles, python_integer_algebra_witness_node, python_float_algebra_witness_node, python_bool_algebra_witness_node, python_integer_algebra_inhabitance, python_float_algebra_inhabitance, python_bool_algebra_inhabitance, python_integer_algebra_inhabitance_decls, python_float_algebra_inhabitance_decls, python_bool_algebra_inhabitance_decls, python_model_core_inhabitance_decls, python_model_core_wave1, python_inhabitant_node, python_int_inhabitant_node, python_float_inhabitant_node, python_declared_inhabitants_root, python_mvp1_selection_policy_node, python_mvp1_emitted_add_fn_node, python_concrete_token_node, python_positional_token_edge, python_positional_edges_from_token_classes, python_mvp1_serialize_source_children, python_mvp1_serialize_source_node, python_formal_rhs_from_token_classes, python_formal_symbol_to_grammar_expr, python_formal_epsilon_grammar_expr, PythonFormalRhsToExprState, python_formal_rhs_to_grammar_expr, PythonFormalAltChoiceState, python_formal_alternatives_to_choice_expr, python_formal_rhs_alternatives_accum_empty, python_formal_collect_rhs_alternative, python_formal_rhs_alternatives_from_productions, python_formal_productions_to_grammar_expr, python_formal_production_alts, python_formal_productions_to_grammar_production, python_formal_production_mvp1_fn_add, python_wave1_formal_productions, python_grammar_production_mvp1_fn_add, python_mvp1_grammar_relation_row, python_relation_token_edges, python_grammar_relation_row_node, python_mvp1_translation_rules_node, python_mvp1_target_model_node, python_mvp1_binding_spellings, python_mvp1_target_model, python_lex_rule, python_ident_lex_pattern, python_ident_lex_rule, python_nonzero_digit_char_pattern, python_decimal_int_literal_pattern, python_int_literal_lex_rule, python_wave1_lex_rules, python_wave1_lex, python_grammar_atom, python_wave1_grammar_root, python_wave1_grammar, python_wave1_lex_token_symbol, python_catalog_surface_spelling_eq, python_catalog_surface_fold_false, python_integer_catalog_surface_step, python_integer_catalog_surface_symbol, python_float_catalog_surface_step, python_float_catalog_surface_symbol, python_complex_catalog_surface_step, python_complex_catalog_surface_symbol, python_bool_catalog_surface_step, python_bool_catalog_surface_symbol, python_singleton_catalog_surface_step, python_singleton_catalog_surface_symbol, python_catalog_surface_symbol, python_language_model_canonical_symbols, python_language_model_wave1
+// Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonGrammarRelationRow, PythonLanguageModel, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, ^python_language_model_surface_id, ^python_surface_spelling_int, ^python_surface_spelling_float, ^python_surface_spelling_complex, ^python_surface_spelling_bool, ^python_surface_spelling_none, ^python_surface_spelling_notimplemented, ^python_surface_spelling_ellipsis, ^python_std_projection_int, ^python_std_projection_float, ^python_std_projection_complex, ^python_std_projection_bool, ^python_std_projection_none, ^python_std_projection_notimplemented, ^python_std_projection_ellipsis, ^python_repr_int_arbitrary_precision, ^python_repr_float_machine_double_precision, ^python_repr_complex_pair_machine_double_precision, ^python_repr_bool_int_subtype, ^python_repr_singleton_sole_inhabitant, ^python_facts_field_surface_spelling, ^python_facts_field_encoding, ^python_facts_field_machine_representation, ^python_facts_field_component_machine_representation, ^python_facts_field_std_projection, ^python_facts_field_singleton_kind, ^python_inhabitant_int, ^python_inhabitant_float, ^python_inhabitant_field_atom, ^python_inhabitant_field_facts, ^python_inhabitant_field_int, ^python_inhabitant_field_float, ^python_witness_int_ordered_ring_arbitrary_precision, ^python_witness_float_approximate_field, ^python_witness_bool_boolean_algebra, ^python_token_kw_def, ^python_token_kw_return, ^python_token_kw_if, ^python_token_ident, ^python_token_int_literal, ^python_token_colon, ^python_token_rparen_suite_indent, ^python_token_colon_if_suite_indent, ^python_token_newline_if_stmt, ^python_token_newline_return_outer, ^python_token_newline_return_inner, ^python_token_lparen, ^python_token_rparen, ^python_token_comma, ^python_token_equal, ^python_token_plus, ^python_token_greater, ^python_production_mvp1_fn_add, ^python_production_fn_def, ^python_production_suite, ^python_production_stmt, ^python_production_assign_stmt, ^python_production_if_stmt, ^python_production_return_stmt, ^python_production_comparison, ^python_production_additive, ^python_production_primary, ^python_production_additive_tail, ^python_production_comparison_tail, ^python_formal_epsilon_shim_terminal, ^python_surface_fn_item, ^python_surface_suite, ^python_surface_stmt, ^python_surface_assign_stmt, ^python_surface_if_stmt, ^python_surface_return_stmt, ^python_surface_comparison, ^python_surface_additive, ^python_surface_primary, ^python_surface_additive_tail, ^python_surface_comparison_tail, ^python_mvp1_parse_fixture_file, ^python_binding_fn_add, ^python_binding_param_x, ^python_binding_param_y, ^python_relation_rule_mvp1_fn_add, ^python_mvp1_source_literal, ^serialize_source_field_source_text, ^serialize_source_field_source_grammar, python_mvp1_source_text, python_mvp1_concrete_tokens, python_facts_int, python_facts_float, python_facts_complex, python_facts_bool, python_facts_none, python_facts_notimplemented, python_facts_ellipsis, python_integer_facts_catalog, python_float_facts_catalog, python_complex_facts_catalog, python_bool_facts_catalog, python_singleton_facts_catalog, py_bool_grounding, python_inhabitant_atom, python_named_edge, python_integer_facts_node, python_float_facts_node, python_complex_facts_node, python_bool_facts_node, python_singleton_facts_node, python_g1_2_fact_bundle_key, python_g1_2_fact_bundle_entry, python_g1_2_fact_bundle_entries, python_g1_2_fact_bundle_registry, python_g1_2_primitive_fact_bundles, python_integer_algebra_witness_node, python_float_algebra_witness_node, python_bool_algebra_witness_node, python_integer_algebra_inhabitance, python_float_algebra_inhabitance, python_bool_algebra_inhabitance, python_integer_algebra_inhabitance_decls, python_float_algebra_inhabitance_decls, python_bool_algebra_inhabitance_decls, python_model_core_inhabitance_decls, python_model_core_wave1, python_inhabitant_node, python_int_inhabitant_node, python_float_inhabitant_node, python_declared_inhabitants_root, python_mvp1_selection_policy_node, python_mvp1_emitted_add_fn_node, python_concrete_token_node, python_positional_token_edge, python_positional_edges_from_token_classes, python_mvp1_serialize_source_children, python_mvp1_serialize_source_node, python_formal_rhs_from_token_classes, python_formal_symbol_to_grammar_expr, python_formal_epsilon_grammar_expr, PythonFormalRhsToExprState, python_formal_rhs_to_grammar_expr, PythonFormalAltChoiceState, python_formal_alternatives_to_choice_expr, python_formal_rhs_alternatives_accum_empty, python_formal_collect_rhs_alternative, python_formal_rhs_alternatives_from_productions, python_formal_productions_to_grammar_expr, python_formal_production_alts, python_formal_productions_to_grammar_production, python_formal_production_mvp1_fn_add, python_wave1_formal_productions, python_grammar_production_mvp1_fn_add, python_mvp1_grammar_relation_row, python_relation_token_edges, python_grammar_relation_row_node, python_mvp1_translation_rules_node, python_mvp1_target_model_node, python_mvp1_binding_spellings, python_mvp1_target_model, python_lex_rule, python_ident_lex_pattern, python_ident_lex_rule, python_nonzero_digit_char_pattern, python_decimal_int_literal_pattern, python_int_literal_lex_rule, python_wave1_lex_rules, python_wave1_lex, python_grammar_atom, python_wave1_grammar_root, python_wave1_grammar, python_wave1_lex_token_symbol, python_catalog_surface_spelling_eq, python_catalog_surface_fold_false, python_integer_catalog_surface_step, python_integer_catalog_surface_symbol, python_float_catalog_surface_step, python_float_catalog_surface_symbol, python_complex_catalog_surface_step, python_complex_catalog_surface_symbol, python_bool_catalog_surface_step, python_bool_catalog_surface_symbol, python_singleton_catalog_surface_step, python_singleton_catalog_surface_symbol, python_catalog_surface_symbol, python_language_model_canonical_symbols, python_language_model_wave1
 // Consumes: v4.std.model_core (ModelCore + axis symbols), v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra.
 // Status: T-4 python slice + T-4.17 wave-2a lex/grammar — Python Reference primitives; ModelCore inhabitance for int/float/bool; complex inhabitance deferred; laws/effects/partiality empty (wave-2b); 🟡 gated feature:T-6-token-layout-trivia-policy + feature:python-wave2a-decimal-int-literal (decimal 0|[1-9][0-9]* only; not 0b/0o/0x/underscores); canonical_symbols via catalog + wave-1 lex/grammar/MVP; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.python.org/3.14/reference/datamodel.html
@@ -176,171 +176,71 @@ type PythonSingletonPrimitiveFacts {
   kind: PythonSingletonKind
   std_projection: Symbol
 }
-
-data python_language_model_surface_id: Symbol = python_language_model_surface_id
-
-data python_surface_spelling_int: Symbol = python_surface_spelling_int
-data python_surface_spelling_float: Symbol = python_surface_spelling_float
-data python_surface_spelling_complex: Symbol = python_surface_spelling_complex
-data python_surface_spelling_bool: Symbol = python_surface_spelling_bool
-data python_surface_spelling_none: Symbol = python_surface_spelling_none
-data python_surface_spelling_notimplemented: Symbol = python_surface_spelling_notimplemented
-data python_surface_spelling_ellipsis: Symbol = python_surface_spelling_ellipsis
-
-data python_std_projection_int: Symbol = python_std_projection_int
-data python_std_projection_float: Symbol = python_std_projection_float
-data python_std_projection_complex: Symbol = python_std_projection_complex
-data python_std_projection_bool: Symbol = python_std_projection_bool
-data python_std_projection_none: Symbol = python_std_projection_none
-data python_std_projection_notimplemented: Symbol = python_std_projection_notimplemented
-data python_std_projection_ellipsis: Symbol = python_std_projection_ellipsis
-
-data python_repr_int_arbitrary_precision: Symbol = python_repr_int_arbitrary_precision
-data python_repr_float_machine_double_precision: Symbol = python_repr_float_machine_double_precision
-data python_repr_complex_pair_machine_double_precision: Symbol = python_repr_complex_pair_machine_double_precision
-data python_repr_bool_int_subtype: Symbol = python_repr_bool_int_subtype
-data python_repr_singleton_sole_inhabitant: Symbol = python_repr_singleton_sole_inhabitant
-
-data python_facts_field_surface_spelling: Symbol = python_facts_field_surface_spelling
-data python_facts_field_encoding: Symbol = python_facts_field_encoding
-data python_facts_field_machine_representation: Symbol = python_facts_field_machine_representation
-data python_facts_field_component_machine_representation: Symbol = python_facts_field_component_machine_representation
-data python_facts_field_std_projection: Symbol = python_facts_field_std_projection
-data python_facts_field_singleton_kind: Symbol = python_facts_field_singleton_kind
-
-data python_inhabitant_int: Symbol = python_inhabitant_int
-data python_inhabitant_float: Symbol = python_inhabitant_float
-data python_inhabitant_field_atom: Symbol = python_inhabitant_field_atom
-data python_inhabitant_field_facts: Symbol = python_inhabitant_field_facts
-data python_inhabitant_field_int: Symbol = python_inhabitant_field_int
-data python_inhabitant_field_float: Symbol = python_inhabitant_field_float
-
-data python_witness_int_ordered_ring_arbitrary_precision: Symbol = python_witness_int_ordered_ring_arbitrary_precision
-data python_witness_float_approximate_field: Symbol = python_witness_float_approximate_field
-data python_witness_bool_boolean_algebra: Symbol = python_witness_bool_boolean_algebra
-
-// Leaf-model Layer-A — derived fact exposure + PLANNED SG-1 slot (mirror rust.dag:809–813).
+f-model Layer-A — derived fact exposure + PLANNED SG-1 slot (mirror rust.dag:809–813).
 data python_integer_algebra_inhabitance_python_facts_int: AlgebraInhabitanceDecl = python_integer_algebra_inhabitance(facts: python_facts_int)
-data python_atom_realization_symbol: Symbol = python_atom_realization_symbol
-data python_atom_realization_symbol_node: Node = python_inhabitant_atom(id: python_atom_realization_symbol)
-
-data python_token_kw_def: Symbol = python_token_kw_def
-data python_token_kw_return: Symbol = python_token_kw_return
-data python_token_kw_if: Symbol = python_token_kw_if
-data python_token_ident: Symbol = python_token_ident
-data python_token_int_literal: Symbol = python_token_int_literal
-data python_token_colon: Symbol = python_token_colon
-data python_token_rparen_suite_indent: Symbol = python_token_rparen_suite_indent
-data python_token_colon_if_suite_indent: Symbol = python_token_colon_if_suite_indent
-data python_token_newline_if_stmt: Symbol = python_token_newline_if_stmt
-data python_token_newline_return_outer: Symbol = python_token_newline_return_outer
-data python_token_newline_return_inner: Symbol = python_token_newline_return_inner
-data python_token_lparen: Symbol = python_token_lparen
-data python_token_rparen: Symbol = python_token_rparen
-data python_token_comma: Symbol = python_token_comma
-data python_token_equal: Symbol = python_token_equal
-data python_token_plus: Symbol = python_token_plus
-data python_token_greater: Symbol = python_token_greater
-data python_production_mvp1_fn_add: Symbol = python_production_mvp1_fn_add
-data python_production_fn_def: Symbol = python_production_fn_def
-data python_production_suite: Symbol = python_production_suite
-data python_production_stmt: Symbol = python_production_stmt
-data python_production_assign_stmt: Symbol = python_production_assign_stmt
-data python_production_if_stmt: Symbol = python_production_if_stmt
-data python_production_return_stmt: Symbol = python_production_return_stmt
-data python_production_comparison: Symbol = python_production_comparison
-data python_production_additive: Symbol = python_production_additive
-data python_production_primary: Symbol = python_production_primary
-data python_production_additive_tail: Symbol = python_production_additive_tail
-data python_production_comparison_tail: Symbol = python_production_comparison_tail
+data python_atom_realization_symbol_node: Node = python_inhabitant_atom(id: ^python_atom_realization_symbol)
 // 🟡 gated — feature:python-formal-epsilon-shim-terminal — bind TASKS.md T-7 / CP-1b —
 // dissolve-on: std/grammar canonical epsilon carrier; empty FormalProduction.rhs lowers
 // without fabricated parse-only token_class.
-data python_formal_epsilon_shim_terminal: Symbol = python_formal_epsilon_shim_terminal
-data python_surface_fn_item: Symbol = python_surface_fn_item
-data python_surface_suite: Symbol = python_surface_suite
-data python_surface_stmt: Symbol = python_surface_stmt
-data python_surface_assign_stmt: Symbol = python_surface_assign_stmt
-data python_surface_if_stmt: Symbol = python_surface_if_stmt
-data python_surface_return_stmt: Symbol = python_surface_return_stmt
-data python_surface_comparison: Symbol = python_surface_comparison
-data python_surface_additive: Symbol = python_surface_additive
-data python_surface_primary: Symbol = python_surface_primary
-data python_surface_additive_tail: Symbol = python_surface_additive_tail
-data python_surface_comparison_tail: Symbol = python_surface_comparison_tail
-data python_mvp1_parse_fixture_file: Symbol = python_mvp1_parse_fixture_file
-data python_binding_fn_add: Symbol = python_binding_fn_add
-data python_binding_param_x: Symbol = python_binding_param_x
-data python_binding_param_y: Symbol = python_binding_param_y
-data python_relation_rule_mvp1_fn_add: Symbol = python_relation_rule_mvp1_fn_add
-data python_inhabitant_field_mvp1_add_fn: Symbol = python_inhabitant_field_mvp1_add_fn
-data python_coercion_field_int_inhabitant_atom: Symbol = python_coercion_field_int_inhabitant_atom
-data python_coercion_field_int_facts: Symbol = python_coercion_field_int_facts
-data python_coercion_field_int_spelling: Symbol = python_coercion_field_int_spelling
-data python_coercion_field_int_encoding: Symbol = python_coercion_field_int_encoding
-data python_coercion_field_int_std_projection: Symbol = python_coercion_field_int_std_projection
-data python_mvp1_source_literal: Symbol = python_mvp1_source_literal
-data python_mvp1_source_text_field: Symbol = serialize_source_field_source_text
-data python_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data python_mvp1_source_text: String = "def add(x, y): return x + y"
 
 fn python_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: python_token_kw_def },
-    BoundToken { token_class: python_token_ident, binding: python_binding_fn_add },
-    FixedToken { token_class: python_token_lparen },
-    BoundToken { token_class: python_token_ident, binding: python_binding_param_x },
-    FixedToken { token_class: python_token_comma },
-    BoundToken { token_class: python_token_ident, binding: python_binding_param_y },
-    FixedToken { token_class: python_token_rparen },
-    FixedToken { token_class: python_token_colon },
-    FixedToken { token_class: python_token_kw_return },
-    BoundToken { token_class: python_token_ident, binding: python_binding_param_x },
-    FixedToken { token_class: python_token_plus },
-    BoundToken { token_class: python_token_ident, binding: python_binding_param_y }
+    FixedToken { token_class: ^python_token_kw_def },
+    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_fn_add },
+    FixedToken { token_class: ^python_token_lparen },
+    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
+    FixedToken { token_class: ^python_token_comma },
+    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y },
+    FixedToken { token_class: ^python_token_rparen },
+    FixedToken { token_class: ^python_token_colon },
+    FixedToken { token_class: ^python_token_kw_return },
+    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
+    FixedToken { token_class: ^python_token_plus },
+    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y }
   ]
 }
 
 data python_facts_int: PythonIntegerPrimitiveFacts = PythonIntegerPrimitiveFacts {
-  surface_spelling: python_surface_spelling_int,
-  encoding: python_repr_int_arbitrary_precision,
-  std_projection: python_std_projection_int
+  surface_spelling: ^python_surface_spelling_int,
+  encoding: ^python_repr_int_arbitrary_precision,
+  std_projection: ^python_std_projection_int
 }
 
 data python_facts_float: PythonFloatPrimitiveFacts = PythonFloatPrimitiveFacts {
-  surface_spelling: python_surface_spelling_float,
-  machine_representation: python_repr_float_machine_double_precision,
-  std_projection: python_std_projection_float
+  surface_spelling: ^python_surface_spelling_float,
+  machine_representation: ^python_repr_float_machine_double_precision,
+  std_projection: ^python_std_projection_float
 }
 
 data python_facts_complex: PythonComplexPrimitiveFacts = PythonComplexPrimitiveFacts {
-  surface_spelling: python_surface_spelling_complex,
-  component_machine_representation: python_repr_complex_pair_machine_double_precision,
-  std_projection: python_std_projection_complex
+  surface_spelling: ^python_surface_spelling_complex,
+  component_machine_representation: ^python_repr_complex_pair_machine_double_precision,
+  std_projection: ^python_std_projection_complex
 }
 
 data python_facts_bool: PythonBoolPrimitiveFacts = PythonBoolPrimitiveFacts {
-  surface_spelling: python_surface_spelling_bool,
-  encoding: python_repr_bool_int_subtype,
-  std_projection: python_std_projection_bool
+  surface_spelling: ^python_surface_spelling_bool,
+  encoding: ^python_repr_bool_int_subtype,
+  std_projection: ^python_std_projection_bool
 }
 
 data python_facts_none: PythonSingletonPrimitiveFacts = PythonSingletonPrimitiveFacts {
-  surface_spelling: python_surface_spelling_none,
+  surface_spelling: ^python_surface_spelling_none,
   kind: NoneT,
-  std_projection: python_std_projection_none
+  std_projection: ^python_std_projection_none
 }
 
 data python_facts_notimplemented: PythonSingletonPrimitiveFacts = PythonSingletonPrimitiveFacts {
-  surface_spelling: python_surface_spelling_notimplemented,
+  surface_spelling: ^python_surface_spelling_notimplemented,
   kind: NotImplementedT,
-  std_projection: python_std_projection_notimplemented
+  std_projection: ^python_std_projection_notimplemented
 }
 
 data python_facts_ellipsis: PythonSingletonPrimitiveFacts = PythonSingletonPrimitiveFacts {
-  surface_spelling: python_surface_spelling_ellipsis,
+  surface_spelling: ^python_surface_spelling_ellipsis,
   kind: EllipsisT,
-  std_projection: python_std_projection_ellipsis
+  std_projection: ^python_std_projection_ellipsis
 }
 
 data python_integer_facts_catalog: List<PythonIntegerPrimitiveFacts> = [
@@ -384,15 +284,15 @@ fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: python_facts_field_surface_spelling,
+        name: ^python_facts_field_surface_spelling,
         target: python_inhabitant_atom(id: facts.surface_spelling)
       ),
       python_named_edge(
-        name: python_facts_field_encoding,
+        name: ^python_facts_field_encoding,
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: python_facts_field_std_projection,
+        name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ]
@@ -404,15 +304,15 @@ fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: python_facts_field_surface_spelling,
+        name: ^python_facts_field_surface_spelling,
         target: python_inhabitant_atom(id: facts.surface_spelling)
       ),
       python_named_edge(
-        name: python_facts_field_machine_representation,
+        name: ^python_facts_field_machine_representation,
         target: python_inhabitant_atom(id: facts.machine_representation)
       ),
       python_named_edge(
-        name: python_facts_field_std_projection,
+        name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ]
@@ -424,15 +324,15 @@ fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: python_facts_field_surface_spelling,
+        name: ^python_facts_field_surface_spelling,
         target: python_inhabitant_atom(id: facts.surface_spelling)
       ),
       python_named_edge(
-        name: python_facts_field_component_machine_representation,
+        name: ^python_facts_field_component_machine_representation,
         target: python_inhabitant_atom(id: facts.component_machine_representation)
       ),
       python_named_edge(
-        name: python_facts_field_std_projection,
+        name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ]
@@ -444,15 +344,15 @@ fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: python_facts_field_surface_spelling,
+        name: ^python_facts_field_surface_spelling,
         target: python_inhabitant_atom(id: facts.surface_spelling)
       ),
       python_named_edge(
-        name: python_facts_field_encoding,
+        name: ^python_facts_field_encoding,
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: python_facts_field_std_projection,
+        name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ]
@@ -464,15 +364,15 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: python_facts_field_surface_spelling,
+        name: ^python_facts_field_surface_spelling,
         target: python_inhabitant_atom(id: facts.surface_spelling)
       ),
       python_named_edge(
-        name: python_facts_field_singleton_kind,
+        name: ^python_facts_field_singleton_kind,
         target: python_inhabitant_atom(id: discriminant(v: facts.kind))
       ),
       python_named_edge(
-        name: python_facts_field_std_projection,
+        name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ]
@@ -586,7 +486,7 @@ fn python_g1_2_singleton_fact_bundle_entries(
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
       fact_axis: ModelCoreFactAxisEncoding {},
-      fact_value: python_inhabitant_atom(id: python_repr_singleton_sole_inhabitant)
+      fact_value: python_inhabitant_atom(id: ^python_repr_singleton_sole_inhabitant)
     )
   ]
 }
@@ -859,15 +759,15 @@ fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> No
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: python_witness_int_ordered_ring_arbitrary_precision,
-        target: python_inhabitant_atom(id: python_witness_int_ordered_ring_arbitrary_precision)
+        name: ^python_witness_int_ordered_ring_arbitrary_precision,
+        target: python_inhabitant_atom(id: ^python_witness_int_ordered_ring_arbitrary_precision)
       ),
       python_named_edge(
-        name: python_facts_field_encoding,
+        name: ^python_facts_field_encoding,
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: python_facts_field_std_projection,
+        name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ]
@@ -879,15 +779,15 @@ fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: python_witness_float_approximate_field,
-        target: python_inhabitant_atom(id: python_witness_float_approximate_field)
+        name: ^python_witness_float_approximate_field,
+        target: python_inhabitant_atom(id: ^python_witness_float_approximate_field)
       ),
       python_named_edge(
-        name: python_facts_field_machine_representation,
+        name: ^python_facts_field_machine_representation,
         target: python_inhabitant_atom(id: facts.machine_representation)
       ),
       python_named_edge(
-        name: python_facts_field_std_projection,
+        name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ]
@@ -899,15 +799,15 @@ fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: python_witness_bool_boolean_algebra,
-        target: python_inhabitant_atom(id: python_witness_bool_boolean_algebra)
+        name: ^python_witness_bool_boolean_algebra,
+        target: python_inhabitant_atom(id: ^python_witness_bool_boolean_algebra)
       ),
       python_named_edge(
-        name: python_facts_field_encoding,
+        name: ^python_facts_field_encoding,
         target: python_inhabitant_atom(id: facts.encoding)
       ),
       python_named_edge(
-        name: python_facts_field_std_projection,
+        name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
     ]
@@ -1003,22 +903,22 @@ fn python_inhabitant_node(id: Symbol, facts: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      python_named_edge(name: python_inhabitant_field_atom, target: python_inhabitant_atom(id: id)),
-      python_named_edge(name: python_inhabitant_field_facts, target: facts)
+      python_named_edge(name: ^python_inhabitant_field_atom, target: python_inhabitant_atom(id: id)),
+      python_named_edge(name: ^python_inhabitant_field_facts, target: facts)
     ]
   }
 }
 
 fn python_int_inhabitant_node() -> Node {
   python_inhabitant_node(
-    id: python_inhabitant_int,
+    id: ^python_inhabitant_int,
     facts: python_integer_facts_node(facts: python_facts_int)
   )
 }
 
 fn python_float_inhabitant_node() -> Node {
   python_inhabitant_node(
-    id: python_inhabitant_float,
+    id: ^python_inhabitant_float,
     facts: python_float_facts_node(facts: python_facts_float)
   )
 }
@@ -1027,8 +927,8 @@ fn python_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      python_named_edge(name: python_inhabitant_field_int, target: python_int_inhabitant_node()),
-      python_named_edge(name: python_inhabitant_field_float, target: python_float_inhabitant_node())
+      python_named_edge(name: ^python_inhabitant_field_int, target: python_int_inhabitant_node()),
+      python_named_edge(name: ^python_inhabitant_field_float, target: python_float_inhabitant_node())
     ]
   }
 }
@@ -1103,8 +1003,8 @@ fn python_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 fn python_mvp1_serialize_source_children() -> List<Edge> {
   list_append(
     left: [
-      python_named_edge(name: python_mvp1_source_text_field, target: python_inhabitant_atom(id: python_mvp1_source_literal)),
-      python_named_edge(name: python_mvp1_source_grammar_field, target: python_inhabitant_atom(id: python_production_mvp1_fn_add))
+      python_named_edge(name: ^serialize_source_field_source_text, target: python_inhabitant_atom(id: ^python_mvp1_source_literal)),
+      python_named_edge(name: ^serialize_source_field_source_grammar, target: python_inhabitant_atom(id: ^python_production_mvp1_fn_add))
     ],
     right: [
       python_named_edge(
@@ -1156,7 +1056,7 @@ fn python_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr
 // dissolve-on: std/grammar epsilon projection replaces Optional+sentinel terminal shim.
 fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
   Optional {
-    element: Terminal { token_class: python_formal_epsilon_shim_terminal }
+    element: Terminal { token_class: ^python_formal_epsilon_shim_terminal }
   }
 }
 
@@ -1266,7 +1166,7 @@ fn python_formal_productions_to_grammar_production(
 
 fn python_formal_production_mvp1_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: python_production_mvp1_fn_add,
+    lhs: ^python_production_mvp1_fn_add,
     rhs: python_formal_rhs_from_token_classes()
   )
 }
@@ -1277,7 +1177,7 @@ fn python_wave1_formal_productions() -> List<FormalProduction> {
 
 fn python_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
-    name: python_production_mvp1_fn_add,
+    name: ^python_production_mvp1_fn_add,
     expression: python_formal_productions_to_grammar_expr(
       prods: [python_formal_production_mvp1_fn_add()]
     ),
@@ -1316,7 +1216,7 @@ fn python_mvp1_translation_rules_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: python_relation_rule_mvp1_fn_add,
+        name: ^python_relation_rule_mvp1_fn_add,
         target: python_grammar_relation_row_node(row: python_mvp1_grammar_relation_row())
       )
     ]
@@ -1338,11 +1238,11 @@ fn python_mvp1_target_model_node() -> Node {
 fn python_mvp1_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
-      map_insert(empty_map(), python_binding_fn_add, "add"),
-      python_binding_param_x,
+      map_insert(empty_map(), ^python_binding_fn_add, "add"),
+      ^python_binding_param_x,
       "x"
     ),
-    python_binding_param_y,
+    ^python_binding_param_y,
     "y"
   )
 }
@@ -1369,7 +1269,7 @@ fn python_ident_lex_pattern() -> LexPattern {
 
 fn python_ident_lex_rule() -> LexRule {
   TokenRule {
-    token_class: python_token_ident,
+    token_class: ^python_token_ident,
     pattern: python_ident_lex_pattern()
   }
 }
@@ -1421,7 +1321,7 @@ fn python_decimal_int_literal_pattern() -> LexPattern {
 
 fn python_int_literal_lex_rule() -> LexRule {
   TokenRule {
-    token_class: python_token_int_literal,
+    token_class: ^python_token_int_literal,
     pattern: python_decimal_int_literal_pattern()
   }
 }
@@ -1433,23 +1333,23 @@ fn python_int_literal_lex_rule() -> LexRule {
 fn python_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      python_lex_rule(token_class: python_token_rparen_suite_indent, text: "):\n    "),
-      python_lex_rule(token_class: python_token_colon_if_suite_indent, text: ":\n        "),
-      python_lex_rule(token_class: python_token_newline_if_stmt, text: "\n    if "),
-      python_lex_rule(token_class: python_token_newline_return_inner, text: "\n        return "),
-      python_lex_rule(token_class: python_token_newline_return_outer, text: "\n    return "),
-      python_lex_rule(token_class: python_token_kw_def, text: "def "),
-      python_lex_rule(token_class: python_token_kw_return, text: "return "),
-      python_lex_rule(token_class: python_token_kw_if, text: "if "),
+      python_lex_rule(token_class: ^python_token_rparen_suite_indent, text: "):\n    "),
+      python_lex_rule(token_class: ^python_token_colon_if_suite_indent, text: ":\n        "),
+      python_lex_rule(token_class: ^python_token_newline_if_stmt, text: "\n    if "),
+      python_lex_rule(token_class: ^python_token_newline_return_inner, text: "\n        return "),
+      python_lex_rule(token_class: ^python_token_newline_return_outer, text: "\n    return "),
+      python_lex_rule(token_class: ^python_token_kw_def, text: "def "),
+      python_lex_rule(token_class: ^python_token_kw_return, text: "return "),
+      python_lex_rule(token_class: ^python_token_kw_if, text: "if "),
       python_int_literal_lex_rule(),
       python_ident_lex_rule(),
-      python_lex_rule(token_class: python_token_equal, text: " = "),
-      python_lex_rule(token_class: python_token_plus, text: " + "),
-      python_lex_rule(token_class: python_token_greater, text: " > "),
-      python_lex_rule(token_class: python_token_lparen, text: "("),
-      python_lex_rule(token_class: python_token_comma, text: ", "),
-      python_lex_rule(token_class: python_token_rparen, text: ")"),
-      python_lex_rule(token_class: python_token_colon, text: ": ")
+      python_lex_rule(token_class: ^python_token_equal, text: " = "),
+      python_lex_rule(token_class: ^python_token_plus, text: " + "),
+      python_lex_rule(token_class: ^python_token_greater, text: " > "),
+      python_lex_rule(token_class: ^python_token_lparen, text: "("),
+      python_lex_rule(token_class: ^python_token_comma, text: ", "),
+      python_lex_rule(token_class: ^python_token_rparen, text: ")"),
+      python_lex_rule(token_class: ^python_token_colon, text: ": ")
     ]
   }
 }
@@ -1464,170 +1364,170 @@ fn python_grammar_atom(id: Symbol) -> Node {
 
 fn python_wave1_grammar_root() -> GrammarRoot {
   GrammarRoot {
-    start: python_production_fn_def,
+    start: ^python_production_fn_def,
     productions: [
       python_grammar_production_mvp1_fn_add(),
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_fn_def,
+          lhs: ^python_production_fn_def,
           rhs: [
-            grammar_formal_terminal(identity: python_token_kw_def),
-            grammar_formal_terminal(identity: python_token_ident),
-            grammar_formal_terminal(identity: python_token_lparen),
-            grammar_formal_terminal(identity: python_token_ident),
-            grammar_formal_terminal(identity: python_token_rparen_suite_indent),
-            grammar_formal_nonterminal_occurrence(identity: python_production_suite)
+            grammar_formal_terminal(identity: ^python_token_kw_def),
+            grammar_formal_terminal(identity: ^python_token_ident),
+            grammar_formal_terminal(identity: ^python_token_lparen),
+            grammar_formal_terminal(identity: ^python_token_ident),
+            grammar_formal_terminal(identity: ^python_token_rparen_suite_indent),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_suite)
           ]
         ),
         alts: Empty,
-        emitted: python_surface_fn_item
+        emitted: ^python_surface_fn_item
       ),
       // Left-biased Choice: longer/recursive suite alt must precede single-stmt alt.
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_suite,
+          lhs: ^python_production_suite,
           rhs: [
-            grammar_formal_nonterminal_occurrence(identity: python_production_stmt),
-            grammar_formal_nonterminal_occurrence(identity: python_production_suite)
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_stmt),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_suite)
           ]
         ),
         alts: [
           grammar_formal_production(
-            lhs: python_production_suite,
-            rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_stmt)]
+            lhs: ^python_production_suite,
+            rhs: [grammar_formal_nonterminal_occurrence(identity: ^python_production_stmt)]
           )
         ],
-        emitted: python_surface_suite
+        emitted: ^python_surface_suite
       ),
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_stmt,
-          rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_assign_stmt)]
+          lhs: ^python_production_stmt,
+          rhs: [grammar_formal_nonterminal_occurrence(identity: ^python_production_assign_stmt)]
         ),
         alts: [
           grammar_formal_production(
-            lhs: python_production_stmt,
-            rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_if_stmt)]
+            lhs: ^python_production_stmt,
+            rhs: [grammar_formal_nonterminal_occurrence(identity: ^python_production_if_stmt)]
           ),
           grammar_formal_production(
-            lhs: python_production_stmt,
-            rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_return_stmt)]
+            lhs: ^python_production_stmt,
+            rhs: [grammar_formal_nonterminal_occurrence(identity: ^python_production_return_stmt)]
           )
         ],
-        emitted: python_surface_stmt
+        emitted: ^python_surface_stmt
       ),
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_assign_stmt,
+          lhs: ^python_production_assign_stmt,
           rhs: [
-            grammar_formal_terminal(identity: python_token_ident),
-            grammar_formal_terminal(identity: python_token_equal),
-            grammar_formal_nonterminal_occurrence(identity: python_production_additive)
+            grammar_formal_terminal(identity: ^python_token_ident),
+            grammar_formal_terminal(identity: ^python_token_equal),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive)
           ]
         ),
         alts: Empty,
-        emitted: python_surface_assign_stmt
+        emitted: ^python_surface_assign_stmt
       ),
       // colon_if_suite_indent carries ":\n        " (layout boundary); if-body return uses
       // kw_return+primary alt (no leading newline) so token/grammar paths stay consistent.
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_if_stmt,
+          lhs: ^python_production_if_stmt,
           rhs: [
-            grammar_formal_terminal(identity: python_token_newline_if_stmt),
-            grammar_formal_nonterminal_occurrence(identity: python_production_comparison),
-            grammar_formal_terminal(identity: python_token_colon_if_suite_indent),
-            grammar_formal_nonterminal_occurrence(identity: python_production_return_stmt)
+            grammar_formal_terminal(identity: ^python_token_newline_if_stmt),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_comparison),
+            grammar_formal_terminal(identity: ^python_token_colon_if_suite_indent),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_return_stmt)
           ]
         ),
         alts: Empty,
-        emitted: python_surface_if_stmt
+        emitted: ^python_surface_if_stmt
       ),
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_return_stmt,
+          lhs: ^python_production_return_stmt,
           rhs: [
-            grammar_formal_terminal(identity: python_token_newline_return_inner),
-            grammar_formal_nonterminal_occurrence(identity: python_production_primary)
+            grammar_formal_terminal(identity: ^python_token_newline_return_inner),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_primary)
           ]
         ),
         alts: [
           grammar_formal_production(
-            lhs: python_production_return_stmt,
+            lhs: ^python_production_return_stmt,
             rhs: [
-              grammar_formal_terminal(identity: python_token_newline_return_outer),
-              grammar_formal_nonterminal_occurrence(identity: python_production_primary)
+              grammar_formal_terminal(identity: ^python_token_newline_return_outer),
+              grammar_formal_nonterminal_occurrence(identity: ^python_production_primary)
             ]
           ),
           grammar_formal_production(
-            lhs: python_production_return_stmt,
+            lhs: ^python_production_return_stmt,
             rhs: [
-              grammar_formal_terminal(identity: python_token_kw_return),
-              grammar_formal_nonterminal_occurrence(identity: python_production_primary)
+              grammar_formal_terminal(identity: ^python_token_kw_return),
+              grammar_formal_nonterminal_occurrence(identity: ^python_production_primary)
             ]
           )
         ],
-        emitted: python_surface_return_stmt
+        emitted: ^python_surface_return_stmt
       ),
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_comparison,
+          lhs: ^python_production_comparison,
           rhs: [
-            grammar_formal_nonterminal_occurrence(identity: python_production_additive),
-            grammar_formal_nonterminal_occurrence(identity: python_production_comparison_tail)
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_comparison_tail)
           ]
         ),
         alts: Empty,
-        emitted: python_surface_comparison
+        emitted: ^python_surface_comparison
       ),
       // Left-biased Choice: consuming alt before empty tail alt.
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_comparison_tail,
+          lhs: ^python_production_comparison_tail,
           rhs: [
-            grammar_formal_terminal(identity: python_token_greater),
-            grammar_formal_nonterminal_occurrence(identity: python_production_additive)
+            grammar_formal_terminal(identity: ^python_token_greater),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive)
           ]
         ),
-        alts: [grammar_formal_production(lhs: python_production_comparison_tail, rhs: Empty)],
-        emitted: python_surface_comparison_tail
+        alts: [grammar_formal_production(lhs: ^python_production_comparison_tail, rhs: Empty)],
+        emitted: ^python_surface_comparison_tail
       ),
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_additive,
+          lhs: ^python_production_additive,
           rhs: [
-            grammar_formal_nonterminal_occurrence(identity: python_production_primary),
-            grammar_formal_nonterminal_occurrence(identity: python_production_additive_tail)
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_primary),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive_tail)
           ]
         ),
         alts: Empty,
-        emitted: python_surface_additive
+        emitted: ^python_surface_additive
       ),
       // Left-biased Choice: consuming alt before empty tail alt.
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_additive_tail,
+          lhs: ^python_production_additive_tail,
           rhs: [
-            grammar_formal_terminal(identity: python_token_plus),
-            grammar_formal_nonterminal_occurrence(identity: python_production_primary),
-            grammar_formal_nonterminal_occurrence(identity: python_production_additive_tail)
+            grammar_formal_terminal(identity: ^python_token_plus),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_primary),
+            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive_tail)
           ]
         ),
-        alts: [grammar_formal_production(lhs: python_production_additive_tail, rhs: Empty)],
-        emitted: python_surface_additive_tail
+        alts: [grammar_formal_production(lhs: ^python_production_additive_tail, rhs: Empty)],
+        emitted: ^python_surface_additive_tail
       ),
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
-          lhs: python_production_primary,
-          rhs: [grammar_formal_terminal(identity: python_token_ident)]
+          lhs: ^python_production_primary,
+          rhs: [grammar_formal_terminal(identity: ^python_token_ident)]
         ),
         alts: [
           grammar_formal_production(
-            lhs: python_production_primary,
-            rhs: [grammar_formal_terminal(identity: python_token_int_literal)]
+            lhs: ^python_production_primary,
+            rhs: [grammar_formal_terminal(identity: ^python_token_int_literal)]
           )
         ],
-        emitted: python_surface_primary
+        emitted: ^python_surface_primary
       )
     ],
     sync_tokens: grammar_empty_sync_tokens()
@@ -1757,9 +1657,9 @@ fn python_language_model_canonical_symbols() -> Set<Symbol> {
       python_catalog_surface_symbol(sym: sym) ||
         python_wave1_lex_token_symbol(sym: sym) ||
         grammar_carries_symbol(grammar: python_wave1_grammar(), sym: sym) ||
-        sym == python_surface_fn_item ||
-        sym == python_production_mvp1_fn_add ||
-        sym == python_mvp1_source_literal
+        sym == ^python_surface_fn_item ||
+        sym == ^python_production_mvp1_fn_add ||
+        sym == ^python_mvp1_source_literal
     }
   }
 }
@@ -1771,7 +1671,7 @@ fn python_language_model_wave1() -> Outcome<PythonLanguageModel> {
         value: PythonLanguageModel {
           lex: python_wave1_lex(),
           grammar: python_wave1_grammar(),
-          language_identity: python_language_model_surface_id,
+          language_identity: ^python_language_model_surface_id,
           canonical_symbols: python_language_model_canonical_symbols(),
           core: core
         },

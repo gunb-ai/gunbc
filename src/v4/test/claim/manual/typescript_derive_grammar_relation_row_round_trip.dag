@@ -42,21 +42,16 @@ import v4.std.verification {
 }
 // Structural import: ties this claim to the T-16 TaskManager demo module identity.
 import v4.test.fixture.task_manager_demo { Task, create_task }
-
-data ts_grammar_relation_round_trip_pass_sym: Symbol = ts_grammar_relation_round_trip_pass_sym
-data ts_grammar_relation_round_trip_fail_sym: Symbol = ts_grammar_relation_round_trip_fail_sym
-data ts_surplus_conj_slot_dummy: Symbol = ts_surplus_conj_slot_dummy
-
 fn ts_grammar_relation_round_trip_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ts_grammar_relation_round_trip_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_pass_sym } },
     children: []
   }
 }
 
 fn ts_grammar_relation_round_trip_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ts_grammar_relation_round_trip_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_fail_sym } },
     children: []
   }
 }
@@ -92,7 +87,7 @@ fn ts_wave2a_task_type_alias_emitted_surplus_conj_slot() -> Node {
     children: [
       Edge { label: Positional, target: ts_inhabitant_atom(id: ts_binding_task) },
       Edge { label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ts_surplus_conj_slot_dummy) }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
     ]
   }
 }

@@ -56,9 +56,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data sg2_pass_sym: Symbol = sg2_pass_sym
-data sg2_fail_sym: Symbol = sg2_fail_sym
 data sg2_fail_text: String = ""
 data sg2_expected_type_text: String = "Rc<FooBar<X, Y>>"
 data sg2_expected_arrow_text: String = "(X) -> Y"
@@ -66,14 +63,14 @@ data sg2_expected_conj_text: String = " { X, Y }"
 
 fn sg2_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg2_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg2_pass_sym } },
     children: []
   }
 }
 
 fn sg2_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg2_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg2_fail_sym } },
     children: []
   }
 }

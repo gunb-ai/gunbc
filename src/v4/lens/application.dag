@@ -134,15 +134,9 @@ type IntrospectApplication<Output> {
   section: SectionRef
   span: SourceSpan
 }
-
-data path_unresolvable_reason: Symbol = path_unresolvable_reason
-data path_ambiguous_reason: Symbol = path_ambiguous_reason
-data lens_enforcement_violation_reason: Symbol = lens_enforcement_violation_reason
-data advisory_reports_empty_reason: Symbol = advisory_reports_empty_reason
-
 fn path_unresolvable_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: path_unresolvable_reason,
+    reason: ^path_unresolvable_reason,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -150,7 +144,7 @@ fn path_unresolvable_diagnostic(at: Node) -> Diagnostic {
 
 fn path_ambiguous_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: path_ambiguous_reason,
+    reason: ^path_ambiguous_reason,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -160,7 +154,7 @@ fn lens_enforcement_violation_diagnostic<Projected, Budget>(
   input: LensEnforcementViolationInput<Projected, Budget>
 ) -> Diagnostic {
   Diagnostic {
-    reason: lens_enforcement_violation_reason,
+    reason: ^lens_enforcement_violation_reason,
     at: node_locus(node: input.at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -188,7 +182,7 @@ fn advisory_report_diagnostic(report: Report) -> Diagnostic {
 
 // Delegates to the 🟢-canonical find_named_child in std/node_query.dag; translates
 // node_query diagnostic vocabulary to the lens D1 path contract's own reasons
-// (path_unresolvable_reason / path_ambiguous_reason) so callers see only lens-boundary diagnostics.
+// (^path_unresolvable_reason / ^path_ambiguous_reason) so callers see only lens-boundary diagnostics.
 fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
   match find_named_child(root: root, name: name) {
     Accepted { value: child, diagnostics: d } => Accepted { value: child, diagnostics: d }
@@ -237,7 +231,7 @@ fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
   } else {
     outcome_accepted(value: fold_list(
       xs: steps,
-      empty: PathSplit { init: [], last: path_unresolvable_reason, first: true },
+      empty: PathSplit { init: [], last: ^path_unresolvable_reason, first: true },
       cons: fn(split, step) {
         match split.first {
           true => PathSplit { init: [], last: step, first: false }
@@ -486,7 +480,7 @@ type ReportDiagnosticsFold {
 
 fn advisory_reports_empty_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: advisory_reports_empty_reason,
+    reason: ^advisory_reports_empty_reason,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }

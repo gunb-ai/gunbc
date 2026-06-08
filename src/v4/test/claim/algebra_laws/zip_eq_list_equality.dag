@@ -18,26 +18,18 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-
-data zip_eq_sym_a: Symbol = zip_eq_sym_a
-data zip_eq_sym_b: Symbol = zip_eq_sym_b
-data zip_eq_pass_sym: Symbol = zip_eq_pass_sym
-data zip_eq_fail_sym: Symbol = zip_eq_fail_sym
-
-
 fn zip_sym_eq(a: Symbol, b: Symbol) -> Bool { a == b }
 fn sym_list_empty() -> FreeMonoid<Symbol> { Empty }
-fn sym_list_a() -> FreeMonoid<Symbol> { Cons { head: zip_eq_sym_a, tail: Empty } }
-fn sym_list_b() -> FreeMonoid<Symbol> { Cons { head: zip_eq_sym_b, tail: Empty } }
-fn sym_list_ab() -> FreeMonoid<Symbol> { Cons { head: zip_eq_sym_a, tail: Cons { head: zip_eq_sym_b, tail: Empty } } }
+fn sym_list_a() -> FreeMonoid<Symbol> { Cons { head: ^zip_eq_sym_a, tail: Empty } }
+fn sym_list_b() -> FreeMonoid<Symbol> { Cons { head: ^zip_eq_sym_b, tail: Empty } }
+fn sym_list_ab() -> FreeMonoid<Symbol> { Cons { head: ^zip_eq_sym_a, tail: Cons { head: ^zip_eq_sym_b, tail: Empty } } }
 
 
 fn zip_eq_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: zip_eq_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^zip_eq_pass_sym } }, children: [] }
 }
 fn zip_eq_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: zip_eq_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^zip_eq_fail_sym } }, children: [] }
 }
 fn zip_eq_claim_input(ok: Bool) -> Node {
   if ok { zip_eq_pass_node() } else { zip_eq_fail_node() }

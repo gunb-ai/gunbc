@@ -40,20 +40,16 @@ import v4.workflow.bootstrap {
   seed_capability_language_model,
   v4_stage0_hash
 }
-
-data bootstrap_footprint_anchor_fail_atom: Symbol = bootstrap_footprint_anchor_fail_atom
-data bootstrap_footprint_anchor_bad_snapshot_root: Symbol = bootstrap_footprint_anchor_bad_snapshot_root
-
 fn bootstrap_footprint_anchor_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: bootstrap_footprint_anchor_fail_atom } },
+    kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_fail_atom } },
     children: []
   }
 }
 
 fn bootstrap_footprint_anchor_bad_snapshot_root_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: bootstrap_footprint_anchor_bad_snapshot_root } },
+    kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_bad_snapshot_root } },
     children: []
   }
 }

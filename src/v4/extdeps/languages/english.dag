@@ -2,7 +2,7 @@
 // Scope: Controlled English (CE) formal-subset language model — wave-1 structural carriers + wave-2a lex rules and grammar productions for article-led SVO and copula sentence forms.
 // Status: T-4.19 (ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.
 // Anchor: Attempto Controlled English (ACE) grammar — http://attempto.ifi.uzh.ch/site/docs/ace_nutshell.html
-// 🟡 feature:english-wave2-vocabulary — scaffold:T-4.19-wave2; dissolve-on: closed vocabulary declared; english_token_word catch-all replaced with per-word keyword rules or typed word set.
+// 🟡 feature:english-wave2-vocabulary — scaffold:T-4.19-wave2; dissolve-on: closed vocabulary declared; ^english_token_word catch-all replaced with per-word keyword rules or typed word set.
 
 module v4.extdeps.languages.english
 
@@ -118,27 +118,7 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
     MalformedSentence => FailClosed { feature: MalformedSentence }
   }
 }
-
-
-data english_token_word: Symbol = english_token_word
-data english_token_definite_article: Symbol = english_token_definite_article
-data english_token_indefinite_article: Symbol = english_token_indefinite_article
-data english_token_copula: Symbol = english_token_copula
-data english_token_period: Symbol = english_token_period
-
-data english_production_sentence: Symbol = english_production_sentence
-data english_production_svo_sentence: Symbol = english_production_svo_sentence
-data english_production_copula_sentence: Symbol = english_production_copula_sentence
-data english_production_article: Symbol = english_production_article
-data english_surface_svo: Symbol = english_surface_svo
-data english_surface_copula: Symbol = english_surface_copula
-data english_surface_sentence: Symbol = english_surface_sentence
-data english_surface_article: Symbol = english_surface_article
-
-data english_language_identity: Symbol = english_language_identity
-
-
-fn english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+ english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
@@ -155,12 +135,12 @@ fn english_wave1_lex() -> LexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        english_lex_token(token_class: english_token_word, pattern: english_word_pattern()),
-        english_lex_token(token_class: english_token_period, pattern: LiteralPattern { text: "." }),
-        english_lex_token(token_class: english_token_indefinite_article, pattern: KeywordPattern { text: "a" }),
-        english_lex_token(token_class: english_token_indefinite_article, pattern: KeywordPattern { text: "an" }),
-        english_lex_token(token_class: english_token_definite_article, pattern: KeywordPattern { text: "the" }),
-        english_lex_token(token_class: english_token_copula, pattern: KeywordPattern { text: "is" })
+        english_lex_token(token_class: ^english_token_word, pattern: english_word_pattern()),
+        english_lex_token(token_class: ^english_token_period, pattern: LiteralPattern { text: "." }),
+        english_lex_token(token_class: ^english_token_indefinite_article, pattern: KeywordPattern { text: "a" }),
+        english_lex_token(token_class: ^english_token_indefinite_article, pattern: KeywordPattern { text: "an" }),
+        english_lex_token(token_class: ^english_token_definite_article, pattern: KeywordPattern { text: "the" }),
+        english_lex_token(token_class: ^english_token_copula, pattern: KeywordPattern { text: "is" })
       ]
     }
   }
@@ -177,27 +157,27 @@ fn english_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExp
 
 fn english_article_expr() -> GrammarExpr {
   Choice {
-    left: english_grammar_terminal(token_class: english_token_definite_article),
-    right: english_grammar_terminal(token_class: english_token_indefinite_article)
+    left: english_grammar_terminal(token_class: ^english_token_definite_article),
+    right: english_grammar_terminal(token_class: ^english_token_indefinite_article)
   }
 }
 
 fn english_article_nonterminal() -> GrammarExpr {
-  Nonterminal { production: english_production_article }
+  Nonterminal { production: ^english_production_article }
 }
 
 fn english_svo_sentence_expr() -> GrammarExpr {
   english_grammar_sequence(
     left: english_article_nonterminal(),
     right: english_grammar_sequence(
-      left: english_grammar_terminal(token_class: english_token_word),
+      left: english_grammar_terminal(token_class: ^english_token_word),
       right: english_grammar_sequence(
-        left: english_grammar_terminal(token_class: english_token_word),
+        left: english_grammar_terminal(token_class: ^english_token_word),
         right: english_grammar_sequence(
           left: english_article_nonterminal(),
           right: english_grammar_sequence(
-            left: english_grammar_terminal(token_class: english_token_word),
-            right: english_grammar_terminal(token_class: english_token_period)
+            left: english_grammar_terminal(token_class: ^english_token_word),
+            right: english_grammar_terminal(token_class: ^english_token_period)
           )
         )
       )
@@ -209,14 +189,14 @@ fn english_copula_sentence_expr() -> GrammarExpr {
   english_grammar_sequence(
     left: english_article_nonterminal(),
     right: english_grammar_sequence(
-      left: english_grammar_terminal(token_class: english_token_word),
+      left: english_grammar_terminal(token_class: ^english_token_word),
       right: english_grammar_sequence(
-        left: english_grammar_terminal(token_class: english_token_copula),
+        left: english_grammar_terminal(token_class: ^english_token_copula),
         right: english_grammar_sequence(
           left: english_article_nonterminal(),
           right: english_grammar_sequence(
-            left: english_grammar_terminal(token_class: english_token_word),
-            right: english_grammar_terminal(token_class: english_token_period)
+            left: english_grammar_terminal(token_class: ^english_token_word),
+            right: english_grammar_terminal(token_class: ^english_token_period)
           )
         )
       )
@@ -226,31 +206,31 @@ fn english_copula_sentence_expr() -> GrammarExpr {
 
 fn english_wave1_grammar() -> ParseGrammar {
   let article = GrammarProduction {
-    name: english_production_article,
+    name: ^english_production_article,
     expression: english_article_expr(),
-    emitted: grammar_atom(identity: english_surface_article)
+    emitted: grammar_atom(identity: ^english_surface_article)
   }
   let svo = GrammarProduction {
-    name: english_production_svo_sentence,
+    name: ^english_production_svo_sentence,
     expression: english_svo_sentence_expr(),
-    emitted: grammar_atom(identity: english_surface_svo)
+    emitted: grammar_atom(identity: ^english_surface_svo)
   }
   let copula = GrammarProduction {
-    name: english_production_copula_sentence,
+    name: ^english_production_copula_sentence,
     expression: english_copula_sentence_expr(),
-    emitted: grammar_atom(identity: english_surface_copula)
+    emitted: grammar_atom(identity: ^english_surface_copula)
   }
   let sentence = GrammarProduction {
-    name: english_production_sentence,
+    name: ^english_production_sentence,
     expression: Choice {
-      left: Nonterminal { production: english_production_svo_sentence },
-      right: Nonterminal { production: english_production_copula_sentence }
+      left: Nonterminal { production: ^english_production_svo_sentence },
+      right: Nonterminal { production: ^english_production_copula_sentence }
     },
-    emitted: grammar_atom(identity: english_surface_sentence)
+    emitted: grammar_atom(identity: ^english_surface_sentence)
   }
   ModeledGrammar {
     root: GrammarRoot {
-      start: english_production_sentence,
+      start: ^english_production_sentence,
       productions: [sentence, article, svo, copula],
       sync_tokens: grammar_empty_sync_tokens()
     }
@@ -271,7 +251,7 @@ fn english_model_core_wave1() -> ModelCore {
 
 fn english_language_model_wave1() -> EnglishLanguageModel {
   EnglishLanguageModel {
-    language_identity: english_language_identity,
+    language_identity: ^english_language_identity,
     core: english_model_core_wave1(),
     lex: english_wave1_lex(),
     grammar: english_wave1_grammar()
@@ -300,42 +280,42 @@ fn english_ingest_grammar_schema() -> GrammarSchema {
 
 fn english_article_formal_production_definite() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: english_production_article),
-    rhs: [grammar_formal_terminal(identity: english_token_definite_article)]
+    lhs: grammar_formal_nonterminal(identity: ^english_production_article),
+    rhs: [grammar_formal_terminal(identity: ^english_token_definite_article)]
   }
 }
 
 fn english_article_formal_production_indefinite() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: english_production_article),
-    rhs: [grammar_formal_terminal(identity: english_token_indefinite_article)]
+    lhs: grammar_formal_nonterminal(identity: ^english_production_article),
+    rhs: [grammar_formal_terminal(identity: ^english_token_indefinite_article)]
   }
 }
 
 fn english_svo_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: english_production_svo_sentence),
+    lhs: grammar_formal_nonterminal(identity: ^english_production_svo_sentence),
     rhs: [
-      grammar_formal_nonterminal_occurrence(identity: english_production_article),
-      grammar_formal_terminal(identity: english_token_word),
-      grammar_formal_terminal(identity: english_token_word),
-      grammar_formal_nonterminal_occurrence(identity: english_production_article),
-      grammar_formal_terminal(identity: english_token_word),
-      grammar_formal_terminal(identity: english_token_period)
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_period)
     ]
   }
 }
 
 fn english_copula_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: english_production_copula_sentence),
+    lhs: grammar_formal_nonterminal(identity: ^english_production_copula_sentence),
     rhs: [
-      grammar_formal_nonterminal_occurrence(identity: english_production_article),
-      grammar_formal_terminal(identity: english_token_word),
-      grammar_formal_terminal(identity: english_token_copula),
-      grammar_formal_nonterminal_occurrence(identity: english_production_article),
-      grammar_formal_terminal(identity: english_token_word),
-      grammar_formal_terminal(identity: english_token_period)
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_copula),
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
+      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_period)
     ]
   }
 }
@@ -346,7 +326,7 @@ fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     probe: GrammarSchemaProbe {
       fixture: "the function is a handler.",
       production: english_copula_formal_production(),
-      expected_parse_surface: grammar_atom(identity: english_surface_copula)
+      expected_parse_surface: grammar_atom(identity: ^english_surface_copula)
     }
   }
 }

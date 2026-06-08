@@ -55,23 +55,18 @@ type GunbcTestRoute {
 // Canonical route names — the single authority for each Runtime/TestClaim route name
 // (self-identifying Symbol idiom, cf. `dag_language_model_surface_id`). Reached only via
 // the per-row accessors below, so the name is a function of the row type.
-data gunbc_testgen_route_name: Symbol = gunbc_testgen_route_name
-data gunbc_test_route_name: Symbol = gunbc_test_route_name
-data gunbc_test_corpus_harness_route_name: Symbol = gunbc_test_corpus_harness_route_name
-
-
 // Route name derived from the row type (not a stored field): a `GunbcTestgenRoute` is
 // always the `testgen` route, a `GunbcTestRoute` always the `test` route.
 fn gunbc_testgen_route_name_of(_route: GunbcTestgenRoute) -> Symbol {
-  gunbc_testgen_route_name
+  ^gunbc_testgen_route_name
 }
 
 fn gunbc_test_route_name_of(_route: GunbcTestRoute) -> Symbol {
-  gunbc_test_route_name
+  ^gunbc_test_route_name
 }
 
 fn gunbc_test_corpus_harness_route_name_of(_route: GunbcTestCorpusHarnessRoute) -> Symbol {
-  gunbc_test_corpus_harness_route_name
+  ^gunbc_test_corpus_harness_route_name
 }
 
 

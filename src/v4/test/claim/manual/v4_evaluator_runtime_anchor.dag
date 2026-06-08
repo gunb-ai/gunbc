@@ -39,9 +39,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data v4_evaluator_witness_fail_atom: Symbol = v4_evaluator_witness_fail_atom
-
 type v4_evaluator_anchor_runtime_type = V4EvaluatorRuntime
 
 data v4_evaluator_anchor_runtime: v4_evaluator_anchor_runtime_type = v4_evaluator_runtime_wave1()
@@ -94,7 +91,7 @@ data witness_v4_evaluator_transfer_fail_closed: Bool = match v4_eval_wave1_trans
 
 fn v4_evaluator_witness_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: v4_evaluator_witness_fail_atom } },
+    kind: TypeNode { connective: Atom { identity: ^v4_evaluator_witness_fail_atom } },
     children: []
   }
 }

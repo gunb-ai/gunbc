@@ -23,13 +23,8 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
-
-data hollow_alias_nested_el_symbol: Symbol = hollow_alias_nested_el_symbol
-data hollow_alias_nested_el_subject: Symbol = hollow_alias_nested_el_subject
-data hollow_alias_nested_child_edge: Symbol = hollow_alias_nested_child_edge
-
 data hollow_alias_nested_child: Node = Node {
-  kind: TypeNode { connective: Atom { identity: hollow_alias_nested_el_subject } },
+  kind: TypeNode { connective: Atom { identity: ^hollow_alias_nested_el_subject } },
   children: []
 }
 
@@ -37,13 +32,13 @@ data hollow_alias_nested_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: hollow_alias_nested_child_edge },
+      label: Named { name: ^hollow_alias_nested_child_edge },
       target: hollow_alias_nested_child
     }
   ]
 }
 
-data hollow_alias_nested_authority: Node = claim_atom_node(s: hollow_alias_nested_el_symbol)
+data hollow_alias_nested_authority: Node = claim_atom_node(s: ^hollow_alias_nested_el_symbol)
 
 fn hollow_alias_nested_rejected_holds() -> Bool {
   match validate_then_compile(

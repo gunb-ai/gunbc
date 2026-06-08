@@ -10,13 +10,6 @@ module v4.std.refinement_widening_predicate
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v4.std.node_query { find_named_child }
-
-
-data refinement_widening_field_source: Symbol = refinement_widening_field_source
-data refinement_widening_field_candidate: Symbol = refinement_widening_field_candidate
-data refinement_widening_field_source_facts: Symbol = refinement_widening_field_source_facts
-
-
 fn refinement_widening_predicate_algebra(
   source: Node,
   candidate: Node,
@@ -25,15 +18,15 @@ fn refinement_widening_predicate_algebra(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: refinement_widening_field_source },
+        label: Named { name: ^refinement_widening_field_source },
         target: source
       },
       Edge {
-        label: Named { name: refinement_widening_field_candidate },
+        label: Named { name: ^refinement_widening_field_candidate },
         target: candidate
       },
       Edge {
-        label: Named { name: refinement_widening_field_source_facts },
+        label: Named { name: ^refinement_widening_field_source_facts },
         target: source
       }
     ]
@@ -46,11 +39,11 @@ fn refinement_widening_bundle_holds(
   candidate: Node,
   algebra: Node,
 ) -> Bool {
-  match find_named_child(root: algebra, name: refinement_widening_field_source) {
+  match find_named_child(root: algebra, name: ^refinement_widening_field_source) {
     Accepted { value: bundled_source, diagnostics: None } =>
-      match find_named_child(root: algebra, name: refinement_widening_field_candidate) {
+      match find_named_child(root: algebra, name: ^refinement_widening_field_candidate) {
         Accepted { value: bundled_candidate, diagnostics: None } =>
-          match find_named_child(root: algebra, name: refinement_widening_field_source_facts) {
+          match find_named_child(root: algebra, name: ^refinement_widening_field_source_facts) {
             Accepted { value: bundled_source_facts, diagnostics: None } =>
               (bundled_source == source_facts)
                 && (bundled_candidate == candidate)

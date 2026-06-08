@@ -64,18 +64,12 @@ data anchor_stub_target_model: TargetModel = TargetModel {
 
 
 data anchor_stub_source: Source = Empty
-
-
-data anchor_facts_map_lookup_not_realized: Symbol = anchor_facts_map_lookup_not_realized
-data anchor_stub_descent_not_derived: Symbol = anchor_stub_descent_not_derived
-
-
 data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes(
   resolved: anchor_stub_empty_conj,
   algebra: anchor_stub_empty_conj,
   descent: Violates {
     diagnostic: Diagnostic {
-      reason: anchor_stub_descent_not_derived,
+      reason: ^anchor_stub_descent_not_derived,
       at: node_locus(node: anchor_stub_empty_conj),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
@@ -87,8 +81,8 @@ data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
   lookup: fn(_) {
     Violates {
       diagnostic: Diagnostic {
-        reason: anchor_facts_map_lookup_not_realized,
-        at: port_locus(port: anchor_facts_map_lookup_not_realized),
+        reason: ^anchor_facts_map_lookup_not_realized,
+        at: port_locus(port: ^anchor_facts_map_lookup_not_realized),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }

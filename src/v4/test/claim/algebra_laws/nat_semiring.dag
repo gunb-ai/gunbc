@@ -48,15 +48,6 @@ import v4.std.verification {ManualAnchorAbsent,
   RoundTripClaim,
   manual_claim_anchor
 }
-
-
-data algebra_law_subject_algebra_field: Symbol = algebra_law_subject_algebra_field
-data algebra_law_subject_inhabitant_field: Symbol = algebra_law_subject_inhabitant_field
-data algebra_law_subject_law_field: Symbol = algebra_law_subject_law_field
-data nat_law_wrong_identity_symbol: Symbol = nat_law_wrong_identity_symbol
-data algebra_law_violation_reason: Symbol = algebra_law_violation_reason
-
-
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
@@ -66,9 +57,9 @@ fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
-      Edge { label: Named { name: algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
-      Edge { label: Named { name: algebra_law_subject_law_field }, target: atom_node(s: law) },
+      Edge { label: Named { name: ^algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
+      Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
+      Edge { label: Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
     ]
   }
 }
@@ -100,7 +91,7 @@ data nat_mul_annihilator_input: Node = nat_mul_law(law: law_nat_mul_annihilator)
 data nat_mul_associativity_input: Node = nat_mul_law(law: law_nat_mul_associativity)
 
 
-data falsification_nat_add_wrong_identity: Node = nat_add_law(law: nat_law_wrong_identity_symbol)
+data falsification_nat_add_wrong_identity: Node = nat_add_law(law: ^nat_law_wrong_identity_symbol)
 
 
 fn accepted_claim(label: String, anchor: ManualAnchorKey, input: Node) -> TestClaim {
@@ -157,7 +148,7 @@ data claim_nat_add_wrong_identity_falsifies_law: TestClaim = DiagnosticClaim {
   input: falsification_nat_add_wrong_identity,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: algebra_law_violation_reason,
+        reason: ^algebra_law_violation_reason,
         at: node_locus(node: falsification_nat_add_wrong_identity),
         correction: Suggested { node: nat_add_left_identity_input }
       }

@@ -175,19 +175,6 @@ type CoverageDefectAcceptanceKey {
 
 
 type CoverageDefectAcceptance = Coverage<CoverageDefectAcceptanceKey>
-
-
-data coverage_virtual_file: Symbol = coverage_virtual_file
-data coverage_reason_l6_missing: Symbol = coverage_reason_l6_missing
-data coverage_reason_l7_missing: Symbol = coverage_reason_l7_missing
-data coverage_reason_impossible_bug_missing: Symbol = coverage_reason_impossible_bug_missing
-data coverage_reason_testgen_missing: Symbol = coverage_reason_testgen_missing
-data coverage_reason_incomplete: Symbol = coverage_reason_incomplete
-data coverage_reason_l6_concept_unmapped: Symbol = coverage_reason_l6_concept_unmapped
-data coverage_reason_l7_anchor_unmapped: Symbol = coverage_reason_l7_anchor_unmapped
-data coverage_reason_impossible_bug_diagnostic_unmapped: Symbol = coverage_reason_impossible_bug_diagnostic_unmapped
-
-
 data coverage_defect_discriminant_predicate: CoverageDefectAcceptance = {
   concern: CoverageDefectAcceptanceKey { lens: DiscriminantPredicate }
 }
@@ -916,8 +903,8 @@ fn sole_impossible_bug_coverage_key(
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
-            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            reason: ^coverage_reason_impossible_bug_diagnostic_unmapped,
+            at: Textual { file: ^coverage_virtual_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
           }
         )
@@ -928,8 +915,8 @@ fn sole_impossible_bug_coverage_key(
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
-            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            reason: ^coverage_reason_impossible_bug_diagnostic_unmapped,
+            at: Textual { file: ^coverage_virtual_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
           }
         )
@@ -1222,7 +1209,7 @@ fn coverage_reading_complete(r: CoverageReading) -> Bool {
 fn coverage_missing_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: Textual { file: coverage_virtual_file, extent: WholeFile },
+    at: Textual { file: ^coverage_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -1258,7 +1245,7 @@ fn coverage_missing_diagnostics_from_l6_missing(
     cons: fn(s, _entry) {
       append_coverage_missing_diagnostic(
         state: s,
-        reason: coverage_reason_l6_missing
+        reason: ^coverage_reason_l6_missing
       )
     }
   )
@@ -1275,7 +1262,7 @@ fn coverage_missing_diagnostics_from_l7_missing(
     cons: fn(s, _entry) {
       append_coverage_missing_diagnostic(
         state: s,
-        reason: coverage_reason_l7_missing
+        reason: ^coverage_reason_l7_missing
       )
     }
   )
@@ -1292,7 +1279,7 @@ fn coverage_missing_diagnostics_from_impossible_bug_missing(
     cons: fn(s, _entry) {
       append_coverage_missing_diagnostic(
         state: s,
-        reason: coverage_reason_impossible_bug_missing
+        reason: ^coverage_reason_impossible_bug_missing
       )
     }
   )
@@ -1309,7 +1296,7 @@ fn coverage_missing_diagnostics_from_testgen_missing(
     cons: fn(s, _entry) {
       append_coverage_missing_diagnostic(
         state: s,
-        reason: coverage_reason_testgen_missing
+        reason: ^coverage_reason_testgen_missing
       )
     }
   )
@@ -1332,7 +1319,7 @@ fn coverage_missing_diagnostics(r: CoverageReading) -> NonEmptyDiagnostics {
   )
   match folded {
     NoCoverageMissingDiagnostics =>
-      diagnostics_singleton(d: coverage_missing_diagnostic(reason: coverage_reason_incomplete))
+      diagnostics_singleton(d: coverage_missing_diagnostic(reason: ^coverage_reason_incomplete))
     SomeCoverageMissingDiagnostics { acc: acc } => acc
   }
 }

@@ -52,14 +52,9 @@ import v4.test.claim.manual.eval_runtime_mvp {
   eval_mvp2_evaluator_pin,
   eval_mvp2_inferred_tree
 }
-
-
-data go_g2_claim_fail_symbol: Symbol = go_g2_claim_fail_symbol
-
-
 fn go_g2_claim_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: go_g2_claim_fail_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^go_g2_claim_fail_symbol } },
     children: []
   }
 }

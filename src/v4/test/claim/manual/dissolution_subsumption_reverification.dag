@@ -85,27 +85,6 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds, Witness }
-
-
-data rust_language_model_emit_subsumption_receipt_node: Symbol = rust_language_model_emit_subsumption_receipt_node
-data subsumption_root_fix_edge: Symbol = subsumption_root_fix_edge
-data subsumption_first_leaf_edge: Symbol = subsumption_first_leaf_edge
-data subsumption_second_leaf_edge: Symbol = subsumption_second_leaf_edge
-data subsumption_mechanical_claim_edge: Symbol = subsumption_mechanical_claim_edge
-data subsumption_runtime_rejected: Symbol = subsumption_runtime_rejected
-data subsumption_descent_dimension: Symbol = subsumption_descent_dimension
-data subsumption_interpretation_pin: Symbol = subsumption_interpretation_pin
-data subsumption_allocate_literal_sym: Symbol = subsumption_allocate_literal_sym
-data subsumption_call_primitive_sym: Symbol = subsumption_call_primitive_sym
-data subsumption_choose_branch_sym: Symbol = subsumption_choose_branch_sym
-data subsumption_step_loop_sym: Symbol = subsumption_step_loop_sym
-data subsumption_bind_value_sym: Symbol = subsumption_bind_value_sym
-data subsumption_evaluator_pin: Symbol = subsumption_evaluator_pin
-data mechanical_reverification_verified: Symbol = mechanical_reverification_verified
-data mechanical_reverification_not_verified: Symbol = mechanical_reverification_not_verified
-data mechanical_reverification_unverifiable: Symbol = mechanical_reverification_unverifiable
-
-
 // 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner owns report authority rows for MechanicalReverification.
 type MechanicalReverificationReportAuthority
   = LensCiTestClaimRunner
@@ -165,7 +144,7 @@ fn subsumption_template_leaf_node(row: DissolutionSubsumption) -> Node {
   if row.subsumed_fixes.member(fix) {
     subsumption_symbol_node(s: emit_rust_template_leaf_fix)
   } else {
-    subsumption_symbol_node(s: subsumption_runtime_rejected)
+    subsumption_symbol_node(s: ^subsumption_runtime_rejected)
   }
 }
 
@@ -175,7 +154,7 @@ fn subsumption_name_dispatch_leaf_node(row: DissolutionSubsumption) -> Node {
   if row.subsumed_fixes.member(fix) {
     subsumption_symbol_node(s: emit_rust_name_dispatch_leaf_fix)
   } else {
-    subsumption_symbol_node(s: subsumption_runtime_rejected)
+    subsumption_symbol_node(s: ^subsumption_runtime_rejected)
   }
 }
 
@@ -187,25 +166,25 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
         kind: ComputationNode { behavior: Value },
         children: [
           Edge {
-            label: Named { name: subsumption_root_fix_edge },
+            label: Named { name: ^subsumption_root_fix_edge },
             target: subsumption_symbol_node(s: row.root_fix.id)
           },
           Edge {
-            label: Named { name: subsumption_first_leaf_edge },
+            label: Named { name: ^subsumption_first_leaf_edge },
             target: subsumption_template_leaf_node(row: row)
           },
           Edge {
-            label: Named { name: subsumption_second_leaf_edge },
+            label: Named { name: ^subsumption_second_leaf_edge },
             target: subsumption_name_dispatch_leaf_node(row: row)
           },
           Edge {
-            label: Named { name: subsumption_mechanical_claim_edge },
+            label: Named { name: ^subsumption_mechanical_claim_edge },
             target: subsumption_symbol_node(s: claim.id)
           }
         ]
       }
     ProducerStageDerivation { derivation_path: _ } =>
-      subsumption_symbol_node(s: subsumption_runtime_rejected)
+      subsumption_symbol_node(s: ^subsumption_runtime_rejected)
   }
 }
 
@@ -215,19 +194,19 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
     kind: ComputationNode { behavior: Value },
     children: [
       Edge {
-        label: Named { name: subsumption_root_fix_edge },
+        label: Named { name: ^subsumption_root_fix_edge },
         target: subsumption_symbol_node(s: rust_language_model_emit_root_fix)
       },
       Edge {
-        label: Named { name: subsumption_first_leaf_edge },
+        label: Named { name: ^subsumption_first_leaf_edge },
         target: subsumption_symbol_node(s: emit_rust_template_leaf_fix)
       },
       Edge {
-        label: Named { name: subsumption_second_leaf_edge },
+        label: Named { name: ^subsumption_second_leaf_edge },
         target: subsumption_symbol_node(s: emit_rust_name_dispatch_leaf_fix)
       },
       Edge {
-        label: Named { name: subsumption_mechanical_claim_edge },
+        label: Named { name: ^subsumption_mechanical_claim_edge },
         target: subsumption_symbol_node(s: rust_language_model_emit_mechanical_reverification_claim)
       }
     ]
@@ -326,9 +305,9 @@ fn mechanical_reverification_verdict(
 
 fn mechanical_reverification_verdict_node(v: MechanicalReverificationVerdict) -> Node {
   match v {
-    Verified => subsumption_symbol_node(s: mechanical_reverification_verified)
-    NotVerified { diagnostic: _ } => subsumption_symbol_node(s: mechanical_reverification_not_verified)
-    Unverifiable { diagnostic: _ } => subsumption_symbol_node(s: mechanical_reverification_unverifiable)
+    Verified => subsumption_symbol_node(s: ^mechanical_reverification_verified)
+    NotVerified { diagnostic: _ } => subsumption_symbol_node(s: ^mechanical_reverification_not_verified)
+    Unverifiable { diagnostic: _ } => subsumption_symbol_node(s: ^mechanical_reverification_unverifiable)
   }
 }
 
@@ -348,7 +327,7 @@ fn subsumption_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outc
 fn subsumption_reject_runtime(node: Node) -> Outcome<RuntimeValue> {
   Rejected {
     diagnostics: diagnostics_singleton(
-      d: eval_diagnostic(reason: subsumption_runtime_rejected, node: node)
+      d: eval_diagnostic(reason: ^subsumption_runtime_rejected, node: node)
     )
   }
 }
@@ -370,7 +349,7 @@ fn subsumption_choose_branch(
 ) -> Outcome<Node> {
   Rejected {
     diagnostics: diagnostics_singleton(
-      d: eval_diagnostic(reason: subsumption_runtime_rejected, node: node)
+      d: eval_diagnostic(reason: ^subsumption_runtime_rejected, node: node)
     )
   }
 }
@@ -414,7 +393,7 @@ fn subsumption_interpretation() -> InterpretationAlgebra {
 fn subsumption_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: subsumption_descent_dimension }
+    strict: RankingDimension { measured: ^subsumption_descent_dimension }
   }
 }
 
@@ -445,17 +424,17 @@ fn subsumption_inferred_tree(root: Node) -> InferredTree {
 
 fn subsumption_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: subsumption_allocate_literal_sym,
-    call_primitive: subsumption_call_primitive_sym,
-    choose_branch: subsumption_choose_branch_sym,
-    step_loop: subsumption_step_loop_sym,
-    bind_value: subsumption_bind_value_sym
+    allocate_literal: ^subsumption_allocate_literal_sym,
+    call_primitive: ^subsumption_call_primitive_sym,
+    choose_branch: ^subsumption_choose_branch_sym,
+    step_loop: ^subsumption_step_loop_sym,
+    bind_value: ^subsumption_bind_value_sym
   }
 }
 
 fn subsumption_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: subsumption_interpretation_pin,
+    runtime_identity: ^subsumption_interpretation_pin,
     interpretation: subsumption_interpretation(),
     structure_witness: subsumption_interpretation_structure_witness()
   )
@@ -477,7 +456,7 @@ data subject_rust_language_model_emit_mechanical_reverification_claim: TestClaim
   tree: subsumption_inferred_tree(
     root: subsumption_receipt_node(row: rust_language_model_emit_subsumption)
   ),
-  evaluator_pin: subsumption_evaluator_pin
+  evaluator_pin: ^subsumption_evaluator_pin
 )
 
 
@@ -543,7 +522,7 @@ data subject_rust_language_model_emit_subsumption_reverifies: TestClaimEvalSubje
   tree: subsumption_inferred_tree(
     root: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption)
   ),
-  evaluator_pin: subsumption_evaluator_pin
+  evaluator_pin: ^subsumption_evaluator_pin
 )
 
 

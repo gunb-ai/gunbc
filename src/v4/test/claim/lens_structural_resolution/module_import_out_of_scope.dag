@@ -31,11 +31,6 @@ import v4.std.dependency {
 }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
-
-data sr_mod_child_symbol: Symbol = sr_mod_child_symbol
-data sr_mod_type_symbol: Symbol = sr_mod_type_symbol
-data sr_mod_algebra_symbol: Symbol = sr_mod_algebra_symbol
-data sr_mod_descent_symbol: Symbol = sr_mod_descent_symbol
 data sr_mod_claim_hash: Hash = sr_mod_claim_hash
 
 fn sr_mod_claim_atom(s: Symbol) -> Node {
@@ -45,7 +40,7 @@ fn sr_mod_claim_atom(s: Symbol) -> Node {
   }
 }
 
-data sr_mod_imported: Node = sr_mod_claim_atom(s: sr_mod_child_symbol)
+data sr_mod_imported: Node = sr_mod_claim_atom(s: ^sr_mod_child_symbol)
 
 data sr_mod_root: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -76,9 +71,9 @@ fn sr_mod_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 
 fn sr_mod_claim_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: sr_mod_type_symbol,
-    algebra_symbol: sr_mod_algebra_symbol,
-    descent_symbol: sr_mod_descent_symbol,
+    type_symbol: ^sr_mod_type_symbol,
+    algebra_symbol: ^sr_mod_algebra_symbol,
+    descent_symbol: ^sr_mod_descent_symbol,
   )
 }
 

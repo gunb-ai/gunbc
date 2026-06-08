@@ -48,11 +48,6 @@ import v4.std.logic { Bool }
 import v4.std.node { Node }
 import v4.std.target_model { TargetModel }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-
-
-data mvp1_dag_grounding_miss: Symbol = mvp1_dag_grounding_miss
-
-
 data mvp1_dag_emitted_root: Node = dag_mvp1_fixture_emitted_add_fn
 
 
@@ -111,7 +106,7 @@ fn mvp1_dag_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   } else {
     Violates {
       diagnostic: Diagnostic {
-        reason: mvp1_dag_grounding_miss,
+        reason: ^mvp1_dag_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
       }

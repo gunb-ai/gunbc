@@ -23,16 +23,12 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
-
-data hollow_alias_el_symbol: Symbol = hollow_alias_el_symbol
-data hollow_alias_el_subject: Symbol = hollow_alias_el_subject
-
 data hollow_alias_el_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: hollow_alias_el_subject } },
+  kind: TypeNode { connective: Atom { identity: ^hollow_alias_el_subject } },
   children: []
 }
 
-data hollow_alias_el_authority: Node = claim_atom_node(s: hollow_alias_el_symbol)
+data hollow_alias_el_authority: Node = claim_atom_node(s: ^hollow_alias_el_symbol)
 
 fn hollow_alias_vtc_empty_lenses_rejected_holds() -> Bool {
   match validate_then_compile(

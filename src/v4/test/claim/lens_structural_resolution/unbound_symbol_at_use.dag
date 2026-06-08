@@ -32,12 +32,6 @@ import v4.std.dependency {
 }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-
-data sr_unbound_use_symbol: Symbol = sr_unbound_use_symbol
-data sr_unbound_decl_symbol: Symbol = sr_unbound_decl_symbol
-data sr_unbound_type_symbol: Symbol = sr_unbound_type_symbol
-data sr_unbound_algebra_symbol: Symbol = sr_unbound_algebra_symbol
-data sr_unbound_descent_symbol: Symbol = sr_unbound_descent_symbol
 data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
 
 fn sr_unbound_claim_atom(s: Symbol) -> Node {
@@ -47,7 +41,7 @@ fn sr_unbound_claim_atom(s: Symbol) -> Node {
   }
 }
 
-data sr_unbound_use: Node = sr_unbound_claim_atom(s: sr_unbound_use_symbol)
+data sr_unbound_use: Node = sr_unbound_claim_atom(s: ^sr_unbound_use_symbol)
 
 data sr_unbound_decl: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -78,9 +72,9 @@ fn sr_unbound_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 
 fn sr_unbound_resolved_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: sr_unbound_type_symbol,
-    algebra_symbol: sr_unbound_algebra_symbol,
-    descent_symbol: sr_unbound_descent_symbol,
+    type_symbol: ^sr_unbound_type_symbol,
+    algebra_symbol: ^sr_unbound_algebra_symbol,
+    descent_symbol: ^sr_unbound_descent_symbol,
   )
 }
 

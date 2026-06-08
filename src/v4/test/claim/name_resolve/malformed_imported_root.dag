@@ -35,19 +35,11 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-
-data malformed_seg: Symbol = malformed_seg
-data malformed_child_sym: Symbol = malformed_child_sym
-data malformed_pass_sym: Symbol = malformed_pass_sym
-data malformed_fail_sym: Symbol = malformed_fail_sym
-
-
 fn malformed_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: malformed_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^malformed_pass_sym } }, children: [] }
 }
 fn malformed_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: malformed_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^malformed_fail_sym } }, children: [] }
 }
 fn malformed_claim_input(ok: Bool) -> Node {
   if ok { malformed_pass_node() } else { malformed_fail_node() }
@@ -56,7 +48,7 @@ fn malformed_claim_input(ok: Bool) -> Node {
 
 fn malformed_qn_node() -> Node {
   fold_list_node(
-    xs: Cons { head: malformed_seg, tail: Empty },
+    xs: Cons { head: ^malformed_seg, tail: Empty },
     item_node: fn(sym) {
       Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [] }
     }
@@ -80,7 +72,7 @@ fn malformed_root_node() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: malformed_child_sym } },
+          kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
           children: []
         }
       }
@@ -90,7 +82,7 @@ fn malformed_root_node() -> Node {
 
 
 fn malformed_entry_name() -> QualifiedName {
-  QnCons { head: malformed_seg, tail: QnEmpty }
+  QnCons { head: ^malformed_seg, tail: QnEmpty }
 }
 
 

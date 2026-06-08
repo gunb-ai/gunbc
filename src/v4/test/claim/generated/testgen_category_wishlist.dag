@@ -67,14 +67,8 @@ import v4.std.refinement {
   refined_vacuous_stub_pack
 }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
-
-
-data refinement_preservation_stub_locus_port: Symbol = refinement_preservation_stub_locus_port
-data refinement_preservation_stub_invalid: Symbol = refinement_preservation_stub_invalid
-
-
 fn refinement_preservation_stub_locus() -> Locus {
-  port_locus(port: refinement_preservation_stub_locus_port)
+  port_locus(port: ^refinement_preservation_stub_locus_port)
 }
 
 
@@ -86,7 +80,7 @@ fn refinement_preservation_stub_admits(xs: List<Node>) -> Bool {
 
 
 data refinement_preservation_stub_validation: Validation<List<Node>> = Validation {
-  reason: refinement_preservation_stub_invalid,
+  reason: ^refinement_preservation_stub_invalid,
   admits: refinement_preservation_stub_admits
 }
 
@@ -94,7 +88,7 @@ data refinement_preservation_stub_validation: Validation<List<Node>> = Validatio
 // 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-19 testgen follow-up
 // with complexity (T-12); dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
 data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = VacuousValidation {
-  reason: refinement_preservation_stub_invalid,
+  reason: ^refinement_preservation_stub_invalid,
   vacuous: vacuous_admits_marker
 }
 
@@ -138,35 +132,11 @@ type TestgenWishlistRow {
   oracle: TestgenOracleBasis
   dispatch_key: Symbol
 }
-
-
-data t19_wishlist_type_construction_dispatch: Symbol = t19_wishlist_type_construction_dispatch
-data t19_wishlist_lens_applicability_dispatch: Symbol = t19_wishlist_lens_applicability_dispatch
-data t19_wishlist_bidirectional_roundtrip_dispatch: Symbol = t19_wishlist_bidirectional_roundtrip_dispatch
-data t19_dispatched_language_behavior_equivalence: Symbol = t19_dispatched_language_behavior_equivalence
-data t19_dispatched_algebra_law: Symbol = t19_dispatched_algebra_law
-data t19_dispatched_diagnostic_exhaustiveness: Symbol = t19_dispatched_diagnostic_exhaustiveness
-data t19_dispatched_refinement_preservation: Symbol = t19_dispatched_refinement_preservation
-data t19_generator_wishlist_lens_structural_resolution: Symbol = t19_generator_wishlist_lens_structural_resolution
-data t19_generator_wishlist_unexpected_deferred_roundtrip: Symbol = t19_generator_wishlist_unexpected_deferred_roundtrip
-data t19_generator_wishlist_dag_surface_production: Symbol = t19_generator_wishlist_dag_surface_production
-data t19_generator_wishlist_count_symbol: Symbol = t19_generator_wishlist_count_symbol
-
-
 // F.2-P1: explicit per-row GeneratorIds for the wishlist ledger. These rows are NOT the
 // scheduled generators; several carry a placeholder ManualAnchorAbsent anchor, so identity
 // cannot be derived from the anchor (that would collapse distinct ledger rows). Each row
 // therefore mints its own unique id. Dissolves with the ledger as rows graduate to scheduled
 // generators (which derive their id from a real ClaimAnchorKey via generator_id_for_claim_anchor).
-data wishlist_gen_id_type_construction: Symbol = wishlist_gen_id_type_construction
-data wishlist_gen_id_algebra_law: Symbol = wishlist_gen_id_algebra_law
-data wishlist_gen_id_diagnostic_exhaustiveness: Symbol = wishlist_gen_id_diagnostic_exhaustiveness
-data wishlist_gen_id_lens_applicability: Symbol = wishlist_gen_id_lens_applicability
-data wishlist_gen_id_bidirectional_roundtrip: Symbol = wishlist_gen_id_bidirectional_roundtrip
-data wishlist_gen_id_language_behavior_equivalence: Symbol = wishlist_gen_id_language_behavior_equivalence
-data wishlist_gen_id_refinement_preservation: Symbol = wishlist_gen_id_refinement_preservation
-
-
 fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimCompilesClaimVariant,
@@ -175,7 +145,7 @@ fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
     slot: TypeConstruction {
       subject: ConnectiveKernel { connective: Conj },
     },
-    provenance: generator_provenance(id: wishlist_gen_id_type_construction),
+    provenance: generator_provenance(id: ^wishlist_gen_id_type_construction),
     profile_metadata: default_generator_profile(),
   }
 }
@@ -193,7 +163,7 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
         law: law_nat_add_associativity,
       },
     },
-    provenance: generator_provenance(id: wishlist_gen_id_algebra_law),
+    provenance: generator_provenance(id: ^wishlist_gen_id_algebra_law),
     profile_metadata: default_generator_profile(),
   }
 }
@@ -211,7 +181,7 @@ fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept>
     slot: DiagnosticExhaustiveness {
       omitted_variant: TestClaimDiagnosticClaimVariant,
     },
-    provenance: generator_provenance(id: wishlist_gen_id_diagnostic_exhaustiveness),
+    provenance: generator_provenance(id: ^wishlist_gen_id_diagnostic_exhaustiveness),
     profile_metadata: default_generator_profile(),
   }
 }
@@ -224,11 +194,11 @@ fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: LensApplicability {
       subject: LensApplicabilitySubject {
-        lens: t19_generator_wishlist_lens_structural_resolution,
+        lens: ^t19_generator_wishlist_lens_structural_resolution,
         program: stub_empty_conj,
       },
     },
-    provenance: generator_provenance(id: wishlist_gen_id_lens_applicability),
+    provenance: generator_provenance(id: ^wishlist_gen_id_lens_applicability),
     profile_metadata: default_generator_profile(),
   }
 }
@@ -242,10 +212,10 @@ fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
     slot: BidirectionalRoundtrip {
       subject: BidirectionalRoundtripSubject {
         language: dag_language_model_surface_id,
-        production: t19_generator_wishlist_dag_surface_production,
+        production: ^t19_generator_wishlist_dag_surface_production,
       },
     },
-    provenance: generator_provenance(id: wishlist_gen_id_bidirectional_roundtrip),
+    provenance: generator_provenance(id: ^wishlist_gen_id_bidirectional_roundtrip),
     profile_metadata: default_generator_profile(),
   }
 }
@@ -260,7 +230,7 @@ fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConc
       subject: lbe_subject_conj_dag_surface(),
       mock: lbe_io_mock_conj_dag_surface(),
     },
-    provenance: generator_provenance(id: wishlist_gen_id_language_behavior_equivalence),
+    provenance: generator_provenance(id: ^wishlist_gen_id_language_behavior_equivalence),
     profile_metadata: default_generator_profile(),
   }
 }
@@ -277,7 +247,7 @@ fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
         original: [stub_empty_conj],
       },
     },
-    provenance: generator_provenance(id: wishlist_gen_id_refinement_preservation),
+    provenance: generator_provenance(id: ^wishlist_gen_id_refinement_preservation),
     profile_metadata: default_generator_profile(),
   }
 }
@@ -288,17 +258,17 @@ fn testgen_pending_non_tautological_generator_wishlist() -> List<TestgenWishlist
     TestgenWishlistRow {
       generator: wishlist_type_construction_generator(),
       oracle: StructuralConstructionWitness,
-      dispatch_key: t19_wishlist_type_construction_dispatch,
+      dispatch_key: ^t19_wishlist_type_construction_dispatch,
     },
     TestgenWishlistRow {
       generator: wishlist_lens_applicability_generator(),
       oracle: LensObservationFixture,
-      dispatch_key: t19_wishlist_lens_applicability_dispatch,
+      dispatch_key: ^t19_wishlist_lens_applicability_dispatch,
     },
     TestgenWishlistRow {
       generator: wishlist_bidirectional_roundtrip_generator(),
       oracle: RoundTripDifferential,
-      dispatch_key: t19_wishlist_bidirectional_roundtrip_dispatch,
+      dispatch_key: ^t19_wishlist_bidirectional_roundtrip_dispatch,
     },
   ]
 }
@@ -309,22 +279,22 @@ fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> 
     TestgenWishlistRow {
       generator: dispatched_language_behavior_equivalence_generator(),
       oracle: FrozenIoSnapshot,
-      dispatch_key: t19_dispatched_language_behavior_equivalence,
+      dispatch_key: ^t19_dispatched_language_behavior_equivalence,
     },
     TestgenWishlistRow {
       generator: dispatched_algebra_law_generator(),
       oracle: AlgebraLawWitness,
-      dispatch_key: t19_dispatched_algebra_law,
+      dispatch_key: ^t19_dispatched_algebra_law,
     },
     TestgenWishlistRow {
       generator: dispatched_diagnostic_exhaustiveness_generator(),
       oracle: DiagnosticNegativeFixture,
-      dispatch_key: t19_dispatched_diagnostic_exhaustiveness,
+      dispatch_key: ^t19_dispatched_diagnostic_exhaustiveness,
     },
     TestgenWishlistRow {
       generator: dispatched_refinement_preservation_generator(),
       oracle: RefinementProjectionWitness,
-      dispatch_key: t19_dispatched_refinement_preservation,
+      dispatch_key: ^t19_dispatched_refinement_preservation,
     },
   ]
 }
@@ -342,7 +312,7 @@ fn dispatched_non_tautological_generator_count_is_four() -> Bool {
 
 fn testgen_wishlist_count_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: t19_generator_wishlist_count_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^t19_generator_wishlist_count_symbol } },
     children: []
   }
 }

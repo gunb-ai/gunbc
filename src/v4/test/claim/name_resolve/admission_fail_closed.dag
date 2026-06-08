@@ -43,28 +43,11 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-
-data fc_dup_seg: Symbol = fc_dup_seg
-data fc_found_seg: Symbol = fc_found_seg
-data fc_missing_seg: Symbol = fc_missing_seg
-data fc_import_a_seg: Symbol = fc_import_a_seg
-data fc_import_b_seg: Symbol = fc_import_b_seg
-data fc_subject_seg: Symbol = fc_subject_seg
-data fc_export_sym: Symbol = fc_export_sym
-data fc_export_a_sym: Symbol = fc_export_a_sym
-data fc_export_b_sym: Symbol = fc_export_b_sym
-data fc_malformed_seg: Symbol = fc_malformed_seg
-data fc_malformed_child_sym: Symbol = fc_malformed_child_sym
-data fc_pass_sym: Symbol = fc_pass_sym
-data fc_fail_sym: Symbol = fc_fail_sym
-
-
 fn fc_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: fc_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^fc_pass_sym } }, children: [] }
 }
 fn fc_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: fc_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^fc_fail_sym } }, children: [] }
 }
 fn fc_claim_input(ok: Bool) -> Node {
   if ok { fc_pass_node() } else { fc_fail_node() }
@@ -108,7 +91,7 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
 
 
 fn fc_module_root(seg: Symbol) -> Node {
-  fc_module_root_export(seg: seg, export_sym: fc_export_sym)
+  fc_module_root_export(seg: seg, export_sym: ^fc_export_sym)
 }
 
 
@@ -119,14 +102,14 @@ fn fc_qn(seg: Symbol) -> QualifiedName {
 
 fn fc_duplicate_roots() -> FreeMonoid<Node> {
   Cons {
-    head: fc_module_root(seg: fc_dup_seg),
-    tail: Cons { head: fc_module_root(seg: fc_dup_seg), tail: Empty }
+    head: fc_module_root(seg: ^fc_dup_seg),
+    tail: Cons { head: fc_module_root(seg: ^fc_dup_seg), tail: Empty }
   }
 }
 
 
 fn fc_single_found_root() -> FreeMonoid<Node> {
-  Cons { head: fc_module_root(seg: fc_found_seg), tail: Empty }
+  Cons { head: fc_module_root(seg: ^fc_found_seg), tail: Empty }
 }
 
 
@@ -140,12 +123,12 @@ fn fc_malformed_subject_root() -> Node {
       ),
       dag_named_edge(
         name: dag_surface_module_header_qualified_name,
-        target: fc_qn_node(seg: fc_malformed_seg)
+        target: fc_qn_node(seg: ^fc_malformed_seg)
       ),
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: fc_malformed_child_sym } },
+          kind: TypeNode { connective: Atom { identity: ^fc_malformed_child_sym } },
           children: []
         }
       }
@@ -160,7 +143,7 @@ fn fc_malformed_subject_roots() -> FreeMonoid<Node> {
 
 
 fn fc_import_missing_target() -> Import {
-  Import { target: fc_qn(seg: fc_missing_seg), visibility: ImportVisible }
+  Import { target: fc_qn(seg: ^fc_missing_seg), visibility: ImportVisible }
 }
 
 
@@ -187,7 +170,7 @@ fn resolve_duplicate_module_roots_is_rejected() -> Bool {
     roots: fc_duplicate_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: fc_qn(seg: fc_dup_seg)
+        name: fc_qn(seg: ^fc_dup_seg)
       },
       imports: Empty
     }
@@ -204,7 +187,7 @@ fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
     roots: fc_single_found_root(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: fc_qn(seg: fc_missing_seg)
+        name: fc_qn(seg: ^fc_missing_seg)
       },
       imports: Empty
     }
@@ -246,7 +229,7 @@ fn resolve_malformed_subject_root_is_rejected() -> Bool {
     roots: fc_malformed_subject_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: fc_qn(seg: fc_malformed_seg)
+        name: fc_qn(seg: ^fc_malformed_seg)
       },
       imports: Empty
     }
@@ -259,11 +242,11 @@ fn resolve_malformed_subject_root_is_rejected() -> Bool {
 
 fn fc_dual_import_roots() -> FreeMonoid<Node> {
   Cons {
-    head: fc_module_root_export(seg: fc_subject_seg, export_sym: fc_export_sym),
+    head: fc_module_root_export(seg: ^fc_subject_seg, export_sym: ^fc_export_sym),
     tail: Cons {
-      head: fc_module_root_export(seg: fc_import_a_seg, export_sym: fc_export_a_sym),
+      head: fc_module_root_export(seg: ^fc_import_a_seg, export_sym: ^fc_export_a_sym),
       tail: Cons {
-        head: fc_module_root_export(seg: fc_import_b_seg, export_sym: fc_export_b_sym),
+        head: fc_module_root_export(seg: ^fc_import_b_seg, export_sym: ^fc_export_b_sym),
         tail: Empty
       }
     }
@@ -277,12 +260,12 @@ fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
     roots: fc_dual_import_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: fc_qn(seg: fc_subject_seg)
+        name: fc_qn(seg: ^fc_subject_seg)
       },
       imports: Cons {
-        head: Import { target: fc_qn(seg: fc_import_a_seg), visibility: ImportVisible },
+        head: Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
         tail: Cons {
-          head: Import { target: fc_qn(seg: fc_import_b_seg), visibility: ImportVisible },
+          head: Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
           tail: Empty
         }
       }
@@ -302,12 +285,12 @@ fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
         roots: fc_dual_import_roots(),
         admission: Admission {
           subject: ResolutionSubject {
-            name: fc_qn(seg: fc_subject_seg)
+            name: fc_qn(seg: ^fc_subject_seg)
           },
           imports: Cons {
-            head: Import { target: fc_qn(seg: fc_import_a_seg), visibility: ImportVisible },
+            head: Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
             tail: Cons {
-              head: Import { target: fc_qn(seg: fc_import_b_seg), visibility: ImportVisible },
+              head: Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
               tail: Empty
             }
           }

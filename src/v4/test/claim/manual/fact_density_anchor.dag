@@ -20,28 +20,19 @@ import v4.std.node {
   Named,
   Symbol
 }
-
-
-data fact_density_anchor_int32_symbol: Symbol = fact_density_anchor_int32_symbol
-
 data fact_density_anchor_hollow_alias: Node = Node {
-  kind: TypeNode { connective: Atom { identity: fact_density_anchor_int32_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },
   children: []
 }
-
-
-data fact_density_anchor_width_field: Symbol = fact_density_anchor_width_field
-data fact_density_anchor_signedness_field: Symbol = fact_density_anchor_signedness_field
-
 data fact_density_anchor_fact_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: fact_density_anchor_width_field },
+      label: Named { name: ^fact_density_anchor_width_field },
       target: fact_density_anchor_hollow_alias
     },
     Edge {
-      label: Named { name: fact_density_anchor_signedness_field },
+      label: Named { name: ^fact_density_anchor_signedness_field },
       target: fact_density_anchor_hollow_alias
     }
   ]

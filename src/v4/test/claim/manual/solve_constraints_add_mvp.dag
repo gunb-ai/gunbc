@@ -58,12 +58,9 @@ data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraint
       && (d == None)
   Rejected { diagnostics: _ } => false
 }
-
-
-data solve_constraints_witness_fail_atom: Symbol = solve_constraints_witness_fail_atom
 fn solve_constraints_witness_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: solve_constraints_witness_fail_atom } },
+    kind: TypeNode { connective: Atom { identity: ^solve_constraints_witness_fail_atom } },
     children: []
   }
 }

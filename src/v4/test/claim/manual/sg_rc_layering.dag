@@ -61,8 +61,6 @@ import v4.std.verification {
   Tier1,
   manual_claim_anchor
 }
-data sg_rc_pass_sym: Symbol = sg_rc_pass_sym
-data sg_rc_fail_sym: Symbol = sg_rc_fail_sym
 data sg_rc_fail_text: String = ""
 data sg_rc_expected_rc_diagnostics: String = "Rc<Diagnostics>"
 data sg_rc_expected_owned_diagnostics: String = "Diagnostics"
@@ -74,14 +72,14 @@ data sg_rc_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 
 fn sg_rc_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg_rc_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg_rc_pass_sym } },
     children: []
   }
 }
 
 fn sg_rc_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg_rc_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg_rc_fail_sym } },
     children: []
   }
 }
@@ -204,7 +202,7 @@ fn sg_rc_diagnostics_identity_value() -> TargetValueExpression {
 fn sg_rc_value_expr_ctor_identity(expr: TargetValueExpression) -> Symbol {
   match expr.node.kind {
     TypeNode { connective: Atom { identity: id } } => id
-    _ => sg_rc_fail_sym
+    _ => ^sg_rc_fail_sym
   }
 }
 

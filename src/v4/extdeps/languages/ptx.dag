@@ -163,18 +163,6 @@ type PtxCost {
   instruction_cost: Nat
   occupancy_cost: Nat
 }
-
-
-data ptx_token_kw_entry: Symbol = ptx_token_kw_entry
-data ptx_token_ident: Symbol = ptx_token_ident
-data ptx_token_lparen: Symbol = ptx_token_lparen
-data ptx_token_rparen: Symbol = ptx_token_rparen
-data ptx_token_lbrace: Symbol = ptx_token_lbrace
-data ptx_token_rbrace: Symbol = ptx_token_rbrace
-data ptx_production_entry_kernel: Symbol = ptx_production_entry_kernel
-data ptx_surface_entry_kernel: Symbol = ptx_surface_entry_kernel
-
-
 fn ptx_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
@@ -203,12 +191,12 @@ fn ptx_wave1_lex() -> LexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        ptx_lex_token(token_class: ptx_token_ident, pattern: ptx_identifier_pattern()),
-        ptx_lex_token(token_class: ptx_token_kw_entry, pattern: KeywordPattern { text: ".entry" }),
-        ptx_lex_token(token_class: ptx_token_lparen, pattern: LiteralPattern { text: "(" }),
-        ptx_lex_token(token_class: ptx_token_rparen, pattern: LiteralPattern { text: ")" }),
-        ptx_lex_token(token_class: ptx_token_lbrace, pattern: LiteralPattern { text: "{" }),
-        ptx_lex_token(token_class: ptx_token_rbrace, pattern: LiteralPattern { text: "}" })
+        ptx_lex_token(token_class: ^ptx_token_ident, pattern: ptx_identifier_pattern()),
+        ptx_lex_token(token_class: ^ptx_token_kw_entry, pattern: KeywordPattern { text: ".entry" }),
+        ptx_lex_token(token_class: ^ptx_token_lparen, pattern: LiteralPattern { text: "(" }),
+        ptx_lex_token(token_class: ^ptx_token_rparen, pattern: LiteralPattern { text: ")" }),
+        ptx_lex_token(token_class: ^ptx_token_lbrace, pattern: LiteralPattern { text: "{" }),
+        ptx_lex_token(token_class: ^ptx_token_rbrace, pattern: LiteralPattern { text: "}" })
       ]
     }
   }
@@ -217,16 +205,16 @@ fn ptx_wave1_lex() -> LexRules {
 
 fn ptx_entry_kernel_expr() -> GrammarExpr {
   ptx_grammar_sequence(
-    left: ptx_grammar_terminal(token_class: ptx_token_kw_entry),
+    left: ptx_grammar_terminal(token_class: ^ptx_token_kw_entry),
     right: ptx_grammar_sequence(
-      left: ptx_grammar_terminal(token_class: ptx_token_ident),
+      left: ptx_grammar_terminal(token_class: ^ptx_token_ident),
       right: ptx_grammar_sequence(
-        left: ptx_grammar_terminal(token_class: ptx_token_lparen),
+        left: ptx_grammar_terminal(token_class: ^ptx_token_lparen),
         right: ptx_grammar_sequence(
-          left: ptx_grammar_terminal(token_class: ptx_token_rparen),
+          left: ptx_grammar_terminal(token_class: ^ptx_token_rparen),
           right: ptx_grammar_sequence(
-            left: ptx_grammar_terminal(token_class: ptx_token_lbrace),
-            right: ptx_grammar_terminal(token_class: ptx_token_rbrace)
+            left: ptx_grammar_terminal(token_class: ^ptx_token_lbrace),
+            right: ptx_grammar_terminal(token_class: ^ptx_token_rbrace)
           )
         )
       )
@@ -237,13 +225,13 @@ fn ptx_entry_kernel_expr() -> GrammarExpr {
 
 fn ptx_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
-    name: ptx_production_entry_kernel,
+    name: ^ptx_production_entry_kernel,
     expression: ptx_entry_kernel_expr(),
-    emitted: grammar_atom(identity: ptx_surface_entry_kernel)
+    emitted: grammar_atom(identity: ^ptx_surface_entry_kernel)
   }
   ModeledGrammar {
     root: GrammarRoot {
-      start: ptx_production_entry_kernel,
+      start: ^ptx_production_entry_kernel,
       productions: [start],
       sync_tokens: grammar_empty_sync_tokens()
     }
@@ -253,14 +241,14 @@ fn ptx_wave1_grammar() -> ParseGrammar {
 
 fn ptx_entry_kernel_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ptx_production_entry_kernel),
+    lhs: grammar_formal_nonterminal(identity: ^ptx_production_entry_kernel),
     rhs: [
-      grammar_formal_terminal(identity: ptx_token_kw_entry),
-      grammar_formal_terminal(identity: ptx_token_ident),
-      grammar_formal_terminal(identity: ptx_token_lparen),
-      grammar_formal_terminal(identity: ptx_token_rparen),
-      grammar_formal_terminal(identity: ptx_token_lbrace),
-      grammar_formal_terminal(identity: ptx_token_rbrace)
+      grammar_formal_terminal(identity: ^ptx_token_kw_entry),
+      grammar_formal_terminal(identity: ^ptx_token_ident),
+      grammar_formal_terminal(identity: ^ptx_token_lparen),
+      grammar_formal_terminal(identity: ^ptx_token_rparen),
+      grammar_formal_terminal(identity: ^ptx_token_lbrace),
+      grammar_formal_terminal(identity: ^ptx_token_rbrace)
     ]
   }
 }
@@ -280,7 +268,7 @@ fn ptx_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     probe: GrammarSchemaProbe {
       fixture: ".entry k() {}",
       production: ptx_entry_kernel_formal_production(),
-      expected_parse_surface: grammar_atom(identity: ptx_surface_entry_kernel)
+      expected_parse_surface: grammar_atom(identity: ^ptx_surface_entry_kernel)
     }
   }
 }

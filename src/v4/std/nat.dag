@@ -87,34 +87,7 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
 
 // Practice-8 scheduling Symbols — T19-VHDR-3332
 // RULING-1: 🟢 pretty-much-done — nominal scheduling symbols
-data nat_algebra_law_subject_symbol_additive_monoid: Symbol = nat_algebra_law_subject_symbol_additive_monoid
-
-
-data nat_algebra_law_subject_symbol_commutative_semiring: Symbol = nat_algebra_law_subject_symbol_commutative_semiring
-
-
-data nat_algebra_law_subject_symbol_inhabitant_nat: Symbol = nat_algebra_law_subject_symbol_inhabitant_nat
-
-
-data law_nat_add_left_identity: Symbol = law_nat_add_left_identity
-
-
-data law_nat_add_right_identity: Symbol = law_nat_add_right_identity
-
-
-data law_nat_add_associativity: Symbol = law_nat_add_associativity
-
-
-data law_nat_mul_left_identity: Symbol = law_nat_mul_left_identity
-
-
-data law_nat_mul_annihilator: Symbol = law_nat_mul_annihilator
-
-
-data law_nat_mul_associativity: Symbol = law_nat_mul_associativity
-
-
-type NatAlgebraLawObligation {
+AlgebraLawObligation {
   algebra: Symbol
   inhabitant: Symbol
   law: Symbol
@@ -124,34 +97,34 @@ type NatAlgebraLawObligation {
 fn nat_declared_algebra_law_obligations() -> List<NatAlgebraLawObligation> {
   [
     NatAlgebraLawObligation {
-      algebra: nat_algebra_law_subject_symbol_additive_monoid,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_add_left_identity,
+      algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_add_left_identity,
     },
     NatAlgebraLawObligation {
-      algebra: nat_algebra_law_subject_symbol_additive_monoid,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_add_right_identity,
+      algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_add_right_identity,
     },
     NatAlgebraLawObligation {
-      algebra: nat_algebra_law_subject_symbol_additive_monoid,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_add_associativity,
+      algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_add_associativity,
     },
     NatAlgebraLawObligation {
-      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_mul_left_identity,
+      algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_mul_left_identity,
     },
     NatAlgebraLawObligation {
-      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_mul_annihilator,
+      algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_mul_annihilator,
     },
     NatAlgebraLawObligation {
-      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_mul_associativity,
+      algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_mul_associativity,
     },
   ]
 }

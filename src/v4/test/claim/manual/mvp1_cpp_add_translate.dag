@@ -99,14 +99,13 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-
-
-data mvp1_cpp_grounding_miss: Symbol = mvp1_cpp_grounding_miss
-data mvp1_cpp_emit_source_mismatch: Symbol = mvp1_cpp_emit_source_mismatch
-data mvp1_cpp_compile_source_mismatch: Symbol = mvp1_cpp_compile_source_mismatch
-data mvp1_cpp_serialize_unexpected_accept: Symbol = mvp1_cpp_serialize_unexpected_accept
 data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
 
+
+data mvp1_cpp_target_profile: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^mvp1_cpp_target_profile_atom } },
+  children: []
+}
 
 data mvp1_cpp_int_primitive_facts: CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
   spelling: Int,
@@ -176,7 +175,7 @@ fn mvp1_cpp_serialize_reject_claim_outcome() -> Outcome<Node> {
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: mvp1_cpp_serialize_unexpected_accept,
+            reason: ^mvp1_cpp_serialize_unexpected_accept,
             at: node_locus(node: mvp1_cpp_emitted_root),
             correction: Unavailable { reason: ExternalContractUnknown }
           }
@@ -302,7 +301,7 @@ fn mvp1_cpp_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   } else {
     Violates {
       diagnostic: Diagnostic {
-        reason: mvp1_cpp_grounding_miss,
+        reason: ^mvp1_cpp_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
@@ -372,7 +371,7 @@ fn mvp1_cpp_emit_claim_outcome() -> Outcome<Node> {
         Rejected {
           diagnostics: diagnostics_singleton(
             d: Diagnostic {
-              reason: mvp1_cpp_emit_source_mismatch,
+              reason: ^mvp1_cpp_emit_source_mismatch,
               at: node_locus(node: mvp1_cpp_emitted_root),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
@@ -397,7 +396,7 @@ fn mvp1_cpp_compile_inferred_claim_outcome() -> Outcome<Node> {
             Rejected {
               diagnostics: diagnostics_singleton(
                 d: Diagnostic {
-                  reason: mvp1_cpp_compile_source_mismatch,
+                  reason: ^mvp1_cpp_compile_source_mismatch,
                   at: node_locus(node: mvp1_cpp_emitted_root),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 }
@@ -408,7 +407,7 @@ fn mvp1_cpp_compile_inferred_claim_outcome() -> Outcome<Node> {
           Rejected {
             diagnostics: diagnostics_singleton(
               d: Diagnostic {
-                reason: mvp1_cpp_compile_source_mismatch,
+                reason: ^mvp1_cpp_compile_source_mismatch,
                 at: node_locus(node: mvp1_cpp_emitted_root),
                 correction: Unavailable { reason: ExternalContractUnknown }
               }

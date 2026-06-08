@@ -73,10 +73,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data sg2_mode2_pass_sym: Symbol = sg2_mode2_pass_sym
-data sg2_mode2_fail_sym: Symbol = sg2_mode2_fail_sym
-data sg2_mode2_facts_unavailable: Symbol = sg2_mode2_facts_unavailable
 data sg2_mode2_fail_text: String = ""
 data sg2_mode2_expected_instantiation_text: String = "Rc<FooBar<X, Y>>"
 data sg2_mode2_expected_perturbed_text: String = "FooBar<X, Y>"
@@ -87,14 +83,14 @@ data sg2_mode2_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 
 fn sg2_mode2_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg2_mode2_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg2_mode2_pass_sym } },
     children: []
   }
 }
 
 fn sg2_mode2_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg2_mode2_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg2_mode2_fail_sym } },
     children: []
   }
 }
@@ -114,7 +110,7 @@ fn sg2_mode2_target() -> TargetModel {
 fn sg2_mode2_facts_lookup(_key: Node) -> Witness<InferredFacts> {
   Violates {
     diagnostic: Diagnostic {
-      reason: sg2_mode2_facts_unavailable,
+      reason: ^sg2_mode2_facts_unavailable,
       at: node_locus(node: sg2_mode2_fail_node()),
       correction: Unavailable { reason: ExternalContractUnknown }
     }

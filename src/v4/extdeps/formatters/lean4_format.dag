@@ -28,19 +28,8 @@ import v4.std.patch { ConfigPatchRecord, config_patch_layer }
 type Lean4NameValue
 type Lean4SyntaxValue
 type Lean4NatValue = Nat
-
-
-data lean4_nat_out_of_range: Symbol = lean4_nat_out_of_range
-
-
-data lean4_nat_exceeds_ceiling: Symbol = lean4_nat_exceeds_ceiling
-
-
-data lean4_format_authoritative_locus_port: Symbol = lean4_format_authoritative_locus_port
-
-
-fn lean4_format_authoritative_locus() -> Locus {
-  port_locus(port: lean4_format_authoritative_locus_port)
+ lean4_format_authoritative_locus() -> Locus {
+  port_locus(port: ^lean4_format_authoritative_locus_port)
 }
 
 
@@ -128,7 +117,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<Nat>
     Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
-          reason: lean4_nat_out_of_range,
+          reason: ^lean4_nat_out_of_range,
           at: at,
           correction: Unavailable { reason: UserInputBoundary }
         }
@@ -138,7 +127,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<Nat>
     Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
-          reason: lean4_nat_exceeds_ceiling,
+          reason: ^lean4_nat_exceeds_ceiling,
           at: at,
           correction: Unavailable { reason: UserInputBoundary }
         }
@@ -158,7 +147,7 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
     Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
-          reason: lean4_nat_out_of_range,
+          reason: ^lean4_nat_out_of_range,
           at: at,
           correction: Unavailable { reason: UserInputBoundary }
         }
@@ -168,7 +157,7 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
     Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
-          reason: lean4_nat_exceeds_ceiling,
+          reason: ^lean4_nat_exceeds_ceiling,
           at: at,
           correction: Unavailable { reason: UserInputBoundary }
         }

@@ -51,18 +51,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-
-data anchor_decl_first: Symbol = anchor_decl_first
-data anchor_decl_second: Symbol = anchor_decl_second
-data anchor_imported_decl: Symbol = anchor_imported_decl
-data anchor_imported_path_segment: Symbol = anchor_imported_path_segment
-data anchor_subject_path_segment: Symbol = anchor_subject_path_segment
-data anchor_subject_import_use: Symbol = anchor_subject_import_use
-data anchor_resolve_roots_pass: Symbol = anchor_resolve_roots_pass
-data anchor_resolve_roots_fail: Symbol = anchor_resolve_roots_fail
-
-
 fn service_atom_conj_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -103,7 +91,7 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Named { name: anchor_decl_first },
+          label: Named { name: ^anchor_decl_first },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: dag_c3_surface_sugar_service }
@@ -112,7 +100,7 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
           }
         },
         Edge {
-          label: Named { name: anchor_decl_second },
+          label: Named { name: ^anchor_decl_second },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: dag_c3_surface_sugar_type }
@@ -133,7 +121,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Named { name: anchor_decl_first },
+          label: Named { name: ^anchor_decl_first },
           target: Node {
             kind: ComputationNode { behavior: Bind },
             children: [
@@ -177,12 +165,12 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
 fn resolve_roots_claim_node(ok: Bool) -> Node {
   if ok {
     Node {
-      kind: TypeNode { connective: Atom { identity: anchor_resolve_roots_pass } },
+      kind: TypeNode { connective: Atom { identity: ^anchor_resolve_roots_pass } },
       children: []
     }
   } else {
     Node {
-      kind: TypeNode { connective: Atom { identity: anchor_resolve_roots_fail } },
+      kind: TypeNode { connective: Atom { identity: ^anchor_resolve_roots_fail } },
       children: []
     }
   }
@@ -191,7 +179,7 @@ fn resolve_roots_claim_node(ok: Bool) -> Node {
 
 fn resolve_imported_qn_node() -> Node {
   fold_list_node(
-    xs: Cons { head: anchor_imported_path_segment, tail: Empty },
+    xs: Cons { head: ^anchor_imported_path_segment, tail: Empty },
     item_node: fn(sym) {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
@@ -215,7 +203,7 @@ fn resolve_imported_module_root() -> Node {
         target: resolve_imported_qn_node()
       ),
       Edge {
-        label: Named { name: anchor_imported_decl },
+        label: Named { name: ^anchor_imported_decl },
         target: Node {
           kind: TypeNode {
             connective: Atom { identity: dag_c3_surface_sugar_service }
@@ -230,7 +218,7 @@ fn resolve_imported_module_root() -> Node {
 
 fn resolve_subject_qn_node() -> Node {
   fold_list_node(
-    xs: Cons { head: anchor_subject_path_segment, tail: Empty },
+    xs: Cons { head: ^anchor_subject_path_segment, tail: Empty },
     item_node: fn(sym) {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
@@ -271,7 +259,7 @@ fn resolve_subject_module_root_with_import_use() -> Node {
         target: resolve_subject_qn_node()
       ),
       Edge {
-        label: Named { name: anchor_subject_import_use },
+        label: Named { name: ^anchor_subject_import_use },
         target: resolve_imported_use_tree()
       }
     ]
@@ -280,7 +268,7 @@ fn resolve_subject_module_root_with_import_use() -> Node {
 
 
 fn resolve_subject_name() -> QualifiedName {
-  QnCons { head: anchor_subject_path_segment, tail: QnEmpty }
+  QnCons { head: ^anchor_subject_path_segment, tail: QnEmpty }
 }
 
 
@@ -297,14 +285,14 @@ fn resolve_roots_single_import() -> FreeMonoid<Node> {
 
 fn resolve_imported_use_tree() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: anchor_imported_decl } },
+    kind: TypeNode { connective: Atom { identity: ^anchor_imported_decl } },
     children: []
   }
 }
 
 
 fn resolve_import_target() -> QualifiedName {
-  QnCons { head: anchor_imported_path_segment, tail: QnEmpty }
+  QnCons { head: ^anchor_imported_path_segment, tail: QnEmpty }
 }
 
 

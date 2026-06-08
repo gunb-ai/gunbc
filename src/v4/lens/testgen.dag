@@ -283,26 +283,18 @@ type GeneratorProfile { profile_ref: Symbol }
 
 // F.2-P1: default generation profile applied to all scheduled generators until the
 // testgen CLI (wise-wolf-799 lane) selects a profile per invocation.
-data testgen_default_profile_ref: Symbol = testgen_default_profile_ref
-
-
 // F.2-P1: source file the testgen generators are authored in — the artifact file_path
 // for provenance until per-claim emit paths are modeled.
 data testgen_lens_file_path: String = "src/v4/lens/testgen.dag"
 
 
 fn default_generator_profile() -> GeneratorProfile {
-  GeneratorProfile { profile_ref: testgen_default_profile_ref }
+  GeneratorProfile { profile_ref: ^testgen_default_profile_ref }
 }
-
-
-data testgen_profile_roster_mismatch: Symbol = testgen_profile_roster_mismatch
-
-
 fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: testgen_profile_roster_mismatch,
-    at: Textual { file: testgen_lens_file, extent: WholeFile },
+    reason: ^testgen_profile_roster_mismatch,
+    at: Textual { file: ^testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -313,60 +305,31 @@ fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
 // anchors/obligations get distinct GeneratorIds and no two scheduled generators collide.
 // 🟡 dissolution target: replace this literal table with an anchor→Symbol reflection when
 // .dag can project a Symbol from a ClaimAnchorKey directly (T-19 TestClaim reflection).
-data gen_id_tc_conj_empty: Symbol = gen_id_tc_conj_empty
-data gen_id_tc_disj_empty: Symbol = gen_id_tc_disj_empty
-data gen_id_tc_arrow_two_conj: Symbol = gen_id_tc_arrow_two_conj
-data gen_id_tc_cardinality_empty: Symbol = gen_id_tc_cardinality_empty
-data gen_id_tc_instantiation_empty: Symbol = gen_id_tc_instantiation_empty
-data gen_id_tc_arrow_empty: Symbol = gen_id_tc_arrow_empty
-data gen_id_tc_transform_empty: Symbol = gen_id_tc_transform_empty
-data gen_id_tc_branch_empty: Symbol = gen_id_tc_branch_empty
-data gen_id_tc_loop_empty: Symbol = gen_id_tc_loop_empty
-data gen_id_tc_bind_zero_children: Symbol = gen_id_tc_bind_zero_children
-data gen_id_tc_conj_equals_refl: Symbol = gen_id_tc_conj_equals_refl
-data gen_id_nat_add_left_identity: Symbol = gen_id_nat_add_left_identity
-data gen_id_nat_add_right_identity: Symbol = gen_id_nat_add_right_identity
-data gen_id_nat_add_associativity: Symbol = gen_id_nat_add_associativity
-data gen_id_nat_mul_left_identity: Symbol = gen_id_nat_mul_left_identity
-data gen_id_nat_mul_annihilator: Symbol = gen_id_nat_mul_annihilator
-data gen_id_nat_mul_associativity: Symbol = gen_id_nat_mul_associativity
-data gen_id_lbe_conj_dag_surface: Symbol = gen_id_lbe_conj_dag_surface
-data gen_id_lbe_disj_dag_surface: Symbol = gen_id_lbe_disj_dag_surface
-data gen_id_lbe_transform_dag_surface: Symbol = gen_id_lbe_transform_dag_surface
-data gen_id_refinement_nonempty_list_base: Symbol = gen_id_refinement_nonempty_list_base
-data gen_id_anchor_absent: Symbol = gen_id_anchor_absent
-data gen_id_coproduct_compiles: Symbol = gen_id_coproduct_compiles
-data gen_id_coproduct_diagnostic: Symbol = gen_id_coproduct_diagnostic
-data gen_id_coproduct_equals: Symbol = gen_id_coproduct_equals
-data gen_id_coproduct_structural_equals: Symbol = gen_id_coproduct_structural_equals
-data gen_id_coproduct_roundtrip: Symbol = gen_id_coproduct_roundtrip
-
-
 // F.2-P1: derive a generator's identity from its ManualAnchorKey (one id per manual anchor).
 fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
   match key {
-    ManualTcConjEmpty => gen_id_tc_conj_empty
-    ManualTcDisjEmpty => gen_id_tc_disj_empty
-    ManualTcArrowTwoConj => gen_id_tc_arrow_two_conj
-    ManualTcCardinalityEmpty => gen_id_tc_cardinality_empty
-    ManualTcInstantiationEmpty => gen_id_tc_instantiation_empty
-    ManualTcArrowEmpty => gen_id_tc_arrow_empty
-    ManualTcTransformEmpty => gen_id_tc_transform_empty
-    ManualTcBranchEmpty => gen_id_tc_branch_empty
-    ManualTcLoopEmpty => gen_id_tc_loop_empty
-    ManualTcBindZeroChildren => gen_id_tc_bind_zero_children
-    ManualTcConjEqualsRefl => gen_id_tc_conj_equals_refl
-    ManualNatAddLeftIdentity => gen_id_nat_add_left_identity
-    ManualNatAddRightIdentity => gen_id_nat_add_right_identity
-    ManualNatAddAssociativity => gen_id_nat_add_associativity
-    ManualNatMulLeftIdentity => gen_id_nat_mul_left_identity
-    ManualNatMulAnnihilator => gen_id_nat_mul_annihilator
-    ManualNatMulAssociativity => gen_id_nat_mul_associativity
-    ManualLbeConjDagSurface => gen_id_lbe_conj_dag_surface
-    ManualLbeDisjDagSurface => gen_id_lbe_disj_dag_surface
-    ManualLbeTransformDagSurface => gen_id_lbe_transform_dag_surface
-    ManualRefinementNonEmptyListBase => gen_id_refinement_nonempty_list_base
-    ManualAnchorAbsent => gen_id_anchor_absent
+    ManualTcConjEmpty => ^gen_id_tc_conj_empty
+    ManualTcDisjEmpty => ^gen_id_tc_disj_empty
+    ManualTcArrowTwoConj => ^gen_id_tc_arrow_two_conj
+    ManualTcCardinalityEmpty => ^gen_id_tc_cardinality_empty
+    ManualTcInstantiationEmpty => ^gen_id_tc_instantiation_empty
+    ManualTcArrowEmpty => ^gen_id_tc_arrow_empty
+    ManualTcTransformEmpty => ^gen_id_tc_transform_empty
+    ManualTcBranchEmpty => ^gen_id_tc_branch_empty
+    ManualTcLoopEmpty => ^gen_id_tc_loop_empty
+    ManualTcBindZeroChildren => ^gen_id_tc_bind_zero_children
+    ManualTcConjEqualsRefl => ^gen_id_tc_conj_equals_refl
+    ManualNatAddLeftIdentity => ^gen_id_nat_add_left_identity
+    ManualNatAddRightIdentity => ^gen_id_nat_add_right_identity
+    ManualNatAddAssociativity => ^gen_id_nat_add_associativity
+    ManualNatMulLeftIdentity => ^gen_id_nat_mul_left_identity
+    ManualNatMulAnnihilator => ^gen_id_nat_mul_annihilator
+    ManualNatMulAssociativity => ^gen_id_nat_mul_associativity
+    ManualLbeConjDagSurface => ^gen_id_lbe_conj_dag_surface
+    ManualLbeDisjDagSurface => ^gen_id_lbe_disj_dag_surface
+    ManualLbeTransformDagSurface => ^gen_id_lbe_transform_dag_surface
+    ManualRefinementNonEmptyListBase => ^gen_id_refinement_nonempty_list_base
+    ManualAnchorAbsent => ^gen_id_anchor_absent
   }
 }
 
@@ -374,11 +337,11 @@ fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
 // F.2-P1: derive identity from a generated coproduct-exhaustiveness variant (one id per omitted arm).
 fn generator_id_for_coproduct_variant(v: TestClaimCoproductVariant) -> GeneratorId {
   match v {
-    TestClaimCompilesClaimVariant => gen_id_coproduct_compiles
-    TestClaimDiagnosticClaimVariant => gen_id_coproduct_diagnostic
-    TestClaimEqualsClaimVariant => gen_id_coproduct_equals
-    TestClaimStructuralEqualsClaimVariant => gen_id_coproduct_structural_equals
-    TestClaimRoundTripClaimVariant => gen_id_coproduct_roundtrip
+    TestClaimCompilesClaimVariant => ^gen_id_coproduct_compiles
+    TestClaimDiagnosticClaimVariant => ^gen_id_coproduct_diagnostic
+    TestClaimEqualsClaimVariant => ^gen_id_coproduct_equals
+    TestClaimStructuralEqualsClaimVariant => ^gen_id_coproduct_structural_equals
+    TestClaimRoundTripClaimVariant => ^gen_id_coproduct_roundtrip
   }
 }
 
@@ -523,46 +486,11 @@ data lbe_label_transform_dag_surface: String = "generated/lbe: Transform computa
 
 
 data refinement_label_nonempty_list_base: String = "generated/refinement: NonEmptyList preserves List base after refine"
-data idempotent_operation_tautology_skip: Symbol = idempotent_operation_tautology_skip
 data idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
 data idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
 data idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
-
-
-data testgen_lens_file: Symbol = testgen_lens_file
-
-
-data manual_anchor_absent_bootstrap: Symbol = manual_anchor_absent_bootstrap
-
-
-data testgen_non_algebra_law_scheduled_slot: Symbol = testgen_non_algebra_law_scheduled_slot
-
-
-data coproduct_exhaustiveness_missing_variant: Symbol = coproduct_exhaustiveness_missing_variant
-
-
-data t19_algebra_law_tautological_sides: Symbol = t19_algebra_law_tautological_sides
-data t19_algebra_law_subject_field: Symbol = t19_algebra_law_subject_field
-data t19_algebra_law_algebra_field: Symbol = t19_algebra_law_algebra_field
-data t19_algebra_law_inhabitant_field: Symbol = t19_algebra_law_inhabitant_field
-data t19_algebra_law_law_field: Symbol = t19_algebra_law_law_field
-data t19_algebra_law_expression_field: Symbol = t19_algebra_law_expression_field
-data algebra_law_anchor_mismatch: Symbol = algebra_law_anchor_mismatch
-
-
-data coproduct_exhaustiveness_testclaim_variant: Symbol = coproduct_exhaustiveness_testclaim_variant
-
-
-data coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
-
-
-data coproduct_exhaustiveness_omitted_variant_edge: Symbol = coproduct_exhaustiveness_omitted_variant_edge
-
-
-data refinement_preservation_empty_list_reason: Symbol = refinement_preservation_empty_list_reason
-
-
-fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
+coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
+n lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
     language: dag_language_model_surface_id,
     input_node: stub_empty_conj,
@@ -632,33 +560,26 @@ fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<
   refine(
     base: xs,
     by: Validation {
-      reason: refinement_preservation_empty_list_reason,
+      reason: ^refinement_preservation_empty_list_reason,
       admits: fn(candidate) { non_empty(xs: candidate) }
     },
     at: at
   )
 }
-
-
-data refinement_preservation_list_empty_node: Symbol = refinement_preservation_list_empty_node
-data refinement_preservation_list_cons_node: Symbol = refinement_preservation_list_cons_node
-data refinement_preservation_list_head_edge: Symbol = refinement_preservation_list_head_edge
-data refinement_preservation_list_tail_edge: Symbol = refinement_preservation_list_tail_edge
-
 fn refinement_preservation_list_node(xs: List<Node>) -> Node {
   fold_list_right(
     xs: xs,
     empty: Node {
-      kind: TypeNode { connective: Atom { identity: refinement_preservation_list_empty_node } },
+      kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_empty_node } },
       children: []
     },
     snoc: fn(tail_node, h) {
       Node {
-        kind: TypeNode { connective: Atom { identity: refinement_preservation_list_cons_node } },
+        kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_cons_node } },
         children: [
-          Edge { label: Named { name: refinement_preservation_list_head_edge }, target: h },
+          Edge { label: Named { name: ^refinement_preservation_list_head_edge }, target: h },
           Edge {
-            label: Named { name: refinement_preservation_list_tail_edge },
+            label: Named { name: ^refinement_preservation_list_tail_edge },
             target: tail_node
           }
         ]
@@ -751,8 +672,8 @@ fn testgen_emit_idempotent_operation_claim(
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: idempotent_operation_tautology_skip,
-            at: Textual { file: testgen_lens_file, extent: WholeFile },
+            reason: ^idempotent_operation_tautology_skip,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
           }
         )
@@ -835,8 +756,8 @@ fn testgen_emit_algebra_law_claim(
     Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
-          reason: t19_algebra_law_tautological_sides,
-          at: Textual { file: testgen_lens_file, extent: WholeFile },
+          reason: ^t19_algebra_law_tautological_sides,
+          at: Textual { file: ^testgen_lens_file, extent: WholeFile },
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
@@ -937,8 +858,8 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: algebra_law_anchor_mismatch,
-            at: Textual { file: testgen_lens_file, extent: WholeFile },
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
           }
         )
@@ -956,9 +877,9 @@ fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
-      Edge { label: Named { name: t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
-      Edge { label: Named { name: t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+      Edge { label: Named { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
+      Edge { label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
+      Edge { label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
     ]
   }
 }
@@ -968,52 +889,14 @@ fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
-      Edge { label: Named { name: t19_algebra_law_expression_field }, target: expression },
+      Edge { label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
+      Edge { label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
     ]
   }
 }
 
 
 // 🟡 gated — feature:v4-std-int-to-node-encoding — bind node://adhoc-10fda09f-f25 — dissolve-on-arrival: v4.std primitive Int → Node encoder; forbidden: silent collapse of ByteRange Int positions to a variant-tag atom. Until arrival, witness_validity_extent_node fails closed on Textual{ByteRange} via witness_validity_byte_range_unencodable_diagnostic.
-data witness_validity_field_source_facts: Symbol = witness_validity_field_source_facts
-data witness_validity_field_candidate: Symbol = witness_validity_field_candidate
-data witness_validity_field_predicate: Symbol = witness_validity_field_predicate
-data witness_validity_field_witness: Symbol = witness_validity_field_witness
-data witness_validity_field_oracle_outcome: Symbol = witness_validity_field_oracle_outcome
-data witness_validity_field_algebra: Symbol = witness_validity_field_algebra
-data witness_validity_field_preservation_rule: Symbol = witness_validity_field_preservation_rule
-data witness_validity_field_property: Symbol = witness_validity_field_property
-data witness_validity_field_evidence: Symbol = witness_validity_field_evidence
-data witness_validity_outcome_holds: Symbol = witness_validity_outcome_holds
-data witness_validity_outcome_violates: Symbol = witness_validity_outcome_violates
-data witness_validity_diag_field_reason: Symbol = witness_validity_diag_field_reason
-data witness_validity_diag_field_at: Symbol = witness_validity_diag_field_at
-data witness_validity_diag_field_correction: Symbol = witness_validity_diag_field_correction
-data witness_validity_locus_tag_textual: Symbol = witness_validity_locus_tag_textual
-data witness_validity_locus_tag_node: Symbol = witness_validity_locus_tag_node
-data witness_validity_locus_tag_port: Symbol = witness_validity_locus_tag_port
-data witness_validity_locus_textual_file: Symbol = witness_validity_locus_textual_file
-data witness_validity_locus_textual_extent: Symbol = witness_validity_locus_textual_extent
-data witness_validity_extent_tag_whole_file: Symbol = witness_validity_extent_tag_whole_file
-data witness_validity_extent_tag_byte_range: Symbol = witness_validity_extent_tag_byte_range
-data witness_validity_correction_tag_suggested: Symbol = witness_validity_correction_tag_suggested
-data witness_validity_correction_tag_unavailable: Symbol = witness_validity_correction_tag_unavailable
-data witness_validity_no_correction_tag_user: Symbol = witness_validity_no_correction_tag_user
-data witness_validity_no_correction_tag_ambiguous: Symbol = witness_validity_no_correction_tag_ambiguous
-data witness_validity_no_correction_tag_external: Symbol = witness_validity_no_correction_tag_external
-data witness_validity_list_tag_empty: Symbol = witness_validity_list_tag_empty
-data witness_validity_list_cons_head: Symbol = witness_validity_list_cons_head
-data witness_validity_list_cons_tail: Symbol = witness_validity_list_cons_tail
-data witness_validity_diags_field_head: Symbol = witness_validity_diags_field_head
-data witness_validity_diags_field_tail: Symbol = witness_validity_diags_field_tail
-data witness_validity_diagnostics_tag_none: Symbol = witness_validity_diagnostics_tag_none
-data witness_validity_diagnostics_tag_some: Symbol = witness_validity_diagnostics_tag_some
-data witness_validity_outcome_accepted_value: Symbol = witness_validity_outcome_accepted_value
-data witness_validity_outcome_accepted_diagnostics: Symbol = witness_validity_outcome_accepted_diagnostics
-data witness_validity_byte_range_unencodable: Symbol = witness_validity_byte_range_unencodable
-
-
 fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -1026,9 +909,9 @@ fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: witness_validity_field_algebra }, target: p.algebra },
+      Edge { label: Named { name: ^witness_validity_field_algebra }, target: p.algebra },
       Edge {
-        label: Named { name: witness_validity_field_preservation_rule },
+        label: Named { name: ^witness_validity_field_preservation_rule },
         target: witness_validity_symbol_atom_node(s: p.preservation_rule)
       }
     ]
@@ -1041,10 +924,10 @@ fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: witness_validity_field_property },
+        label: Named { name: ^witness_validity_field_property },
         target: witness_validity_symbol_atom_node(s: w.property)
       },
-      Edge { label: Named { name: witness_validity_field_evidence }, target: w.evidence }
+      Edge { label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
     ]
   }
 }
@@ -1052,7 +935,7 @@ fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
 
 fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> Diagnostic {
   Diagnostic {
-    reason: witness_validity_byte_range_unencodable,
+    reason: ^witness_validity_byte_range_unencodable,
     at: node_locus(node: at_node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1079,18 +962,18 @@ fn witness_validity_subject_node(
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: witness_validity_field_source_facts }, target: source_facts },
-            Edge { label: Named { name: witness_validity_field_candidate }, target: candidate },
+            Edge { label: Named { name: ^witness_validity_field_source_facts }, target: source_facts },
+            Edge { label: Named { name: ^witness_validity_field_candidate }, target: candidate },
             Edge {
-              label: Named { name: witness_validity_field_predicate },
+              label: Named { name: ^witness_validity_field_predicate },
               target: witness_validity_predicate_node(p: predicate)
             },
             Edge {
-              label: Named { name: witness_validity_field_witness },
+              label: Named { name: ^witness_validity_field_witness },
               target: witness_validity_witness_node(w: witness)
             },
             Edge {
-              label: Named { name: witness_validity_field_oracle_outcome },
+              label: Named { name: ^witness_validity_field_oracle_outcome },
               target: oracle_outcome
             }
           ]
@@ -1105,11 +988,11 @@ fn witness_validity_subject_node(
 fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
   match r {
     UserInputBoundary =>
-      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_user)
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_user)
     AmbiguousIntent =>
-      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_ambiguous)
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_ambiguous)
     ExternalContractUnknown =>
-      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_external)
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_external)
   }
 }
 
@@ -1120,7 +1003,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: witness_validity_correction_tag_suggested }, target: n }
+          Edge { label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
         ]
       }
     Unavailable { reason: r } =>
@@ -1128,7 +1011,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: witness_validity_correction_tag_unavailable },
+            label: Named { name: ^witness_validity_correction_tag_unavailable },
             target: witness_validity_no_correction_reason_node(r: r)
           }
         ]
@@ -1141,13 +1024,13 @@ fn witness_validity_extent_node(e: Extent) -> Outcome<Node> {
   match e {
     WholeFile =>
       Accepted {
-        value: witness_validity_symbol_atom_node(s: witness_validity_extent_tag_whole_file),
+        value: witness_validity_symbol_atom_node(s: ^witness_validity_extent_tag_whole_file),
         diagnostics: None
       }
     ByteRange { start: _, end: _ } =>
       outcome_rejected(
         d: witness_validity_byte_range_unencodable_diagnostic(
-          at_node: witness_validity_symbol_atom_node(s: witness_validity_extent_tag_byte_range)
+          at_node: witness_validity_symbol_atom_node(s: ^witness_validity_extent_tag_byte_range)
         )
       )
   }
@@ -1163,16 +1046,16 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: witness_validity_locus_tag_textual },
+                label: Named { name: ^witness_validity_locus_tag_textual },
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
                     Edge {
-                      label: Named { name: witness_validity_locus_textual_file },
+                      label: Named { name: ^witness_validity_locus_textual_file },
                       target: witness_validity_symbol_atom_node(s: f)
                     },
                     Edge {
-                      label: Named { name: witness_validity_locus_textual_extent },
+                      label: Named { name: ^witness_validity_locus_textual_extent },
                       target: en
                     }
                   ]
@@ -1188,7 +1071,7 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: witness_validity_locus_tag_node }, target: a.at }
+            Edge { label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
           ]
         },
         diagnostics: None
@@ -1199,7 +1082,7 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: witness_validity_locus_tag_port },
+              label: Named { name: ^witness_validity_locus_tag_port },
               target: witness_validity_symbol_atom_node(s: a.at)
             }
           ]
@@ -1217,15 +1100,15 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: witness_validity_diag_field_reason },
+            label: Named { name: ^witness_validity_diag_field_reason },
             target: witness_validity_symbol_atom_node(s: d.reason)
           },
           Edge {
-            label: Named { name: witness_validity_diag_field_at },
+            label: Named { name: ^witness_validity_diag_field_at },
             target: at_node
           },
           Edge {
-            label: Named { name: witness_validity_diag_field_correction },
+            label: Named { name: ^witness_validity_diag_field_correction },
             target: witness_validity_correction_node(c: d.correction)
           }
         ]
@@ -1241,7 +1124,7 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
   fold_list_right(
     xs: xs,
     empty: Accepted {
-      value: witness_validity_symbol_atom_node(s: witness_validity_list_tag_empty),
+      value: witness_validity_symbol_atom_node(s: ^witness_validity_list_tag_empty),
       diagnostics: None
     },
     snoc: fn(acc, h) {
@@ -1251,8 +1134,8 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
             value: Node {
               kind: TypeNode { connective: Conj },
               children: [
-                Edge { label: Named { name: witness_validity_list_cons_head }, target: hn },
-                Edge { label: Named { name: witness_validity_list_cons_tail }, target: prev_node }
+                Edge { label: Named { name: ^witness_validity_list_cons_head }, target: hn },
+                Edge { label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
               ]
             },
             diagnostics: None
@@ -1272,11 +1155,11 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcom
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: witness_validity_diags_field_head },
+              label: Named { name: ^witness_validity_diags_field_head },
               target: hn
             },
             Edge {
-              label: Named { name: witness_validity_diags_field_tail },
+              label: Named { name: ^witness_validity_diags_field_tail },
               target: tn
             }
           ]
@@ -1292,7 +1175,7 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
   match ds {
     None =>
       Accepted {
-        value: witness_validity_symbol_atom_node(s: witness_validity_diagnostics_tag_none),
+        value: witness_validity_symbol_atom_node(s: ^witness_validity_diagnostics_tag_none),
         diagnostics: None
       }
     Some { diagnostics: nd } =>
@@ -1302,7 +1185,7 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: witness_validity_diagnostics_tag_some },
+                label: Named { name: ^witness_validity_diagnostics_tag_some },
                 target: ndn
               }
             ]
@@ -1323,16 +1206,16 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: witness_validity_outcome_holds },
+                label: Named { name: ^witness_validity_outcome_holds },
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
                     Edge {
-                      label: Named { name: witness_validity_outcome_accepted_value },
+                      label: Named { name: ^witness_validity_outcome_accepted_value },
                       target: witness_validity_witness_node(w: w)
                     },
                     Edge {
-                      label: Named { name: witness_validity_outcome_accepted_diagnostics },
+                      label: Named { name: ^witness_validity_outcome_accepted_diagnostics },
                       target: dsn
                     }
                   ]
@@ -1350,7 +1233,7 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
             kind: TypeNode { connective: Conj },
             children: [
               Edge {
-                label: Named { name: witness_validity_outcome_violates },
+                label: Named { name: ^witness_validity_outcome_violates },
                 target: dn
               }
             ]
@@ -1435,8 +1318,8 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
 
 fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: testgen_non_algebra_law_scheduled_slot,
-    at: Textual { file: testgen_lens_file, extent: WholeFile },
+    reason: ^testgen_non_algebra_law_scheduled_slot,
+    at: Textual { file: ^testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -1481,8 +1364,8 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
     empty: Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
-          reason: testgen_non_algebra_law_scheduled_slot,
-          at: Textual { file: testgen_lens_file, extent: WholeFile },
+          reason: ^testgen_non_algebra_law_scheduled_slot,
+          at: Textual { file: ^testgen_lens_file, extent: WholeFile },
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
@@ -1844,11 +1727,11 @@ fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> 
 fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: coproduct_exhaustiveness_testclaim_variant }
+      connective: Atom { identity: ^coproduct_exhaustiveness_testclaim_variant }
     },
     children: [
       Edge {
-        label: Named { name: coproduct_exhaustiveness_omitted_variant_edge },
+        label: Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
           variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
         )
@@ -1862,7 +1745,7 @@ fn coproduct_exhaustiveness_diagnostic(
   input: Node
 ) -> Diagnostic {
   Diagnostic {
-    reason: coproduct_exhaustiveness_missing_variant,
+    reason: ^coproduct_exhaustiveness_missing_variant,
     at: node_locus(node: input),
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -1941,7 +1824,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
 // GeneratedArtifact + the total constructor, so they are not re-inspected here.
 fn generator_carries_provenance<C>(g: Generator<C>) -> Bool {
   g.provenance.generator_id == generator_id_for_claim_anchor(anchor: g.anchor)
-    && g.profile_metadata.profile_ref == testgen_default_profile_ref
+    && g.profile_metadata.profile_ref == ^testgen_default_profile_ref
 }
 
 
@@ -2098,8 +1981,8 @@ fn testgen_run_receipt_carries_profile_roster(receipt: TestgenRunReceipt) -> Boo
 
 fn manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: manual_anchor_absent_bootstrap,
-    at: Textual { file: testgen_lens_file, extent: WholeFile },
+    reason: ^manual_anchor_absent_bootstrap,
+    at: Textual { file: ^testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

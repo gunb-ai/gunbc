@@ -124,34 +124,6 @@ type IntegerIntervalSpec {
   inclusive_min: IntegerIntervalBound
   inclusive_max: IntegerIntervalBound
 }
-
-data integer_interval_field_inclusive_min: Symbol = integer_interval_field_inclusive_min
-data integer_interval_field_inclusive_max: Symbol = integer_interval_field_inclusive_max
-data integer_bound_field_kind: Symbol = integer_bound_field_kind
-data integer_bound_field_sign: Symbol = integer_bound_field_sign
-data integer_bound_field_magnitude: Symbol = integer_bound_field_magnitude
-data integer_bound_field_signedness: Symbol = integer_bound_field_signedness
-data integer_bound_field_endpoint: Symbol = integer_bound_field_endpoint
-data integer_tag_bound_concrete: Symbol = integer_tag_bound_concrete
-data integer_tag_bound_zero: Symbol = integer_tag_bound_zero
-data integer_tag_bound_pointer_width: Symbol = integer_tag_bound_pointer_width
-data integer_tag_bound_negative: Symbol = integer_tag_bound_negative
-data integer_tag_bound_nonnegative: Symbol = integer_tag_bound_nonnegative
-data integer_tag_signed: Symbol = integer_tag_signed
-data integer_tag_unsigned: Symbol = integer_tag_unsigned
-data integer_tag_range_inclusive_min: Symbol = integer_tag_range_inclusive_min
-data integer_tag_range_inclusive_max: Symbol = integer_tag_range_inclusive_max
-data integer_tag_digit_0: Symbol = integer_tag_digit_0
-data integer_tag_digit_1: Symbol = integer_tag_digit_1
-data integer_tag_digit_2: Symbol = integer_tag_digit_2
-data integer_tag_digit_3: Symbol = integer_tag_digit_3
-data integer_tag_digit_4: Symbol = integer_tag_digit_4
-data integer_tag_digit_5: Symbol = integer_tag_digit_5
-data integer_tag_digit_6: Symbol = integer_tag_digit_6
-data integer_tag_digit_7: Symbol = integer_tag_digit_7
-data integer_tag_digit_8: Symbol = integer_tag_digit_8
-data integer_tag_digit_9: Symbol = integer_tag_digit_9
-
 fn integer_interval(
   inclusive_min: IntegerIntervalBound,
   inclusive_max: IntegerIntervalBound
@@ -277,37 +249,37 @@ fn integer_named_edge(name: Symbol, target: Node) -> Edge {
 
 fn integer_bound_sign_node(sign: IntegerBoundSign) -> Node {
   match sign {
-    IntegerBoundNegative => integer_inhabitant_atom(id: integer_tag_bound_negative)
-    IntegerBoundNonNegative => integer_inhabitant_atom(id: integer_tag_bound_nonnegative)
+    IntegerBoundNegative => integer_inhabitant_atom(id: ^integer_tag_bound_negative)
+    IntegerBoundNonNegative => integer_inhabitant_atom(id: ^integer_tag_bound_nonnegative)
   }
 }
 
 fn integer_signedness_node(signedness: Signedness) -> Node {
   match signedness {
-    Signed => integer_inhabitant_atom(id: integer_tag_signed)
-    Unsigned => integer_inhabitant_atom(id: integer_tag_unsigned)
+    Signed => integer_inhabitant_atom(id: ^integer_tag_signed)
+    Unsigned => integer_inhabitant_atom(id: ^integer_tag_unsigned)
   }
 }
 
 fn integer_range_endpoint_node(endpoint: IntegerRangeEndpoint) -> Node {
   match endpoint {
-    IntegerRangeInclusiveMin => integer_inhabitant_atom(id: integer_tag_range_inclusive_min)
-    IntegerRangeInclusiveMax => integer_inhabitant_atom(id: integer_tag_range_inclusive_max)
+    IntegerRangeInclusiveMin => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_min)
+    IntegerRangeInclusiveMax => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_max)
   }
 }
 
 fn integer_decimal_digit_node(digit: DecimalDigit) -> Node {
   match digit {
-    D0 => integer_inhabitant_atom(id: integer_tag_digit_0)
-    D1 => integer_inhabitant_atom(id: integer_tag_digit_1)
-    D2 => integer_inhabitant_atom(id: integer_tag_digit_2)
-    D3 => integer_inhabitant_atom(id: integer_tag_digit_3)
-    D4 => integer_inhabitant_atom(id: integer_tag_digit_4)
-    D5 => integer_inhabitant_atom(id: integer_tag_digit_5)
-    D6 => integer_inhabitant_atom(id: integer_tag_digit_6)
-    D7 => integer_inhabitant_atom(id: integer_tag_digit_7)
-    D8 => integer_inhabitant_atom(id: integer_tag_digit_8)
-    D9 => integer_inhabitant_atom(id: integer_tag_digit_9)
+    D0 => integer_inhabitant_atom(id: ^integer_tag_digit_0)
+    D1 => integer_inhabitant_atom(id: ^integer_tag_digit_1)
+    D2 => integer_inhabitant_atom(id: ^integer_tag_digit_2)
+    D3 => integer_inhabitant_atom(id: ^integer_tag_digit_3)
+    D4 => integer_inhabitant_atom(id: ^integer_tag_digit_4)
+    D5 => integer_inhabitant_atom(id: ^integer_tag_digit_5)
+    D6 => integer_inhabitant_atom(id: ^integer_tag_digit_6)
+    D7 => integer_inhabitant_atom(id: ^integer_tag_digit_7)
+    D8 => integer_inhabitant_atom(id: ^integer_tag_digit_8)
+    D9 => integer_inhabitant_atom(id: ^integer_tag_digit_9)
   }
 }
 
@@ -357,8 +329,8 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         integer_named_edge(
-          name: integer_bound_field_kind,
-          target: integer_inhabitant_atom(id: integer_tag_bound_zero)
+          name: ^integer_bound_field_kind,
+          target: integer_inhabitant_atom(id: ^integer_tag_bound_zero)
         )
       ]
     }
@@ -366,15 +338,15 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         integer_named_edge(
-          name: integer_bound_field_kind,
-          target: integer_inhabitant_atom(id: integer_tag_bound_concrete)
+          name: ^integer_bound_field_kind,
+          target: integer_inhabitant_atom(id: ^integer_tag_bound_concrete)
         ),
         integer_named_edge(
-          name: integer_bound_field_sign,
+          name: ^integer_bound_field_sign,
           target: integer_bound_sign_node(sign: sign)
         ),
         integer_named_edge(
-          name: integer_bound_field_magnitude,
+          name: ^integer_bound_field_magnitude,
           target: integer_decimal_nonzero_node(magnitude: magnitude)
         )
       ]
@@ -383,15 +355,15 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         integer_named_edge(
-          name: integer_bound_field_kind,
-          target: integer_inhabitant_atom(id: integer_tag_bound_pointer_width)
+          name: ^integer_bound_field_kind,
+          target: integer_inhabitant_atom(id: ^integer_tag_bound_pointer_width)
         ),
         integer_named_edge(
-          name: integer_bound_field_signedness,
+          name: ^integer_bound_field_signedness,
           target: integer_signedness_node(signedness: signedness)
         ),
         integer_named_edge(
-          name: integer_bound_field_endpoint,
+          name: ^integer_bound_field_endpoint,
           target: integer_range_endpoint_node(endpoint: endpoint)
         )
       ]
@@ -404,11 +376,11 @@ fn integer_interval_spec_node(spec: IntegerIntervalSpec) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       integer_named_edge(
-        name: integer_interval_field_inclusive_min,
+        name: ^integer_interval_field_inclusive_min,
         target: integer_interval_bound_node(bound: spec.inclusive_min)
       ),
       integer_named_edge(
-        name: integer_interval_field_inclusive_max,
+        name: ^integer_interval_field_inclusive_max,
         target: integer_interval_bound_node(bound: spec.inclusive_max)
       )
     ]
@@ -461,12 +433,9 @@ data int_ordered_ring: OrderedRing<Int> = OrderedRing {
   },
   compare: int_compare
 }
-data integer_div_by_zero: Symbol = integer_div_by_zero
-data integer_modulo_by_zero: Symbol = integer_modulo_by_zero
-
 fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: integer_div_by_zero,
+    reason: ^integer_div_by_zero,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }
@@ -474,7 +443,7 @@ fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
 
 fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: integer_modulo_by_zero,
+    reason: ^integer_modulo_by_zero,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }

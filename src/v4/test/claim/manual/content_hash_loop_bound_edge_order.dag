@@ -27,22 +27,16 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data content_hash_loop_body_sym: Symbol = content_hash_loop_body_sym
-data content_hash_loop_measure_sym: Symbol = content_hash_loop_measure_sym
-data content_hash_loop_pass_sym: Symbol = content_hash_loop_pass_sym
-data content_hash_loop_fail_sym: Symbol = content_hash_loop_fail_sym
-
 fn content_hash_loop_body_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_loop_body_sym } },
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_body_sym } },
     children: []
   }
 }
 
 fn content_hash_loop_measure_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_loop_measure_sym } },
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_measure_sym } },
     children: []
   }
 }
@@ -122,20 +116,17 @@ fn content_hash_loop_bound_last_two_body() -> Node {
 
 fn content_hash_loop_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_loop_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_pass_sym } },
     children: []
   }
 }
 
 fn content_hash_loop_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_loop_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_fail_sym } },
     children: []
   }
 }
-
-data content_hash_loop_extra_named_sym: Symbol = content_hash_loop_extra_named_sym
-
 fn content_hash_loop_with_extra_named() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
@@ -146,7 +137,7 @@ fn content_hash_loop_with_extra_named() -> Node {
         target: content_hash_loop_measure_leaf()
       },
       Edge {
-        label: Named { name: content_hash_loop_extra_named_sym },
+        label: Named { name: ^content_hash_loop_extra_named_sym },
         target: content_hash_loop_body_leaf()
       }
     ]

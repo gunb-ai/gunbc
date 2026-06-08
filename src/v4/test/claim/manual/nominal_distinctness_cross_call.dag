@@ -82,23 +82,6 @@ import v4.std.verification {
 }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-
-
-data nominal_distinct_records_input_symbol: Symbol = nominal_distinct_records_input_symbol
-data nominal_distinct_brands_input_symbol: Symbol = nominal_distinct_brands_input_symbol
-data nominal_distinct_control_input_symbol: Symbol = nominal_distinct_control_input_symbol
-data nominal_distinct_interpretation_pin: Symbol = nominal_distinct_interpretation_pin
-data nominal_distinct_allocate_literal_sym: Symbol = nominal_distinct_allocate_literal_sym
-data nominal_distinct_call_primitive_sym: Symbol = nominal_distinct_call_primitive_sym
-data nominal_distinct_choose_branch_sym: Symbol = nominal_distinct_choose_branch_sym
-data nominal_distinct_step_loop_sym: Symbol = nominal_distinct_step_loop_sym
-data nominal_distinct_bind_value_sym: Symbol = nominal_distinct_bind_value_sym
-data nominal_distinct_type_symbol: Symbol = nominal_distinct_type_symbol
-data nominal_distinct_algebra_symbol: Symbol = nominal_distinct_algebra_symbol
-data nominal_distinct_descent_symbol: Symbol = nominal_distinct_descent_symbol
-data nominal_distinct_descent_dimension: Symbol = nominal_distinct_descent_dimension
-data nominal_distinct_compile_accepted_miss: Symbol = nominal_distinct_compile_accepted_miss
-data nominal_distinct_cross_call_must_reject: Symbol = nominal_distinct_cross_call_must_reject
 data nominal_distinct_forbidden_authority_source_text: TargetSource = "nominal_distinct_forbidden_authority_source_text"
 
 
@@ -129,9 +112,9 @@ fn nominal_distinct_input_node(sym: Symbol) -> Node {
 }
 
 
-data nominal_distinct_records_input: Node = nominal_distinct_input_node(sym: nominal_distinct_records_input_symbol)
-data nominal_distinct_brands_input: Node = nominal_distinct_input_node(sym: nominal_distinct_brands_input_symbol)
-data nominal_distinct_control_input: Node = nominal_distinct_input_node(sym: nominal_distinct_control_input_symbol)
+data nominal_distinct_records_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_records_input_symbol)
+data nominal_distinct_brands_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_brands_input_symbol)
+data nominal_distinct_control_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_control_input_symbol)
 
 
 fn anchor_nominal_distinct_records_compile() -> Outcome<TargetSource> {
@@ -165,7 +148,7 @@ data nominal_distinct_control_compile_receipt: Outcome<TargetSource> = anchor_no
 
 fn nominal_distinct_cross_call_must_reject_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: nominal_distinct_cross_call_must_reject,
+    reason: ^nominal_distinct_cross_call_must_reject,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -174,7 +157,7 @@ fn nominal_distinct_cross_call_must_reject_diagnostic(at: Node) -> Diagnostic {
 
 fn nominal_distinct_compile_accepted_miss_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
-    reason: nominal_distinct_compile_accepted_miss,
+    reason: ^nominal_distinct_compile_accepted_miss,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -242,7 +225,7 @@ data claim_nominal_distinct_same_type_control_compiles: TestClaim = CompilesClai
 
 fn nominal_distinct_runtime_type_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: nominal_distinct_type_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^nominal_distinct_type_symbol } },
     children: []
   }
 }
@@ -338,11 +321,11 @@ fn nominal_distinct_interpretation() -> InterpretationAlgebra {
 
 fn nominal_distinct_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: nominal_distinct_allocate_literal_sym,
-    call_primitive: nominal_distinct_call_primitive_sym,
-    choose_branch: nominal_distinct_choose_branch_sym,
-    step_loop: nominal_distinct_step_loop_sym,
-    bind_value: nominal_distinct_bind_value_sym
+    allocate_literal: ^nominal_distinct_allocate_literal_sym,
+    call_primitive: ^nominal_distinct_call_primitive_sym,
+    choose_branch: ^nominal_distinct_choose_branch_sym,
+    step_loop: ^nominal_distinct_step_loop_sym,
+    bind_value: ^nominal_distinct_bind_value_sym
   }
 }
 
@@ -350,7 +333,7 @@ fn nominal_distinct_interpretation_structure_witness() -> InterpretationStructur
 fn nominal_distinct_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: nominal_distinct_descent_dimension }
+    strict: RankingDimension { measured: ^nominal_distinct_descent_dimension }
   }
 }
 
@@ -379,7 +362,7 @@ fn nominal_distinct_inferred_tree(root: Node) -> InferredTree {
 
 fn nominal_distinct_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: nominal_distinct_interpretation_pin,
+    runtime_identity: ^nominal_distinct_interpretation_pin,
     interpretation: nominal_distinct_interpretation(),
     structure_witness: nominal_distinct_interpretation_structure_witness()
   )
@@ -402,19 +385,19 @@ fn nominal_distinct_subject(
 
 data subject_nominal_distinct_records_cross_call_rejects: TestClaimEvalSubject<Node> = nominal_distinct_subject(
   claim: claim_nominal_distinct_records_cross_call_rejects,
-  evaluator_pin: nominal_distinct_records_input_symbol
+  evaluator_pin: ^nominal_distinct_records_input_symbol
 )
 
 
 data subject_nominal_distinct_branded_aliases_cross_call_rejects: TestClaimEvalSubject<Node> = nominal_distinct_subject(
   claim: claim_nominal_distinct_branded_aliases_cross_call_rejects,
-  evaluator_pin: nominal_distinct_brands_input_symbol
+  evaluator_pin: ^nominal_distinct_brands_input_symbol
 )
 
 
 data subject_nominal_distinct_same_type_control_compiles: TestClaimEvalSubject<Node> = nominal_distinct_subject(
   claim: claim_nominal_distinct_same_type_control_compiles,
-  evaluator_pin: nominal_distinct_control_input_symbol
+  evaluator_pin: ^nominal_distinct_control_input_symbol
 )
 
 

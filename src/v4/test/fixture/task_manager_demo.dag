@@ -78,7 +78,7 @@ type Task {
 
 fn create_task(title: String) -> Task {
   Task {
-    id: TaskId { identity: task_id_seed },
+    id: TaskId { identity: ^task_id_seed },
     title: title,
     status: Open
   }
@@ -98,19 +98,8 @@ fn list_tasks() -> FreeMonoid<Task> {
 
 // Stand-in Symbol seed for `create_task`'s constructed `TaskId`; real id
 // minting lands with the persistence slice.
-data task_id_seed: Symbol = task_id_seed
-
 // --- Endpoint identities --------------------------------------------------
-
-data rust_backend_endpoint: Symbol = rust_backend_endpoint
-data react_frontend_endpoint: Symbol = react_frontend_endpoint
-
-data rust_language: Symbol = rust_language
-data typescript_language: Symbol = typescript_language
-
-data react_framework: Symbol = react_framework
-
-// --- Endpoint addresses ---------------------------------------------------
+ --- Endpoint addresses ---------------------------------------------------
 // Minimal `NetworkAddress` instances — host spellings are placeholders; the
 // data-model demo cares about authority shape, not reachability. `port:
 // Absent` avoids requiring Succ-chain Nat literals for a value the demo
@@ -145,17 +134,17 @@ data frontend_address: NetworkAddress = NetworkAddress {
 // --- DeploymentUnit fragments --------------------------------------------
 
 data backend_endpoint: Endpoint = Endpoint {
-  identity: EndpointRef { identity: rust_backend_endpoint },
+  identity: EndpointRef { identity: ^rust_backend_endpoint },
   address: backend_address,
-  language: LanguageRef { identity: rust_language },
+  language: LanguageRef { identity: ^rust_language },
   framework: NoFramework
 }
 
 data frontend_endpoint: Endpoint = Endpoint {
-  identity: EndpointRef { identity: react_frontend_endpoint },
+  identity: EndpointRef { identity: ^react_frontend_endpoint },
   address: frontend_address,
-  language: LanguageRef { identity: typescript_language },
-  framework: HostedByFramework { framework: FrameworkRef { identity: react_framework } }
+  language: LanguageRef { identity: ^typescript_language },
+  framework: HostedByFramework { framework: FrameworkRef { identity: ^react_framework } }
 }
 
 // --- Wire contracts -------------------------------------------------------
@@ -166,8 +155,8 @@ data frontend_endpoint: Endpoint = Endpoint {
 // ImmediateSettlement / NoReplicaConvergence.
 
 data create_task_facts: WireContractFacts = WireContractFacts {
-  from: EndpointRef { identity: react_frontend_endpoint },
-  to: EndpointRef { identity: rust_backend_endpoint },
+  from: EndpointRef { identity: ^react_frontend_endpoint },
+  to: EndpointRef { identity: ^rust_backend_endpoint },
   exchange: RequestReply,
   settlement: ImmediateSettlement,
   consistency: NoReplicaConvergence
@@ -182,8 +171,8 @@ data create_task_contract: WireContract = WireContract {
 }
 
 data update_status_facts: WireContractFacts = WireContractFacts {
-  from: EndpointRef { identity: react_frontend_endpoint },
-  to: EndpointRef { identity: rust_backend_endpoint },
+  from: EndpointRef { identity: ^react_frontend_endpoint },
+  to: EndpointRef { identity: ^rust_backend_endpoint },
   exchange: RequestReply,
   settlement: ImmediateSettlement,
   consistency: NoReplicaConvergence
@@ -198,8 +187,8 @@ data update_status_contract: WireContract = WireContract {
 }
 
 data list_tasks_facts: WireContractFacts = WireContractFacts {
-  from: EndpointRef { identity: react_frontend_endpoint },
-  to: EndpointRef { identity: rust_backend_endpoint },
+  from: EndpointRef { identity: ^react_frontend_endpoint },
+  to: EndpointRef { identity: ^rust_backend_endpoint },
   exchange: RequestReply,
   settlement: ImmediateSettlement,
   consistency: NoReplicaConvergence
@@ -226,9 +215,6 @@ data task_manager_deployment: DeploymentUnit = DeploymentUnit {
 // fields participate in SQL projection; column spellings and scalar kinds
 // dispatch only through that coproduct. OpenAPI wiring is deferred to
 // T-16-C (calm-crane-523, post-#3869).
-
-data task_manager_unmapped_domain_scalar: Symbol = task_manager_unmapped_domain_scalar
-
 data tasks_table_spelling: String = "tasks"
 
 // 🟢 coproduct dissolution — T-16-A+ Task record field SQL authority (bijection with Task { id, title, status }).
@@ -314,7 +300,7 @@ fn task_manager_projectable_scalar_to_sql_data_type(
 
 fn task_manager_reject_unmapped_domain_scalar(node: Node) -> Outcome<SqlDataType> {
   outcome_rejected(d: Diagnostic {
-    reason: task_manager_unmapped_domain_scalar,
+    reason: ^task_manager_unmapped_domain_scalar,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   })

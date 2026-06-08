@@ -102,23 +102,17 @@ data irt1_public_nonroot_changed_edit: Edit = Edit {
   at: Path { steps: [affected_set_root_edge_symbol] },
   replacement: affected_set_claim_failure_node
 }
-
-data irt1_public_missing_path_symbol: Symbol = irt1_public_missing_path_symbol
-
 data irt1_public_missing_path_edit: Edit = Edit {
-  at: Path { steps: [irt1_public_missing_path_symbol] },
+  at: Path { steps: [^irt1_public_missing_path_symbol] },
   replacement: affected_set_claim_failure_node
 }
-
-data irt1_public_other_dimension: Symbol = irt1_public_other_dimension
-
 data irt1_public_dimension_not_read_receipt_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: affected_set_default_dimension } },
   children: []
 }
 
 data irt1_public_mismatched_dimension_not_read_receipt_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: irt1_public_other_dimension } },
+  kind: TypeNode { connective: Atom { identity: ^irt1_public_other_dimension } },
   children: []
 }
 

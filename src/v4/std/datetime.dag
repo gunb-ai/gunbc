@@ -233,28 +233,8 @@ type Instant
 type OffsetDateTime
   = OrdinaryOffsetDateTime { instant: OrdinaryInstantValidity, offset: TzOffset }
   | LeapSecondOffsetDateTime { validity: LeapSecondOffsetDateTimeValidity }
-
-
-data year_out_of_range: Symbol = year_out_of_range
-data month_out_of_range: Symbol = month_out_of_range
-data day_out_of_range: Symbol = day_out_of_range
-data hour_out_of_range: Symbol = hour_out_of_range
-data minute_out_of_range: Symbol = minute_out_of_range
-data second_out_of_range: Symbol = second_out_of_range
-data secfrac_digit_out_of_range: Symbol = secfrac_digit_out_of_range
-data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
-data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
-data calendar_date_invalid: Symbol = calendar_date_invalid
-data clock_time_fields_invalid: Symbol = clock_time_fields_invalid
-data leap_second_insertion_occurrence_invalid: Symbol = leap_second_insertion_occurrence_invalid
-data ordinary_instant_invalid: Symbol = ordinary_instant_invalid
-data leap_second_instant_invalid: Symbol = leap_second_instant_invalid
-data leap_second_offset_datetime_invalid: Symbol = leap_second_offset_datetime_invalid
-data iers_bulletin_c_leap_second_authority: Symbol = iers_bulletin_c_leap_second_authority
-
-
 data positive_utc_leap_second_insertions: LeapSecondInsertionTable = LeapSecondInsertionTable {
-  source: LeapSecondAuthoritySource { authority: iers_bulletin_c_leap_second_authority },
+  source: LeapSecondAuthoritySource { authority: ^iers_bulletin_c_leap_second_authority },
   dates: [
     leap_second_insertion_date(year: 1972, month: 6, day: 30),
     leap_second_insertion_date(year: 1972, month: 12, day: 31),
@@ -590,91 +570,91 @@ fn leap_second_offset_datetime_admits(fields: LeapSecondOffsetDateTimeFields) ->
 
 
 data year_validation: Validation<Nat> = Validation {
-  reason: year_out_of_range,
+  reason: ^year_out_of_range,
   admits: year_admits
 }
 
 
 data month_validation: Validation<Nat> = Validation {
-  reason: month_out_of_range,
+  reason: ^month_out_of_range,
   admits: month_admits
 }
 
 
 data day_validation: Validation<Nat> = Validation {
-  reason: day_out_of_range,
+  reason: ^day_out_of_range,
   admits: day_admits
 }
 
 
 data hour_validation: Validation<Nat> = Validation {
-  reason: hour_out_of_range,
+  reason: ^hour_out_of_range,
   admits: hour_admits
 }
 
 
 data minute_validation: Validation<Nat> = Validation {
-  reason: minute_out_of_range,
+  reason: ^minute_out_of_range,
   admits: minute_admits
 }
 
 
 data second_validation: Validation<Nat> = Validation {
-  reason: second_out_of_range,
+  reason: ^second_out_of_range,
   admits: second_admits
 }
 
 
 data secfrac_digit_validation: Validation<Nat> = Validation {
-  reason: secfrac_digit_out_of_range,
+  reason: ^secfrac_digit_out_of_range,
   admits: secfrac_digit_admits
 }
 
 
 data tz_offset_hour_validation: Validation<Nat> = Validation {
-  reason: tz_offset_hour_out_of_range,
+  reason: ^tz_offset_hour_out_of_range,
   admits: tz_offset_hour_admits
 }
 
 
 data tz_offset_minute_validation: Validation<Nat> = Validation {
-  reason: tz_offset_minute_out_of_range,
+  reason: ^tz_offset_minute_out_of_range,
   admits: tz_offset_minute_admits
 }
 
 
 data calendar_date_validation: Validation<CalendarDateFields> = Validation {
-  reason: calendar_date_invalid,
+  reason: ^calendar_date_invalid,
   admits: calendar_date_admits
 }
 
 
 data clock_time_validation: Validation<ClockTimeFields> = Validation {
-  reason: clock_time_fields_invalid,
+  reason: ^clock_time_fields_invalid,
   admits: clock_time_fields_admits
 }
 
 
 data leap_second_insertion_occurrence_validation: Validation<LeapSecondInsertionOccurrenceFields> = Validation {
-  reason: leap_second_insertion_occurrence_invalid,
+  reason: ^leap_second_insertion_occurrence_invalid,
   admits: leap_second_insertion_occurrence_admits
 }
 
 
 data ordinary_instant_validation: Validation<OrdinaryInstantFields> = Validation {
-  reason: ordinary_instant_invalid,
+  reason: ^ordinary_instant_invalid,
   admits: ordinary_instant_admits
 }
 
 
 data leap_second_instant_validation: Validation<LeapSecondInstantFields> = Validation {
-  reason: leap_second_instant_invalid,
+  reason: ^leap_second_instant_invalid,
   admits: leap_second_instant_admits
 }
 
 
 data leap_second_offset_datetime_validation: Validation<LeapSecondOffsetDateTimeFields> = Validation {
-  reason: leap_second_offset_datetime_invalid,
+  reason: ^leap_second_offset_datetime_invalid,
   admits: leap_second_offset_datetime_admits
 }
 

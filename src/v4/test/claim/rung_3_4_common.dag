@@ -37,15 +37,6 @@ import v4.test.claim.manual.eval_runtime_mvp {
   eval_mvp2_context,
   eval_mvp2_evaluator_pin
 }
-
-
-data rung34_roundtrip_module_axis: Symbol = rung34_roundtrip_module_axis
-data rung34_inferred_type_symbol: Symbol = rung34_inferred_type_symbol
-data rung34_inferred_algebra_symbol: Symbol = rung34_inferred_algebra_symbol
-data rung34_inferred_descent_symbol: Symbol = rung34_inferred_descent_symbol
-data rung34_emit_host_target_bundle_symbol: Symbol = rung34_emit_host_target_bundle_symbol
-
-
 data rung34_emit_host_target_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: []
@@ -64,9 +55,9 @@ fn rung34_inferred_tree(root: Node) -> InferredTree {
   claim_inferred_tree(
     root: root,
     facts: claim_inferred_facts(
-      type_symbol: rung34_inferred_type_symbol,
-      algebra_symbol: rung34_inferred_algebra_symbol,
-      descent_symbol: rung34_inferred_descent_symbol
+      type_symbol: ^rung34_inferred_type_symbol,
+      algebra_symbol: ^rung34_inferred_algebra_symbol,
+      descent_symbol: ^rung34_inferred_descent_symbol
     )
   )
 }
@@ -77,7 +68,7 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: rung34_roundtrip_module_axis },
+        label: Named { name: ^rung34_roundtrip_module_axis },
         target: fixture_subject
       }
     ]
