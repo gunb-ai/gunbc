@@ -2,9 +2,10 @@
 //!
 //! **Authority:** `.github/workflows/ci.yml` (hand-edited CI source of truth; `ci_component_affected`
 //! path predicates and `ci_changed_path_affects_*` buckets). This crate is the Rust mirror those
-//! predicates execute in the affected job; keep aligned via behavioral fixture tests in-tree.
-//! Lives outside `v3-compiler` so the affected job can emit `v3=false` without compiling the
-//! frozen v3 package first (INVARIANTS P3 fail-closed boundary).
+//! predicates execute in the affected job. The former `src/v4/workflow/ci.dag` ↔ mirror set-equality
+//! ratchet (`tools/ci_workflow_ratchet`) retired with #4543; keep aligned via behavioral fixture
+//! tests in this crate. Lives outside `v3-compiler` so the affected job can emit `v3=false` without
+//! compiling the frozen v3 package first (INVARIANTS P3 fail-closed boundary).
 
 pub mod git_diff_transport;
 pub mod receipt;
