@@ -74,14 +74,14 @@ mod compiler_tests {
     }
 
     fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v2_std_core::Node> {
-        let tokens = tokenize(&content.to_string(), path.to_string());
+        let tokens = tokenize(content.to_string(), path.to_string());
         let mut source_indices = HashMap::new();
         source_indices.insert(
             path.to_string(),
-            crate::v2_std_core::build_newline_index(path.to_string(), &content.to_string()),
+            crate::v2_std_core::build_newline_index(path.to_string(), content.to_string()),
         );
         let parsed = crate::v2_compiler_parse::parse_with_table(
-            &tokens,
+            tokens.clone(),
             std::rc::Rc::new(source_indices),
             crate::v2_std_core::empty_intern_table(),
         );
@@ -215,10 +215,7 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_produces_tokens() {
-        let tokens = tokenize(
-            &"fn foo() -> Int { 42 }".to_string(),
-            "test.dag".to_string(),
-        );
+        let tokens = tokenize("fn foo() -> Int { 42 }".to_string(), "test.dag".to_string());
         assert!(
             !tokens.is_empty(),
             "tokenize should produce at least one token"
@@ -227,7 +224,7 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_ends_with_eof() {
-        let tokens = tokenize(&"type Foo { x: Int }".to_string(), "test.dag".to_string());
+        let tokens = tokenize("type Foo { x: Int }".to_string(), "test.dag".to_string());
         let last = tokens.last().expect("should have tokens");
         assert!(
             matches!(last.shape, crate::v2_std_core::TokenShape::ShEof),
@@ -238,7 +235,7 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_fn_keyword() {
-        let tokens = tokenize(&"fn".to_string(), "test.dag".to_string());
+        let tokens = tokenize("fn".to_string(), "test.dag".to_string());
         assert!(
             tokens.len() >= 2,
             "expected at least 2 tokens, got {}",
@@ -254,7 +251,7 @@ mod compiler_tests {
     #[test]
     fn tokenize_count_stable() {
         let tokens = tokenize(
-            &"module test\ntype Foo { x: Int }".to_string(),
+            "module test\ntype Foo { x: Int }".to_string(),
             "test.dag".to_string(),
         );
         assert!(
@@ -267,7 +264,7 @@ mod compiler_tests {
     #[test]
     fn parse_trivial_module() {
         let tokens = tokenize(
-            &"module test\ntype Foo { x: Int }\n".to_string(),
+            "module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
         );
         let result = crate::v2_compiler_parse::parse(
@@ -286,7 +283,7 @@ mod compiler_tests {
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
                 let source = read_dag("src/v2/01_tokenize.dag");
-                let tokens = tokenize(&source, "src/v2/01_tokenize.dag".to_string());
+                let tokens = tokenize(source, "src/v2/01_tokenize.dag".to_string());
 
                 assert!(
                     !tokens.is_empty(),
@@ -370,7 +367,7 @@ mod compiler_tests {
                 );
 
                 for (file, source) in &v2_files {
-                    let tokens = tokenize(&source.to_string(), file.to_string());
+                    let tokens = tokenize(source.to_string(), file.to_string());
                     assert!(!tokens.is_empty(), "{} should produce tokens", file);
                     assert!(
                         matches!(
@@ -951,32 +948,32 @@ mod compiler_tests {
         let diff_id = shaped_type_node("DiffId", vec![symbol.clone()]);
         assert!(
             crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                &symbol,
-                &source_indices
+                symbol.clone(),
+                source_indices.clone()
             )
         );
         assert!(
             crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                &diff_id,
-                &source_indices
+                diff_id.clone(),
+                source_indices.clone()
             )
         );
         assert!(
             !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                &shaped_type_node("Symbol", vec![named_type_node("Float")]),
-                &source_indices
+                shaped_type_node("Symbol", vec![named_type_node("Float")]),
+                source_indices.clone()
             )
         );
         assert!(
             !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                &shaped_type_node("DiffId", vec![named_type_node("Float")]),
-                &source_indices
+                shaped_type_node("DiffId", vec![named_type_node("Float")]),
+                source_indices.clone()
             )
         );
         assert!(
             !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                &named_type_node("TestClaimId"),
-                &source_indices
+                named_type_node("TestClaimId"),
+                source_indices.clone()
             )
         );
     }
@@ -1063,7 +1060,7 @@ mod compiler_tests {
                 for source in &sources {
                     let t = Instant::now();
                     let tokens = crate::v2_compiler_tokenize::tokenize(
-                        &source.content.clone(),
+                        source.content.clone(),
                         source.path.clone(),
                     );
                     let elapsed = t.elapsed();
@@ -1086,7 +1083,7 @@ mod compiler_tests {
                     let t = Instant::now();
                     let si = crate::v2_std_core::build_newline_index(
                         sources[i].path.clone(),
-                        &sources[i].content.clone(),
+                        sources[i].content.clone(),
                     );
                     let parsed = crate::v2_compiler_parse::parse_with_table(
                         tokens,
@@ -1129,14 +1126,14 @@ mod compiler_tests {
                             s.path.clone(),
                             crate::v2_std_core::build_newline_index(
                                 s.path.clone(),
-                                &s.content.clone(),
+                                s.content.clone(),
                             ),
                         )
                     },
                 );
                 let graph = crate::v2_compiler_resolve::resolve_modules(
-                    &std::rc::Rc::new(modules),
-                    &resolve_si,
+                    std::rc::Rc::new(modules),
+                    resolve_si,
                 );
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph
@@ -1189,7 +1186,7 @@ mod compiler_tests {
                 for source in &sources {
                     let t = Instant::now();
                     let tokens = crate::v2_compiler_tokenize::tokenize(
-                        &source.content.clone(),
+                        source.content.clone(),
                         source.path.clone(),
                     );
                     let elapsed = t.elapsed();
@@ -1219,7 +1216,7 @@ mod compiler_tests {
                     let t = Instant::now();
                     let si = crate::v2_std_core::build_newline_index(
                         sources[i].path.clone(),
-                        &sources[i].content.clone(),
+                        sources[i].content.clone(),
                     );
                     let parsed = crate::v2_compiler_parse::parse_with_table(
                         tokens,
@@ -1271,14 +1268,14 @@ mod compiler_tests {
                             s.path.clone(),
                             crate::v2_std_core::build_newline_index(
                                 s.path.clone(),
-                                &s.content.clone(),
+                                s.content.clone(),
                             ),
                         )
                     },
                 );
                 let graph = crate::v2_compiler_resolve::resolve_modules(
-                    &std::rc::Rc::new(modules),
-                    &resolve_si,
+                    std::rc::Rc::new(modules),
+                    resolve_si,
                 );
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph
@@ -1302,7 +1299,7 @@ mod compiler_tests {
                             source.path.clone(),
                             crate::v2_std_core::build_newline_index(
                                 source.path.clone(),
-                                &source.content.clone(),
+                                source.content.clone(),
                             ),
                         );
                         acc
@@ -1328,7 +1325,7 @@ mod compiler_tests {
                 );
 
                 let t_stage = Instant::now();
-                let emit_result = crate::v2_compiler_emit_rust::emit_rust(&typed);
+                let emit_result = crate::v2_compiler_emit_rust::emit_rust(typed);
                 let emit_total = t_stage.elapsed();
                 let phase5_diags: usize = emit_result
                     .diagnostics
@@ -1398,7 +1395,7 @@ mod compiler_tests {
                 let mut token_lists = Vec::new();
                 for source in &sources {
                     let tokens = crate::v2_compiler_tokenize::tokenize(
-                        &source.content.clone(),
+                        source.content.clone(),
                         source.path.clone(),
                     );
                     token_lists.push(tokens);
@@ -1411,7 +1408,7 @@ mod compiler_tests {
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let si = crate::v2_std_core::build_newline_index(
                         sources[i].path.clone(),
-                        &sources[i].content.clone(),
+                        sources[i].content.clone(),
                     );
                     let parsed = crate::v2_compiler_parse::parse_with_table(
                         tokens,
@@ -1447,14 +1444,14 @@ mod compiler_tests {
                             s.path.clone(),
                             crate::v2_std_core::build_newline_index(
                                 s.path.clone(),
-                                &s.content.clone(),
+                                s.content.clone(),
                             ),
                         )
                     },
                 );
                 let graph = crate::v2_compiler_resolve::resolve_modules(
-                    &std::rc::Rc::new(modules),
-                    &resolve_si,
+                    std::rc::Rc::new(modules),
+                    resolve_si,
                 );
                 let resolve_elapsed = t.elapsed();
                 let resolve_errors: usize = graph
@@ -1468,7 +1465,7 @@ mod compiler_tests {
                 let newline_indices: Vec<_> = sources
                     .iter()
                     .map(|s| {
-                        crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())
+                        crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())
                     })
                     .collect();
                 let newline_elapsed = t.elapsed();
@@ -1495,8 +1492,10 @@ mod compiler_tests {
                         crate::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
-                let norm =
-                    crate::v2_compiler_normalize::normalize_graph(&graph, source_indices.clone());
+                let norm = crate::v2_compiler_normalize::normalize_graph(
+                    graph.clone(),
+                    source_indices.clone(),
+                );
                 let normalize_elapsed = t.elapsed();
                 eprintln!(
                     "  Normalize:                    {:>8.2?}",
@@ -1528,7 +1527,7 @@ mod compiler_tests {
                 let recursion_ctx =
                     crate::v2_compiler_compile::build_recursion_context(typed.clone());
                 let complexity = crate::v2_compiler_complexity::build_complexity_report(
-                    &func_entries,
+                    func_entries,
                     recursion_ctx,
                     source_indices.clone(),
                 );
@@ -1569,7 +1568,7 @@ mod compiler_tests {
                 let t = Instant::now();
                 let emit_result = crate::v2_compiler_compile::emit_from_artifact_plan(
                     typed.clone(),
-                    &artifact_plan,
+                    artifact_plan,
                 );
                 let emit_elapsed = t.elapsed();
                 let emitted_files = emit_result.files.len();
@@ -1659,15 +1658,15 @@ mod compiler_tests {
                 let mut intern_table = crate::v2_std_core::empty_intern_table();
                 for source in &sources {
                     let tokens = crate::v2_compiler_tokenize::tokenize(
-                        &source.content.clone(),
+                        source.content.clone(),
                         source.path.clone(),
                     );
                     let si = crate::v2_std_core::build_newline_index(
                         source.path.clone(),
-                        &source.content.clone(),
+                        source.content.clone(),
                     );
                     let parsed = crate::v2_compiler_parse::parse_with_table(
-                        &tokens,
+                        tokens.clone(),
                         crate::v2_rt::rc_map_insert(
                             crate::v2_rt::rc_empty_map::<
                                 String,
@@ -1697,14 +1696,14 @@ mod compiler_tests {
                             s.path.clone(),
                             crate::v2_std_core::build_newline_index(
                                 s.path.clone(),
-                                &s.content.clone(),
+                                s.content.clone(),
                             ),
                         )
                     },
                 );
                 let graph = crate::v2_compiler_resolve::resolve_modules(
-                    &std::rc::Rc::new(modules),
-                    &resolve_si,
+                    std::rc::Rc::new(modules),
+                    resolve_si,
                 );
                 let setup_time = t0.elapsed();
                 let rss_baseline = get_rss_bytes();
@@ -1726,7 +1725,7 @@ mod compiler_tests {
                             source.path.clone(),
                             crate::v2_std_core::build_newline_index(
                                 source.path.clone(),
-                                &source.content.clone(),
+                                source.content.clone(),
                             ),
                         );
                         acc
@@ -1745,10 +1744,10 @@ mod compiler_tests {
 
                     let t_unres = Instant::now();
                     let _unres = crate::v2_compiler_infer::build_type_env_unresolved(
-                        &resolved.clone(),
-                        &module_index.clone(),
-                        &source_indices.clone(),
-                        &intern_table.clone(),
+                        resolved.clone(),
+                        module_index.clone(),
+                        source_indices.clone(),
+                        intern_table.clone(),
                     );
                     let unres_elapsed = t_unres.elapsed();
                     let rss_after_unres = get_rss_bytes();
@@ -1771,10 +1770,10 @@ mod compiler_tests {
 
                     let t_env = Instant::now();
                     let env_result = crate::v2_compiler_infer::build_type_env(
-                        &resolved.clone(),
-                        &module_index.clone(),
-                        &source_indices.clone(),
-                        &intern_table.clone(),
+                        resolved.clone(),
+                        module_index.clone(),
+                        source_indices.clone(),
+                        intern_table.clone(),
                     );
                     let env_elapsed = t_env.elapsed();
                     let rss_after_env = get_rss_bytes();
@@ -1807,9 +1806,9 @@ mod compiler_tests {
 
                     let t_full = Instant::now();
                     let tc_result = crate::v2_compiler_infer::typecheck_module(
-                        &resolved.clone(),
-                        &module_index,
-                        &source_indices.clone(),
+                        resolved.clone(),
+                        module_index.clone(),
+                        source_indices.clone(),
                         intern_table.clone(),
                     );
                     let full_elapsed = t_full.elapsed();
