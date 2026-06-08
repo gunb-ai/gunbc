@@ -1,0 +1,527 @@
+// src/v4/test/claim/workflow/pipeline_rejections.dag
+// Scope: workflow pipeline rejection TestClaim data.
+// Status: workflow-owned rejection coverage for the Wave-0 TestClaim runner.
+
+
+module v4.test.claim.workflow.pipeline_rejections
+
+
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics
+}
+import v4.workflow.ci {
+  ci_pipeline_evaluator_input_node,
+  test_claim_cache_receipt_pinned,
+  test_claim_typed_input_ci_pipeline,
+  workflow_pipeline_pass_gate,
+  workflow_pipeline_plan_bound_pass_receipt,
+  WorkflowPipelinePlanBoundPassReceipt
+}
+import v4.std.verdict { Verdict, Pass, verdict_fail }
+import v4.compiler.infer {
+  InferredFacts,
+  InferredTree
+}
+import v4.test.claim.lens_common.infer_fixture {
+  claim_inferred_facts_from_nodes
+}
+import v4.std.collection { List, Map }
+import v4.std.node {
+  Atom,
+  Node,
+  Symbol,
+  TypeNode
+}
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  ExternalContractUnknown,
+  node_locus,
+  Outcome,
+  Accepted,
+  None,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  outcome_node_eq
+}
+import v4.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v4.std.verification {
+  DiagnosticClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  test_claim_expected_outcome,
+  test_claim_input,
+  manual_claim_anchor
+}
+import v4.std.constraints {
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
+import v4.std.witness { Holds, Violates }
+import v4.workflow.bootstrap { v4_stage0_binary }
+import v4.workflow.ci {
+  Always,
+  BootstrapStageCompile,
+  CiGate,
+  CiJob,
+  CiPipeline,
+  RequiresJobAttempt,
+  ci_bootstrap_authority_violation,
+  ci_dangling_reference,
+  ci_dependency_cycle,
+  ci_diagnostic,
+  ci_duplicate_gate_id,
+  ci_duplicate_job_id,
+  ci_pipeline_well_formed,
+  structural_v2_compile,
+  v2_compile_src_v4
+}
+
+
+// RULING-1: needs-more-work — workflow cases are gated by the gate_* receipt rows below.
+type PipelineRejectionCase {
+  label: String
+  input_symbol: Symbol
+  expected_reason: Symbol
+  pipeline: CiPipeline
+}
+
+
+fn run_pipeline_assert(
+  claim: TestClaim,
+  actual: Outcome<CiPipeline>,
+  input: Node
+) -> Verdict<TestClaimEvalSubject<CiPipeline>, CiPipeline> {
+  match test_claim_expected_outcome(c: claim) {
+    Accepted { value: expected, diagnostics: _ } =>
+      match claim {
+        DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
+          match actual {
+            Rejected { diagnostics: r } => {
+              let comparable = Rejected { diagnostics: r }
+              if outcome_node_eq(a: comparable, b: expected) { Pass } else { verdict_fail(actual: actual) }
+            }
+            _ => verdict_fail(actual: actual)
+          }
+        _ =>
+          verdict_fail(actual: actual)
+      }
+    Rejected { diagnostics: _ } =>
+      verdict_fail(actual: actual)
+  }
+}
+
+
+data dangling_bootstrap_output: Symbol = dangling_bootstrap_output
+data duplicate_job_id: Symbol = duplicate_job_id
+data duplicate_gate_id: Symbol = duplicate_gate_id
+data dangling_need: Symbol = dangling_need
+data dangling_gate_job: Symbol = dangling_gate_job
+data dependency_cycle: Symbol = dependency_cycle
+data missing_stage_binary: Symbol = missing_stage_binary
+data alternate_job: Symbol = alternate_job
+data alternate_gate: Symbol = alternate_gate
+data pipeline_evaluator: Symbol = pipeline_evaluator
+data pipeline_resources: Symbol = pipeline_resources
+data pipeline_extdeps: Symbol = pipeline_extdeps
+data inferred_type_symbol: Symbol = inferred_type_symbol
+data inferred_algebra_symbol: Symbol = inferred_algebra_symbol
+data inferred_descent_not_derived: Symbol = inferred_descent_not_derived
+data pipeline_interpretation_pin: Symbol = pipeline_interpretation_pin
+data pipeline_allocate_literal_sym: Symbol = pipeline_allocate_literal_sym
+data pipeline_call_primitive_sym: Symbol = pipeline_call_primitive_sym
+data pipeline_choose_branch_sym: Symbol = pipeline_choose_branch_sym
+data pipeline_step_loop_sym: Symbol = pipeline_step_loop_sym
+data pipeline_bind_value_sym: Symbol = pipeline_bind_value_sym
+
+
+fn pipeline_symbol_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+
+fn pipeline_runtime_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: pipeline_extdeps,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn pipeline_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: pipeline_runtime_diagnostic(n: node)) }
+}
+
+
+fn pipeline_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: pipeline_runtime_diagnostic(n: node)) }
+}
+
+
+fn pipeline_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  Rejected { diagnostics: diagnostics_singleton(d: pipeline_runtime_diagnostic(n: node)) }
+}
+
+
+fn pipeline_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Rejected { diagnostics: diagnostics_singleton(d: pipeline_runtime_diagnostic(n: node)) }
+}
+
+
+fn pipeline_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+
+fn pipeline_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: pipeline_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: pipeline_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: pipeline_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: pipeline_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: pipeline_bind_value
+    }
+  }
+}
+
+
+fn workflow_inferred_facts() -> InferredFacts {
+  let resolved = pipeline_symbol_node(s: inferred_type_symbol)
+  claim_inferred_facts_from_nodes(
+    resolved: resolved,
+    algebra: pipeline_symbol_node(s: inferred_algebra_symbol),
+    descent: Violates {
+      diagnostic: Diagnostic {
+        reason: inferred_descent_not_derived,
+        at: node_locus(node: resolved),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  )
+}
+
+
+fn workflow_inferred_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(_) {
+      Holds { value: facts }
+    }
+  }
+}
+
+
+fn workflow_inferred_tree(root: Node) -> InferredTree {
+  let facts = workflow_inferred_facts()
+  InferredTree {
+    root: root,
+    facts: workflow_inferred_fact_map(facts: facts)
+  }
+}
+
+
+fn pipeline_rejection_claim(case: PipelineRejectionCase) -> TestClaim {
+  DiagnosticClaim {
+    label: case.label,
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    input: ci_pipeline_evaluator_input_node(
+      pipeline: case.pipeline,
+      evaluator_pin: case.input_symbol
+    ),
+    expected_rejection: diagnostics_singleton(d: ci_diagnostic(reason: case.expected_reason)),
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+
+fn pipeline_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: pipeline_allocate_literal_sym,
+    call_primitive: pipeline_call_primitive_sym,
+    choose_branch: pipeline_choose_branch_sym,
+    step_loop: pipeline_step_loop_sym,
+    bind_value: pipeline_bind_value_sym
+  }
+}
+
+fn pipeline_claim_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: pipeline_interpretation_pin,
+    interpretation: pipeline_interpretation(),
+    structure_witness: pipeline_interpretation_structure_witness()
+  )
+}
+
+
+fn pipeline_rejection_subject(
+  case: PipelineRejectionCase
+) -> TestClaimEvalSubject<CiPipeline> {
+  let claim = pipeline_rejection_claim(case: case)
+  TestClaimEvalSubject {
+    claim: claim,
+    context: pipeline_claim_context(),
+    tree: workflow_inferred_tree(root: test_claim_input(c: claim)),
+    input: test_claim_typed_input_ci_pipeline(
+      evaluator_input: case.pipeline,
+      evaluator_pin: case.input_symbol
+    )
+  }
+}
+
+
+fn workflow_pipeline_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipeline, CiPipeline> {
+  let actual = ci_pipeline_well_formed(p: subject.input.evaluator_input)
+  TestClaimRun {
+    cache: test_claim_cache_receipt_pinned(subject: subject),
+    verdict: run_pipeline_assert(
+      claim: subject.claim,
+      actual: actual,
+      input: test_claim_input(c: subject.claim)
+    )
+  }
+}
+
+
+data case_dangling_bootstrap_output: PipelineRejectionCase = PipelineRejectionCase {
+  label: "workflow_pipeline_dangling_bootstrap_output",
+  input_symbol: dangling_bootstrap_output,
+  expected_reason: ci_bootstrap_authority_violation,
+  pipeline: CiPipeline {
+    jobs: [
+      CiJob {
+        id: v2_compile_src_v4,
+        command: BootstrapStageCompile { produces: missing_stage_binary },
+        needs: []
+      }
+    ],
+    gates: [
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always }
+    ]
+  }
+}
+
+
+data subject_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_dangling_bootstrap_output)
+
+
+data run_dangling_bootstrap_output: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dangling_bootstrap_output)
+
+
+data gate_dangling_bootstrap_output: Verdict<TestClaimEvalSubject<CiPipeline>, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_bootstrap_output,
+  at: test_claim_input(c: subject_dangling_bootstrap_output.claim)
+)
+
+
+data receipt_dangling_bootstrap_output: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
+  run: run_dangling_bootstrap_output,
+  at: test_claim_input(c: subject_dangling_bootstrap_output.claim)
+)
+
+
+data case_duplicate_job_id: PipelineRejectionCase = PipelineRejectionCase {
+  label: "workflow_pipeline_duplicate_job_id",
+  input_symbol: duplicate_job_id,
+  expected_reason: ci_duplicate_job_id,
+  pipeline: CiPipeline {
+    jobs: [
+      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] },
+      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
+    ],
+    gates: [
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always }
+    ]
+  }
+}
+
+
+data subject_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_duplicate_job_id)
+
+
+data run_duplicate_job_id: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_job_id)
+
+
+data gate_duplicate_job_id: Verdict<TestClaimEvalSubject<CiPipeline>, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_duplicate_job_id,
+  at: test_claim_input(c: subject_duplicate_job_id.claim)
+)
+
+
+data receipt_duplicate_job_id: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
+  run: run_duplicate_job_id,
+  at: test_claim_input(c: subject_duplicate_job_id.claim)
+)
+
+
+data case_duplicate_gate_id: PipelineRejectionCase = PipelineRejectionCase {
+  label: "workflow_pipeline_duplicate_gate_id",
+  input_symbol: duplicate_gate_id,
+  expected_reason: ci_duplicate_gate_id,
+  pipeline: CiPipeline {
+    jobs: [
+      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
+    ],
+    gates: [
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always },
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always }
+    ]
+  }
+}
+
+
+data subject_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_duplicate_gate_id)
+
+
+data run_duplicate_gate_id: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_gate_id)
+
+
+data gate_duplicate_gate_id: Verdict<TestClaimEvalSubject<CiPipeline>, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_duplicate_gate_id,
+  at: test_claim_input(c: subject_duplicate_gate_id.claim)
+)
+
+
+data receipt_duplicate_gate_id: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
+  run: run_duplicate_gate_id,
+  at: test_claim_input(c: subject_duplicate_gate_id.claim)
+)
+
+
+data case_dangling_need: PipelineRejectionCase = PipelineRejectionCase {
+  label: "workflow_pipeline_dangling_need",
+  input_symbol: dangling_need,
+  expected_reason: ci_dangling_reference,
+  pipeline: CiPipeline {
+    jobs: [
+      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [alternate_job] }
+    ],
+    gates: [
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always }
+    ]
+  }
+}
+
+
+data subject_dangling_need: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_dangling_need)
+
+
+data run_dangling_need: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dangling_need)
+
+
+data gate_dangling_need: Verdict<TestClaimEvalSubject<CiPipeline>, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_need,
+  at: test_claim_input(c: subject_dangling_need.claim)
+)
+
+
+data receipt_dangling_need: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
+  run: run_dangling_need,
+  at: test_claim_input(c: subject_dangling_need.claim)
+)
+
+
+data case_dangling_gate_job: PipelineRejectionCase = PipelineRejectionCase {
+  label: "workflow_pipeline_dangling_gate_job",
+  input_symbol: dangling_gate_job,
+  expected_reason: ci_dangling_reference,
+  pipeline: CiPipeline {
+    jobs: [
+      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
+    ],
+    gates: [
+      CiGate { id: structural_v2_compile, job: alternate_job, run_policy: Always }
+    ]
+  }
+}
+
+
+data subject_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_dangling_gate_job)
+
+
+data run_dangling_gate_job: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dangling_gate_job)
+
+
+data gate_dangling_gate_job: Verdict<TestClaimEvalSubject<CiPipeline>, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_gate_job,
+  at: test_claim_input(c: subject_dangling_gate_job.claim)
+)
+
+
+data receipt_dangling_gate_job: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
+  run: run_dangling_gate_job,
+  at: test_claim_input(c: subject_dangling_gate_job.claim)
+)
+
+
+data case_dependency_cycle: PipelineRejectionCase = PipelineRejectionCase {
+  label: "workflow_pipeline_dependency_cycle",
+  input_symbol: dependency_cycle,
+  expected_reason: ci_dependency_cycle,
+  pipeline: CiPipeline {
+    jobs: [
+      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [alternate_job] },
+      CiJob { id: alternate_job, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [v2_compile_src_v4] }
+    ],
+    gates: [
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always },
+      CiGate { id: alternate_gate, job: alternate_job, run_policy: Always }
+    ]
+  }
+}
+
+
+data subject_dependency_cycle: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_dependency_cycle)
+
+
+data run_dependency_cycle: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dependency_cycle)
+
+
+data gate_dependency_cycle: Verdict<TestClaimEvalSubject<CiPipeline>, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dependency_cycle,
+  at: test_claim_input(c: subject_dependency_cycle.claim)
+)
+
+
+data receipt_dependency_cycle: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
+  run: run_dependency_cycle,
+  at: test_claim_input(c: subject_dependency_cycle.claim)
+)

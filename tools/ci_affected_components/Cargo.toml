@@ -19,3 +19,7 @@ path = "src/main.rs"
 [[bin]]
 name = "emit-affected-set-ci-receipt"
 path = "src/bin/emit_affected_set_ci_receipt.rs"
+
+[[bin]]
+name = "emit-ci-wave3-shadow-receipt"
+path = "src/bin/emit_ci_wave3_shadow_receipt.rs"
