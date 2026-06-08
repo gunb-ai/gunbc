@@ -597,10 +597,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `method_template_contract_test.rs` until testgen covers
     // reflected-Dag structural assertions over std/ row authorities.
     "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",
-    // R4 ctrl-migration Wave-1 catalog #8 (`dsl/ctrl/pr_digests.dag`): lexer + structural
-    // ratchet until `compile_to_dag` covers `module … service …` authoring files the same
-    // way as expression programs (see INVARIANTS SG-0 receipt row).
-    "src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs",
     // Dissolution-lens subsumption carrier: parse-level ratchet for
     // `src/v4/lens/subsumption.dag`; retires when v4 TestClaim/generated
     // coverage owns the same carrier and first-row projection.
