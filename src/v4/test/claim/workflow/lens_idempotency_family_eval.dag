@@ -1,6 +1,6 @@
 // src/v4/test/claim/workflow/lens_idempotency_family_eval.dag
 // Scope: T-38B family CI receipt — lens_idempotency run_test_claim rows gate green over eval_mvp2 wedge.
-// Status: source-shape receipt; host transport runs witness_lens_idempotency_family_gate_closed.
+// Status: T-38B family CI receipt; host transport is scripts/v4-t38b-lens-family-ci-gate.sh.
 
 module v4.test.claim.workflow.lens_idempotency_family_eval
 
@@ -69,3 +69,7 @@ fn lens_idempotency_family_gate(report: LensIdempotencyFamilyEvalReport) -> Bool
 data witness_lens_idempotency_family_gate_closed: Bool = lens_idempotency_family_gate(
   report: run_lens_idempotency_family_eval()
 )
+
+fn witness_lens_idempotency_family_gate_closed_holds() -> Bool {
+  witness_lens_idempotency_family_gate_closed
+}

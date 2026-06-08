@@ -1,6 +1,6 @@
 // src/v4/test/claim/workflow/lens_parallelism_family_eval.dag
 // Scope: T-38B family CI receipt — lens_parallelism run_test_claim rows gate green over eval_mvp2 wedge.
-// Status: source-shape receipt; host transport runs witness_lens_parallelism_family_gate_closed.
+// Status: T-38B family CI receipt; host transport is scripts/v4-t38b-lens-family-ci-gate.sh.
 
 module v4.test.claim.workflow.lens_parallelism_family_eval
 
