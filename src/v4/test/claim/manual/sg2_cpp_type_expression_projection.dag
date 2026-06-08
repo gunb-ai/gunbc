@@ -19,6 +19,7 @@ import v4.extdeps.languages.cpp {
   cpp_token_lt,
   cpp_type_expression_projection
 }
+import v4.std.target_model { TargetModel }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }

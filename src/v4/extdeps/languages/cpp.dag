@@ -1298,13 +1298,15 @@ data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 // SG-2 — canonical per-connective TargetTypeExpressionProjection row for C++.
 // Single authority: carrier lives in v4.std.target_model; this is the per-language row only.
-// Connective → C++ surface (ISO/IEC 14882 template / union-style staging):
+// Connective → emitted-wire kind tags (cpp_surface_type_*) + lex-delimited spellings.
+// Serialized text comes from cpp_sg2_type_expr_lex_rules token literals (e.g. " -> ", "<", ">"),
+// not from the surface symbol names. Row mirrors rust/TS SG-2 structural staging:
 //   atom          ident
-//   conj          { ... }  structural record surface
-//   disj          A | B    (std::variant-style union staging — shared variant_separator row)
-//   arrow         (T) -> U  trailing-return-style function type staging
-//   cardinality   Head<args>  template collection head + angle brackets
-//   instantiation generic apply Foo<X, Y>  angle brackets
+//   conj          { ... }  brace record (field_label_separator from row)
+//   disj          variant_separator lex (pipe-delimited staging wire; not std::variant spell-out)
+//   arrow         paren + trailing-return arrow lex (" -> "; ISO C++ function-type staging)
+//   cardinality   angle-bracket generic apply (Head<args>)
+//   instantiation angle-bracket generic apply Foo<X, Y>
 fn cpp_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
     atom_form: TargetAtomTypeShape {

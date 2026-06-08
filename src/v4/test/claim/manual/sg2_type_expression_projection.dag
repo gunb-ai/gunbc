@@ -36,7 +36,7 @@ import v4.extdeps.languages.rust {
   rust_sg2_type_expr_target_model,
   rust_type_expression_projection
 }
-import v4.std.target_model { target_type_expr_emitted_wire_decode }
+import v4.std.target_model { TargetModel, target_type_expr_emitted_wire_decode }
 import v4.test.claim.manual.mvp1_rust_add_translate {
   mvp1_rust_inferred_tree,
   mvp1_rust_target_model
