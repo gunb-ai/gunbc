@@ -86,7 +86,7 @@ use crate::v2_std_core::{
 };
 
 // ---------------------------------------------------------------------------
-// CanonKey — finite-map key with decidable structural identity
+// CanonKey — finite-map key keyed by the single Value-equality authority
 // ---------------------------------------------------------------------------
 //
 // A finite `Map<K, V>` is a finite set of key→value pairs (a finite functional
@@ -96,33 +96,33 @@ use crate::v2_std_core::{
 // `lookup` (by application) AND whole-map `==` (extensional, set equality) are
 // decidable.
 //
-// `CanonKey` is the native map key. It carries the original key `Value` (so
-// `keys`/iteration recover real keys, not strings) plus a canonical, stable,
-// injective encoding used for `Hash` + `Eq`. Equality over the encoding matches
-// the language `==` (`Value::eq`) for every value shape that can be a map key.
-// (Records/Variants encode field-sorted so two structurally-equal records — whose
-// `fields` HashMap iterates in nondeterministic order — encode identically; an
-// `Empty`/`Cons` chain encodes identically to the equivalent `List`, matching the
-// FreeMonoid alias `Value::eq` honors. The one documented exception is the
-// `String` ≡ char-list alias: a `Str` key and a hand-built char-list key encode
-// distinctly — no consumer builds char-list map keys, and the prior Display-string
-// keying did not honor that alias either.)
+// `CanonKey` wraps the original key `Value` and uses it as the map key. Equality is
+// NOT a second authority: `PartialEq`/`Eq` delegate to `Value::eq` — the same
+// language `==` every other consumer reads (P2 single-authority). Only `Hash` is
+// derived here, and it is built to be *consistent* with `Value::eq` (equal values
+// hash equally): the FreeMonoid alias (`Str` ≡ `List` ≡ `Empty`/`Cons` chain that
+// flatten equally), `+0.0 == -0.0`, and the order-independence of record/variant
+// `fields` (a nondeterministic `HashMap`) are all reflected in the hash, mirroring
+// exactly the cases `Value::eq` unifies. `Value::eq` ignores `type_name` for
+// records/variants, so the hash does too. Original keys are preserved, so
+// `keys`/iteration recover real keys, not strings.
 //
-// Keys with no decidable identity (`Closure`, `Fn`, and — to keep `Eq` reflexive —
-// `Float` NaN) are rejected fail-closed (P3) at the insert/probe boundary rather
-// than silently mis-keying.
+// A value is a valid map key iff it is reflexive under `Value::eq` (`v == v`). That
+// rejects `Closure`/`Fn` (the `_ => false` arm) and `Float` NaN — and anything
+// transitively containing them — using the same authority, with no parallel
+// classification. Insertion fails closed (P3) on an invalid key.
 #[derive(Debug, Clone)]
 pub struct CanonKey {
     key: Value,
-    canon: String,
 }
 
 impl CanonKey {
-    /// Build a key, or `None` if `key` has no decidable map-key identity.
+    /// Build a key, or `None` if `key` has no decidable identity under `Value::eq`
+    /// (not reflexive — e.g. closures, fn references, `Float` NaN, or a structure
+    /// containing one). Reflexivity is checked through the single equality authority.
     fn new(key: Value) -> Option<CanonKey> {
-        let mut canon = String::new();
-        if canonical_key_encoding(&key, &mut canon) {
-            Some(CanonKey { key, canon })
+        if key == key {
+            Some(CanonKey { key })
         } else {
             None
         }
@@ -131,7 +131,8 @@ impl CanonKey {
 
 impl PartialEq for CanonKey {
     fn eq(&self, other: &Self) -> bool {
-        self.canon == other.canon
+        // Single equality authority: the language `==` (Value::eq).
+        self.key == other.key
     }
 }
 
@@ -139,155 +140,111 @@ impl Eq for CanonKey {}
 
 impl Hash for CanonKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.canon.hash(state);
+        state.write_u64(value_hash(&self.key));
     }
 }
 
-/// Canonical, stable, injective string encoding of a map key `Value`.
-/// Returns `false` (writing nothing usable) for values that cannot serve as a
-/// finite-map key — closures, fn references, and `Float` NaN (whose self-inequality
-/// would break `Eq` reflexivity). See `CanonKey` for the consistency contract.
-fn canonical_key_encoding(v: &Value, out: &mut String) -> bool {
+/// Structural hash of a key `Value`, consistent with `Value::eq`: every pair of
+/// values that `Value::eq` considers equal hashes identically. Collisions are
+/// permitted (that is what equality resolves), but eq-inconsistency is not.
+fn value_hash(v: &Value) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    let mut h = DefaultHasher::new();
+
+    // FreeMonoid alias: a List, a String, or a well-formed `Empty`/`Cons` chain that
+    // flatten to the same element sequence are `==` (see Value::eq), so all hash
+    // through the flattened sequence. `Str` flattens to its codepoints (Char = Nat),
+    // matching a List/chain of the same Int codepoints — mirroring `char_value`.
     match v {
-        Value::Null => {
-            out.push('N');
-            true
+        Value::List(_) | Value::Str(_) | Value::Variant { .. } => {
+            if let Some(items) = free_monoid_to_vec(v) {
+                0xF0u8.hash(&mut h);
+                items.len().hash(&mut h);
+                for item in &items {
+                    value_hash(item).hash(&mut h);
+                }
+                return h.finish();
+            }
         }
-        Value::Unit => {
-            out.push('U');
-            true
-        }
+        _ => {}
+    }
+
+    match v {
+        Value::Null => 0u8.hash(&mut h),
+        Value::Unit => 1u8.hash(&mut h),
         Value::Bool(b) => {
-            out.push('b');
-            out.push(if *b { '1' } else { '0' });
-            true
+            2u8.hash(&mut h);
+            b.hash(&mut h);
         }
         Value::Int(n) => {
-            out.push('i');
-            out.push_str(&n.to_string());
-            out.push(';');
-            true
+            3u8.hash(&mut h);
+            n.hash(&mut h);
         }
         Value::Float(f) => {
-            if f.is_nan() {
-                return false;
-            }
-            out.push('f');
-            out.push_str(&f.to_bits().to_string());
-            out.push(';');
-            true
+            4u8.hash(&mut h);
+            // Value::eq compares with `==`, so +0.0 and -0.0 are equal: normalize the
+            // zero bit-pattern. (NaN is not reflexive and is rejected as a key.)
+            let bits = if *f == 0.0 { 0u64 } else { f.to_bits() };
+            bits.hash(&mut h);
         }
-        Value::Str(s) => {
-            out.push('s');
-            out.push_str(&s.len().to_string());
-            out.push(':');
-            out.push_str(s);
-            true
-        }
-        // List and well-formed `Empty`/`Cons` chains denote the same FreeMonoid and
-        // are `==`, so both encode through the flattened element sequence.
-        Value::List(_) => encode_monoid_seq(v, out),
-        Value::Variant { .. } if free_monoid_to_vec(v).is_some() => encode_monoid_seq(v, out),
         Value::Set(members) => {
-            // BTreeSet is sorted + unique → already stable.
-            out.push('S');
-            out.push_str(&members.len().to_string());
-            out.push('{');
+            5u8.hash(&mut h);
+            // BTreeSet iterates in sorted order — already stable.
+            members.len().hash(&mut h);
             for m in members.iter() {
-                out.push_str(&m.len().to_string());
-                out.push(':');
-                out.push_str(m);
-                out.push(',');
+                m.hash(&mut h);
             }
-            out.push('}');
-            true
         }
-        Value::Record { type_name, fields } => {
-            out.push('R');
-            push_tagged(type_name, out);
-            out.push('{');
-            let ok = encode_fields_sorted(fields, out);
-            out.push('}');
-            ok
+        // Value::eq ignores `type_name` for records/variants and compares `fields` as
+        // (order-independent) HashMaps, so hash the fields commutatively and omit
+        // `type_name`.
+        Value::Record { fields, .. } => {
+            6u8.hash(&mut h);
+            hash_fields_commutative(fields).hash(&mut h);
         }
         Value::Variant {
-            type_name,
             variant_name,
             fields,
+            ..
         } => {
-            out.push('V');
-            push_tagged(type_name, out);
-            out.push('/');
-            push_tagged(variant_name, out);
-            out.push('{');
-            let ok = encode_fields_sorted(fields, out);
-            out.push('}');
-            ok
+            7u8.hash(&mut h);
+            variant_name.hash(&mut h);
+            hash_fields_commutative(fields).hash(&mut h);
         }
         Value::Map(m) => {
-            // Map-as-key: entries sorted by their (already canonical) key encoding.
-            out.push('M');
-            out.push_str(&m.len().to_string());
-            out.push('{');
-            let mut entries: Vec<(&str, &Value)> =
-                m.iter().map(|(k, val)| (k.canon.as_str(), val)).collect();
-            entries.sort_by(|a, b| a.0.cmp(b.0));
-            for (kc, val) in entries {
-                push_tagged(kc, out);
-                out.push('=');
-                if !canonical_key_encoding(val, out) {
-                    return false;
-                }
-                out.push(',');
+            8u8.hash(&mut h);
+            // Order-independent over entries.
+            let mut acc: u64 = 0;
+            for (k, val) in m.iter() {
+                let mut eh = DefaultHasher::new();
+                value_hash(&k.key).hash(&mut eh);
+                value_hash(val).hash(&mut eh);
+                acc = acc.wrapping_add(eh.finish());
             }
-            out.push('}');
-            true
+            acc.hash(&mut h);
         }
-        Value::Closure { .. } | Value::Fn { .. } => false,
+        // Not valid keys (rejected at CanonKey::new); hashed defensively for totality.
+        Value::Closure { .. } => 9u8.hash(&mut h),
+        Value::Fn { .. } => 10u8.hash(&mut h),
+        // Handled by the FreeMonoid branch above.
+        Value::List(_) | Value::Str(_) => unreachable!("FreeMonoid handled above"),
     }
+    h.finish()
 }
 
-/// Encode a List / `Empty`-`Cons` chain through its flattened element sequence, so
-/// the FreeMonoid alias (`Value::eq` treats them as equal) encodes identically.
-fn encode_monoid_seq(v: &Value, out: &mut String) -> bool {
-    let items = match free_monoid_to_vec(v) {
-        Some(items) => items,
-        None => return false,
-    };
-    out.push('L');
-    out.push_str(&items.len().to_string());
-    out.push('[');
-    for item in &items {
-        if !canonical_key_encoding(item, out) {
-            return false;
-        }
-        out.push(',');
+/// Order-independent combination of `(field_name, field_value)` hashes, so two
+/// records/variants whose `fields` HashMaps iterate in different orders (but hold the
+/// same entries) combine to the same value — matching `Value::eq`'s HashMap compare.
+fn hash_fields_commutative(fields: &HashMap<String, Value>) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    let mut acc: u64 = 0;
+    for (name, val) in fields.iter() {
+        let mut fh = DefaultHasher::new();
+        name.hash(&mut fh);
+        value_hash(val).hash(&mut fh);
+        acc = acc.wrapping_add(fh.finish());
     }
-    out.push(']');
-    true
-}
-
-/// Length-prefixed tag write (`<len>:<bytes>`) so concatenation stays injective.
-fn push_tagged(s: &str, out: &mut String) {
-    out.push_str(&s.len().to_string());
-    out.push(':');
-    out.push_str(s);
-}
-
-/// Encode record/variant fields sorted by name (stable across the nondeterministic
-/// `fields` HashMap iteration order).
-fn encode_fields_sorted(fields: &HashMap<String, Value>, out: &mut String) -> bool {
-    let mut names: Vec<&String> = fields.keys().collect();
-    names.sort();
-    for name in names {
-        push_tagged(name, out);
-        out.push('=');
-        if !canonical_key_encoding(&fields[name], out) {
-            return false;
-        }
-        out.push(',');
-    }
-    true
+    acc
 }
 
 // ---------------------------------------------------------------------------
@@ -1286,6 +1243,24 @@ fn match_pattern(
                     if variant_name == "Violates" && (name == "None" || name == "none") {
                         return Some(HashMap::new());
                     }
+                    // A present coproduct value bridges to `Some { value: <self> }`,
+                    // symmetric with the `_ if name == "Some"` bridge below for present
+                    // non-Variant values. A native `Value::Map` lookup returns the raw
+                    // stored value (not Holds-wrapped), so a present lookup of a coproduct
+                    // value (e.g. `Excluded`) must still satisfy a std `map_get`-style
+                    // `Some { value: v }` arm. Genuine `Some`/`None` variants are handled by
+                    // nominal matching (variant_name == name) below; a `Some` pattern only
+                    // appears where the scrutinee is Option/Witness-typed, so wrapping any
+                    // other present variant is the intended Option projection.
+                    if name == "Some" && variant_name != "Some" {
+                        let mut bindings = HashMap::new();
+                        for fb in field_bindings.iter() {
+                            let fb_pat = field_binding_pattern(fb.clone());
+                            let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                            bindings.extend(sub_bindings);
+                        }
+                        return Some(bindings);
+                    }
                     if variant_name != name {
                         return None;
                     }
@@ -1655,19 +1630,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         let key = args.first().ok_or_else(|| InterpError::TypeError {
             msg: "lookup requires a key argument".to_string(),
         })?;
-        let raw = raw_map_lookup(&receiver_val, key, env, ctx)?;
-        // The std contract is `Map.lookup: fn(K) -> Witness<V>` (v4.std.collection). The
-        // record-form map's `lookup` closure already returns a Witness (Holds/Violates);
-        // the native `Value::Map` chokepoint returns the raw stored value (present) or
-        // `Null` (miss), so lift it into the same Witness coproduct here. This keeps
-        // `.lookup` consistent across both representations — e.g. std `map_get`'s
-        // `Some`/`None` match reconciles via the existing Holds→Some / Violates→None
-        // bridges whether a key resolves to a scalar or a coproduct value. (`.get`, `[]`,
-        // and the `lookup` builtin keep returning the raw value.)
-        if matches!(receiver_val, Value::Map(_)) {
-            return Ok(witness_from_native_lookup(raw));
-        }
-        return Ok(raw);
+        return raw_map_lookup(&receiver_val, key, env, ctx);
     }
 
     // Record/Variant field holding a function: `r.field(args)` calls the field's closure/fn.
@@ -2657,7 +2620,7 @@ fn dispatch_rest(
         match find_property(transport.properties.clone(), "body".to_string(), si.clone()) {
             Some(body_node) => {
                 let body_val = eval_expr(&body_node, param_env, ctx)?;
-                Some(value_to_json(&body_val))
+                Some(value_to_json(&body_val)?)
             }
             None => None,
         };
@@ -2871,23 +2834,32 @@ fn substitute_template(template: &str, env: &Rc<Env>) -> String {
     result
 }
 
-/// Convert a Value to serde_json::Value for request bodies.
-fn value_to_json(val: &Value) -> serde_json::Value {
-    match val {
+/// Convert a Value to serde_json::Value for request bodies. Fails closed (P3) on a
+/// structural-key map: JSON object keys are strings, and rendering a non-String key
+/// (e.g. `Int(1)` vs `Str("1")`) via its Display form would collapse distinct keys
+/// and silently drop entries. Such a map has no faithful JSON-object representation.
+fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
+    Ok(match val {
         Value::Null => serde_json::Value::Null,
         Value::Bool(b) => serde_json::Value::Bool(*b),
         Value::Int(n) => serde_json::json!(*n),
         Value::Float(f) => serde_json::json!(*f),
         Value::Str(s) => {
             // If the string contains JSON, parse it (bridge for Json-typed params)
-            if (s.starts_with('[') || s.starts_with('{')) {
+            if s.starts_with('[') || s.starts_with('{') {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
-                    return parsed;
+                    return Ok(parsed);
                 }
             }
             serde_json::Value::String(s.clone())
         }
-        Value::List(items) => serde_json::Value::Array(items.iter().map(value_to_json).collect()),
+        Value::List(items) => {
+            let mut arr = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                arr.push(value_to_json(item)?);
+            }
+            serde_json::Value::Array(arr)
+        }
         Value::Set(members) => serde_json::Value::Array(
             members
                 .iter()
@@ -2895,25 +2867,38 @@ fn value_to_json(val: &Value) -> serde_json::Value {
                 .collect(),
         ),
         Value::Map(m) => {
-            // JSON object keys are strings: render each key via its Display form.
-            let obj: serde_json::Map<String, serde_json::Value> = m
-                .iter()
-                .map(|(k, v)| (format!("{}", k.key), value_to_json(v)))
-                .collect();
+            let mut obj = serde_json::Map::with_capacity(m.len());
+            for (k, v) in m.iter() {
+                let key = match &k.key {
+                    Value::Str(s) => s.clone(),
+                    other => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "cannot serialize map with non-string key to JSON (got {} key); \
+                                 JSON object keys are strings",
+                                other.type_label()
+                            ),
+                        })
+                    }
+                };
+                obj.insert(key, value_to_json(v)?);
+            }
             serde_json::Value::Object(obj)
         }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            let obj: serde_json::Map<String, serde_json::Value> = fields
-                .iter()
-                .filter(|(_, v)| !matches!(v, Value::Null))
-                .map(|(k, v)| (k.clone(), value_to_json(v)))
-                .collect();
+            let mut obj = serde_json::Map::new();
+            for (k, v) in fields.iter() {
+                if matches!(v, Value::Null) {
+                    continue;
+                }
+                obj.insert(k.clone(), value_to_json(v)?);
+            }
             serde_json::Value::Object(obj)
         }
         Value::Unit => serde_json::Value::Null,
         Value::Closure { .. } => serde_json::Value::String("<closure>".to_string()),
         Value::Fn { node } => serde_json::Value::String(format!("<fn {}>", node.name)),
-    }
+    })
 }
 
 /// Map a text response to the operation's return type.
@@ -3277,13 +3262,22 @@ fn eval_builtin(
         // data representation (so whole-map `==` is decidable) instead of falling
         // through to the `.dag` closure form on a non-String key.
         "map_insert" => match positional.as_slice() {
+            // A recognized native map_insert with an invalid key fails closed (P3) — it
+            // does NOT return Ok(None), which would fall through to the `.dag` closure-form
+            // map_insert and silently build an unmatchable map. `Ok(None)` here means only
+            // "not this builtin shape" (a non-Map receiver).
             [Value::Map(m), k, v] => match CanonKey::new((*k).clone()) {
                 Some(ck) => {
                     let mut result = HashMap::clone(m);
                     result.insert(ck, (*v).clone());
                     Ok(Some(Value::Map(Rc::new(result))))
                 }
-                None => Ok(None),
+                None => Err(InterpError::TypeError {
+                    msg: format!(
+                        "map_insert key has no decidable identity (closure/fn/NaN): {}",
+                        k.type_label()
+                    ),
+                }),
             },
             _ => Ok(None),
         },
@@ -3474,34 +3468,6 @@ fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<Vec<Value>>> {
                 msg: format!("{} expects a list, got {}", context, val.type_label()),
             }),
         },
-    }
-}
-
-/// Lift a native `Value::Map` key-probe result into the `Witness<V>` coproduct that
-/// the `Map.lookup: fn(K) -> Witness<V>` contract declares: a present value becomes
-/// `Holds { value }`, the `Null` miss sentinel becomes `Violates { diagnostic: Null }`
-/// (a native miss has no structured diagnostic — mirrors the Null→Violates match
-/// bridge). Variant `type_name` is cosmetic here; consumers dispatch on `variant_name`.
-fn witness_from_native_lookup(raw: Value) -> Value {
-    match raw {
-        Value::Null => {
-            let mut fields = HashMap::new();
-            fields.insert("diagnostic".to_string(), Value::Null);
-            Value::Variant {
-                type_name: "Witness".to_string(),
-                variant_name: "Violates".to_string(),
-                fields: Rc::new(fields),
-            }
-        }
-        present => {
-            let mut fields = HashMap::new();
-            fields.insert("value".to_string(), present);
-            Value::Variant {
-                type_name: "Witness".to_string(),
-                variant_name: "Holds".to_string(),
-                fields: Rc::new(fields),
-            }
-        }
     }
 }
 
