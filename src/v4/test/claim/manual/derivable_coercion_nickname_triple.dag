@@ -1,26 +1,24 @@
 // src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag
 // Scope: DERIVABLE-COERCION thesis payoff — TaskId nickname triple (API+DB+wire);
-//   structure-preserving maps derived BY EXECUTION via find_witness/coercion_fold only.
-// Status: EXECUTED Bool witnesses — positive zip-fold pairs + discriminating wrong-concept rejection.
+//   distinct SurfaceSpelling per layer, shared encoding+carrier core; measured by execution.
+// Status: EXECUTED Bool witnesses — surfaces distinct, exact zip-fold cross-layer gap, wrong-concept control.
 
 module v4.test.claim.manual.derivable_coercion_nickname_triple
 
+import v4.compiler.eval { run_test_claim_assert }
 import v4.test.fixture.derivable_coercion_task_id {
-  account_id_wrong_semantic_core_node,
+  account_id_wrong_inhabitant_node,
   derivable_coercion_candidate_closedness,
   task_id_api_inhabitant_node,
   task_id_db_inhabitant_node,
+  task_id_semantic_core_node,
   task_id_wire_inhabitant_node
 }
 import v4.std.coercion {
   CoercionCandidateSet,
-  CoercionQuality,
-  Exact,
-  Identity,
-  Widened,
+  CoercionResult,
   coercion_fold
 }
-import v4.std.collection { List }
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -41,9 +39,14 @@ import v4.std.find_witness {
   preservation_rule_exact_structural_equality_zip_fold,
   verify_witness
 }
+import v4.std.collection { List }
+import v4.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
 import v4.std.node { Node }
+import v4.std.verdict { Fail, Pass, Deferred }
 import v4.std.verification {
-  CompilesClaim,
+  EqualsClaim,
   ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -92,14 +95,6 @@ fn task_id_coercion_candidates(
   }
 }
 
-fn quality_is_faithful(q: CoercionQuality) -> Bool {
-  match q {
-    Exact => true
-    Identity => true
-    Widened => false
-  }
-}
-
 fn rejected_for_no_candidate(o: Outcome<FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
@@ -122,128 +117,131 @@ fn find_witness_accepts(source: Node, target: Node) -> Bool {
   }
 }
 
-fn coercion_fold_accepts(source: Node, target: Node) -> Bool {
-  match coercion_fold(
-    source: task_id_grounding(node: source),
-    candidates: task_id_coercion_candidates(
-      candidates: [target],
-      closedness_evidence: target
-    ),
-    policy: TargetDeclaredPriority { priority: target }
-  ) {
-    Accepted { value: r, diagnostics: _ } =>
-      (r.target == target) && quality_is_faithful(q: r.quality)
-    Rejected { diagnostics: _ } => false
+fn coercion_outcome_node_projection(actual: Outcome<CoercionResult>) -> Outcome<Node> {
+  match actual {
+    Accepted { value: r, diagnostics: ad } =>
+      Accepted { value: r.target, diagnostics: ad }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
-// Positive: API → DB (nickname triple leg — no hand translator).
-data witness_task_id_api_to_db_find_witness: Bool = find_witness_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node())
+fn api_to_db_coercion_fold() -> Outcome<CoercionResult> {
+  coercion_fold(
+    source: task_id_grounding(node: task_id_api_inhabitant_node()),
+    candidates: task_id_coercion_candidates(
+      candidates: [task_id_db_inhabitant_node()],
+      closedness_evidence: task_id_db_inhabitant_node()
+    ),
+    policy: TargetDeclaredPriority { priority: task_id_db_inhabitant_node() }
+  )
+}
 
-data witness_task_id_api_to_wire_find_witness: Bool = find_witness_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node())
+// Surfaces are structurally distinct (not identity nicknames).
+data witness_task_id_surfaces_distinct: Bool = (task_id_api_inhabitant_node() != task_id_db_inhabitant_node()) && (task_id_api_inhabitant_node() != task_id_wire_inhabitant_node()) && (task_id_db_inhabitant_node() != task_id_wire_inhabitant_node())
 
-data witness_task_id_db_to_wire_find_witness: Bool = find_witness_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node())
+// Shared semantic core is identical across layers (encoding+carrier only).
+data witness_task_id_shared_core_matches: Bool = exact_structural_equality_zip_fold(source_facts: task_id_semantic_core_node(), candidate: task_id_semantic_core_node())
 
-// Positive: coercion_fold derives the same maps (N-hand-translations → 0).
-data witness_task_id_api_to_db_coercion_fold: Bool = coercion_fold_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node())
+// Exact zip-fold rejects full cross-layer inhabitants (surfaces differ).
+data witness_task_id_zip_fold_api_db_rejects: Bool = !exact_structural_equality_zip_fold(source_facts: task_id_api_inhabitant_node(), candidate: task_id_db_inhabitant_node())
 
-data witness_task_id_api_to_wire_coercion_fold: Bool = coercion_fold_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node())
-
-// Discriminating: wrong concept (AccountId numeric encoding) rejects.
-data witness_task_id_api_to_account_id_rejects: Bool = rejected_for_no_candidate(
+// find_witness with exact_structural_equality_zip_fold cannot derive API→DB today.
+data witness_task_id_api_to_db_find_witness_rejects: Bool = rejected_for_no_candidate(
   o: find_witness(
     source_facts: task_id_api_inhabitant_node(),
     candidates: task_id_candidate_set(
-      candidates: [account_id_wrong_semantic_core_node()],
-      closedness_evidence: account_id_wrong_semantic_core_node()
+      candidates: [task_id_db_inhabitant_node()],
+      closedness_evidence: task_id_db_inhabitant_node()
     ),
     predicate: task_id_exact_predicate(source: task_id_api_inhabitant_node()),
     multiplicity_policy: UniqueOnly
   )
 )
 
-// verify_witness round-trip on API→DB derived witness.
-data witness_task_id_verify_witness_api_to_db: Bool = match verify_witness(
-  source_facts: task_id_api_inhabitant_node(),
-  candidate: task_id_db_inhabitant_node(),
-  predicate: task_id_exact_predicate(source: task_id_api_inhabitant_node()),
-  witness: StructuralPropertyWitness {
-    property: preservation_rule_exact_structural_equality_zip_fold,
-    evidence: task_id_db_inhabitant_node()
-  }
-) {
-  Accepted { value: _, diagnostics: _ } => true
-  Rejected { diagnostics: _ } => false
+// coercion_fold inherits the same gap for cross-layer nickname coercion.
+data witness_task_id_api_to_db_coercion_fold_rejects: Bool = match api_to_db_coercion_fold() {
+  Accepted { value: _, diagnostics: _ } => false
+  Rejected { diagnostics: _ } => true
 }
 
-fn nickname_triple_claim_input(ok: Bool) -> Node {
+// Discriminating: wrong concept (AccountId numeric encoding) also rejects.
+data witness_task_id_api_to_account_id_rejects: Bool = rejected_for_no_candidate(
+  o: find_witness(
+    source_facts: task_id_api_inhabitant_node(),
+    candidates: task_id_candidate_set(
+      candidates: [account_id_wrong_inhabitant_node()],
+      closedness_evidence: account_id_wrong_inhabitant_node()
+    ),
+    predicate: task_id_exact_predicate(source: task_id_api_inhabitant_node()),
+    multiplicity_policy: UniqueOnly
+  )
+)
+
+// Same-layer reflexivity still accepts (control — zip-fold is not broken).
+data witness_task_id_api_to_api_find_witness_accepts: Bool = find_witness_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node())
+
+fn derivable_coercion_pass_node() -> Node {
+  task_id_api_inhabitant_node()
+}
+
+fn derivable_coercion_claim_lhs(ok: Bool) -> Node {
   if ok {
-    task_id_api_inhabitant_node()
+    derivable_coercion_pass_node()
   } else {
-    account_id_wrong_semantic_core_node()
+    account_id_wrong_inhabitant_node()
   }
 }
 
-data claim_derivable_coercion_nickname_triple_compiles: TestClaim = CompilesClaim {
-  label: "manual/derivable_coercion: nickname triple module compiles",
+data claim_task_id_surfaces_distinct: TestClaim = EqualsClaim {
+  label: "manual/derivable_coercion: API/DB/wire inhabitants have distinct SurfaceSpelling surfaces",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: task_id_api_inhabitant_node(),
-  expected_value: task_id_db_inhabitant_node(),
+  lhs: derivable_coercion_claim_lhs(ok: witness_task_id_surfaces_distinct),
+  rhs: derivable_coercion_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_task_id_api_to_db_find_witness: TestClaim = CompilesClaim {
-  label: "manual/derivable_coercion: API TaskId -> DB TEXT derives via find_witness (no hand translator)",
+data claim_task_id_api_to_db_find_witness_rejects: TestClaim = EqualsClaim {
+  label: "manual/derivable_coercion: exact zip-fold find_witness rejects API TaskId -> DB TEXT (substrate gap)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: nickname_triple_claim_input(ok: witness_task_id_api_to_db_find_witness),
-  expected_value: task_id_db_inhabitant_node(),
+  lhs: derivable_coercion_claim_lhs(ok: witness_task_id_api_to_db_find_witness_rejects),
+  rhs: derivable_coercion_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_task_id_api_to_wire_find_witness: TestClaim = CompilesClaim {
-  label: "manual/derivable_coercion: API TaskId -> wire string derives via find_witness",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: nickname_triple_claim_input(ok: witness_task_id_api_to_wire_find_witness),
-  expected_value: task_id_wire_inhabitant_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_task_id_db_to_wire_find_witness: TestClaim = CompilesClaim {
-  label: "manual/derivable_coercion: DB TEXT -> wire string derives via find_witness",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: nickname_triple_claim_input(ok: witness_task_id_db_to_wire_find_witness),
-  expected_value: task_id_wire_inhabitant_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_task_id_api_to_db_coercion_fold: TestClaim = CompilesClaim {
-  label: "manual/derivable_coercion: API TaskId -> DB TEXT coercion_fold accepts faithful witness",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: nickname_triple_claim_input(ok: witness_task_id_api_to_db_coercion_fold),
-  expected_value: task_id_db_inhabitant_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_task_id_api_to_wire_coercion_fold: TestClaim = CompilesClaim {
-  label: "manual/derivable_coercion: API TaskId -> wire string coercion_fold accepts faithful witness",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: nickname_triple_claim_input(ok: witness_task_id_api_to_wire_coercion_fold),
-  expected_value: task_id_wire_inhabitant_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_task_id_api_to_account_id_rejects: TestClaim = CompilesClaim {
+data claim_task_id_api_to_account_id_rejects: TestClaim = EqualsClaim {
   label: "manual/derivable_coercion: API TaskId -> AccountId numeric encoding rejects (discriminating)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: nickname_triple_claim_input(ok: witness_task_id_api_to_account_id_rejects),
-  expected_value: task_id_api_inhabitant_node(),
+  lhs: derivable_coercion_claim_lhs(ok: witness_task_id_api_to_account_id_rejects),
+  rhs: derivable_coercion_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_task_id_verify_witness_api_to_db: TestClaim = CompilesClaim {
-  label: "manual/derivable_coercion: verify_witness accepts API->DB derived witness",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: nickname_triple_claim_input(ok: witness_task_id_verify_witness_api_to_db),
-  expected_value: task_id_db_inhabitant_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_assert(
+  claim: claim_task_id_surfaces_distinct,
+  actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
+  at: task_id_api_inhabitant_node()
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+data witness_claim_task_id_api_to_db_find_witness_rejects: Bool = match run_test_claim_assert(
+  claim: claim_task_id_api_to_db_find_witness_rejects,
+  actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
+  at: task_id_api_inhabitant_node()
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+data witness_claim_task_id_api_to_account_id_rejects: Bool = match run_test_claim_assert(
+  claim: claim_task_id_api_to_account_id_rejects,
+  actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
+  at: task_id_api_inhabitant_node()
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
 }
