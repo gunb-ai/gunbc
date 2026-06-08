@@ -67,7 +67,7 @@ import v2.compiler.infer_types {
   callable_inferred,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
-  is_declared_container_alias_spelling, structural_carrier_template_name,
+  is_declared_container_alias_spelling, structural_carrier_template_name, type_node_is_callable,
   node_type_deps,
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
@@ -617,10 +617,6 @@ fn set_element_types_mismatch(recv_elem: Node, operand_elem: Node, source_indice
   set_element_type_is_concrete(elem: recv_elem)
     && set_element_type_is_concrete(elem: operand_elem)
     && !node_type_compatible(left: recv_elem, right: operand_elem, source_indices: source_indices)
-}
-
-fn type_node_is_callable(n: Node) -> Bool {
-  n.params |> count > 0
 }
 
 // set_element_types_mismatch at direct-call sites, excluding callable/formal-fn

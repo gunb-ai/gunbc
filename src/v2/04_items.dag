@@ -145,8 +145,9 @@ fn module_name_has_prefix(module_name: String, prefix: String) -> Bool {
     && substring(s: module_name, start: 0, end: prefix_len) == prefix
 }
 
-// Closed set of module prefixes outside PD-3 bounded direct-call enforcement
-// (compiler/v4 self-host substrate). Dissolve when module-class facts land.
+// 🟡 staged — dissolve-on: modeled ModuleClass substrate facts replace prefix checks
+// (lane: still-raven-546 compiler self-host; bind when v2.compiler.module_class lands).
+// Until then: closed prefix set excluding compiler/v4/std from PD-3 direct-call enforcement.
 fn pd3_direct_call_scope_excluded(module_name: String) -> Bool {
   module_name_has_prefix(module_name: module_name, prefix: "v4.")
     || module_name_has_prefix(module_name: module_name, prefix: "v2.compiler.")

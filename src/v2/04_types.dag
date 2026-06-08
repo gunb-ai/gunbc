@@ -616,8 +616,12 @@ fn resolve_type_variables_from_template(template: AlgebraFieldTemplate, arg_type
   apply_type_substitution(template: template.return_type, subst: subst, receiver: receiver_type, source_indices: source_indices)
 }
 
+fn type_node_is_callable(n: Node) -> Bool {
+  n.params |> count > 0
+}
+
 fn callable_inferred(n: Node) -> Node {
-  let is_callable = n.params |> count > 0
+  let is_callable = type_node_is_callable(n: n)
   if is_callable {
     match n.inferred {
       Some { value: Resolved { node: ret } } => ret
