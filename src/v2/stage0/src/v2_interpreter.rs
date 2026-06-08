@@ -1224,6 +1224,33 @@ fn match_pattern(
                     }
                     _ => None,
                 },
+                // Bridge the native-map-miss sentinel (Value::Null) into the Witness
+                // coproduct, mirroring the Option `Null -> None` bridge below. A native
+                // `Value::Map` lookup returns Null on a missing key (raw_map_lookup), but
+                // the std contract is `Map.lookup: fn(K) -> Witness<V>` (v4.std.collection)
+                // and the record-form empty_map presents an absent key as `Violates`. When a
+                // record-form map delegates its miss to a native base map (empty_map builtin
+                // shadows the .dag record form), the Null sentinel must still present as the
+                // `Violates` (absent) arm rather than falling through a Holds/Violates match
+                // non-exhaustively. `Holds` requires a present value and so never matches Null
+                // (it falls to the `_ => None` arm below).
+                Value::Null if name == "Violates" => {
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        // Violates carries a `diagnostic`; a native-map miss has no structured
+                        // diagnostic to offer, so the absent sentinel binds through as Null.
+                        let field_val = match field_name.as_str() {
+                            "diagnostic" => Value::Null,
+                            _ => return None,
+                        };
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
                 // Match on Option: Some { value: x } pattern
                 Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
                 _ if name == "Some" => {

@@ -112,3 +112,10 @@ fn probe() -> Int {
         other => panic!("expected Int(7) from lookup builtin, got {other:?}"),
     }
 }
+
+// NB: the native-map-miss -> `Witness` `Violates` bridge (runtime completeness for the
+// `Map.lookup: fn(K) -> Witness<V>` contract) is regression-tested at the v4 layer in
+// src/v4/test/claim/manual/map_lookup_miss_witness_violates.dag — the bootstrap
+// typechecker projects a raw `.lookup` result as Option (Some/None) unless it flows
+// through a `-> Witness` annotated wrapper, which the std `Map` contract provides but a
+// bare v2-harness fixture (no v4.std) cannot.
