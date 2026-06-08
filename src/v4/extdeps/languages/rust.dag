@@ -3870,6 +3870,53 @@ fn rust_sg2_type_expr_target_model() -> TargetModel {
   }
 }
 
+// SG-2 projection witness probe — bundle core without SG-RC ownership/reference-layer edges
+// so translate_apply_use_site_ownership disposition is false (pass-through) for conj/disj/sum
+// field slots while retaining the projection row + serialize authority.
+fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: rust_type_expression_projection_bundle_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_serialize_source,
+        target: rust_sg2_serialize_source_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_translation_rules,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: Empty
+        }
+      ),
+      rust_named_edge(
+        name: target_model_edge_selection_policy,
+        target: rust_mvp1_selection_policy_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: rust_declared_inhabitants_root()
+      ),
+      rust_named_edge(
+        name: target_model_edge_collection_realization,
+        target: rust_collection_realization_catalog_node()
+      )
+    ]
+  }
+}
+
+fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
+  TargetModel {
+    bundle: rust_sg2_type_expr_projection_probe_bundle_core(),
+    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    binding_spellings: rust_sg2_binding_spellings(),
+    authority_source_text: rust_sg2_type_alias_text
+  }
+}
+
 // Staging variant of the SG-2 type-expr model whose bundle is the pre-catalog core (no
 // signature_realizations edge). SG-1b rows declare THIS as their target_model so the row's host
 // authority matches the bundle they are encoded into (single authority); using the full model
