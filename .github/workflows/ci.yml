@@ -218,9 +218,6 @@ jobs:
     - name: Detect affected components
       id: detect
       run: bash .github/ci-floor/with-sccache-retry.sh cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
-    - name: Emit Wave 3 shadow selection receipt (Class C, non-blocking)
-      continue-on-error: true
-      run: cargo run -p ci_affected_components --bin emit-ci-wave3-shadow-receipt -- "${{ github.event_name }}"
     # Wave-1 §11.7 kill-criterion instrumentation (work-item adhoc-0ae3efe5-52b). Measurement only:
     # emits a per-PR JSON receipt (affected-set partition + bootstrap_required prediction) that the
     # operator aggregates to decide whether to affected-set-gate ci_floor. Does NOT gate any job.
