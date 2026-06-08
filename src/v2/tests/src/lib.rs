@@ -55,3 +55,5 @@ mod render_repeat_test;
 mod source_audit;
 #[cfg(test)]
 mod sub_value_lattice_factor_test;
+#[cfg(test)]
+mod witness_option_bridge_test;
