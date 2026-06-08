@@ -98,9 +98,10 @@ type UnifiedTestClaim
   | BoolWitness {
       entry: String                      // module relpath under src/v4/test/claim/
       function: Symbol                   // nullary fn () -> Bool
-      receipt: BoolWitnessReceipt        // typed execution receipt (see §3.3)
     }
 ```
+
+**P2 registration discipline:** both arms carry **descriptor fields only** — no execution output on the claim row. `NodeCorpus` holds `claim` / `subject` / `transport`; `BoolWitness` holds `entry` / `function`. Run artifacts (`TestClaimRun`, `BoolWitnessRun`) live exclusively in `CorpusEvalReport` (§3.3).
 
 **Resolved-type heads** — discovery and dispatch key off the modality tag, not string heuristics:
 
@@ -117,24 +118,24 @@ type UnifiedTestClaim
 
 | file | delta |
 | ---- | ----- |
-| `v4.std.verification` | Add `BoolWitness` carrier + `BoolWitnessReceipt` + `UnifiedTestClaim` coproduct wrapping existing `TestClaim` **without** deleting or narrowing `TestClaim` arms |
-| `v4.compiler.eval` (or `verification.dag` accessors) | `unified_test_claim_modality(c: UnifiedTestClaim) -> UnifiedTestClaimModality` — structural tag for dispatch |
+| `v4.std.verification` | Add `BoolWitness` descriptor carrier + `UnifiedTestClaim` coproduct wrapping existing `TestClaim` **without** deleting or narrowing `TestClaim` arms |
+| `v4.compiler.eval` (or adjacent workflow module) | `UnifiedClaimRun` / `CorpusEvalReport` run-receipt types; `unified_test_claim_modality(c: UnifiedTestClaim) -> UnifiedTestClaimModality` — structural tag for dispatch |
 | Registry projection fns | `bool_witness_from_roster_row(V4RosterPilotClaimRunRow) -> BoolWitness` — mechanical, not hand-maintained parallel lists |
 
 `TestClaim` coproduct arm changes for Node-corpus claims remain in scope of this consolidation — they are **not** listed as a non-goal. The **first** substrate landing is the Bool-witness arm so both modalities exist before runner migration.
 
 **Escalation:** any implementation touching `verification.dag` match arms without the model PR is a STOP per INVARIANTS load-bearing bar.
 
-### 3.3 `BoolWitnessReceipt` (one receipt shape, modality-preserved)
+### 3.3 Run receipts (modality-preserved; separate from registration)
 
-The one runner emits a **unified receipt** whose entries tag modality:
+Execution output is modeled **only** on run-receipt types — never on `UnifiedTestClaim` descriptor rows (P2). The one runner emits a **unified report** whose entries tag modality:
 
 ```text
 type UnifiedClaimRun
   = NodeCorpusRun { run: TestClaimRun<Node, RuntimeValue> }
   | BoolWitnessRun {
-      witness: BoolWitness
-      result: Bool
+      witness: BoolWitness              // descriptor pin (entry + function)
+      result: Bool                      // execution output
       execution_status: HostVerdictSurfaceExecutionStatus  // runtime vs authoring-time
     }
 
@@ -143,7 +144,12 @@ type CorpusEvalReport {
 }
 ```
 
-CI consumers read `CorpusEvalReport` — not raw Bool stdout and not `TestClaimRun` alone. The receipt **preserves** which arm ran; it does not normalize Bool results into fake `TestClaimRun` rows.
+| layer | Node-corpus | Bool-witness |
+| ----- | ----------- | ------------ |
+| **Registration** (`UnifiedTestClaim`) | `NodeCorpus { claim, subject, transport }` | `BoolWitness { entry, function }` |
+| **Execution** (`UnifiedClaimRun`) | `NodeCorpusRun { run: TestClaimRun<…> }` | `BoolWitnessRun { witness, result, execution_status }` |
+
+There is **no** separate `BoolWitnessReceipt` type — `BoolWitnessRun` is the Bool-modality run receipt, symmetric to wrapping `TestClaimRun` inside `NodeCorpusRun`. CI consumers read `CorpusEvalReport` — not raw Bool stdout and not `TestClaimRun` alone. The report **preserves** which arm ran; it does not normalize Bool results into fake `TestClaimRun` rows.
 
 ### 3.4 Node-corpus arm (consume, extend — do not replace)
 
@@ -256,7 +262,7 @@ Mgr-C accepts §3–§4 dual-modality coproduct + §6 equivalence bar. No `.dag`
 
 ### Phase 1 — Substrate: `BoolWitness` + `UnifiedTestClaim` in `verification.dag`
 
-Land `BoolWitness`, `BoolWitnessReceipt`, `UnifiedTestClaim`, modality tag fns. **No runner changes** in same PR if it risks load-bearing match churn — split runner to Phase 2.
+Land `BoolWitness` descriptor + `UnifiedTestClaim` + modality tag fns in `verification.dag`. Run-receipt types (`UnifiedClaimRun`, `CorpusEvalReport`) may land in the same PR or Phase 2 eval module — but **not** on the registration row. **No runner changes** in same PR if it risks load-bearing match churn — split runner to Phase 2.
 
 ### Phase 2 — One runner dispatch (pilot slice)
 
