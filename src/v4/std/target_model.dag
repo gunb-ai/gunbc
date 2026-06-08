@@ -42,9 +42,14 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.lexing { LexRules, VoidLexRules }
+import v4.std.find_witness { CandidateSet }
 import v4.std.node {
+  Arrow,
   Atom,
+  Cardinality,
   Conj,
+  Connective,
+  Disj,
   Edge,
   Instantiation,
   Named,
@@ -56,6 +61,7 @@ import v4.std.node {
   content_hash,
   fold_node
 }
+import v4.std.witness { StructuralPropertyWitness }
 import v4.std.node_query { find_named_child, node_labeled_child_edges, node_positional_child_targets }
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
