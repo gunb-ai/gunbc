@@ -576,6 +576,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
       function: "lens_registry_singleton_row_counts_holds"
     )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_map_lookup_miss_witness_violates,
+      entry: "src/v4/test/claim/manual/map_lookup_miss_witness_violates.dag",
+      function: "map_lookup_miss_violates_and_hit_holds"
+    )
 }
 
 
