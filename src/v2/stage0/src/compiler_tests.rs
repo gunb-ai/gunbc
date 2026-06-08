@@ -1086,7 +1086,7 @@ mod compiler_tests {
                         sources[i].content.clone(),
                     );
                     let parsed = crate::v2_compiler_parse::parse_with_table(
-                        tokens,
+                        tokens.clone(),
                         crate::v2_rt::rc_map_insert(
                             crate::v2_rt::rc_empty_map::<
                                 String,
@@ -1219,7 +1219,7 @@ mod compiler_tests {
                         sources[i].content.clone(),
                     );
                     let parsed = crate::v2_compiler_parse::parse_with_table(
-                        tokens,
+                        tokens.clone(),
                         crate::v2_rt::rc_map_insert(
                             crate::v2_rt::rc_empty_map::<
                                 String,
@@ -1411,7 +1411,7 @@ mod compiler_tests {
                         sources[i].content.clone(),
                     );
                     let parsed = crate::v2_compiler_parse::parse_with_table(
-                        tokens,
+                        tokens.clone(),
                         crate::v2_rt::rc_map_insert(
                             crate::v2_rt::rc_empty_map::<
                                 String,

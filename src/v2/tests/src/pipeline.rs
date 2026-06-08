@@ -898,6 +898,11 @@ fn dag_emit_from_resolved_matches_compile_sources_for_v4_slice() {
     // `fn add(x: i32, y: i32) -> i32 { x + y }` and flip to false on a mutated expected
     // source — the standing guard for B5-style emit-consumer regressions (cf. #4484).
     crate::r2_emit_add_named_test::assert_r2_emit_add_keystone();
+
+    // CI blind spot: v2-compiler's `compiler_tests` lib harness is otherwise dormant in
+    // ci_floor (only this parity receipt runs v2-compiler-tests). Compile-check it here so
+    // Rc call-site regressions in compiler_tests_rust.dag turn RED without a new CI step.
+    crate::v2_compiler_lib_test::assert_v2_compiler_lib_tests_compile();
 }
 
 /// Regression for recursive by-value DAG serialization: shared subgraphs must
