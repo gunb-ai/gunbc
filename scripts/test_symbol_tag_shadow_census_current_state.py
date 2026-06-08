@@ -10,13 +10,19 @@ declaration of the form:
 
 from __future__ import annotations
 
-import importlib.util
+import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CENSUS_SCRIPT = ROOT / "scripts/symbol_tag_shadow_census.py"
 V4_ROOT = ROOT / "src/v4"
+
+TAG_RE = re.compile(r"^\s*data\s+(\w+)\s*:\s*Symbol\s*=\s*(\w+)\s*$", re.M)
+BRIDGE_HDR_RE = re.compile(r"^\s*fn\s+(\w+)\s*\([^)]*\)\s*->\s*Symbol\s*\{", re.M)
+ARM_RE = re.compile(
+    r"\b([A-Z]\w*)\s*(?:\{[^{}]*\}|\([^()]*\))?\s*=>\s*([a-z]\w*)\b",
+    re.S,
+)
 
 EXPECTED = {
     "lens/leaf_model_verification.dag": {
@@ -37,26 +43,33 @@ EXPECTED = {
 }
 
 
-def load_census_module():
-    spec = importlib.util.spec_from_file_location("symbol_tag_shadow_census", CENSUS_SCRIPT)
-    if spec is None or spec.loader is None:
-        raise SystemExit("failed to load symbol_tag_shadow_census.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def brace_body(text: str, open_idx: int) -> str:
+    depth = 0
+    for i in range(open_idx, len(text)):
+        char = text[i]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_idx : i + 1]
+    return text[open_idx:]
 
 
 def current_precise_census() -> dict[str, dict[str, tuple[str, ...]]]:
-    census = load_census_module()
     rows: dict[str, dict[str, tuple[str, ...]]] = {}
     for path in sorted(V4_ROOT.rglob("*.dag")):
         text = path.read_text(encoding="utf-8", errors="replace")
-        tags, bridges, _shadow_syms, _pin_tests = census.analyze(str(path), text)
+        tags = {m.group(1) for m in TAG_RE.finditer(text) if m.group(1) == m.group(2)}
         bridge_rows: dict[str, tuple[str, ...]] = {}
-        for name, _arm_count, syms in bridges:
+        for match in BRIDGE_HDR_RE.finditer(text):
+            body = brace_body(text, match.end() - 1)
+            if "match" not in body:
+                continue
+            syms = {rhs for _constructor, rhs in ARM_RE.findall(body)}
             genuine = tuple(sorted(syms & tags))
             if genuine:
-                bridge_rows[name] = genuine
+                bridge_rows[match.group(1)] = genuine
         if bridge_rows:
             rows[path.relative_to(V4_ROOT).as_posix()] = bridge_rows
     return rows

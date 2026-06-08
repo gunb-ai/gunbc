@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check bootstrap-check stage0-freshness-check verify verify-fix fmt-fix lint-fix test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry design design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry readme readme-dry workflow workflow-dry ci
+.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check bootstrap-check stage0-freshness-check verify verify-fix fmt-fix lint-fix test-all test test-scripts test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry design design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry readme readme-dry workflow workflow-dry ci
 
 # Preflight: auto-fix rustc warnings before running generators
 preflight-fix:
@@ -58,6 +58,7 @@ stage0-freshness-check:
 
 # Verify generated artifacts match their generators
 verify: lint-upsert
+	@$(MAKE) test-scripts
 	@$(MAKE) bootstrap-check
 	@$(MAKE) testgen-check
 
@@ -105,6 +106,7 @@ help:
 	@echo "Development:"
 	@echo "  test  - Alias for test-s (<=S)"
 	@echo "  test-fix  - Alias for test-s (<=S) (fmt-fix + lint-fix first)"
+	@echo "  test-scripts  - Run lightweight Python script self-tests"
 	@echo "  test-xs  - Run tests (<=XS)"
 	@echo "  test-s  - Run tests (<=S)"
 	@echo "  test-m  - Run tests (<=M)"
@@ -149,24 +151,30 @@ test:
 test-fix: fmt-fix lint-fix
 	@$(MAKE) test-s
 
+# test-scripts: Run lightweight Python script self-tests
+test-scripts:
+	@python3 scripts/test_check_t38b_lens_ownership.py
+	@python3 scripts/test_check_v4_layering_imports.py
+	@python3 scripts/test_symbol_tag_shadow_census_current_state.py
+
 # test-xs: Run tests (<=XS)
-test-xs: build verify-fix
+test-xs: test-scripts build verify-fix
 	@GUNBC_TEST_MAX_COST=XS RUSTFLAGS="-D warnings" cargo test
 
 # test-s: Run tests (<=S)
-test-s: build verify-fix
+test-s: test-scripts build verify-fix
 	@GUNBC_TEST_MAX_COST=S RUSTFLAGS="-D warnings" cargo test
 
 # test-m: Run tests (<=M)
-test-m: build verify-fix
+test-m: test-scripts build verify-fix
 	@GUNBC_TEST_MAX_COST=M RUSTFLAGS="-D warnings" cargo test
 
 # test-l: Run tests (<=L)
-test-l: build verify-fix
+test-l: test-scripts build verify-fix
 	@GUNBC_TEST_MAX_COST=L RUSTFLAGS="-D warnings" cargo test
 
 # test-xl: Run tests (<=XL)
-test-xl: build verify-fix
+test-xl: test-scripts build verify-fix
 	@GUNBC_TEST_MAX_COST=XL RUSTFLAGS="-D warnings" cargo test
 
 # test-small: Alias for test-s
