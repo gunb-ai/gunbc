@@ -632,20 +632,6 @@ fn structural_alias_target(n: Node, env: TypeEnv) -> Node {
   }
 }
 
-fn call_arg_declaration_name(ta: Node, scope: InferScope) -> String {
-  let val = arg_value(n: ta)
-  match val.expr_data {
-    ExprVar { binding_kind: _ } =>
-      let var_name = expr_var_name_at(texpr: val, source_indices: scope.type_env.source_indices)
-      match map_get(scope.locals, var_name) {
-        Some { value: binding } =>
-          authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved)
-        None => authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: val))
-      }
-    _ => authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: val))
-  }
-}
-
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
 // that share a structural carrier (UserId vs AccountId over Refined<String>)
 // without widening to every !node_type_compatible pair (e.g. fn vs Bool).
@@ -678,12 +664,14 @@ fn direct_call_arg_mismatch_diags(
     value_params |> enumerate,
     pair =>
       let formal_raw = param_node_type_expr(n: pair.second)
-      let formal = substitute_generics(n: formal_raw, subst: call_subst, source_indices: scope.type_env.source_indices)
-      let formal_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+      let formal_sub = substitute_generics(n: formal_raw, subst: call_subst, source_indices: scope.type_env.source_indices)
+      let formal = resolve_node(n: formal_sub, env: scope.type_env, module_name: module_name).resolved
       match typed_args |> skip(pair.first) |> first {
         Some { value: ta } =>
-          let actual = resolved_type(n: arg_value(n: ta))
-          let actual_name = call_arg_declaration_name(ta: ta, scope: scope)
+          let actual_sub = resolved_type(n: arg_value(n: ta))
+          let actual = resolve_node(n: actual_sub, env: scope.type_env, module_name: module_name).resolved
+          let formal_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+          let actual_name = authored_name_at(source_indices: scope.type_env.source_indices, node: actual)
           if nominal_call_arg_brand_mismatch(
             formal: formal,
             actual: actual,

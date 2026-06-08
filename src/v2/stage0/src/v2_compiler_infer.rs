@@ -1086,19 +1086,36 @@ pub fn direct_call_arg_mismatch_diags(
             __result.extend(
                 (*{
                     let formal_raw = param_node_type_expr(pair.1.clone());
-                    let formal = substitute_generics(
+                    let formal_sub = substitute_generics(
                         formal_raw.clone(),
                         call_subst.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     );
-                    let formal_name = authored_name_at(
-                        scope.type_env.clone().source_indices.clone(),
-                        formal.clone(),
-                    );
+                    let formal = resolve_node(
+                        formal_sub.clone(),
+                        scope.type_env.clone(),
+                        module_name.clone(),
+                    )
+                    .resolved
+                    .clone();
                     match typed_args.clone().get(pair.0.clone() as usize).cloned() {
                         Some(ta) => {
-                            let actual = resolved_type(arg_value(ta.clone()));
-                            let actual_name = call_arg_declaration_name(ta.clone(), scope.clone());
+                            let actual_sub = resolved_type(arg_value(ta.clone()));
+                            let actual = resolve_node(
+                                actual_sub.clone(),
+                                scope.type_env.clone(),
+                                module_name.clone(),
+                            )
+                            .resolved
+                            .clone();
+                            let formal_name = authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                formal.clone(),
+                            );
+                            let actual_name = authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                actual.clone(),
+                            );
                             if nominal_call_arg_brand_mismatch(
                                 formal.clone(),
                                 actual.clone(),
