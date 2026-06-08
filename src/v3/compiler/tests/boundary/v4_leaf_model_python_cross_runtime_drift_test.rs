@@ -74,8 +74,7 @@ fn scratch_dir(label: &str) -> std::path::PathBuf {
 }
 
 /// Tokenize + parse a single `.dag` (full multi-module `compile_to_dag` is not hermetic per-file;
-/// this catches surface/syntax regressions in the new drift carriers — same compromise as
-/// `v4_bin_main_dag_smoke_test`).
+/// this catches surface/syntax regressions in the new drift carriers).
 fn tokenize_and_parse(dag_text: &str, dag_path: &str) {
     let tokens = v3_compiler::tokenize_for_test(dag_text, dag_path)
         .unwrap_or_else(|e| panic!("{dag_path}: tokenize: {e:?}"));

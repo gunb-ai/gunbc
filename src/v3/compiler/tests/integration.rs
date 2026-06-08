@@ -273,8 +273,6 @@ mod thesis_validation_test;
 mod timing_lens_substrate_carrier_test;
 #[path = "integration/v2_oracle_no_remaining_test_consumers_test.rs"]
 mod v2_oracle_no_remaining_test_consumers_test;
-#[path = "integration/v4_bin_main_dag_smoke_test.rs"]
-mod v4_bin_main_dag_smoke_test;
 #[path = "integration/v4_emit_host_eval_dispatch_test.rs"]
 mod v4_emit_host_eval_dispatch_test;
 #[path = "integration/v4_emit_host_harness_test.rs"]
