@@ -18,6 +18,13 @@ type Report {
   at: Locus
 }
 
+fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
+  match reason {
+    SynthesisGapDecisionTree => discriminant(v: SynthesisGapDecisionTree)
+    SynthesisGapInformationTheoretic => discriminant(v: SynthesisGapInformationTheoretic)
+  }
+}
+
 type ReportSuggestion {
   report: Report
   detail: Symbol

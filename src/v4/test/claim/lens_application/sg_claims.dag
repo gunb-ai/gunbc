@@ -17,7 +17,7 @@ import v4.lens.synthesis { decision_tree_synthesis_advisory_lens }
 import v4.std.diagnostic { Accepted, Rejected, node_locus }
 import v4.std.logic { Bool }
 import v4.std.node { Path }
-import v4.std.report { Report, SynthesisGapDecisionTree }
+import v4.std.report { Report, SynthesisGapDecisionTree, report_reason_to_diagnostic_reason }
 import v4.test.claim.lens_application.apply_lens_introspect_rejection_is_advisory {
   apply_lens_introspect_rejection_is_advisory_claim_holds
 }
@@ -52,7 +52,8 @@ fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
       diagnostic_severity: SeverityError {}
     }
   ) {
-    Rejected { diagnostics: d } => d.head.reason == discriminant(v: SynthesisGapDecisionTree)
+    Rejected { diagnostics: d } =>
+      d.head.reason == report_reason_to_diagnostic_reason(reason: SynthesisGapDecisionTree)
     Accepted { value: _, diagnostics: _ } => false
   }
 }
