@@ -1,0 +1,46 @@
+module v4.test.claim.lens_affected_set.scratch_probe
+
+import v4.lens.affected_set { DimensionNotRead, ExclusionKey, ReExecFrontier, empty_frontier, mark_excluded }
+import v4.lens.affected_set_examples {
+  affected_set_example_dimension,
+  affected_set_example_node,
+  expected_affected_set_excluded_proofs
+}
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.std.collection { Map, empty_map, map_insert }
+
+fn key() -> ExclusionKey {
+  ExclusionKey { at: affected_set_example_node, dimension: affected_set_example_dimension }
+}
+
+fn proof() -> DimensionNotRead {
+  DimensionNotRead { usage_site: affected_set_example_node, changed_dimension: affected_set_example_dimension }
+}
+
+// P1: identical map_insert of identical value equal?
+fn p1_map_eq() -> Bool {
+  map_insert(empty_map(), key(), proof()) == map_insert(empty_map(), key(), proof())
+}
+
+// P2: empty maps equal?
+fn p2_empty_map_eq() -> Bool {
+  empty_map() == empty_map()
+}
+
+// P3: single mark_excluded equals itself
+fn p3_single_self() -> Bool {
+  mark_excluded(frontier: empty_frontier(), key: key(), proof: proof())
+    == mark_excluded(frontier: empty_frontier(), key: key(), proof: proof())
+}
+
+// P4: double mark_excluded equals itself (self-eq of the actual)
+fn p4_double_self() -> Bool {
+  mark_excluded(frontier: mark_excluded(frontier: empty_frontier(), key: key(), proof: proof()), key: key(), proof: proof())
+    == mark_excluded(frontier: mark_excluded(frontier: empty_frontier(), key: key(), proof: proof()), key: key(), proof: proof())
+}
+
+// P5: the expected equals itself
+fn p5_expected_self() -> Bool {
+  expected_affected_set_excluded_proofs == expected_affected_set_excluded_proofs
+}
