@@ -215,8 +215,8 @@ data v4_roster_pilot_row_mvp1_typescript_emit_add_fn: V4RosterPilotClaimRunRow =
 // Wave-A W1: v4.extdeps.coordination smoke→witness (iii) A-fold-delete. Discriminating
 // claim-run witnesses (mutation-proven red-under-mutation) carry the executable
 // WIRECONTRACT-OBLIGATION-TABLE-T4.8 content of the obligation-table assertions removed from
-// v4_extdeps_coordination_dag_smoke_test.rs in the same PR. The remaining smoke receipts
-// (record-field shapes, shared-discriminant) are B and stay host-AST per the row's split.
+// v4_extdeps_coordination_dag_smoke_test.rs in the same PR. B-class decl-shape receipts
+// from that smoke were deleted per the white-box sweep (not migrated).
 data v4_roster_pilot_row_coordination_obligation_exchange: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "coordination obligation table exchange arm-sharp",
   entry: "src/v4/test/claim/extdeps/coordination_claims.dag",

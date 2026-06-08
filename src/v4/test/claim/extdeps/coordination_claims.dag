@@ -13,9 +13,9 @@
 //
 // Status: Wave-A (iii) A-fold-delete. The obligation-table behavioral assertions in the
 // .rs smoke are deleted in the same PR (their content is proven here by execution). The
-// remaining smoke receipts (WireContractFacts/WireContract record-field shapes,
-// SettlementGuarantee/ConsistencyGuarantee shared-discriminant) are B (declaration-shape /
-// host source) and stay host-AST until the ctrl#1476 READ-axis reflection substrate lands.
+// remaining B-class receipts (WireContractFacts/WireContract record-field shapes,
+// SettlementGuarantee/ConsistencyGuarantee shared-discriminant) were deleted with the smoke
+// file per the white-box sweep (reflection banned; decl-shape mirrors are 2FA-for-code).
 // Importing v4.extdeps.coordination forces v2 to tokenize/parse/infer it, so the
 // parse-surface fact rides every witness below.
 
