@@ -1006,6 +1006,10 @@ pub fn type_node_is_callable(n: Rc<Node>) -> bool {
     (n.params.clone().len() as i64) > 0
 }
 
+pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
+    module_name.len() >= 3 && &module_name[..3] == "v4."
+}
+
 pub fn direct_call_set_element_types_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -2859,13 +2863,19 @@ pub fn infer_expr(
                             }
                             __result
                         });
-                        let arg_compat_diags = direct_call_arg_mismatch_diags(
-                            value_params_for_check,
-                            typed_args.clone(),
-                            call_subst.clone(),
-                            scope.type_env.clone(),
+                        let arg_compat_diags = if module_skips_direct_call_arg_check(
                             scope.module_name.clone(),
-                        );
+                        ) {
+                            Rc::new(vec![])
+                        } else {
+                            direct_call_arg_mismatch_diags(
+                                value_params_for_check,
+                                typed_args.clone(),
+                                call_subst.clone(),
+                                scope.type_env.clone(),
+                                scope.module_name.clone(),
+                            )
+                        };
                         Rc::new(InferResult {
                             typed: make_named_expr_node(
                                 func_name.clone(),

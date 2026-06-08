@@ -629,6 +629,12 @@ fn direct_call_set_element_types_mismatch(formal: Node, actual: Node, source_ind
   else { set_element_types_mismatch(recv_elem: formal, operand_elem: actual, source_indices: source_indices) }
 }
 
+// v4 std modules model fn-vs-Callable and generic witness carriers that are
+// out of PD-3 brand scope; skip the bounded direct-call hook there.
+fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
+  string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v4."
+}
+
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
 // that share a structural carrier (UserId vs AccountId over Refined<String>)
 // without widening to every !node_type_compatible pair (e.g. fn vs Bool).
@@ -1443,7 +1449,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => error_type
         }
         let value_params_for_check = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-        let arg_compat_diags = if scope.module_name |> starts_with(prefix: "v4.") { [] } else {
+        let arg_compat_diags = if module_skips_direct_call_arg_check(module_name: scope.module_name) { [] } else {
           direct_call_arg_mismatch_diags(
             value_params: value_params_for_check,
             typed_args: typed_args,
