@@ -1,5 +1,6 @@
 // Wave 3 §11.7.2 — live CI shadow receipt host transport (Phase 2 queued on bootstrap eval).
-// Modeled authority: `src/v4/workflow/ci.dag`; does NOT call `ci_selection_receipt_shadow_from_git_diff`
+// Authority: `.github/workflows/ci.yml` (emit-ci-wave3-shadow-receipt step); does NOT call
+// `ci_selection_receipt_shadow_from_git_diff`
 // until `node://adhoc-331899f9-19a` lands. Shadow Class C: always exits 0.
 #![allow(clippy::disallowed_macros)]
 

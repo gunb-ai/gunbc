@@ -7,7 +7,7 @@
 //! The host cannot construct a faithful `CiSelectionReceipt` for a PR: `pr: ChangeSet` needs
 //! `Change.subject: Node`, `affected: AffectedSet` needs a Dag eval, and a *fail-closed* Wave 3
 //! receipt is NOT empty — it preserves the FULL roster as a superset
-//! (`ci_wave3_shadow_testclaim_selection_rows` over `ci_wave3_shadow_claim_roster`, `ci.dag`).
+//! (`ci_wave3_shadow_testclaim_selection_rows` over `ci_wave3_shadow_claim_roster`, queued eval).
 //! So the host emits ONLY what it authoritatively computes — `component_affected` (the modeled
 //! `CiComponentAffected` frontier, identical to `detect-ci-affected-components`) — plus queued
 //! transport status that names the eval debt (`node://adhoc-331899f9-19a`).
@@ -151,7 +151,7 @@ mod tests {
             "pull_request",
             GitChangedPathsRead::Ok {
                 range: "origin/main...HEAD".to_string(),
-                paths: vec!["src/v4/workflow/ci.dag".to_string()],
+                paths: vec!["src/v4/std/node.dag".to_string()],
             },
         );
         let receipt = shadow_emit_to_json(&emit);
