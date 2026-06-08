@@ -126,8 +126,24 @@ data witness_matrix_constraint_api_to_account_id_accepts: Bool = find_witness_si
 // --- CRUX verdict: no faithful rule derives siblings (accept sibling AND reject wrong-core) ---
 
 fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
-  find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: rule)
-    && find_witness_sibling_rejects(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: rule)
+  if rule == preservation_rule_exact_structural_equality_zip_fold {
+    witness_matrix_exact_api_to_db_accepts
+      && witness_matrix_exact_api_to_wire_accepts
+      && witness_matrix_exact_db_to_wire_accepts
+      && !witness_matrix_exact_api_to_account_id_accepts
+  } else if rule == preservation_rule_refinement_widening {
+    witness_matrix_widening_api_to_db_accepts
+      && witness_matrix_widening_api_to_wire_accepts
+      && witness_matrix_widening_db_to_wire_accepts
+      && !witness_matrix_widening_api_to_account_id_accepts
+  } else if rule == preservation_rule_constraint_satisfaction {
+    witness_matrix_constraint_api_to_db_accepts
+      && witness_matrix_constraint_api_to_wire_accepts
+      && witness_matrix_constraint_db_to_wire_accepts
+      && !witness_matrix_constraint_api_to_account_id_accepts
+  } else {
+    false
+  }
 }
 
 data witness_crux_substrate_gap: Bool = !preservation_rule_faithful_for_siblings(rule: preservation_rule_exact_structural_equality_zip_fold) && !preservation_rule_faithful_for_siblings(rule: preservation_rule_refinement_widening) && !preservation_rule_faithful_for_siblings(rule: preservation_rule_constraint_satisfaction)
@@ -168,7 +184,7 @@ data claim_crux_substrate_gap: TestClaim = EqualsClaim {
 data claim_matrix_widening_accepts_siblings_and_wrong_core: TestClaim = EqualsClaim {
   label: "manual/derivable_coercion: CRUX — widening accepts siblings AND wrong-core (non-discriminating)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: derivable_coercion_claim_lhs(ok: witness_matrix_widening_api_to_db_accepts && witness_matrix_widening_api_to_account_id_accepts),
+  lhs: derivable_coercion_claim_lhs(ok: witness_matrix_widening_api_to_db_accepts && witness_matrix_widening_api_to_wire_accepts && witness_matrix_widening_db_to_wire_accepts && witness_matrix_widening_api_to_account_id_accepts),
   rhs: derivable_coercion_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
