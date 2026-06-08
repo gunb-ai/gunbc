@@ -87,8 +87,9 @@ type InferredFacts {
 }
 
 
+// Subject node (map key / grounding.node) vs resolved value type (structural algebra witness).
 fn inferred_facts_resolved_type(facts: InferredFacts) -> Node {
-  facts.grounding.node
+  facts.grounding.witness.structural.evidence
 }
 
 
