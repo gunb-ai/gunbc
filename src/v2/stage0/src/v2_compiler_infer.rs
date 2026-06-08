@@ -86,14 +86,14 @@ pub use crate::v2_compiler_infer_sigs::resolve_func_sigs;
 pub use crate::v2_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::KernelTypeBuild;
 pub use crate::v2_compiler_infer_types::{
-    bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
-    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_fully_resolved, make_callable_type, make_container_type,
-    method_receiver_element_node, node_is_collection, node_is_element_collection,
-    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
-    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    template_return_has_variables, template_return_is_receiver_self,
+    bare_map_node, bare_set_node, callable_inferred, canonical_template_name, child_type_node,
+    emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
+    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
+    make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
+    node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
+    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
+    normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
+    resolved_type, template_return_has_variables, template_return_is_receiver_self,
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
@@ -999,6 +999,23 @@ pub fn set_element_types_mismatch(
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
 }
 
+pub fn nominal_call_arg_brand_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let formal_name = authored_name_at(source_indices.clone(), formal.clone());
+    let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+    ((!node_type_compatible(formal.clone(), actual.clone(), source_indices.clone()))
+        && (formal_name.as_str() != "")
+        && (actual_name.as_str() != "")
+        && (formal_name.as_str() != actual_name.as_str())
+        && (canonical_template_name(formal.clone(), source_indices.clone()).as_str()
+            == canonical_template_name(actual.clone(), source_indices.clone()).as_str())
+        && !is_declared_container_alias_spelling(formal_name.clone())
+        && !is_declared_container_alias_spelling(actual_name.clone()))
+}
+
 pub fn direct_call_arg_mismatch_diags(
     value_params: Rc<Vec<Rc<Node>>>,
     typed_args: Rc<Vec<Rc<Node>>>,
@@ -1030,7 +1047,7 @@ pub fn direct_call_arg_mismatch_diags(
                     match typed_args.clone().get(pair.0.clone() as usize).cloned() {
                         Some(ta) => {
                             let actual = resolved_type(arg_value(ta.clone()));
-                            if set_element_types_mismatch(
+                            if nominal_call_arg_brand_mismatch(
                                 formal.clone(),
                                 actual.clone(),
                                 source_indices.clone(),

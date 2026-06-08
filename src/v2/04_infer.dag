@@ -67,6 +67,7 @@ import v2.compiler.infer_types {
   callable_inferred,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
+  canonical_template_name, is_declared_container_alias_spelling,
   node_type_deps,
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,

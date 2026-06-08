@@ -146,6 +146,13 @@ pub fn canonical_template_name(
     }
 }
 
+pub fn is_declared_container_alias_spelling(name: String) -> bool {
+    match container_template_algebra(name) {
+        Some(_) => true,
+        None => false,
+    }
+}
+
 pub fn is_product_type(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::Conj)
 }
@@ -1779,8 +1786,11 @@ pub fn node_type_compatible(
                                 }
                             }
                         } else {
-                            if ((((canonical_template_name(left.clone(), source_indices.clone())
-                                .as_str()
+                            if (((((canonical_template_name(
+                                left.clone(),
+                                source_indices.clone(),
+                            )
+                            .as_str()
                                 == canonical_template_name(
                                     right.clone(),
                                     source_indices.clone(),
@@ -1792,6 +1802,13 @@ pub fn node_type_compatible(
                                         .as_str()))
                                 && ((left.children.clone().len() as i64) == 1))
                                 && ((right.children.clone().len() as i64) == 1))
+                                && (is_declared_container_alias_spelling(authored_name_at(
+                                    source_indices.clone(),
+                                    left.clone(),
+                                )) || is_declared_container_alias_spelling(authored_name_at(
+                                    source_indices.clone(),
+                                    right.clone(),
+                                ))))
                             {
                                 match left.children.clone().first().cloned() {
                                     Some(left_ch) => {
