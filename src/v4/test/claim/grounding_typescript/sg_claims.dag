@@ -56,7 +56,6 @@ import v4.test.claim.manual.eval_runtime_mvp {
   eval_mvp2_add_subgraph,
   eval_mvp2_context,
   eval_mvp2_evaluator_pin,
-  eval_mvp2_five_literal_node,
   eval_mvp2_inferred_tree
 }
 
@@ -266,7 +265,7 @@ data claim_ts_g2_sg1_atom_realizations_executable: TestClaim = EqualsClaim {
   label: "TypeScript G.2 SG-1 atom realization evidence is executable through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_g2_executable_claim_input(ok: ts_g2_sg1_atom_realizations_hold()),
-  rhs: eval_mvp2_five_literal_node(),
+  rhs: eval_mvp2_add_subgraph(),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
@@ -288,7 +287,7 @@ data claim_ts_g2_g14_fact_registry_executable: TestClaim = EqualsClaim {
   label: "TypeScript G.2 G.1.4 fact bundle registry folds through fail-closed insert",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_g2_executable_claim_input(ok: ts_g2_g14_fact_registry_accepts()),
-  rhs: eval_mvp2_five_literal_node(),
+  rhs: eval_mvp2_add_subgraph(),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
@@ -310,7 +309,7 @@ data claim_ts_g2_sg2_type_expression_projection_executable: TestClaim = EqualsCl
   label: "TypeScript G.2 SG-2 evidence records present type-expression projection edge and golden instantiation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_g2_executable_claim_input(ok: ts_g2_sg2_type_expression_projection_holds()),
-  rhs: eval_mvp2_five_literal_node(),
+  rhs: eval_mvp2_add_subgraph(),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
@@ -332,7 +331,7 @@ data claim_ts_g2_sg5_collection_absence_executable: TestClaim = EqualsClaim {
   label: "TypeScript G.2 SG-5 evidence records absent collection realization edge fail-closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_g2_executable_claim_input(ok: ts_g2_sg5_collection_realization_absence_holds()),
-  rhs: eval_mvp2_five_literal_node(),
+  rhs: eval_mvp2_add_subgraph(),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 

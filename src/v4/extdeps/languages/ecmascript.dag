@@ -237,9 +237,6 @@ data ecmascript_witness_number_approximate_field: Symbol = ecmascript_witness_nu
 data ecmascript_witness_bigint_ordered_ring: Symbol = ecmascript_witness_bigint_ordered_ring
 data ecmascript_witness_bool_boolean_algebra: Symbol = ecmascript_witness_bool_boolean_algebra
 
-data ecmascript_tag_singleton_undefined: Symbol = ecmascript_tag_singleton_undefined
-data ecmascript_tag_singleton_null: Symbol = ecmascript_tag_singleton_null
-
 data ecmascript_token_kw_function: Symbol = ecmascript_token_kw_function
 data ecmascript_token_kw_return: Symbol = ecmascript_token_kw_return
 data ecmascript_token_kw_if: Symbol = ecmascript_token_kw_if
@@ -403,13 +400,6 @@ fn ecmascript_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-fn ecmascript_singleton_kind_tag(kind: EcmascriptSingletonKind) -> Symbol {
-  match kind {
-    UndefinedT => ecmascript_tag_singleton_undefined
-    NullT => ecmascript_tag_singleton_null
-  }
-}
-
 fn ecmascript_number_facts_node(facts: EcmascriptNumberPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -520,7 +510,7 @@ fn ecmascript_singleton_facts_node(facts: EcmascriptSingletonPrimitiveFacts) -> 
       ),
       ecmascript_named_edge(
         name: ecmascript_facts_field_singleton_kind,
-        target: ecmascript_inhabitant_atom(id: ecmascript_singleton_kind_tag(kind: facts.kind))
+        target: ecmascript_inhabitant_atom(id: discriminant(v: facts.kind))
       ),
       ecmascript_named_edge(
         name: ecmascript_facts_field_std_projection,
