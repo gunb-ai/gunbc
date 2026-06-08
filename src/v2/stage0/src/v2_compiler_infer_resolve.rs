@@ -74,8 +74,8 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
         transport: structural.transport.clone(),
         properties: structural.properties.clone(),
         type_annotation: structural.type_annotation.clone(),
-        is_self_recursive: structural.is_self_recursive,
-        has_non_tail_self_call: structural.has_non_tail_self_call,
+        is_self_recursive: structural.is_self_recursive.clone(),
+        has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
         match_pattern: structural.match_pattern.clone(),
         expr_data: structural.expr_data.clone(),
     })

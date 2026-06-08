@@ -1004,23 +1004,25 @@ pub fn nominal_call_arg_brand_mismatch(
     actual: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let formal_name = authored_name_at(source_indices.clone(), formal.clone());
-    let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-    ((!node_type_compatible(formal.clone(), actual.clone(), source_indices.clone()))
-        && (formal_name.as_str() != "")
-        && (actual_name.as_str() != "")
-        && (formal_name.as_str() != actual_name.as_str())
-        && (canonical_template_name(formal.clone(), source_indices.clone()).as_str()
-            == canonical_template_name(actual.clone(), source_indices.clone()).as_str())
-        && !is_declared_container_alias_spelling(formal_name.clone())
-        && !is_declared_container_alias_spelling(actual_name.clone()))
+    {
+        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
+        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+        ((((((!node_type_compatible(formal.clone(), actual.clone(), source_indices.clone())
+            && (formal_name.clone().as_str() != "".to_string().as_str()))
+            && (actual_name.clone().as_str() != "".to_string().as_str()))
+            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
+            && (canonical_template_name(formal.clone(), source_indices.clone()).as_str()
+                == canonical_template_name(actual.clone(), source_indices.clone()).as_str()))
+            && !is_declared_container_alias_spelling(formal_name.clone()))
+            && !is_declared_container_alias_spelling(actual_name.clone()))
+    }
 }
 
 pub fn direct_call_arg_mismatch_diags(
     value_params: Rc<Vec<Rc<Node>>>,
     typed_args: Rc<Vec<Rc<Node>>>,
     call_subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
@@ -1039,22 +1041,36 @@ pub fn direct_call_arg_mismatch_diags(
             __result.extend(
                 (*{
                     let formal_raw = param_node_type_expr(pair.1.clone());
-                    let formal = substitute_generics(
+                    let formal_sub = substitute_generics(
                         formal_raw.clone(),
                         call_subst.clone(),
-                        source_indices.clone(),
+                        env.source_indices.clone(),
                     );
+                    let formal = resolve_node(
+                        formal_sub.clone(),
+                        env.clone(),
+                        module_name.clone(),
+                    )
+                    .resolved
+                    .clone();
                     match typed_args.clone().get(pair.0.clone() as usize).cloned() {
                         Some(ta) => {
-                            let actual = resolved_type(arg_value(ta.clone()));
+                            let actual_raw = resolved_type(arg_value(ta.clone()));
+                            let actual = resolve_node(
+                                actual_raw.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                            )
+                            .resolved
+                            .clone();
                             if nominal_call_arg_brand_mismatch(
                                 formal.clone(),
                                 actual.clone(),
-                                source_indices.clone(),
+                                env.source_indices.clone(),
                             ) {
                                 Rc::new(vec![type_mismatch_error(
-                                    node_type_shape(formal.clone(), source_indices.clone()),
-                                    node_type_shape(actual.clone(), source_indices.clone()),
+                                    node_type_shape(formal.clone(), env.source_indices.clone()),
+                                    node_type_shape(actual.clone(), env.source_indices.clone()),
                                     arg_value(ta.clone()).span.clone(),
                                     module_name.clone(),
                                 )])
@@ -2825,7 +2841,7 @@ pub fn infer_expr(
                             value_params_for_check,
                             typed_args.clone(),
                             call_subst.clone(),
-                            scope.type_env.clone().source_indices.clone(),
+                            scope.type_env.clone(),
                             scope.module_name.clone(),
                         );
                         Rc::new(InferResult {

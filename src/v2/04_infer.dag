@@ -637,21 +637,23 @@ fn direct_call_arg_mismatch_diags(
   value_params: List<Node>,
   typed_args: List<Node>,
   call_subst: Map<String, Node>,
-  source_indices: Map<String, NewlineIndex>,
+  env: TypeEnv,
   module_name: String
 ) -> List<ErrorNode> {
   flat_map(
     value_params |> enumerate,
     pair =>
       let formal_raw = param_node_type_expr(n: pair.second)
-      let formal = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
+      let formal_sub = substitute_generics(n: formal_raw, subst: call_subst, source_indices: env.source_indices)
+      let formal = resolve_node(n: formal_sub, env: env, module_name: module_name).resolved
       match typed_args |> skip(pair.first) |> first {
         Some { value: ta } =>
-          let actual = resolved_type(n: arg_value(n: ta))
-          if nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices) {
+          let actual_raw = resolved_type(n: arg_value(n: ta))
+          let actual = resolve_node(n: actual_raw, env: env, module_name: module_name).resolved
+          if nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: env.source_indices) {
             [type_mismatch_error(
-              expected: node_type_shape(n: formal, source_indices: source_indices),
-              got: node_type_shape(n: actual, source_indices: source_indices),
+              expected: node_type_shape(n: formal, source_indices: env.source_indices),
+              got: node_type_shape(n: actual, source_indices: env.source_indices),
               span: arg_value(n: ta).span,
               module_name: module_name
             )]
@@ -1432,7 +1434,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           value_params: value_params_for_check,
           typed_args: typed_args,
           call_subst: call_subst,
-          source_indices: scope.type_env.source_indices,
+          env: scope.type_env,
           module_name: scope.module_name
         )
         InferResult {
