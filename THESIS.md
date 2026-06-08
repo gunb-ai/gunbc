@@ -223,7 +223,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 **Meta-process modeling:**
 - Bootstrap and build orchestration modeled as .dag workflows (`src/v4/workflow/bootstrap.dag`). CI is hand-authored directly in `.github/workflows/ci.yml` (the prior `src/v4/workflow/ci.dag` mirror was a descriptive-only model with no runtime consumer and was deleted; ci.yml is the direct authority). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
 - `dag run` is the primary execution path.
-- Adding a CI gate, a Node field, or a target language requires editing one .dag file.
+- Adding a Node field or a target language requires editing one .dag file. (CI gates are the exception: they are hand-authored in `.github/workflows/ci.yml`, the direct CI authority — not modeled as `.dag` data.)
 
 **Self-hosting — four facets:**
 
