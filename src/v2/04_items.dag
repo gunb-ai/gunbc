@@ -134,3 +134,21 @@ fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>, 
     } else { acc }
   )
 }
+
+// =========================================================================
+// PD-3 direct-call scope (A3 substrate carve-out authority)
+// =========================================================================
+
+fn module_name_has_prefix(module_name: String, prefix: String) -> Bool {
+  let prefix_len = string_length(s: prefix)
+  string_length(s: module_name) >= prefix_len
+    && substring(s: module_name, start: 0, end: prefix_len) == prefix
+}
+
+// Closed set of module prefixes outside PD-3 bounded direct-call enforcement
+// (compiler/v4 self-host substrate). Dissolve when module-class facts land.
+fn pd3_direct_call_scope_excluded(module_name: String) -> Bool {
+  module_name_has_prefix(module_name: module_name, prefix: "v4.")
+    || module_name_has_prefix(module_name: module_name, prefix: "v2.compiler.")
+    || module_name_has_prefix(module_name: module_name, prefix: "v2.std.")
+}

@@ -27,7 +27,7 @@ import v2.std.core {
   make_transport_node, local_transport_node,
   is_local_transport, transport_request_body,
   is_kernel_type, is_container_type,
-  with_optional_cardinality, with_required_cardinality,
+  with_ident_span, with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
@@ -52,15 +52,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 // declaration/reference ident_span so authored_name_at still reports the brand
 // name (UserId vs AccountId) instead of the shared carrier (Refined).
 fn with_authored_identity(identity: Node, structural: Node) -> Node {
-  Node {
-    name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
-    children: structural.children, connective: structural.connective, params: structural.params,
-    inferred: structural.inferred, return_cardinality: structural.return_cardinality,
-    uses: structural.uses, body: structural.body, transport: structural.transport,
-    properties: structural.properties, type_annotation: structural.type_annotation,
-    is_self_recursive: structural.is_self_recursive, has_non_tail_self_call: structural.has_non_tail_self_call,
-    match_pattern: structural.match_pattern, expr_data: structural.expr_data
-  }
+  with_ident_span(base: structural, ident_span: identity.ident_span)
 }
 
 // Peel AliasLeaf bindings for call-site arg check: structural carrier with

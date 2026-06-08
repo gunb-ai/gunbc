@@ -116,7 +116,8 @@ import v2.compiler.infer_emit_info {
 import v2.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph,
-  inferred_to_outputs, item_kind, variant_locals_from_items
+  inferred_to_outputs, item_kind, variant_locals_from_items,
+  pd3_direct_call_scope_excluded
 }
 import v2.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
@@ -627,15 +628,6 @@ fn type_node_is_callable(n: Node) -> Bool {
 fn direct_call_set_element_types_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else { set_element_types_mismatch(recv_elem: formal, operand_elem: actual, source_indices: source_indices) }
-}
-
-// Compiler substrate (v2.compiler.* / v2.std.* self-host + v4.* std) models
-// fn-vs-Callable and generic witness carriers outside PD-3 brand scope.
-fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
-  let is_v4 = string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v4."
-  let is_compiler_substrate = string_length(s: module_name) >= 12 && substring(s: module_name, start: 0, end: 12) == "v2.compiler."
-  let is_std_substrate = string_length(s: module_name) >= 8 && substring(s: module_name, start: 0, end: 8) == "v2.std."
-  is_v4 || is_compiler_substrate || is_std_substrate
 }
 
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
@@ -1491,7 +1483,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => error_type
         }
         let value_params_for_check = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-        let arg_compat_diags = if module_skips_direct_call_arg_check(module_name: scope.module_name) { [] } else {
+        let arg_compat_diags = if pd3_direct_call_scope_excluded(module_name: scope.module_name) { [] } else {
           direct_call_arg_mismatch_diags(
             value_params: value_params_for_check,
             typed_args: typed_args,

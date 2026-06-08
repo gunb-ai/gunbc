@@ -1523,3 +1523,15 @@ fn with_optional_cardinality(n: Node) -> Node {
 fn with_required_cardinality(n: Node) -> Node {
   Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
+
+fn with_ident_span(base: Node, ident_span: SourceSpan?) -> Node {
+  Node {
+    name: base.name, ident: base.ident, span: base.span, ident_span: ident_span,
+    children: base.children, connective: base.connective, params: base.params,
+    inferred: base.inferred, return_cardinality: base.return_cardinality,
+    uses: base.uses, body: base.body, transport: base.transport,
+    properties: base.properties, type_annotation: base.type_annotation,
+    is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call,
+    match_pattern: base.match_pattern, expr_data: base.expr_data
+  }
+}
