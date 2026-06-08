@@ -25,7 +25,7 @@ off the ground.
 **Historical note.** The legacy self-hosted compiler tree (retired under T-V2-Retirement) established the same
 pattern v3 follows: `.dag` pipeline plus a small Rust bootstrap. v3 proceeds under PB-Runtime / Pure-Bootstrap-Zero.
 
-**v4 operational workflow authorities.** Load-bearing v4 bootstrap model lives at `src/v4/workflow/bootstrap.dag`; live CI orchestration is hand-authored `.github/workflows/ci.yml` with path→bucket rules in `tools/ci_affected_components`. Governing program + rails (Pure Bootstrap / N=0, **C4**) are named in `docs/design-pure-bootstrap-zero.md` — top-down registry, not duplicated as upward pointers in those `.dag` headers (`docs/modeling-discipline.md`).
+**v4 operational workflow authorities.** Load-bearing v4 models live at `src/v4/workflow/bootstrap.dag` and `src/v4/workflow/ci.dag`; their governing program + rails (Pure Bootstrap / N=0, **C4**) are named in `docs/design-pure-bootstrap-zero.md` — top-down registry, not duplicated as upward pointers in those `.dag` headers (`docs/modeling-discipline.md`).
 
 **What changes with self-hosting:**
 

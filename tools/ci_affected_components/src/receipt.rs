@@ -10,8 +10,10 @@
 //! There is no pre-coded threshold in-tree: the deliverable is per-PR JSON the operator aggregates
 //! to decide whether to flip `ci_floor` from "always run" to affected-set-gated.
 //!
-//! Ops timing ledger for the operator kill-criterion aggregate. The shared input is the
-//! affected-set partition over `git diff`.
+//! Distinct from the Wave-3 modeled `CiSelectionReceipt` (`src/v4/workflow/ci.dag`, PR #4224): that
+//! is the selection-receipt *substrate* (Shadow/Active, modeled-vs-host parity witness, path to
+//! TestClaim projection). This receipt is an ops timing ledger emitted *alongside* it, never inside
+//! `CiSelectionReceipt`. The shared input is the affected-set partition over `git diff`.
 
 use std::collections::BTreeMap;
 
@@ -56,11 +58,13 @@ pub struct AffectedSetCiReceipt {
     /// True when `release_distribution` is the only triggered bucket (RELEASE §5 fast-path).
     pub release_distribution_only: bool,
     /// Would the `ci_floor` v2→v4 bootstrap path (v2 build + bootstrap viability + M1 emit probe)
-    /// be required? True when any of `{v2, v4, testclaim_corpus, workflow_policy,
-    /// release_distribution}` is selected.
+    /// be required? Mirrors `ci_v4_bootstrap_gate_result_skip_guard_if` and
+    /// `M1RustEmitProbeCommand` job masks in `src/v4/workflow/ci.dag` (needs-closure pulls
+    /// `v2_compile_src_v4` for testclaim/workflow_policy/release_distribution, not only v4).
     pub bootstrap_required: bool,
     /// Number of TestClaims the node-frontier selection would run. v1: 0 (claim selection not wired
-    /// into this ops path yet).
+    /// into this ops path yet — it stays shadow in `CiSelectionReceipt`). TODO: populate from the
+    /// eval harness frontier intersection once Wave-3 active selection lands.
     pub selected_claim_count: u32,
     /// Observed wall-clock per CI job id, in seconds (from GHA job/step timings). Empty in v1 when
     /// timings are not supplied to the emitter.
@@ -106,9 +110,10 @@ pub fn component_partition(flags: CiComponentAffected) -> (Vec<String>, Vec<Stri
 
 /// Whether the Wave-1 `ci_floor` bootstrap path would run under affected-set gating.
 ///
-/// v4 bootstrap + M1 fire when any of `{v4, testclaim_corpus, workflow_policy,
-/// release_distribution}` is selected; `v2` bucket additionally requires the v2 gunbc build.
-/// v3-only is out of scope for this floor slice.
+/// Authority: `ci_v4_bootstrap_gate_result_skip_guard_if` and `M1RustEmitProbeCommand` masks in
+/// `src/v4/workflow/ci.dag` — v4 bootstrap + M1 fire when any of
+/// `{v4, testclaim_corpus, workflow_policy, release_distribution}` is selected; `v2` bucket
+/// additionally requires the v2 gunbc build. v3-only is out of scope for this floor slice.
 pub fn bootstrap_required(flags: CiComponentAffected) -> bool {
     flags.v2
         || flags.v4
@@ -202,9 +207,9 @@ mod tests {
 
     #[test]
     fn claim_only_diff_requires_bootstrap_via_modeled_needs_closure() {
-        // TestClaim corpus jobs need v2_compile_src_v4 + M1 needs-closure, even when v2/v4 bucket
-        // bits alone would be false.
-        let flags = flags_for(["src/v4/test/claim/workflow/manual_corpus_eval.dag"]);
+        // TestClaim corpus jobs need v2_compile_src_v4 + M1 (ci.dag needs-closure), even when v2/v4
+        // bucket bits alone would be false.
+        let flags = flags_for(["src/v4/test/claim/workflow/affected_set_ci_runner.dag"]);
         assert!(flags.testclaim_corpus);
         assert!(!flags.v2);
         assert!(!flags.v4);
@@ -227,7 +232,7 @@ mod tests {
 
     #[test]
     fn partition_is_a_complete_disjoint_cover() {
-        let flags = flags_for(["src/v4/workflow/bootstrap.dag"]);
+        let flags = flags_for(["src/v4/workflow/ci.dag"]);
         let (selected, skipped) = component_partition(flags);
         assert_eq!(selected.len() + skipped.len(), COMPONENT_BUCKETS.len());
         for bucket in COMPONENT_BUCKETS {

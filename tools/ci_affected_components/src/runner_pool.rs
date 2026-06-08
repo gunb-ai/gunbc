@@ -1,7 +1,7 @@
-//! Self-hosted runner pool facts for CI floor scripts.
+//! Structural mirror of `SelfHostedRunnerPool` in `src/v4/workflow/ci.dag`.
 //! Lives outside `v3-compiler` (same crate as affected-set host transport).
 
-/// Self-hosted runner pool row for CI floor scripts.
+/// Structural mirror of `SelfHostedRunnerPool` in `src/v4/workflow/ci.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelfHostedRunnerPool {
     pub host: &'static str,
