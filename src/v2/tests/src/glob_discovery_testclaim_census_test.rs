@@ -29,34 +29,29 @@
 //!
 //! ## "By resolved type", not grep
 //!
-//! Discovery runs the real `compile_to_resolved` pipeline per claim file's import closure
-//! (the same closure `gunbc run --source-root src/v4 --entry <file>` builds) and reads the
-//! *resolved typed-module item* annotation head — not a source substring. Files whose
-//! closure does not resolve cleanly are recorded as `unresolved` and excluded from the
-//! census (discovery is robust to gated/red corpus rows; it never silently miscounts).
+//! Discovery runs the real `compile_to_resolved` pipeline over the whole `src/v4` corpus
+//! once, then walks every resolved typed-module item and reads its annotation head from the
+//! *resolved graph* — not a source substring. A data declaration is attributed to its source
+//! file via the item span, and the census is restricted to files under `src/v4/test/claim/`.
 //!
 //! ## Standalone `#[test]` (census probe, run on demand)
 //!
 //! Per [[project_v2_tests_not_run_broadly_in_ci]] CI selects the `v2-compiler-tests` crate
 //! via a single `--exact` parity invocation, so a standalone `#[test]` here is DORMANT in
-//! CI. That is intentional: this is a measurement/census probe (it resolves ~150 file
-//! closures, heavier than a witness run), run explicitly with
+//! CI. That is intentional: this is a measurement/census probe (it resolves the whole `src/v4`
+//! corpus, heavier than a witness run), run explicitly with
 //! `cargo test -p v2-compiler-tests glob_discovery_testclaim_census -- --nocapture`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use v2_compiler::v2_compiler_compile::{compile_to_resolved, SourceFile};
-use v2_compiler::v2_std_core::is_interpreter_blocking_diagnostic;
 
-use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
+use crate::helpers::workspace_root;
 
+const V4_ROOT: &str = "src/v4";
 const CLAIM_ROOT: &str = "src/v4/test/claim";
 const ROSTER_REL: &str = "src/v4/test/claim/workflow/v4_roster_pilot.dag";
-
-fn v4_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v4")]
-}
 
 /// Recursively collect every `.dag` file under `dir`, workspace-relative, sorted.
 fn collect_dag_files(dir: &std::path::Path, ws: &std::path::Path, out: &mut Vec<String>) {
@@ -80,8 +75,8 @@ fn collect_dag_files(dir: &std::path::Path, ws: &std::path::Path, out: &mut Vec<
     }
 }
 
-/// One discovered data declaration, identified by its name and the resolved head of its
-/// type annotation (e.g. `TestClaimRun`, `TestClaim`).
+/// One discovered data declaration, identified by its name, the resolved head of its type
+/// annotation (e.g. `TestClaimRun`, `TestClaim`), and the source file it was declared in.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct DiscoveredDecl {
     head: String,
@@ -89,34 +84,40 @@ struct DiscoveredDecl {
     file: String,
 }
 
-/// Discover, *by resolved type*, every data decl in one claim file's resolved closure
-/// whose type-annotation head is one of `heads`. Returns `Err` if the closure does not
-/// resolve cleanly (gated/red row) so the caller can record it as `unresolved`.
-fn discover_in_file(rel_path: &str, heads: &BTreeSet<&str>) -> Result<Vec<DiscoveredDecl>, ()> {
-    let content = std::fs::read_to_string(workspace_root().join(rel_path)).map_err(|_| ())?;
-    let sources: Vec<Rc<SourceFile>> =
-        resolve_imports_transitively_with_source_roots(rel_path, &content, &v4_source_roots());
-    let resolved = compile_to_resolved(Rc::new(sources));
+/// Resolve the whole `src/v4` corpus once and discover, *by resolved type*, every data decl
+/// whose type-annotation head is one of `heads`, attributed to its source file via the item
+/// span. Restricted by the caller to files under `src/v4/test/claim/`.
+fn discover_corpus(heads: &BTreeSet<&str>) -> Vec<DiscoveredDecl> {
+    let ws = workspace_root();
+    let mut files = Vec::new();
+    collect_dag_files(&ws.join(V4_ROOT), &ws, &mut files);
 
-    let blocking = resolved
-        .diagnostics
+    let sources: Vec<Rc<SourceFile>> = files
         .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
-    if blocking {
-        return Err(());
-    }
-    let Some(graph) = resolved.graph.as_ref() else {
-        return Err(());
-    };
+        .map(|rel| {
+            let content =
+                std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+            Rc::new(SourceFile {
+                path: rel.clone(),
+                content,
+            })
+        })
+        .collect();
+
+    let resolved = compile_to_resolved(Rc::new(sources));
+    let graph = resolved.graph.as_ref().unwrap_or_else(|| {
+        panic!(
+            "compile_to_resolved produced no graph for the src/v4 corpus ({} diagnostics)",
+            resolved.diagnostics.len()
+        )
+    });
 
     let mut found = Vec::new();
     for module in graph.modules.iter() {
-        // Only walk items that belong to this entry file — a closure pulls in std/* and
-        // peer modules; we census the file under discovery, not its imports.
         for item in module.items.iter() {
             // A data declaration has both a body (the constructor expression) and a type
-            // annotation (`data x: T = ..`). Functions have a body but no annotation head
-            // we want; type defs have no body.
+            // annotation (`data x: T = ..`). Functions have a body but no annotation head we
+            // want; type defs have no body.
             let (Some(type_node), Some(_body)) = (item.type_annotation.clone(), item.body.clone())
             else {
                 continue;
@@ -126,12 +127,14 @@ fn discover_in_file(rel_path: &str, heads: &BTreeSet<&str>) -> Result<Vec<Discov
                 found.push(DiscoveredDecl {
                     head,
                     name: item.name.clone(),
-                    file: rel_path.to_string(),
+                    file: item.span.file.clone(),
                 });
             }
         }
     }
-    Ok(found)
+    found.sort();
+    found.dedup();
+    found
 }
 
 /// One hand-roster run-witness row: the entry file plus the `fn() -> Bool` it runs.
@@ -179,27 +182,14 @@ fn roster_rows() -> Vec<RosterRow> {
 /// D1 census + D2 contradiction proof.
 #[test]
 fn glob_discovery_testclaim_census_and_d2_contradiction() {
-    let ws = workspace_root();
-    let mut files = Vec::new();
-    collect_dag_files(&ws.join(CLAIM_ROOT), &ws, &mut files);
-    assert!(
-        files.len() > 50,
-        "expected the claim corpus glob to find many .dag files, got {}",
-        files.len()
-    );
-
     let heads: BTreeSet<&str> = ["TestClaim", "TestClaimRun"].into_iter().collect();
+    let all_decls = discover_corpus(&heads);
 
-    let mut decls: Vec<DiscoveredDecl> = Vec::new();
-    let mut unresolved: Vec<String> = Vec::new();
-    for rel in &files {
-        match discover_in_file(rel, &heads) {
-            Ok(mut d) => decls.append(&mut d),
-            Err(()) => unresolved.push(rel.clone()),
-        }
-    }
-    decls.sort();
-    decls.dedup();
+    // Restrict the census to the claim corpus the glob runner would scan.
+    let decls: Vec<DiscoveredDecl> = all_decls
+        .into_iter()
+        .filter(|d| d.file.starts_with(CLAIM_ROOT))
+        .collect();
 
     let testclaimrun: BTreeSet<String> = decls
         .iter()
@@ -221,17 +211,15 @@ fn glob_discovery_testclaim_census_and_d2_contradiction() {
     let roster_fns: BTreeSet<String> = rows.iter().map(|r| r.function.clone()).collect();
 
     // ── Census report ────────────────────────────────────────────────────
-    println!("== glob-discovery D1 census (by resolved type) ==");
-    println!("claim corpus .dag files globbed : {}", files.len());
-    println!("files unresolved (gated/red)    : {}", unresolved.len());
+    println!("== glob-discovery D1 census (by resolved type, single src/v4 resolve) ==");
     println!("TestClaimRun data decls         : {}", testclaimrun.len());
     println!("  across files                  : {}", run_files.len());
     println!("TestClaim data decls            : {}", testclaim.len());
     println!("v4_roster_pilot witness rows    : {}", rows.len());
 
     // ── D2 contradiction (durable) ───────────────────────────────────────
-    // The brief's equality ("TestClaimRun discovered == roster") is between disjoint
-    // kinds: data decls vs Bool witness functions. Pin the empty intersection.
+    // The brief's equality ("TestClaimRun discovered == roster") is between disjoint kinds:
+    // data decls vs Bool witness functions. Pin the empty intersection.
     let intersection: Vec<&String> = testclaimrun.intersection(&roster_fns).collect();
     println!("roster ∩ TestClaimRun decls     : {}", intersection.len());
     assert!(
@@ -242,14 +230,13 @@ fn glob_discovery_testclaim_census_and_d2_contradiction() {
     );
 
     // ── Rename-vs-wrap mapping (per roster row) ───────────────────────────
-    // For each of the 39 run-witness rows: does its entry file already carry a TestClaimRun
-    // data decl ("align/rename" candidate — a wrapper exists in-family, migration repoints
-    // discovery at it) or none ("wrap" — a TestClaimRun wrapper must be authored)? This
-    // file-level presence is the measured first-order signal; for files with multiple
-    // TestClaimRun decls, the exact witness↔decl name pairing still needs author
-    // confirmation (noted in the report).
-    let run_decls_by_file: std::collections::BTreeMap<String, usize> = {
-        let mut m = std::collections::BTreeMap::new();
+    // For each roster row: does its entry file already carry a TestClaimRun data decl
+    // ("align/rename" candidate — a wrapper exists in-family) or none ("wrap" — a
+    // TestClaimRun wrapper must be authored)? File-level presence is the measured first-order
+    // signal; for files with multiple TestClaimRun decls the exact witness↔decl pairing still
+    // needs author confirmation (noted in the report).
+    let run_decls_by_file: BTreeMap<String, usize> = {
+        let mut m = BTreeMap::new();
         for d in decls.iter().filter(|d| d.head == "TestClaimRun") {
             *m.entry(d.file.clone()).or_insert(0) += 1;
         }
@@ -277,9 +264,7 @@ fn glob_discovery_testclaim_census_and_d2_contradiction() {
     // real disjointness, not two empty sets.
     assert!(
         !testclaimrun.is_empty(),
-        "discovery found no TestClaimRun decls — census is vacuous (did the resolver break, \
-         or did all claim files become unresolved? unresolved={})",
-        unresolved.len()
+        "discovery found no TestClaimRun decls — census is vacuous (did the resolver break?)"
     );
     assert!(
         rows.len() >= 30,
