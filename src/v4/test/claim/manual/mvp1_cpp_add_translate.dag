@@ -1,6 +1,8 @@
 // src/v4/test/claim/manual/mvp1_cpp_add_translate.dag
 // Scope: MVP-1 T-10/T-11 receipt — grammar-inverse compile-inferred accepts for cpp_mvp1 add-fn tree.
 // Status: T-11 C++ slice — mirrors mvp1_rust_add_translate.dag; authority_source_text poisoned on compile path.
+// T1 tranche: no mvp1_cpp_emit_add_fn_accepts_holds witness here — C++ emit roster enrollment deferred
+// to T3 (TargetTypeExpressionProjection); extdeps zip-fold/profile wiring is inert groundwork only.
 
 
 module v4.test.claim.manual.mvp1_cpp_add_translate
@@ -354,16 +356,6 @@ fn anchor_mvp1_cpp_compile_inferred_accepts() -> Outcome<CompileOutput> {
 
 
 data mvp1_cpp_emit_receipt: Outcome<TargetSource> = anchor_mvp1_cpp_emit_accepts()
-
-
-// R2 keystone execution witness — emit(add) must produce the canonical cpp_mvp1 add-fn source.
-fn mvp1_cpp_emit_add_fn_accepts_holds() -> Bool {
-  match mvp1_cpp_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source == cpp_mvp1_source_text) && (d == None)
-    Rejected { diagnostics: _ } => false
-  }
-}
 
 
 data mvp1_cpp_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_cpp_compile_inferred_accepts()

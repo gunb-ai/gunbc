@@ -202,6 +202,12 @@ data v4_roster_pilot_row_mvp1_typescript_emit_add_fn: V4RosterPilotClaimRunRow =
   function: "mvp1_ts_emit_add_fn_accepts_holds"
 }
 
+<<<<<<< HEAD
+=======
+// T1 tranche = rust (T0) + python/go/ts only. C++ deferred to T3 (TargetTypeExpressionProjection
+// row — same tier rust/ts got theirs); extdeps zip-fold groundwork in cpp.dag stays inert here.
+// No cpp roster row until a green mvp1_cpp_emit_add_fn_accepts_holds witness exists (T3 lane).
+>>>>>>> cd934937c0 (fix(v4): clarify C++ T3 deferral — drop dormant cpp emit witness)
 
 // Wave-A W1: v4.extdeps.coordination smoke→witness (iii) A-fold-delete. Discriminating
 // claim-run witnesses (mutation-proven red-under-mutation) carry the executable
