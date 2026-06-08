@@ -978,60 +978,60 @@ fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
 fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
   let facts = cpp_signed_integer_facts(
     spelling: Int,
-    surface_spelling: cpp_surface_spelling_int,
+    surface_spelling: ^cpp_surface_spelling_int,
     target_profile: target_profile
   )
   [
     cpp_named_edge(
-      name: cpp_inhabitant_field_int,
+      name: ^cpp_inhabitant_field_int,
       target: cpp_int_inhabitant_node(target_profile: target_profile)
     ),
     cpp_named_edge(
-      name: cpp_inhabitant_field_mvp1_add_fn,
+      name: ^cpp_inhabitant_field_mvp1_add_fn,
       target: cpp_mvp1_emitted_add_fn_node(target_profile: target_profile)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_inhabitant_atom,
-      target: cpp_atom(id: cpp_inhabitant_int)
+      name: ^cpp_coercion_field_int_inhabitant_atom,
+      target: cpp_atom(id: ^cpp_inhabitant_int)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_facts,
+      name: ^cpp_coercion_field_int_facts,
       target: cpp_integer_facts_node(facts: facts)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_spelling,
-      target: cpp_atom(id: cpp_surface_spelling_int)
+      name: ^cpp_coercion_field_int_spelling,
+      target: cpp_atom(id: ^cpp_surface_spelling_int)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_signed,
-      target: cpp_atom(id: cpp_tag_signed_integer)
+      name: ^cpp_coercion_field_int_signed,
+      target: cpp_atom(id: ^cpp_tag_signed_integer)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_width,
-      target: cpp_atom(id: cpp_tag_width_selection)
+      name: ^cpp_coercion_field_int_width,
+      target: cpp_atom(id: ^cpp_tag_width_selection)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_encoding,
-      target: cpp_atom(id: cpp_tag_twos_complement)
+      name: ^cpp_coercion_field_int_encoding,
+      target: cpp_atom(id: ^cpp_tag_twos_complement)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_overflow,
-      target: cpp_atom(id: cpp_tag_representable_result_required)
+      name: ^cpp_coercion_field_int_overflow,
+      target: cpp_atom(id: ^cpp_tag_representable_result_required)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_scalar,
+      name: ^cpp_coercion_field_int_scalar,
       target: cpp_integer_scalar_fact_node(facts: facts)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_width_fact,
+      name: ^cpp_coercion_field_int_width_fact,
       target: facts.width_fact
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_spelling_node,
+      name: ^cpp_coercion_field_int_spelling_node,
       target: cpp_signed_integer_spelling_node(spelling: Int)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_target_profile,
+      name: ^cpp_coercion_field_int_target_profile,
       target: target_profile
     )
   ]

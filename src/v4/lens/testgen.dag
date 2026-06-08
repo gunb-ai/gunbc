@@ -737,8 +737,8 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
     ManualNatAddLeftIdentity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_additive_monoid,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_add_left_identity,
         },
         diagnostics: None,
@@ -746,8 +746,8 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
     ManualNatAddRightIdentity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_additive_monoid,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_add_right_identity,
         },
         diagnostics: None,
@@ -755,8 +755,8 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
     ManualNatAddAssociativity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_additive_monoid,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_add_associativity,
         },
         diagnostics: None,
@@ -764,8 +764,8 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
     ManualNatMulLeftIdentity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_mul_left_identity,
         },
         diagnostics: None,
@@ -773,8 +773,8 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
     ManualNatMulAnnihilator =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_mul_annihilator,
         },
         diagnostics: None,
@@ -782,8 +782,8 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
     ManualNatMulAssociativity =>
       Accepted {
         value: AlgebraLawSubject {
-          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_mul_associativity,
         },
         diagnostics: None,

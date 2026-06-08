@@ -468,40 +468,40 @@ fn ts_declared_inhabitants_root() -> Node {
 fn ts_mvp1_number_zip_fold_closure_edges() -> List<Edge> {
   [
     ts_named_edge(
-      name: ts_inhabitant_field_mvp1_add_fn,
+      name: ^ts_inhabitant_field_mvp1_add_fn,
       target: ts_mvp1_emitted_add_fn_node()
     ),
     ts_named_edge(
-      name: ts_coercion_field_number_inhabitant_atom,
-      target: ts_inhabitant_atom(id: ts_inhabitant_number)
+      name: ^ts_coercion_field_number_inhabitant_atom,
+      target: ts_inhabitant_atom(id: ^ts_inhabitant_number)
     ),
     ts_named_edge(
-      name: ts_coercion_field_number_facts,
+      name: ^ts_coercion_field_number_facts,
       target: ts_number_facts_node(facts: ts_facts_number)
     ),
     ts_named_edge(
-      name: ts_coercion_field_number_spelling,
-      target: ts_inhabitant_atom(id: ts_surface_spelling_number)
+      name: ^ts_coercion_field_number_spelling,
+      target: ts_inhabitant_atom(id: ^ts_surface_spelling_number)
     ),
     ts_named_edge(
-      name: ts_coercion_field_number_arithmetic,
+      name: ^ts_coercion_field_number_arithmetic,
       target: ts_number_arithmetic_semantics_node()
     ),
     ts_named_edge(
-      name: ts_coercion_field_number_bitwise,
+      name: ^ts_coercion_field_number_bitwise,
       target: ts_number_bitwise_semantics_node()
     ),
     ts_named_edge(
-      name: ts_coercion_field_number_width,
-      target: ts_inhabitant_atom(id: ts_tag_bits64)
+      name: ^ts_coercion_field_number_width,
+      target: ts_inhabitant_atom(id: ^ts_tag_bits64)
     ),
     ts_named_edge(
-      name: ts_coercion_field_number_ieee754,
-      target: ts_inhabitant_atom(id: ts_ieee754_binary64)
+      name: ^ts_coercion_field_number_ieee754,
+      target: ts_inhabitant_atom(id: ^ts_ieee754_binary64)
     ),
     ts_named_edge(
-      name: ts_coercion_field_number_std_projection,
-      target: ts_inhabitant_atom(id: ts_std_projection_float64)
+      name: ^ts_coercion_field_number_std_projection,
+      target: ts_inhabitant_atom(id: ^ts_std_projection_float64)
     )
   ]
 }

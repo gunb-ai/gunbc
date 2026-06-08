@@ -1471,40 +1471,40 @@ fn go_declared_inhabitants_root() -> Node {
 fn go_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
   [
     go_named_edge(
-      name: go_inhabitant_field_mvp1_add_fn,
+      name: ^go_inhabitant_field_mvp1_add_fn,
       target: go_mvp1_emitted_add_fn_node()
     ),
     go_named_edge(
-      name: go_coercion_field_int_inhabitant_atom,
-      target: go_inhabitant_atom(id: go_inhabitant_int)
+      name: ^go_coercion_field_int_inhabitant_atom,
+      target: go_inhabitant_atom(id: ^go_inhabitant_int)
     ),
     go_named_edge(
-      name: go_coercion_field_int_facts,
+      name: ^go_coercion_field_int_facts,
       target: go_integer_facts_node(facts: go_facts_int)
     ),
     go_named_edge(
-      name: go_coercion_field_int_spelling,
-      target: go_inhabitant_atom(id: go_surface_spelling_int)
+      name: ^go_coercion_field_int_spelling,
+      target: go_inhabitant_atom(id: ^go_surface_spelling_int)
     ),
     go_named_edge(
-      name: go_coercion_field_int_width,
+      name: ^go_coercion_field_int_width,
       target: go_signed_int_width_node(width: SignedPlatformInt)
     ),
     go_named_edge(
-      name: go_coercion_field_int_signed,
-      target: go_inhabitant_atom(id: go_tag_signed)
+      name: ^go_coercion_field_int_signed,
+      target: go_inhabitant_atom(id: ^go_tag_signed)
     ),
     go_named_edge(
-      name: go_coercion_field_int_overflow,
+      name: ^go_coercion_field_int_overflow,
       target: go_overflow_node(overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow)
     ),
     go_named_edge(
-      name: go_coercion_field_int_encoding,
-      target: go_inhabitant_atom(id: go_repr_twos_complement_integer)
+      name: ^go_coercion_field_int_encoding,
+      target: go_inhabitant_atom(id: ^go_repr_twos_complement_integer)
     ),
     go_named_edge(
-      name: go_coercion_field_int_std_projection,
-      target: go_inhabitant_atom(id: go_std_projection_int)
+      name: ^go_coercion_field_int_std_projection,
+      target: go_inhabitant_atom(id: ^go_std_projection_int)
     )
   ]
 }

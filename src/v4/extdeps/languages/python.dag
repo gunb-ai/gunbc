@@ -938,28 +938,28 @@ fn python_declared_inhabitants_root() -> Node {
 fn python_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
   [
     python_named_edge(
-      name: python_inhabitant_field_mvp1_add_fn,
+      name: ^python_inhabitant_field_mvp1_add_fn,
       target: python_mvp1_emitted_add_fn_node()
     ),
     python_named_edge(
-      name: python_coercion_field_int_inhabitant_atom,
-      target: python_inhabitant_atom(id: python_inhabitant_int)
+      name: ^python_coercion_field_int_inhabitant_atom,
+      target: python_inhabitant_atom(id: ^python_inhabitant_int)
     ),
     python_named_edge(
-      name: python_coercion_field_int_facts,
+      name: ^python_coercion_field_int_facts,
       target: python_integer_facts_node(facts: python_facts_int)
     ),
     python_named_edge(
-      name: python_coercion_field_int_spelling,
-      target: python_inhabitant_atom(id: python_surface_spelling_int)
+      name: ^python_coercion_field_int_spelling,
+      target: python_inhabitant_atom(id: ^python_surface_spelling_int)
     ),
     python_named_edge(
-      name: python_coercion_field_int_encoding,
-      target: python_inhabitant_atom(id: python_repr_int_arbitrary_precision)
+      name: ^python_coercion_field_int_encoding,
+      target: python_inhabitant_atom(id: ^python_repr_int_arbitrary_precision)
     ),
     python_named_edge(
-      name: python_coercion_field_int_std_projection,
-      target: python_inhabitant_atom(id: python_std_projection_int)
+      name: ^python_coercion_field_int_std_projection,
+      target: python_inhabitant_atom(id: ^python_std_projection_int)
     )
   ]
 }

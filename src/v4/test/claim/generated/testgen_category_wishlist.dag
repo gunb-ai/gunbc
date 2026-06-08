@@ -23,8 +23,7 @@ import v4.lens.testgen {
   default_generator_profile,
   generator_provenance,
   lbe_io_mock_conj_dag_surface,
-  lbe_subject_conj_dag_surface,
-  law_nat_add_associativity
+  lbe_subject_conj_dag_surface
 }
 import v4.std.algebra { length }
 import v4.std.collection { List }
@@ -147,7 +146,7 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
       subject: AlgebraLawSubject {
         algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
         inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
-        law: law_nat_add_associativity,
+        law: ^law_nat_add_associativity,
       },
     },
     provenance: generator_provenance(id: ^wishlist_gen_id_algebra_law),
