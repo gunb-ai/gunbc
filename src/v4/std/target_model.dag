@@ -42,7 +42,13 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.lexing { LexRules, VoidLexRules }
-import v4.std.find_witness { CandidateSet }
+import v4.std.find_witness {
+  CandidateSet,
+  PreservationPredicate,
+  UniqueOnly,
+  find_witness,
+  preservation_rule_exact_structural_equality_zip_fold
+}
 import v4.std.node {
   Arrow,
   Atom,
@@ -3666,6 +3672,37 @@ fn type_expr_projection_candidate_for_connective(
           }
         }
       )
+    }
+  )
+}
+
+// SG-2 fold — per-connective row closedness ack via find_witness (checkpoint 2: spine entry).
+// Tautological zip-fold over the closed singleton candidate proves the row slot is realizable
+// before translate emits; substrate source_facts wiring replaces this in checkpoint 3.
+fn type_expr_projection_row_closedness_ack(
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<Node> {
+  bind_outcome(
+    o: type_expr_projection_candidate_for_connective(
+      projection: projection,
+      connective: connective
+    ),
+    f: fn(candidates) {
+      let shape = candidates.closedness.evidence
+      match find_witness(
+        source_facts: shape,
+        candidates: candidates,
+        predicate: PreservationPredicate {
+          algebra: shape,
+          preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+        },
+        multiplicity_policy: UniqueOnly
+      ) {
+        Accepted { value: fw, diagnostics: d } =>
+          outcome_accepted(fw.candidate)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
     }
   )
 }
