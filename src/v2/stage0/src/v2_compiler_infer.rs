@@ -1006,8 +1006,9 @@ pub fn type_node_is_callable(n: Rc<Node>) -> bool {
     (n.params.clone().len() as i64) > 0
 }
 
-pub fn module_skips_direct_call_arg_check(_module_name: String) -> bool {
-    true
+pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
+    (module_name.len() >= 3 && &module_name[..3] == "v4.")
+        || (module_name.len() >= 13 && &module_name[..13] == "v2.compiler.")
 }
 
 pub fn direct_call_set_element_types_mismatch(

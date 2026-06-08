@@ -629,10 +629,12 @@ fn direct_call_set_element_types_mismatch(formal: Node, actual: Node, source_ind
   else { set_element_types_mismatch(recv_elem: formal, operand_elem: actual, source_indices: source_indices) }
 }
 
-// v4 std modules model fn-vs-Callable and generic witness carriers that are
-// out of PD-3 brand scope; skip the bounded direct-call hook there.
+// Compiler substrate (v2.compiler.* self-host + v4.* std) models fn-vs-Callable and
+// generic witness carriers outside PD-3 brand scope; skip the bounded hook there.
 fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
-  string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v4."
+  let is_v4 = string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v4."
+  let is_compiler_substrate = string_length(s: module_name) >= 13 && substring(s: module_name, start: 0, end: 13) == "v2.compiler."
+  is_v4 || is_compiler_substrate
 }
 
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
