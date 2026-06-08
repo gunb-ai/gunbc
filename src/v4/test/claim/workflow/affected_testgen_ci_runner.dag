@@ -23,7 +23,7 @@ import v4.std.algebra { fold_list, length }
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.runtime { RuntimeValue }
 import v4.std.text { String }
 import v4.std.verdict { Deferred, Fail, Pass }
@@ -50,6 +50,9 @@ import v4.test.claim.lens_common.infer_fixture {
 
 data affected_testgen_graph_root_symbol: Symbol = affected_testgen_graph_root_symbol
 data affected_testgen_graph_edge_symbol: Symbol = affected_testgen_graph_edge_symbol
+data affected_testgen_source_dependency_symbol: Symbol = affected_testgen_source_dependency_symbol
+data affected_testgen_generated_input_symbol: Symbol = affected_testgen_generated_input_symbol
+data affected_testgen_source_dependency_edge_symbol: Symbol = affected_testgen_source_dependency_edge_symbol
 data affected_testgen_type_symbol: Symbol = affected_testgen_type_symbol
 data affected_testgen_algebra_symbol: Symbol = affected_testgen_algebra_symbol
 data affected_testgen_descent_symbol: Symbol = affected_testgen_descent_symbol
@@ -61,12 +64,29 @@ data affected_testgen_pattern_source_dependency: PathRegex = affected_testgen_pa
 data affected_testgen_generated_claim_label: String = "witness-validity: constraint-satisfaction holds (positive)"
 
 
+data affected_testgen_generated_claim_input: Node = Node {
+  kind: TypeNode { connective: Atom { identity: affected_testgen_generated_input_symbol } },
+  children: []
+}
+
+
+data affected_testgen_source_dependency: Node = Node {
+  kind: TypeNode { connective: Atom { identity: affected_testgen_source_dependency_symbol } },
+  children: [
+    Edge {
+      label: Named { name: affected_testgen_source_dependency_edge_symbol },
+      target: affected_testgen_generated_claim_input
+    }
+  ]
+}
+
+
 data affected_testgen_graph_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
       label: Named { name: affected_testgen_graph_edge_symbol },
-      target: stub_empty_conj
+      target: affected_testgen_source_dependency
     }
   ]
 }
@@ -90,12 +110,12 @@ data affected_testgen_edit_read: EditLocusRead = EditLocusRead {
 
 data affected_testgen_binding: EditLocusBinding = EditLocusBinding {
   pattern: affected_testgen_pattern_generated_witness_validity,
-  locus: stub_empty_conj
+  locus: affected_testgen_generated_claim_input
 }
 
 data affected_testgen_dependency_binding: EditLocusBinding = EditLocusBinding {
   pattern: affected_testgen_pattern_source_dependency,
-  locus: stub_empty_conj
+  locus: affected_testgen_source_dependency
 }
 
 
@@ -142,7 +162,7 @@ fn affected_testgen_emit_generated_claim() -> Outcome<TestClaim> {
   testgen_emit_witness_validity_claim(
     label: affected_testgen_generated_claim_label,
     source_facts: stub_empty_conj,
-    candidate: stub_empty_conj,
+    candidate: affected_testgen_generated_claim_input,
     predicate: PreservationPredicate {
       algebra: stub_empty_conj,
       preservation_rule: preservation_rule_constraint_satisfaction,
@@ -207,6 +227,17 @@ fn affected_testgen_selected_claim_runs_pass(claim: TestClaim) -> Bool {
 }
 
 
+fn affected_testgen_node_in_list(nodes: List<Node>, needle: Node) -> Bool {
+  fold_list(
+    xs: nodes,
+    empty: false,
+    cons: fn(found, node) {
+      found || (node == needle)
+    }
+  )
+}
+
+
 fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
   match affected_testgen_emit_generated_claim() {
     Accepted { value: RoundTripClaim { label: label, anchor: _, input: _, classification: _ }, diagnostics: _ } =>
@@ -218,6 +249,19 @@ fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
 
 fn affected_testgen_selects_one_generated_claim_holds() -> Bool {
   length(xs: affected_testgen_selected_claims()) == 1
+}
+
+
+fn affected_testgen_dependency_frontier_reaches_generated_input_holds() -> Bool {
+  match affected_testgen_reading_from_fixture_diff(git_diff: affected_testgen_dependency_git_diff) {
+    Holds { value: reading } =>
+      reading.edit_locus == affected_testgen_source_dependency
+        && affected_testgen_node_in_list(
+          nodes: reading.affected,
+          needle: affected_testgen_generated_claim_input
+        )
+    Violates { diagnostic: _ } => false
+  }
 }
 
 
@@ -250,6 +294,7 @@ fn affected_testgen_unrelated_diff_selects_no_claims_holds() -> Bool {
 fn affected_testgen_fusion_holds() -> Bool {
   affected_testgen_generator_emits_expected_claim_holds()
     && affected_testgen_selects_one_generated_claim_holds()
+    && affected_testgen_dependency_frontier_reaches_generated_input_holds()
     && affected_testgen_dependency_diff_selects_generated_claim_holds()
     && affected_testgen_generated_claim_run_passes_holds()
     && affected_testgen_unrelated_diff_selects_no_claims_holds()
@@ -287,6 +332,13 @@ data affected_testgen_gate_row_dependency_selects_generated_claim: AffectedTestg
 }
 
 
+data affected_testgen_gate_row_dependency_frontier_reaches_generated_input: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
+  label: "affected-testgen dependency frontier reaches generated input",
+  entry: affected_testgen_gate_entry,
+  function: "affected_testgen_dependency_frontier_reaches_generated_input_holds"
+}
+
+
 data affected_testgen_gate_row_generated_claim_runs: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
   label: "affected-testgen generated claim runs through run_test_claim",
   entry: affected_testgen_gate_entry,
@@ -304,10 +356,11 @@ data affected_testgen_gate_row_fusion: AffectedTestgenClaimRunRow = AffectedTest
 data affected_testgen_claim_run_rows: List<AffectedTestgenClaimRunRow> = [
   affected_testgen_gate_row_generator_emits_expected_claim,
   affected_testgen_gate_row_selects_generated_claim,
+  affected_testgen_gate_row_dependency_frontier_reaches_generated_input,
   affected_testgen_gate_row_dependency_selects_generated_claim,
   affected_testgen_gate_row_generated_claim_runs,
   affected_testgen_gate_row_fusion
 ]
 
 
-data affected_testgen_claim_run_row_count: String = "5"
+data affected_testgen_claim_run_row_count: String = "6"
