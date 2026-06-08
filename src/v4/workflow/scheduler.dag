@@ -14,23 +14,10 @@ import v4.std.algebra {
   non_empty
 }
 import v4.std.dependency {
-  BarrierBefore,
-  BindsTo,
-  BootstrapDependsOn,
-  Contains,
-  DataDependsOn,
+  DependencyKindClassifier,
   DependencyView,
-  EffectDependsOn,
-  GeneratedFrom,
-  ModelDependsOn,
-  ModuleDependsOn,
-  PlacementDependsOn,
-  ProjectionDependsOn,
-  PromotedBy,
   ReadinessLayer,
-  ResourceDependsOn,
-  TypeDependsOn,
-  VerifiedBy,
+  classify_dependency_kind,
   topological_layers
 }
 import v4.std.node { Node }
@@ -54,24 +41,33 @@ type SchedulerFirstReadinessLayer
   = SchedulerFirstReadinessLayerMissing
   | SchedulerFirstReadinessLayerFound { layer: ReadinessLayer }
 
-fn scheduler_dependency_orders_execution(dependency: DependencyView) -> Bool {
-  match dependency.kind {
-    DataDependsOn => true
-    EffectDependsOn => true
-    ResourceDependsOn => true
-    BarrierBefore => true
-    BootstrapDependsOn => true
-    Contains => false
-    BindsTo => false
-    TypeDependsOn => false
-    ModuleDependsOn => false
-    PlacementDependsOn => false
-    ModelDependsOn => false
-    ProjectionDependsOn => false
-    GeneratedFrom => false
-    VerifiedBy => false
-    PromotedBy => false
+// 🟡 coproduct dissolution — feature:scheduler-execution-kind-policy — consumer:scheduler_execution_dependencies
+// dissolve-on-arrival: substrate projects execution-ordering dependencies from the dependency fact carrier.
+fn scheduler_execution_dependency_kind_classifier() -> DependencyKindClassifier<Bool> {
+  DependencyKindClassifier {
+    contains: false,
+    binds_to: false,
+    type_depends_on: false,
+    data_depends_on: true,
+    effect_depends_on: true,
+    resource_depends_on: true,
+    module_depends_on: false,
+    barrier_before: true,
+    placement_depends_on: false,
+    model_depends_on: false,
+    projection_depends_on: false,
+    generated_from: false,
+    verified_by: false,
+    promoted_by: false,
+    bootstrap_depends_on: true
   }
+}
+
+fn scheduler_dependency_orders_execution(dependency: DependencyView) -> Bool {
+  classify_dependency_kind(
+    classifier: scheduler_execution_dependency_kind_classifier(),
+    kind: dependency.kind
+  )
 }
 
 fn scheduler_execution_dependencies(dependencies: List<DependencyView>) -> List<DependencyView> {
