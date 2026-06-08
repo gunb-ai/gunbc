@@ -265,10 +265,9 @@ impl PartialEq for Value {
             }
             // Same alias-transparency for `type String = FreeMonoid<Char>` (std/text.dag): a
             // native Value::Str and a snoc/Cons-built (or list-literal) char sequence denote the
-            // same FreeMonoid<Char>. Flatten both through free_monoid_to_vec (Str -> codepoint
-            // Ints because Char = Nat) and compare. (Str,Str) is handled natively above; this
-            // only adds the cross-representation pairings, so it never slows the common
-            // string-equality path.
+            // same FreeMonoid<Char>. Flatten both through free_monoid_to_vec (Str -> one-char
+            // Strs) and compare. (Str,Str) is handled natively above; this only adds the cross-
+            // representation pairings, so it never slows the common string-equality path.
             (Value::Str(_), Value::Variant { .. })
             | (Value::Variant { .. }, Value::Str(_))
             | (Value::Str(_), Value::List(_))
@@ -1024,10 +1023,6 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     })
 }
 
-fn char_value(c: char) -> Value {
-    Value::Int(c as i64)
-}
-
 fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
@@ -1135,11 +1130,11 @@ fn match_pattern(
                     _ => None,
                 },
                 // Bridge String values (Value::Str) to FreeMonoid<Char> Empty/Cons patterns:
-                // `type String = FreeMonoid<Char>` and `type Char = Nat` (std/text.dag), so
-                // fold_list/list_append walk a String as codepoint Int heads plus a String tail.
-                // [Recurring class: List=FreeMonoid alias honored per-operation — this is the
-                // String/Char surface of it; the representation-level dissolution is tracked
-                // separately.]
+                // `type String = FreeMonoid<Char>` (std/text.dag), so fold_list/list_append walk
+                // a String char-by-char. A Char is a one-char Value::Str here (self-consistent:
+                // the head of a String is a length-1 String, the tail is the rest). [Recurring
+                // class: List=FreeMonoid alias honored per-operation — this is the String/Char
+                // surface of it; the representation-level dissolution is tracked separately.]
                 Value::Str(s) if name == "Empty" || name == "Cons" => match name.as_str() {
                     "Empty" => {
                         if s.is_empty() {
@@ -1153,7 +1148,7 @@ fn match_pattern(
                         match chars.next() {
                             None => None,
                             Some(c) => {
-                                let head = char_value(c);
+                                let head = Value::Str(c.to_string());
                                 let tail = Value::Str(chars.as_str().to_string());
                                 let mut bindings = HashMap::new();
                                 for fb in field_bindings.iter() {
@@ -1172,38 +1167,6 @@ fn match_pattern(
                                 }
                                 Some(bindings)
                             }
-                        }
-                    }
-                    _ => None,
-                },
-                // Bridge host Int values into the modeled Nat coproduct. Numeric literals and
-                // String/Char codepoint heads enter the interpreter as Value::Int, while std/nat.dag
-                // matches on Zero/Succ. Negative values are not Nat inhabitants and fail the match.
-                Value::Int(n) if name == "Zero" || name == "Succ" => match name.as_str() {
-                    "Zero" => {
-                        if *n == 0 {
-                            Some(HashMap::new())
-                        } else {
-                            None
-                        }
-                    }
-                    "Succ" => {
-                        if *n <= 0 {
-                            None
-                        } else {
-                            let mut bindings = HashMap::new();
-                            for fb in field_bindings.iter() {
-                                let field_name =
-                                    field_binding_name_at(fb.clone(), ctx.source_indices.clone());
-                                let fb_pat = field_binding_pattern(fb.clone());
-                                let field_val = match field_name.as_str() {
-                                    "prev" => Value::Int(n - 1),
-                                    _ => return None,
-                                };
-                                let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
-                                bindings.extend(sub_bindings);
-                            }
-                            Some(bindings)
                         }
                     }
                     _ => None,
@@ -2910,22 +2873,11 @@ fn eval_builtin(
             Ok(Some(Value::Str(v2_rt::char_at(&s, pos))))
         }
 
-        "string_contains" => {
+        "string_contains" | "contains" => {
             let s = expect_str(positional.first().copied(), "contains")?;
             let sub = expect_str(positional.get(1).copied(), "contains sub")?;
             Ok(Some(Value::Bool(s.contains(&sub))))
         }
-
-        // Function-call `contains` mirrors method `.contains`: strings use substring
-        // containment, while FreeMonoid/List values use element membership.
-        "contains" => match positional.as_slice() {
-            [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub)))),
-            [xs, target, ..] => match free_monoid_to_vec(xs) {
-                Some(items) => Ok(Some(Value::Bool(items.iter().any(|item| item == *target)))),
-                None => Ok(None),
-            },
-            _ => Ok(None),
-        },
 
         "replace" => {
             let s = expect_str(positional.first().copied(), "replace")?;
@@ -3155,11 +3107,11 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 out.extend(items.iter().cloned());
                 return Some(out);
             }
-            // `type String = FreeMonoid<Char>` and `type Char = Nat` (std/text.dag): a String IS
-            // its codepoint sequence. Explode to Value::Int codepoints so list ops and `==` treat
-            // it as a FreeMonoid<Char> (matches the Value::Str Empty/Cons pattern bridge above).
+            // `type String = FreeMonoid<Char>` (std/text.dag): a String IS its char sequence.
+            // Explode to one-char Value::Strs so list ops and `==` treat it as a FreeMonoid<Char>
+            // (matches the Value::Str Empty/Cons pattern bridge in match_pattern).
             Value::Str(s) => {
-                out.extend(s.chars().map(char_value));
+                out.extend(s.chars().map(|c| Value::Str(c.to_string())));
                 return Some(out);
             }
             Value::Variant {
