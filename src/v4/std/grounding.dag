@@ -343,8 +343,9 @@ fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> Ta
 //
 // DISSOLUTION (RR-A §5 lane split): R1–R3 (the CI receipt actually carrying RuntimeVerdicts) stay
 // OPEN until the Compiler Spine step-2 harness lands and the Runtime/TestClaim step-3 surface binds
-// this discriminator into `TestClaimCorpusEvalCommand` / `ci_upsert_testclaim_corpus_eval_*`
-// (src/v4/workflow/ci.dag). This schema is the authority both consume; it does NOT itself run
+// this discriminator into the runtime corpus-pass gate (the former `TestClaimCorpusEvalCommand` /
+// `ci_upsert_testclaim_corpus_eval_*` wiring was deleted with ci.dag in PR #4543; CI transport is
+// hand-authored in .github/workflows/ci.yml). This schema is the authority that surface consumes; it does NOT itself run
 // `run_test_claim` (no authoring-time co-authority `data run_*: TestClaimRun` row, no grep witness).
 type HostVerdictSurfaceExecutionStatus
   = RuntimeVerdicts
