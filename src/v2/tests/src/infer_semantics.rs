@@ -15,7 +15,8 @@ use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::NewlineIndex;
 use v2_compiler::v2_std_core::{
     default_ident_span, leaf_node_with_span, make_arm_node, make_span, with_optional_cardinality,
-    Cardinality, Connective, ExprData, InferredNode, MatchPattern, Node, SourceSpan,
+    Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, MatchPattern, Node,
+    SourceSpan,
 };
 
 fn empty_source_indices() -> Rc<std::collections::HashMap<String, Rc<NewlineIndex>>> {
@@ -249,6 +250,132 @@ type AccountId = Refined<String>
         account_id, string,
         "AccountId must not collapse to the shared base String"
     );
+}
+
+// ── PD-3: A3 bounded direct-call arg check (node_type_compatible) ─────────
+// Relation threads brands-distinct (authored_name_at) + alias-tolerant
+// (canonical_template_name branch). Measured at relation + call-site.
+
+#[test]
+fn pd3_brand_twins_incompatible_at_node_type_compatible() {
+    let source = r#"
+module pd3.brand_relation
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+type AccountId = Refined<String>
+"#;
+
+    let result = crate::helpers::compile_dag_resolved(source);
+    assert!(
+        result.diagnostics.is_empty(),
+        "PD-3 relation probe should resolve cleanly, got: {:?}",
+        result
+            .diagnostics
+            .iter()
+            .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect::<Vec<_>>()
+    );
+    let graph = result.graph.as_ref().expect("resolved graph");
+    let module = graph
+        .modules
+        .iter()
+        .find(|m| {
+            v2_compiler::v2_std_core::authored_name_at(
+                result.source_indices.clone(),
+                m.module.clone(),
+            ) == "pd3.brand_relation"
+        })
+        .expect("pd3.brand_relation module");
+
+    let user_id =
+        lookup_type_by_name(module.type_env.clone(), "UserId".to_string()).expect("UserId binding");
+    let account_id = lookup_type_by_name(module.type_env.clone(), "AccountId".to_string())
+        .expect("AccountId binding");
+
+    assert!(
+        !node_type_compatible(user_id.clone(), account_id, result.source_indices.clone()),
+        "PD-3: node_type_compatible must reject brand-twin UserId-for-AccountId"
+    );
+    assert!(
+        node_type_compatible(user_id.clone(), user_id, result.source_indices.clone()),
+        "PD-3: node_type_compatible must accept same-brand UserId-for-UserId"
+    );
+}
+
+#[test]
+fn pd3_direct_call_rejects_brand_twin_mismatch() {
+    let source = r#"
+module pd3.brand_call_reject
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+type AccountId = Refined<String>
+
+fn take_account(id: AccountId) -> String {
+  ""
+}
+
+fn caller(uid: UserId) -> String {
+  take_account(uid)
+}
+"#;
+
+    let result = crate::helpers::compile_dag(source);
+    let has_type_mismatch = result
+        .diagnostics
+        .iter()
+        .any(|diag| matches!(&*diag.diagnostic, CompilerDiagnostic::TypeMismatch { .. }));
+    assert!(
+        has_type_mismatch,
+        "PD-3: direct call must reject UserId-for-AccountId, got: {:?}",
+        crate::helpers::diagnostic_messages(&result)
+    );
+}
+
+#[test]
+fn pd3_direct_call_accepts_same_brand() {
+    let source = r#"
+module pd3.brand_call_accept
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+
+fn take_user(id: UserId) -> String {
+  ""
+}
+
+fn caller(uid: UserId) -> String {
+  take_user(uid)
+}
+"#;
+
+    let result = crate::helpers::compile_dag(source);
+    crate::helpers::assert_no_diagnostics(&result);
+}
+
+#[test]
+fn pd3_direct_call_accepts_list_for_freemonoid_alias() {
+    let source = r#"
+module pd3.alias_call_accept
+
+fn take_fm(xs: FreeMonoid<Int>) -> Int {
+  0
+}
+
+fn caller(xs: List<Int>) -> Int {
+  take_fm(xs)
+}
+"#;
+
+    let result = crate::helpers::compile_dag(source);
+    crate::helpers::assert_no_diagnostics(&result);
 }
 
 #[test]
