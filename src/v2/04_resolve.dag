@@ -457,7 +457,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // in env). Without this, optionality is silently discarded.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
-              Some { value: Resolved { node: target } } => with_authored_identity(identity: n, structural: target)
+              Some { value: Resolved { node: target } } => target
               _ => resolved
             }
           } else { resolved }

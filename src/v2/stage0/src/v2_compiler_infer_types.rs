@@ -153,18 +153,6 @@ pub fn is_declared_container_alias_spelling(name: String) -> bool {
     }
 }
 
-pub fn ident_span_equal(left: Rc<Node>, right: Rc<Node>) -> bool {
-    match (&left.ident_span, &right.ident_span) {
-        (Some(left_id), Some(right_id)) => {
-            left_id.file == right_id.file
-                && left_id.start == right_id.start
-                && left_id.end == right_id.end
-        }
-        (None, None) => true,
-        _ => false,
-    }
-}
-
 pub fn structural_carrier_template_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
