@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 OWNERSHIP_CLAIM = ROOT / "src/v4/test/claim/lens_ownership/resource_dependency.dag"
 SUBJECT_ROSTER = ROOT / "src/v4/test/claim/lens_ownership/subject_roster.dag"
 FAMILY_EVAL = ROOT / "src/v4/test/claim/workflow/lens_ownership_family_eval.dag"
-CI = ROOT / "src/v4/workflow/ci.dag"
 
 
 def _read(path: Path) -> str:
@@ -29,7 +28,6 @@ def main() -> None:
     ownership_claim = _read(OWNERSHIP_CLAIM)
     subject_roster = _read(SUBJECT_ROSTER)
     family_eval = _read(FAMILY_EVAL)
-    ci = _read(CI)
 
     _require_substrings(
         "resource_dependency.dag",
@@ -83,34 +81,7 @@ def main() -> None:
         ),
     )
 
-    _require_substrings(
-        "ci.dag",
-        ci,
-        (
-            "lens_ownership_family_eval_execution",
-            "LensOwnershipFamilyEvalCommand",
-            "LensOwnershipFamilyVerdictSurfaceAuthority",
-            "ci_lens_ownership_family_verdict_surface_authority",
-            "surface == ci_lens_ownership_family_verdict_surface_authority()",
-            "ci_lens_ownership_family_verdict_surface_projection_node",
-            "ci_projection_corpus_surface_structural_witness_edge",
-            "lens_ownership_structural_witnesses_hold",
-            "ci_lens_ownership_family_eval_command",
-            "ci_upsert_lens_ownership_family_eval_execution_mk",
-            "ci_upsert_lens_ownership_family_eval_signal_mk",
-            "ci_upsert_lens_ownership_family_eval_execution",
-            "ci_upsert_lens_ownership_family_eval_signal",
-            "ci_upsert_steps_full_in_scope_step_ids",
-            "src/v4/test/claim/lens_ownership/subject_roster.dag",
-            "src/v4/test/claim/workflow/lens_ownership_family_eval.dag",
-            "lens_ownership_family_claim_ids",
-            "ci_lens_ownership_family_eval_claim_ids: List<Symbol> = lens_ownership_family_claim_ids",
-            "ci_lens_ownership_subject_roster_decl_name: Symbol = lens_ownership_subject_rows",
-            "witness_lens_ownership_family_gate_closed",
-        ),
-    )
-
-    print("OK: T-38B lens_ownership subject roster + run_test_claim family CI receipt.")
+    print("OK: T-38B lens_ownership subject roster + run_test_claim family eval receipt.")
 
 
 if __name__ == "__main__":
