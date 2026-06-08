@@ -1,0 +1,101 @@
+// src/v4/test/claim/impossible_bug/release_demos.dag
+// Scope: release impossible-bug demos over v4 TestClaim rows only.
+// The witnesses consume the existing claim programs in this directory:
+// complexity, idempotency, and transport drift are rejected by structural
+// diagnostics before any runtime transport or retry behavior can observe them.
+
+module v4.test.claim.impossible_bug.release_demos
+
+
+import v4.std.diagnostic { Accepted, NodeLocus, Rejected, Suggested }
+import v4.std.logic { Bool }
+import v4.std.verification {
+  DiagnosticClaim,
+  IdempotencyContract,
+  ImpossibleBugClass,
+  SuboptimalComplexity,
+  TestClaim,
+  TransportTypeDrift,
+  impossible_bug_class_from_diagnostic_reason
+}
+import v4.test.claim.impossible_bug.idempotency_contract {
+  claim_nonidempotent_in_idempotent_position_caught,
+  claim_repeated_append_in_idempotent_position_caught
+}
+import v4.test.claim.impossible_bug.suboptimal_complexity {
+  claim_cost_contradicts_inhabitance_caught,
+  claim_overcost_against_structural_bound_violates
+}
+import v4.test.claim.impossible_bug.transport_type_drift {
+  claim_target_contract_drift_impossible,
+  claim_wire_contract_drift_impossible
+}
+
+
+fn diagnostic_reason_class_is(reason_class: ImpossibleBugClass, expected: ImpossibleBugClass) -> Bool {
+  reason_class == expected
+}
+
+
+fn diagnostic_claim_rejects_with_class(claim: TestClaim, expected: ImpossibleBugClass) -> Bool {
+  match claim {
+    DiagnosticClaim { input, expected_rejection, label: _, anchor: _, classification: _ } =>
+      match impossible_bug_class_from_diagnostic_reason(reason: expected_rejection.head.reason) {
+        Accepted { value: reason_class, diagnostics: _ } =>
+          diagnostic_reason_class_is(reason_class: reason_class, expected: expected) &&
+            match expected_rejection.head.at {
+              NodeLocus { anchor } => anchor.at == input
+              _ => false
+            } &&
+            match expected_rejection.head.correction {
+              Suggested { node } => node != input
+              _ => false
+            }
+        Rejected { diagnostics: _ } => false
+      }
+    _ => false
+  }
+}
+
+
+fn release_complexity_claims_are_lens_rejections() -> Bool {
+  diagnostic_claim_rejects_with_class(
+    claim: claim_overcost_against_structural_bound_violates,
+    expected: SuboptimalComplexity
+  ) &&
+    diagnostic_claim_rejects_with_class(
+      claim: claim_cost_contradicts_inhabitance_caught,
+      expected: SuboptimalComplexity
+    )
+}
+
+
+fn release_idempotency_claims_are_lens_rejections() -> Bool {
+  diagnostic_claim_rejects_with_class(
+    claim: claim_repeated_append_in_idempotent_position_caught,
+    expected: IdempotencyContract
+  ) &&
+    diagnostic_claim_rejects_with_class(
+      claim: claim_nonidempotent_in_idempotent_position_caught,
+      expected: IdempotencyContract
+    )
+}
+
+
+fn release_transport_claims_are_lens_rejections() -> Bool {
+  diagnostic_claim_rejects_with_class(
+    claim: claim_target_contract_drift_impossible,
+    expected: TransportTypeDrift
+  ) &&
+    diagnostic_claim_rejects_with_class(
+      claim: claim_wire_contract_drift_impossible,
+      expected: TransportTypeDrift
+    )
+}
+
+
+fn witness_impossible_bug_release_demos_are_v4_lens_caught() -> Bool {
+  release_complexity_claims_are_lens_rejections() &&
+    release_idempotency_claims_are_lens_rejections() &&
+    release_transport_claims_are_lens_rejections()
+}

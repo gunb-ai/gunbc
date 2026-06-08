@@ -3144,34 +3144,6 @@ impl<'a> TestRunner<'a> {
                         if detail.variant_name == "Lane2WorkflowRoot"
                 ))
             }
-            "impossible_bug_complexity_over_bound_detected" => {
-                let Some(bind) = find_bind(program_dag, "complexity_demo_out", file_name) else {
-                    return Some(ClaimResult::Fail(format!(
-                        "LensOutputEquals({lens_name}): bind `complexity_demo_out` not found in `{file_name}`"
-                    )));
-                };
-                match cost_of(program_dag, &bind.value) {
-                    CostLookup::Hit(actual) => i64::from(actual > 1),
-                    CostLookup::Miss => {
-                        return Some(ClaimResult::Fail(format!(
-                            "LensOutputEquals({lens_name}): cost lens returned Miss for `complexity_demo_out`"
-                        )));
-                    }
-                }
-            }
-            "impossible_bug_idempotency_loop_rejected" => {
-                let Some(subject) = program_dag.workflow_lane2_subject() else {
-                    return Some(ClaimResult::Fail(format!(
-                        "LensOutputEquals({lens_name}): no workflow Lane-2 subject in `{file_name}`"
-                    )));
-                };
-                let report = analyze_workflow(program_dag, subject);
-                i64::from(matches!(
-                    report,
-                    WorkflowIdempotencyReport::IdempotencyUnsupported(detail)
-                        if detail.variant_name == "LoopEffect"
-                ))
-            }
             _ => return None,
         };
 
