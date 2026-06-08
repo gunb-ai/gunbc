@@ -1021,22 +1021,13 @@ pub fn is_transparent_type_alias_pair(
     formal_rhs.as_str() == actual_name.as_str() || actual_rhs.as_str() == formal_name.as_str()
 }
 
-pub fn structural_alias_target(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
-    match lookup_type_for(env.clone(), n.clone()) {
-        Some(binding_resolved) => {
-            if (((binding_resolved.connective.clone() == Connective::NoConnective)
-                && ((binding_resolved.children.clone().len() as i64) == 0))
-                && (binding_resolved.inferred.clone() != None))
-            {
-                match binding_resolved.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
-                    _ => binding_resolved.clone(),
-                }
-            } else {
-                binding_resolved.clone()
-            }
-        }
-        None => n.clone(),
+pub fn declaration_structural_carrier(name: String, env: Rc<TypeEnv>) -> Rc<Node> {
+    match lookup_type_by_name(env.clone(), name.clone()) {
+        Some(decl) => match decl.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+            _ => decl.clone(),
+        },
+        None => error_type(),
     }
 }
 
@@ -1072,8 +1063,8 @@ pub fn nominal_call_arg_brand_mismatch(
     env: Rc<TypeEnv>,
 ) -> bool {
     let source_indices = env.source_indices.clone();
-    let formal_carrier = structural_alias_target(formal.clone(), env.clone());
-    let actual_carrier = structural_alias_target(actual.clone(), env.clone());
+    let formal_carrier = declaration_structural_carrier(formal_name.clone(), env.clone());
+    let actual_carrier = declaration_structural_carrier(actual_name.clone(), env.clone());
     ((formal_name.as_str() != "")
         && (actual_name.as_str() != "")
         && (formal_name.as_str() != actual_name.as_str())

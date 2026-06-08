@@ -638,17 +638,15 @@ fn is_transparent_type_alias_pair(formal_name: String, actual_name: String, env:
   formal_rhs == actual_name || actual_rhs == formal_name
 }
 
-// One-level structural target of a brand alias leaf (carrier only; ignores ident_span).
-fn structural_alias_target(n: Node, env: TypeEnv) -> Node {
-  match lookup_type_for(env: env, node: n) {
-    Some { value: binding_resolved } =>
-      if binding_resolved.connective == NoConnective && binding_resolved.children |> count == 0 && binding_resolved.inferred != none {
-        match binding_resolved.inferred {
-          Some { value: Resolved { node: target } } => target
-          _ => binding_resolved
-        }
-      } else { binding_resolved }
-    None => n
+// One-level structural RHS of a declared type name (carrier only; ignores ident_span).
+fn declaration_structural_carrier(name: String, env: TypeEnv) -> Node {
+  match lookup_type_by_name(env: env, name: name) {
+    Some { value: decl } =>
+      match decl.inferred {
+        Some { value: Resolved { node: target } } => target
+        _ => decl
+      }
+    None => error_type
   }
 }
 
@@ -677,8 +675,8 @@ fn nominal_call_arg_brand_mismatch(
   env: TypeEnv
 ) -> Bool {
   let source_indices = env.source_indices
-  let formal_carrier = structural_alias_target(n: formal, env: env)
-  let actual_carrier = structural_alias_target(n: actual, env: env)
+  let formal_carrier = declaration_structural_carrier(name: formal_name, env: env)
+  let actual_carrier = declaration_structural_carrier(name: actual_name, env: env)
   formal_name != ""
     && actual_name != ""
     && formal_name != actual_name
