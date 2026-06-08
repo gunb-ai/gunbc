@@ -475,7 +475,7 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 46)
+  (length(xs: v4_roster_pilot_claim_run_rows) == 47)
     && (v4_roster_pilot_claim_run_row_count == "47")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
