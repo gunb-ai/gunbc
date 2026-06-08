@@ -74,9 +74,7 @@ pub use crate::v2_compiler_infer_patterns::{
     pattern_subject_from_node,
 };
 pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
-pub use crate::v2_compiler_infer_resolve::{
-    peel_nominal_alias_identity, resolve_item_types, resolve_node,
-};
+pub use crate::v2_compiler_infer_resolve::{resolve_item_types, resolve_node};
 pub use crate::v2_compiler_infer_resolve::{ItemResult, NodeResolveResult};
 pub use crate::v2_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_called_func_names,
@@ -88,15 +86,14 @@ pub use crate::v2_compiler_infer_sigs::resolve_func_sigs;
 pub use crate::v2_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::KernelTypeBuild;
 pub use crate::v2_compiler_infer_types::{
-    bare_map_node, bare_set_node, callable_inferred, canonical_template_name, child_type_node,
-    emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
-    make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
-    node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
-    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
-    normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
-    resolved_type, structural_carrier_template_name, template_return_has_variables,
-    template_return_is_receiver_self,
+    bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
+    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
+    infer_literal_node, is_fully_resolved, make_callable_type, make_container_type,
+    method_receiver_element_node, node_is_collection, node_is_element_collection,
+    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
+    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
+    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
+    template_return_has_variables, template_return_is_receiver_self,
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
@@ -1000,95 +997,6 @@ pub fn set_element_types_mismatch(
     ((set_element_type_is_concrete(recv_elem.clone())
         && set_element_type_is_concrete(operand_elem.clone()))
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
-}
-
-pub fn nominal_call_arg_brand_mismatch(
-    formal: Rc<Node>,
-    actual: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
-        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-        ((((((!node_type_compatible(formal.clone(), actual.clone(), source_indices.clone())
-            && (formal_name.clone().as_str() != "".to_string().as_str()))
-            && (actual_name.clone().as_str() != "".to_string().as_str()))
-            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
-            && (structural_carrier_template_name(formal.clone(), source_indices.clone())
-                .as_str()
-                == structural_carrier_template_name(actual.clone(), source_indices.clone())
-                    .as_str()))
-            && !is_declared_container_alias_spelling(formal_name.clone()))
-            && !is_declared_container_alias_spelling(actual_name.clone()))
-    }
-}
-
-pub fn direct_call_arg_mismatch_diags(
-    value_params: Rc<Vec<Rc<Node>>>,
-    typed_args: Rc<Vec<Rc<Node>>>,
-    call_subst: Rc<HashMap<String, Rc<Node>>>,
-    type_env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    let source_indices = type_env.clone().source_indices.clone();
-    Rc::new({
-        let mut __result = Vec::new();
-        for pair in Rc::new(
-            value_params
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, v)| (i as i64, v))
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        {
-            __result.extend(
-                (*{
-                    let formal_raw = param_node_type_expr(pair.1.clone());
-                    let formal_subst = substitute_generics(
-                        formal_raw.clone(),
-                        call_subst.clone(),
-                        source_indices.clone(),
-                    );
-                    let formal = peel_nominal_alias_identity(
-                        formal_subst.clone(),
-                        type_env.clone(),
-                        module_name.clone(),
-                    );
-                    match typed_args.clone().get(pair.0.clone() as usize).cloned() {
-                        Some(ta) => {
-                            let actual_raw = resolved_type(arg_value(ta.clone()));
-                            let actual = peel_nominal_alias_identity(
-                                actual_raw.clone(),
-                                type_env.clone(),
-                                module_name.clone(),
-                            );
-                            if nominal_call_arg_brand_mismatch(
-                                formal.clone(),
-                                actual.clone(),
-                                source_indices.clone(),
-                            ) {
-                                Rc::new(vec![type_mismatch_error(
-                                    node_type_shape(formal.clone(), source_indices.clone()),
-                                    node_type_shape(actual.clone(), source_indices.clone()),
-                                    arg_value(ta.clone()).span.clone(),
-                                    module_name.clone(),
-                                )])
-                            } else {
-                                Rc::new(vec![])
-                            }
-                        }
-                        None => Rc::new(vec![]),
-                    }
-                })
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2822,30 +2730,11 @@ pub fn infer_expr(
                         let resolved_type = match sig.clone() {
                             Some(s) => substitute_generics(
                                 s.inferred.clone(),
-                                call_subst.clone(),
+                                call_subst,
                                 scope.type_env.clone().source_indices.clone(),
                             ),
                             None => error_type(),
                         };
-                        let value_params_for_check = Rc::new({
-                            let mut __result = Vec::new();
-                            for p in sig_params.clone().iter().cloned() {
-                                if !param_is_generic_decl(
-                                    p.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ) {
-                                    __result.push(p);
-                                }
-                            }
-                            __result
-                        });
-                        let arg_compat_diags = direct_call_arg_mismatch_diags(
-                            value_params_for_check,
-                            typed_args.clone(),
-                            call_subst.clone(),
-                            scope.type_env.clone(),
-                            scope.module_name.clone(),
-                        );
                         Rc::new(InferResult {
                             typed: make_named_expr_node(
                                 func_name.clone(),
@@ -2860,7 +2749,7 @@ pub fn infer_expr(
                                 span.clone(),
                                 node_name_span(texpr.clone()),
                             ),
-                            diagnostics: v2_rt::concat(arg_diags, arg_compat_diags),
+                            diagnostics: arg_diags,
                         })
                     }
                 } else {

@@ -655,22 +655,6 @@ fn normalize_access_type_node(n: Node) -> Node {
 // Type shape and comparison
 // =========================================================================
 
-fn ident_span_equal(left: Node, right: Node) -> Bool {
-  match left.ident_span {
-    Some { value: ls } =>
-      match right.ident_span {
-        Some { value: rs } =>
-          ls.file == rs.file && ls.start == rs.start && ls.end == rs.end
-        None => false
-      }
-    None =>
-      match right.ident_span {
-        Some { value: _ } => false
-        None => true
-      }
-  }
-}
-
 fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let __is_leaf = n.connective == NoConnective && n.children |> count == 0 && n.properties |> count == 0
   let n_name = authored_name_at(source_indices: source_indices, node: n)
@@ -785,18 +769,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       else { node_type_compatible(left: left_inner, right: right_inner, source_indices: source_indices) }
     }
     else if left_opt || right_opt { false }
-    else {
-      let left_auth = authored_name_at(source_indices: source_indices, node: left)
-      let right_auth = authored_name_at(source_indices: source_indices, node: right)
-      if left_auth != right_auth { false }
-      // Same surface name but distinct nominal declarations (brand twins): require
-      // matching declaration identity, not only shared carrier spelling.
-      else if (left.children |> count > 0) && (right.children |> count > 0)
-        && !node_is_element_collection(n: left, source_indices: source_indices)
-        && !node_is_element_collection(n: right, source_indices: source_indices) {
-        ident_span_equal(left: left, right: right)
-      } else { true }
-    }
+    else { authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right) }
   }
 }
 
