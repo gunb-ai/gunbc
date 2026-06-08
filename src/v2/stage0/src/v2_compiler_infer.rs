@@ -1007,9 +1007,15 @@ pub fn type_node_is_callable(n: Rc<Node>) -> bool {
     ((n.params.clone().len() as i64) > 0)
 }
 
-pub fn module_skips_direct_call_arg_check(_module_name: String) -> bool {
-    // PROBE: PD-3-DOGFOOD measurement — force direct_call_arg_mismatch_diags on all modules
-    false
+pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
+    {
+        let is_v4 = ((v2_rt::string_length(&module_name) >= 3)
+            && (v2_rt::substring(&module_name, 0, 3).as_str() == "v4.".to_string().as_str()));
+        let is_compiler_substrate = ((v2_rt::string_length(&module_name) >= 13)
+            && (v2_rt::substring(&module_name, 0, 13).as_str()
+                == "v2.compiler.".to_string().as_str()));
+        (is_v4 || is_compiler_substrate)
+    }
 }
 
 pub fn nominal_call_arg_brand_mismatch(
