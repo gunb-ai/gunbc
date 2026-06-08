@@ -34,7 +34,7 @@ import v2.std.core {
   default_ident_span, kernel_span, node_name_span, intern
 }
 import v2.compiler.infer_types {
-  resolved_type, child_type_node, node_is_keyed_collection
+  resolved_type, child_type_node, node_is_keyed_collection, is_declared_container_alias_spelling
 }
 import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {

@@ -257,6 +257,58 @@ type AccountId = Refined<String>
 // (canonical_template_name branch). Measured at relation + call-site.
 
 #[test]
+#[ignore]
+fn debug_pd3_authored_names() {
+    let source = r#"
+module pd3.brand_relation
+type Refined<T> { base: T }
+type UserId = Refined<String>
+type AccountId = Refined<String>
+"#;
+    let result = crate::helpers::compile_dag_resolved(source);
+    let graph = result.graph.as_ref().expect("graph");
+    let module = graph.modules.first().expect("module");
+    let user_id =
+        lookup_type_by_name(module.type_env.clone(), "UserId".to_string()).expect("UserId");
+    let account_id =
+        lookup_type_by_name(module.type_env.clone(), "AccountId".to_string()).expect("AccountId");
+    let si = result.source_indices.clone();
+    let item = v2_compiler::v2_std_core::module_items(module.module.clone())
+        .iter()
+        .find(|i| {
+            v2_compiler::v2_std_core::authored_name_at(si.clone(), (*i).clone()) == "UserId"
+        })
+        .expect("UserId item")
+        .clone();
+    eprintln!(
+        "item authored={} ident_span={:?} children={} inferred={}",
+        v2_compiler::v2_std_core::authored_name_at(si.clone(), item.clone()),
+        item.ident_span,
+        item.children.len(),
+        item.inferred.is_some()
+    );
+    eprintln!(
+        "user binding.name={} authored={} ident_span={:?} connective={:?} children={} inferred={}",
+        module.type_env.bindings.values().find(|b| b.name == "UserId").map(|b| b.name.clone()).unwrap_or_default(),
+        v2_compiler::v2_std_core::authored_name_at(si.clone(), user_id.clone()),
+        user_id.ident_span,
+        user_id.connective,
+        user_id.children.len(),
+        user_id.inferred.is_some()
+    );
+    eprintln!(
+        "acct authored={} ident_span={:?} children={}",
+        v2_compiler::v2_std_core::authored_name_at(si.clone(), account_id.clone()),
+        account_id.ident_span,
+        account_id.children.len()
+    );
+    eprintln!(
+        "compatible={}",
+        node_type_compatible(user_id.clone(), account_id.clone(), si)
+    );
+}
+
+#[test]
 fn pd3_brand_twins_incompatible_at_node_type_compatible() {
     let source = r#"
 module pd3.brand_relation
