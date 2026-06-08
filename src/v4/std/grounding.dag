@@ -343,8 +343,9 @@ fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> Ta
 //
 // DISSOLUTION (RR-A §5 lane split): R1–R3 (the CI receipt actually carrying RuntimeVerdicts) stay
 // OPEN until the Compiler Spine step-2 harness lands and the Runtime/TestClaim step-3 surface binds
-// this discriminator into `TestClaimCorpusEvalCommand` / `ci_upsert_testclaim_corpus_eval_*`
-// (src/v4/workflow/ci.dag). This schema is the authority both consume; it does NOT itself run
+// this discriminator into the runtime corpus-pass gate (the former `TestClaimCorpusEvalCommand` /
+// `ci_upsert_testclaim_corpus_eval_*` wiring was deleted with ci.dag in PR #4543; CI transport is
+// hand-authored in .github/workflows/ci.yml). This schema is the authority that surface consumes; it does NOT itself run
 // `run_test_claim` (no authoring-time co-authority `data run_*: TestClaimRun` row, no grep witness).
 type HostVerdictSurfaceExecutionStatus
   = RuntimeVerdicts
@@ -373,7 +374,7 @@ fn per_target_testclaim_receipt_target(receipt: PerTargetTestClaimReceipt) -> Ta
 // RR-A §4 R1/R6 terminal-pass gate: a corpus verdict surface is authoritative for a terminal CI
 // pass ONLY when it carries RuntimeVerdicts. AuthoringTimeVerdictSurface fails closed — it must not
 // satisfy the terminal gate until the step-2 harness produces runtime verdicts.
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: a3b-host-verdict-surface-runtime-authority — consumer: v4.workflow.ci TestClaimCorpusEvalCommand / ci_upsert_testclaim_corpus_eval_* terminal gate — bind RR-A #4296 §4 R1/R6 + node://adhoc-ee4060fb-bba — dissolve-on-arrival: delete when the Compiler Spine step-2 bootstrap-evaluator harness lands and the Runtime/TestClaim step-3 surface consumes HostVerdictSurfaceExecutionStatus directly at the ci.dag terminal gate (variant match moves to the consumer); forbidden: permanent untagged Bool coproduct-arm CI policy in std/grounding.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: a3b-host-verdict-surface-runtime-authority — consumer: the RR-A terminal corpus-pass gate (was v4.workflow.ci TestClaimCorpusEvalCommand / ci_upsert_testclaim_corpus_eval_*, deleted with the descriptive ci.dag model in PR #4543; CI transport is now hand-authored in .github/workflows/ci.yml) — bind RR-A #4296 §4 R1/R6 + node://adhoc-ee4060fb-bba — dissolve-on-arrival: delete when the Compiler Spine step-2 bootstrap-evaluator harness lands and the Runtime/TestClaim step-3 surface consumes HostVerdictSurfaceExecutionStatus directly (variant match moves to that consumer); forbidden: permanent untagged Bool coproduct-arm CI policy in std/grounding.
 fn host_verdict_surface_runtime_authoritative(receipt: PerTargetTestClaimReceipt) -> Bool {
   match receipt.execution_status {
     RuntimeVerdicts => true
