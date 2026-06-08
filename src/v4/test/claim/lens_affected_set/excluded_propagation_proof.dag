@@ -68,6 +68,22 @@ fn excluded_propagation_proof_claim_holds() -> Bool {
   )
 }
 
+// Discrimination receipt (perturb-red, committed): one mark_excluded yields rest:[]
+// (single proof), which must NOT match the accumulated expected decision rest:[proof].
+// Holds == true proves frontier_decision_matches discriminates on Excluded.rest contents
+// — i.e. it is a real structural comparison, not a tautology that ignores accumulation.
+fn excluded_propagation_proof_discriminates() -> Bool {
+  frontier_decision_matches(
+    frontier: mark_excluded(
+      frontier: empty_frontier(),
+      key: excluded_propagation_key,
+      proof: excluded_propagation_proof
+    ),
+    key: excluded_propagation_key,
+    expected: expected_excluded_propagation_decision
+  ) == false
+}
+
 fn excluded_propagation_proof_claim_rhs() -> Node {
   if excluded_propagation_proof_claim_holds() {
     affected_set_example_node

@@ -7,6 +7,8 @@
 module v4.test.claim.lens_affected_set.dimension_seed_rerun
 
 import v4.lens.affected_set {
+  DimensionNotRead,
+  Excluded,
   ExclusionKey,
   FrontierDecision,
   Rerun,
@@ -43,6 +45,25 @@ fn dimension_seed_rerun_claim_holds() -> Bool {
     key: dimension_seed_rerun_key,
     expected: expected_dimension_seed_decision
   )
+}
+
+// Discrimination receipt (perturb-red, committed): the seeded decision is Rerun, which
+// must NOT match a wrong Excluded decision. Holds == true proves the comparison
+// discriminates on the FrontierDecision arm, not a tautology that ignores it.
+data dimension_seed_wrong_decision: FrontierDecision = Excluded {
+  first: DimensionNotRead {
+    usage_site: affected_set_example_node,
+    changed_dimension: affected_set_example_dimension
+  },
+  rest: []
+}
+
+fn dimension_seed_rerun_discriminates() -> Bool {
+  frontier_decision_matches(
+    frontier: mark_rerun(frontier: empty_frontier(), key: dimension_seed_rerun_key),
+    key: dimension_seed_rerun_key,
+    expected: dimension_seed_wrong_decision
+  ) == false
 }
 
 fn dimension_seed_rerun_claim_rhs() -> Node {

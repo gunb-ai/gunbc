@@ -56,6 +56,21 @@ fn irt1_excluded_propagation_receipt_claim_holds() -> Bool {
   )
 }
 
+// Discrimination receipt (perturb-red, committed): one mark_excluded yields rest:[],
+// which must NOT match the accumulated expected decision rest:[proof]. Holds == true
+// proves the comparison discriminates on Excluded.rest, not a tautology.
+fn irt1_excluded_propagation_receipt_discriminates() -> Bool {
+  frontier_decision_matches(
+    frontier: mark_excluded(
+      frontier: empty_frontier(),
+      key: irt1_excluded_propagation_key,
+      proof: irt1_excluded_propagation_proof
+    ),
+    key: irt1_excluded_propagation_key,
+    expected: expected_irt1_excluded_propagation_decision
+  ) == false
+}
+
 fn irt1_excluded_propagation_receipt_claim_rhs() -> Node {
   if irt1_excluded_propagation_receipt_claim_holds() {
     affected_set_example_node
