@@ -1,12 +1,16 @@
 // src/v4/test/claim/lens_affected_set/excluded_propagation_proof.dag
 // Scope: T-21 worked claim — second mark_excluded on the same key appends to Excluded.rest.
-// Status: scaffold — compile-only until T-22 generated claim execution.
+// Observation: ReExecFrontier.decisions is a std Map = PartialFunction with no decidable
+// structural `==`; the receipt observes the frontier by application (frontier_decision_matches)
+// and compares the resolved FrontierDecision, never whole-frontier `==`.
 
 module v4.test.claim.lens_affected_set.excluded_propagation_proof
 
 import v4.lens.affected_set {
   DimensionNotRead,
+  Excluded,
   ExclusionKey,
+  FrontierDecision,
   PropagationExclusionProof,
   ReExecFrontier,
   empty_frontier,
@@ -14,9 +18,9 @@ import v4.lens.affected_set {
 }
 import v4.lens.affected_set_examples {
   affected_set_example_dimension,
-  affected_set_example_node,
-  expected_affected_set_excluded_proofs
+  affected_set_example_node
 }
+import v4.test.claim.lens_affected_set.frontier_observation { frontier_decision_matches }
 import v4.std.logic { Bool }
 import v4.std.node { Conj, Node, TypeNode }
 import v4.std.verification {
@@ -51,8 +55,17 @@ fn excluded_propagation_accumulated_frontier() -> ReExecFrontier {
   )
 }
 
+data expected_excluded_propagation_decision: FrontierDecision = Excluded {
+  first: excluded_propagation_proof,
+  rest: [excluded_propagation_proof]
+}
+
 fn excluded_propagation_proof_claim_holds() -> Bool {
-  excluded_propagation_accumulated_frontier() == expected_affected_set_excluded_proofs
+  frontier_decision_matches(
+    frontier: excluded_propagation_accumulated_frontier(),
+    key: excluded_propagation_key,
+    expected: expected_excluded_propagation_decision
+  )
 }
 
 fn excluded_propagation_proof_claim_rhs() -> Node {
