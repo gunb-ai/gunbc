@@ -26,6 +26,7 @@ import v4.std.runtime { RuntimeValue }
 import v4.std.text { String }
 import v4.std.verdict { Deferred, Fail, Pass }
 import v4.std.verification {
+  RoundTripClaim,
   TestClaim,
   test_claim_evaluation_touches_rerun_frontier,
   test_claim_input
