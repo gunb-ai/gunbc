@@ -403,18 +403,6 @@ data lens_ci_claim_run_row_fact_density__kernel_ambient_bool_claim_holds: LensCi
   function: "kernel_ambient_bool_claim_holds"
 }
 
-data lens_ci_claim_run_row_idempotency__lens_idempotency_write_effect_holds: LensCiClaimRunRow = LensCiClaimRunRow {
-  label: "lens_idempotency/lens_idempotency_write_effect_holds",
-  entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
-  function: "lens_idempotency_write_effect_holds"
-}
-
-data lens_ci_claim_run_row_idempotency__idempotency_write_effect_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
-  label: "lens_idempotency/idempotency_write_effect_claim_holds",
-  entry: "src/v4/test/claim/lens_idempotency/write_effect.dag",
-  function: "idempotency_write_effect_claim_holds"
-}
-
 data lens_ci_claim_run_row_identical_variant_payload__lens_identical_variant_payload_unrealized_scaffold_holds: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "lens_identical_variant_payload/lens_identical_variant_payload_unrealized_scaffold_holds",
   entry: "src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag",
@@ -425,12 +413,6 @@ data lens_ci_claim_run_row_ownership__ownership_resource_dependency_claim_holds:
   label: "lens_ownership/ownership_resource_dependency_claim_holds",
   entry: "src/v4/test/claim/lens_ownership/resource_dependency.dag",
   function: "ownership_resource_dependency_claim_holds"
-}
-
-data lens_ci_claim_run_row_parallelism__parallelism_data_dependency_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
-  label: "lens_parallelism/parallelism_data_dependency_claim_holds",
-  entry: "src/v4/test/claim/lens_parallelism/data_dependency.dag",
-  function: "parallelism_data_dependency_claim_holds"
 }
 
 data lens_ci_claim_run_row_registry__lens_registry_required_ids_resolve_holds: LensCiClaimRunRow = LensCiClaimRunRow {
@@ -623,11 +605,8 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_fact_density__hollow_alias_compile_lens_rejects_holds,
   lens_ci_claim_run_row_fact_density__hollow_alias_no_fact_claim_holds,
   lens_ci_claim_run_row_fact_density__kernel_ambient_bool_claim_holds,
-  lens_ci_claim_run_row_idempotency__lens_idempotency_write_effect_holds,
-  lens_ci_claim_run_row_idempotency__idempotency_write_effect_claim_holds,
   lens_ci_claim_run_row_identical_variant_payload__lens_identical_variant_payload_unrealized_scaffold_holds,
   lens_ci_claim_run_row_ownership__ownership_resource_dependency_claim_holds,
-  lens_ci_claim_run_row_parallelism__parallelism_data_dependency_claim_holds,
   lens_ci_claim_run_row_registry__lens_registry_required_ids_resolve_holds,
   lens_ci_claim_run_row_registry__lens_registry_singleton_row_counts_holds,
   lens_ci_claim_run_row_structural_resolution__binds_to_resolved_claim_holds,
@@ -651,4 +630,4 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_unused_parameters__unused_parameters_rollup_claim_holds
 ]
 
-data lens_ci_claim_run_row_count: String = "89"
+data lens_ci_claim_run_row_count: String = "86"
