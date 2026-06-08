@@ -112,3 +112,40 @@ fn probe() -> Int {
         other => panic!("expected Int(7) from lookup builtin, got {other:?}"),
     }
 }
+
+/// A native `Value::Map` lookup returns the Null sentinel on a missing key
+/// (`raw_map_lookup`), but the std contract is `Map.lookup: fn(K) -> Witness<V>`
+/// (v4.std.collection) — an absent key must present as `Violates`. Matching a
+/// missing-key lookup against a Holds/Violates coproduct must take the `Violates`
+/// arm rather than fall through non-exhaustively on Null (the runtime-completeness
+/// bridge: native-map miss bisected to a Holds/Violates `match` on null).
+#[test]
+fn native_map_miss_presents_as_witness_violates_not_null() {
+    let src = r#"module test.witness_map_miss
+type W = Holds { value: Int } | Violates { diagnostic: Int }
+fn miss_is_violates() -> Bool {
+  let m = empty_map()
+  match m.lookup("absent") {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+"#;
+    // NB: this exercises a *runtime* bridge, not a static type fact. The native-map
+    // lookup is a builtin whose absent result (Null) is reconciled to the Witness
+    // coproduct only at `match` time, so the static checker can't connect `lookup`'s
+    // return to `W` — we assert interpreter behavior directly off the produced graph.
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph produced for the witness module");
+
+    // Discriminating: without the bridge this `match` falls through on Null and the
+    // interpreter raises `non-exhaustive pattern match on: null` instead of `true`.
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "miss_is_violates") {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected Bool(true) (Violates arm) from native-map miss, got {other:?}"),
+    }
+}
