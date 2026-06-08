@@ -48,6 +48,38 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
+// When peeling a one-level type alias to its structural target, keep the
+// declaration/reference ident_span so authored_name_at still reports the brand
+// name (UserId vs AccountId) instead of the shared carrier (Refined).
+fn with_authored_identity(identity: Node, structural: Node) -> Node {
+  Node {
+    name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
+    children: structural.children, connective: structural.connective, params: structural.params,
+    inferred: structural.inferred, return_cardinality: structural.return_cardinality,
+    uses: structural.uses, body: structural.body, transport: structural.transport,
+    properties: structural.properties, type_annotation: structural.type_annotation,
+    is_self_recursive: structural.is_self_recursive, has_non_tail_self_call: structural.has_non_tail_self_call,
+    match_pattern: structural.match_pattern, expr_data: structural.expr_data
+  }
+}
+
+// Peel AliasLeaf bindings for call-site arg check: structural carrier with
+// reference-site brand identity (bounded A3 — not a full re-resolve).
+fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
+  match lookup_type_for(env: env, node: n) {
+    Some { value: resolved } =>
+      if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
+        match resolved.inferred {
+          Some { value: Resolved { node: target } } =>
+            let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
+            with_authored_identity(identity: n, structural: target_resolved)
+          _ => resolved
+        }
+      } else { resolved }
+    None => n
+  }
+}
+
 // =========================================================================
 // Result types for type resolution
 // =========================================================================
@@ -113,39 +145,6 @@ type ResourceUseResult {
 
 fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
   resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0)
-}
-
-fn is_nominal_alias_decl(n: Node) -> Bool {
-  n.connective == NoConnective && n.children |> count == 0 && n.inferred != none && n.params |> count == 0
-}
-
-// Resolve a TypeEnv binding while preserving declarator identity on nominal
-// aliases (M1 / A3). Use-site resolve still peels via resolve_node (C2.3).
-fn resolve_type_binding(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
-  if is_nominal_alias_decl(n: n) {
-    let decl_name = authored_name(env: env, node: n)
-    match n.inferred {
-      Some { value: Resolved { node: target } } =>
-        let target_result = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0)
-        let target_resolved = target_result.resolved
-        NodeResolveResult {
-          resolved: Node {
-            name: decl_name, span: n.span, ident_span: n.ident_span,
-            children: target_resolved.children, connective: target_resolved.connective, params: [],
-            inferred: target_resolved.inferred, return_cardinality: n.return_cardinality,
-            uses: n.uses, body: n.body, transport: n.transport,
-            properties: target_resolved.properties, type_annotation: n.type_annotation,
-            is_self_recursive: is_recursive_type_by_name(env: env, name: decl_name),
-            has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-            expr_data: n.expr_data
-          },
-          diagnostics: target_result.diagnostics
-        }
-      _ => resolve_node(n: n, env: env, module_name: module_name)
-    }
-  } else {
-    resolve_node(n: n, env: env, module_name: module_name)
-  }
 }
 
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
@@ -458,7 +457,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // in env). Without this, optionality is silently discarded.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
-              Some { value: Resolved { node: target } } => target
+              Some { value: Resolved { node: target } } => with_authored_identity(identity: n, structural: target)
               _ => resolved
             }
           } else { resolved }
