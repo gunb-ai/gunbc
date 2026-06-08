@@ -1946,6 +1946,14 @@ fn go_ident_lex_rule() -> LexRule {
   }
 }
 
+// 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
+// every LiteralPattern.text below (e.g. "func " not "func", " + " not "+") as the interim
+// trivia policy: a token carries the layout adjacent to it so `x + y` renders with the
+// spaces the reference (`go_mvp1_source_text`) requires. Homomorphic with rust/python
+// wave-1 MVP-1 lex (same T-6 dissolve trigger). `go_whitespace_trivia_rule` above is
+// ingest-side horizontal-space subset only (see feature:go-semicolon-insertion-layout);
+// serialize round-trip spacing rides these literal texts until T-6 supplies
+// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout structurally.
 fn go_wave1_lex_rules() -> LexRuleSet {
   // Rule order is load-bearing: lex_try_rules prefers the later rule on equal-length
   // matches, so ident must precede keywords and fixed literals that must win ties.
@@ -1953,17 +1961,17 @@ fn go_wave1_lex_rules() -> LexRuleSet {
     rules: [
       go_whitespace_trivia_rule(),
       go_ident_lex_rule(),
-      go_keyword_lex_rule(token_class: go_token_kw_func, text: "func"),
+      go_keyword_lex_rule(token_class: go_token_kw_func, text: "func "),
       go_lex_rule(token_class: go_token_lparen, text: "("),
       // See feature:go-predeclared-identifier-binding above. This is a
       // fail-closed MVP type-reference token, not a claim that `int` is reserved.
-      go_lex_rule(token_class: go_token_ty_int, text: "int"),
-      go_lex_rule(token_class: go_token_comma, text: ","),
+      go_lex_rule(token_class: go_token_ty_int, text: " int"),
+      go_lex_rule(token_class: go_token_comma, text: ", "),
       go_lex_rule(token_class: go_token_rparen, text: ")"),
-      go_lex_rule(token_class: go_token_lbrace, text: "{"),
-      go_keyword_lex_rule(token_class: go_token_kw_return, text: "return"),
-      go_lex_rule(token_class: go_token_plus, text: "+"),
-      go_lex_rule(token_class: go_token_rbrace, text: "}")
+      go_lex_rule(token_class: go_token_lbrace, text: " { "),
+      go_keyword_lex_rule(token_class: go_token_kw_return, text: "return "),
+      go_lex_rule(token_class: go_token_plus, text: " + "),
+      go_lex_rule(token_class: go_token_rbrace, text: " }")
     ]
   }
 }
