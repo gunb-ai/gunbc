@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag
 // Scope: DERIVABLE-COERCION thesis payoff — TaskId nickname triple (API+DB+wire);
-//   distinct SurfaceSpelling per layer, shared encoding+carrier core; measured by execution.
-// Status: EXECUTED Bool witnesses — surfaces distinct, exact zip-fold cross-layer gap, wrong-concept control.
+//   distinct SurfaceSpelling per layer, shared encoding+carrier core; CRUX matrix by execution.
+// Status: EXECUTED Bool witnesses — all realized preservation rules × sibling pairs measured.
 
 module v4.test.claim.manual.derivable_coercion_nickname_triple
 
@@ -14,36 +14,28 @@ import v4.test.fixture.derivable_coercion_task_id {
   task_id_semantic_core_node,
   task_id_wire_inhabitant_node
 }
-import v4.std.coercion {
-  CoercionCandidateSet,
-  CoercionResult,
-  coercion_fold
-}
-import v4.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness
-}
+import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
   Outcome,
   Rejected
 }
+import v4.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
 import v4.std.find_witness {
   CandidateSet,
   FindWitnessResult,
   PreservationPredicate,
-  TargetDeclaredPriority,
   UniqueOnly,
   find_witness,
   find_witness_reason_no_candidate,
+  preservation_rule_constraint_satisfaction,
   preservation_rule_exact_structural_equality_zip_fold,
-  verify_witness
+  preservation_rule_refinement_widening
 }
-import v4.std.collection { List }
-import v4.std.exact_structural_equality_zip_fold_predicate {
-  exact_structural_equality_zip_fold
-}
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
+import v4.std.refinement_widening_predicate { refinement_widening_predicate_algebra }
 import v4.std.verdict { Fail, Pass, Deferred }
 import v4.std.verification {
   EqualsClaim,
@@ -54,14 +46,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v4.std.witness { StructuralPropertyWitness }
-
-fn task_id_exact_predicate(source: Node) -> PreservationPredicate {
-  PreservationPredicate {
-    algebra: source,
-    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
-  }
-}
 
 fn task_id_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
   CandidateSet {
@@ -70,46 +54,28 @@ fn task_id_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> C
   }
 }
 
-fn task_id_grounding(node: Node) -> CanonicalGrounding {
-  CanonicalGrounding {
-    node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: preservation_rule_exact_structural_equality_zip_fold,
-        evidence: node
-      },
-      closedness: derivable_coercion_candidate_closedness(evidence: node)
+fn task_id_predicate(source: Node, target: Node, rule: Symbol) -> PreservationPredicate {
+  if rule == preservation_rule_refinement_widening {
+    PreservationPredicate {
+      algebra: refinement_widening_predicate_algebra(source: source, candidate: target),
+      preservation_rule: rule
+    }
+  } else {
+    PreservationPredicate {
+      algebra: source,
+      preservation_rule: rule
     }
   }
 }
 
-fn task_id_coercion_candidates(
-  candidates: List<Node>,
-  closedness_evidence: Node
-) -> CoercionCandidateSet {
-  CoercionCandidateSet {
-    set: task_id_candidate_set(
-      candidates: candidates,
-      closedness_evidence: closedness_evidence
-    )
-  }
-}
-
-fn rejected_for_no_candidate(o: Outcome<FindWitnessResult>) -> Bool {
-  match o {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } => r.head.reason == find_witness_reason_no_candidate
-  }
-}
-
-fn find_witness_accepts(source: Node, target: Node) -> Bool {
+fn find_witness_sibling_accepts(source: Node, target: Node, rule: Symbol) -> Bool {
   match find_witness(
     source_facts: source,
     candidates: task_id_candidate_set(
       candidates: [target],
       closedness_evidence: target
     ),
-    predicate: task_id_exact_predicate(source: source),
+    predicate: task_id_predicate(source: source, target: target, rule: rule),
     multiplicity_policy: UniqueOnly
   ) {
     Accepted { value: fw, diagnostics: _ } => fw.candidate == target
@@ -117,68 +83,59 @@ fn find_witness_accepts(source: Node, target: Node) -> Bool {
   }
 }
 
-fn coercion_outcome_node_projection(actual: Outcome<CoercionResult>) -> Outcome<Node> {
-  match actual {
-    Accepted { value: r, diagnostics: ad } =>
-      Accepted { value: r.target, diagnostics: ad }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+fn find_witness_sibling_rejects(source: Node, target: Node, rule: Symbol) -> Bool {
+  !find_witness_sibling_accepts(source: source, target: target, rule: rule)
 }
 
-fn api_to_db_coercion_fold() -> Outcome<CoercionResult> {
-  coercion_fold(
-    source: task_id_grounding(node: task_id_api_inhabitant_node()),
-    candidates: task_id_coercion_candidates(
-      candidates: [task_id_db_inhabitant_node()],
-      closedness_evidence: task_id_db_inhabitant_node()
-    ),
-    policy: TargetDeclaredPriority { priority: task_id_db_inhabitant_node() }
-  )
-}
+// --- Preconditions (sibling shape) -------------------------------------------------
 
-// Surfaces are structurally distinct (not identity nicknames).
 data witness_task_id_surfaces_distinct: Bool = (task_id_api_inhabitant_node() != task_id_db_inhabitant_node()) && (task_id_api_inhabitant_node() != task_id_wire_inhabitant_node()) && (task_id_db_inhabitant_node() != task_id_wire_inhabitant_node())
 
-// Shared semantic core is identical across layers (encoding+carrier only).
 data witness_task_id_shared_core_matches: Bool = exact_structural_equality_zip_fold(source_facts: task_id_semantic_core_node(), candidate: task_id_semantic_core_node())
 
-// Exact zip-fold rejects full cross-layer inhabitants (surfaces differ).
-data witness_task_id_zip_fold_api_db_rejects: Bool = !exact_structural_equality_zip_fold(source_facts: task_id_api_inhabitant_node(), candidate: task_id_db_inhabitant_node())
+// --- CRUX matrix: exact_structural_equality_zip_fold ---------------------------------
 
-// find_witness with exact_structural_equality_zip_fold cannot derive API→DB today.
-data witness_task_id_api_to_db_find_witness_rejects: Bool = rejected_for_no_candidate(
-  o: find_witness(
-    source_facts: task_id_api_inhabitant_node(),
-    candidates: task_id_candidate_set(
-      candidates: [task_id_db_inhabitant_node()],
-      closedness_evidence: task_id_db_inhabitant_node()
-    ),
-    predicate: task_id_exact_predicate(source: task_id_api_inhabitant_node()),
-    multiplicity_policy: UniqueOnly
-  )
-)
+data witness_matrix_exact_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: preservation_rule_exact_structural_equality_zip_fold)
 
-// coercion_fold inherits the same gap for cross-layer nickname coercion.
-data witness_task_id_api_to_db_coercion_fold_rejects: Bool = match api_to_db_coercion_fold() {
-  Accepted { value: _, diagnostics: _ } => false
-  Rejected { diagnostics: _ } => true
+data witness_matrix_exact_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: preservation_rule_exact_structural_equality_zip_fold)
+
+data witness_matrix_exact_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: preservation_rule_exact_structural_equality_zip_fold)
+
+data witness_matrix_exact_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: preservation_rule_exact_structural_equality_zip_fold)
+
+// --- CRUX matrix: preservation_rule_refinement_widening ------------------------------
+
+data witness_matrix_widening_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: preservation_rule_refinement_widening)
+
+data witness_matrix_widening_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: preservation_rule_refinement_widening)
+
+data witness_matrix_widening_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: preservation_rule_refinement_widening)
+
+data witness_matrix_widening_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: preservation_rule_refinement_widening)
+
+// --- CRUX matrix: preservation_rule_constraint_satisfaction --------------------------
+
+data witness_matrix_constraint_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: preservation_rule_constraint_satisfaction)
+
+data witness_matrix_constraint_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: preservation_rule_constraint_satisfaction)
+
+data witness_matrix_constraint_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: preservation_rule_constraint_satisfaction)
+
+data witness_matrix_constraint_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: preservation_rule_constraint_satisfaction)
+
+// --- CRUX verdict: no faithful rule derives siblings (accept sibling AND reject wrong-core) ---
+
+fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
+  find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: rule)
+    && find_witness_sibling_rejects(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: rule)
 }
 
-// Discriminating: wrong concept (AccountId numeric encoding) also rejects.
-data witness_task_id_api_to_account_id_rejects: Bool = rejected_for_no_candidate(
-  o: find_witness(
-    source_facts: task_id_api_inhabitant_node(),
-    candidates: task_id_candidate_set(
-      candidates: [account_id_wrong_inhabitant_node()],
-      closedness_evidence: account_id_wrong_inhabitant_node()
-    ),
-    predicate: task_id_exact_predicate(source: task_id_api_inhabitant_node()),
-    multiplicity_policy: UniqueOnly
-  )
-)
+data witness_crux_substrate_gap: Bool = !preservation_rule_faithful_for_siblings(rule: preservation_rule_exact_structural_equality_zip_fold) && !preservation_rule_faithful_for_siblings(rule: preservation_rule_refinement_widening) && !preservation_rule_faithful_for_siblings(rule: preservation_rule_constraint_satisfaction)
 
-// Same-layer reflexivity still accepts (control — zip-fold is not broken).
-data witness_task_id_api_to_api_find_witness_accepts: Bool = find_witness_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node())
+// Same-layer reflexivity control (exact rule still works for identity).
+data witness_matrix_exact_api_to_api_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node(), rule: preservation_rule_exact_structural_equality_zip_fold)
+
+// --- Executing claims (discriminating via EqualsClaim + run_test_claim_assert) -------
 
 fn derivable_coercion_pass_node() -> Node {
   task_id_api_inhabitant_node()
@@ -200,18 +157,18 @@ data claim_task_id_surfaces_distinct: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_task_id_api_to_db_find_witness_rejects: TestClaim = EqualsClaim {
-  label: "manual/derivable_coercion: exact zip-fold find_witness rejects API TaskId -> DB TEXT (substrate gap)",
+data claim_crux_substrate_gap: TestClaim = EqualsClaim {
+  label: "manual/derivable_coercion: CRUX — no faithful preservation rule derives nickname siblings (substrate gap)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: derivable_coercion_claim_lhs(ok: witness_task_id_api_to_db_find_witness_rejects),
+  lhs: derivable_coercion_claim_lhs(ok: witness_crux_substrate_gap),
   rhs: derivable_coercion_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_task_id_api_to_account_id_rejects: TestClaim = EqualsClaim {
-  label: "manual/derivable_coercion: API TaskId -> AccountId numeric encoding rejects (discriminating)",
+data claim_matrix_widening_accepts_siblings_and_wrong_core: TestClaim = EqualsClaim {
+  label: "manual/derivable_coercion: CRUX — widening accepts siblings AND wrong-core (non-discriminating)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: derivable_coercion_claim_lhs(ok: witness_task_id_api_to_account_id_rejects),
+  lhs: derivable_coercion_claim_lhs(ok: witness_matrix_widening_api_to_db_accepts && witness_matrix_widening_api_to_account_id_accepts),
   rhs: derivable_coercion_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -226,8 +183,8 @@ data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_assert
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-data witness_claim_task_id_api_to_db_find_witness_rejects: Bool = match run_test_claim_assert(
-  claim: claim_task_id_api_to_db_find_witness_rejects,
+data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
+  claim: claim_crux_substrate_gap,
   actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
   at: task_id_api_inhabitant_node()
 ) {
@@ -236,8 +193,8 @@ data witness_claim_task_id_api_to_db_find_witness_rejects: Bool = match run_test
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-data witness_claim_task_id_api_to_account_id_rejects: Bool = match run_test_claim_assert(
-  claim: claim_task_id_api_to_account_id_rejects,
+data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match run_test_claim_assert(
+  claim: claim_matrix_widening_accepts_siblings_and_wrong_core,
   actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
   at: task_id_api_inhabitant_node()
 ) {
