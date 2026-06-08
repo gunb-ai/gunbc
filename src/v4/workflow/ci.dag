@@ -3572,14 +3572,13 @@ fn ci_glob_segment_matches_any_changed_path(
 }
 
 
+data ci_empty_glob_segment: GlobSegment = ""
+
 fn ci_file_set_selector_primary_segment(selector: FileSetSelector) -> GlobSegment {
-  fold(selector.pattern.segments, init: "", f: fn(acc, segment) {
-    if acc == "" {
-      segment
-    } else {
-      acc
-    }
-  })
+  match selector.pattern.segments |> first {
+    Some { value: segment } => segment
+    None => ci_empty_glob_segment
+  }
 }
 
 
