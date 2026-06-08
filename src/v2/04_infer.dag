@@ -622,19 +622,13 @@ fn type_node_is_callable(n: Node) -> Bool {
   n.params |> count > 0
 }
 
-// set_element_types_mismatch at direct-call sites, excluding callable/formal-fn
-// positions that v4 grammar models as fn-vs-Callable (not PD-3 brand scope).
-fn direct_call_set_element_types_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
-  else { set_element_types_mismatch(recv_elem: formal, operand_elem: actual, source_indices: source_indices) }
-}
-
-// Compiler substrate (v2.compiler.* self-host + v4.* std) models fn-vs-Callable and
-// generic witness carriers outside PD-3 brand scope; skip the bounded hook there.
+// Compiler substrate (v2.compiler.* / v2.std.* self-host + v4.* std) models
+// fn-vs-Callable and generic witness carriers outside PD-3 brand scope.
 fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
   let is_v4 = string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v4."
   let is_compiler_substrate = string_length(s: module_name) >= 12 && substring(s: module_name, start: 0, end: 12) == "v2.compiler."
-  is_v4 || is_compiler_substrate
+  let is_std_substrate = string_length(s: module_name) >= 8 && substring(s: module_name, start: 0, end: 8) == "v2.std."
+  is_v4 || is_compiler_substrate || is_std_substrate
 }
 
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
@@ -643,13 +637,51 @@ fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
 fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let formal_name = authored_name_at(source_indices: source_indices, node: formal)
   let actual_name = authored_name_at(source_indices: source_indices, node: actual)
-  !node_type_compatible(left: formal, right: actual, source_indices: source_indices)
+  formal.connective != Arrow && actual.connective != Arrow
     && formal_name != ""
     && actual_name != ""
     && formal_name != actual_name
     && structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
     && !is_declared_container_alias_spelling(name: formal_name)
     && !is_declared_container_alias_spelling(name: actual_name)
+}
+
+// Same container spelling (List<T> vs List<U>): recurse into element types for
+// same-carrier brand-twin rejection without widening to unrelated mismatches.
+fn container_element_nominal_brand_mismatch(
+  formal: Node,
+  actual: Node,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  if node_is_element_collection(n: formal, source_indices: source_indices)
+    && node_is_element_collection(n: actual, source_indices: source_indices)
+    && authored_name_at(source_indices: source_indices, node: formal) == authored_name_at(source_indices: source_indices, node: actual) {
+    match formal.children |> first {
+      Some { value: formal_ch } =>
+        match actual.children |> first {
+          Some { value: actual_ch } =>
+            let formal_el = peel_nominal_alias_identity(n: child_type_node(ch: formal_ch), env: type_env, module_name: module_name)
+            let actual_el = peel_nominal_alias_identity(n: child_type_node(ch: actual_ch), env: type_env, module_name: module_name)
+            nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, source_indices: source_indices)
+          None => false
+        }
+      None => false
+    }
+  } else { false }
+}
+
+fn direct_call_arg_type_mismatch(
+  formal: Node,
+  actual: Node,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    || container_element_nominal_brand_mismatch(
+      formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
 }
 
 fn direct_call_arg_mismatch_diags(
@@ -670,8 +702,8 @@ fn direct_call_arg_mismatch_diags(
         Some { value: ta } =>
           let actual_raw = resolved_type(n: arg_value(n: ta))
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-          if nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
-            || direct_call_set_element_types_mismatch(formal: formal, actual: actual, source_indices: source_indices) {
+          if direct_call_arg_type_mismatch(
+            formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
               got: node_type_shape(n: actual, source_indices: source_indices),
