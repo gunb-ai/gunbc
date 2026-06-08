@@ -12,14 +12,12 @@ import v4.compiler.eval {
 import v4.compiler.infer { InferredTree }
 import v4.lens.affected_set { AffectedSetReading }
 import v4.lens.edit_locus {
-  EditLocusBinding,
-  EditLocusRead,
   GitDiffNameOnly,
-  PathRegex,
   RepoPath,
-  affected_set_reading_from_git_diff
+  affected_set_reading_from_git_diff_provenance
 }
 import v4.std.algebra { fold_list, length }
+import v4.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
@@ -53,14 +51,14 @@ data affected_testgen_graph_edge_symbol: Symbol = affected_testgen_graph_edge_sy
 data affected_testgen_source_dependency_symbol: Symbol = affected_testgen_source_dependency_symbol
 data affected_testgen_generated_input_symbol: Symbol = affected_testgen_generated_input_symbol
 data affected_testgen_source_dependency_edge_symbol: Symbol = affected_testgen_source_dependency_edge_symbol
+data affected_testgen_generated_claim_artifact_id: Symbol = affected_testgen_generated_claim_artifact_id
+data affected_testgen_source_dependency_artifact_id: Symbol = affected_testgen_source_dependency_artifact_id
 data affected_testgen_type_symbol: Symbol = affected_testgen_type_symbol
 data affected_testgen_algebra_symbol: Symbol = affected_testgen_algebra_symbol
 data affected_testgen_descent_symbol: Symbol = affected_testgen_descent_symbol
 data affected_testgen_path_witness_validity: RepoPath = "src/v4/test/claim/generated/witness_validity.dag"
 data affected_testgen_path_source_dependency: RepoPath = "src/v4/test/claim/manual/connective_anchors.dag"
 data affected_testgen_path_unrelated: RepoPath = "src/v4/test/claim/generated/unrelated.dag"
-data affected_testgen_pattern_generated_witness_validity: PathRegex = affected_testgen_pattern_generated_witness_validity
-data affected_testgen_pattern_source_dependency: PathRegex = affected_testgen_pattern_source_dependency
 data affected_testgen_generated_claim_label: String = "witness-validity: constraint-satisfaction holds (positive)"
 
 
@@ -92,30 +90,29 @@ data affected_testgen_graph_root: Node = Node {
 }
 
 
-fn affected_testgen_path_regex_matches(changed: RepoPath, pattern: PathRegex) -> Bool {
-  if pattern == affected_testgen_pattern_generated_witness_validity {
-    changed == affected_testgen_path_witness_validity
-  } else if pattern == affected_testgen_pattern_source_dependency {
-    changed == affected_testgen_path_source_dependency
-  } else {
-    false
-  }
+data affected_testgen_generated_claim_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: affected_testgen_generated_claim_artifact_id,
+  file_path: affected_testgen_path_witness_validity
 }
 
 
-data affected_testgen_edit_read: EditLocusRead = EditLocusRead {
-  path_regex_matches: affected_testgen_path_regex_matches
+data affected_testgen_source_dependency_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: affected_testgen_source_dependency_artifact_id,
+  file_path: affected_testgen_path_source_dependency
 }
 
 
-data affected_testgen_binding: EditLocusBinding = EditLocusBinding {
-  pattern: affected_testgen_pattern_generated_witness_validity,
-  locus: affected_testgen_generated_claim_input
+data affected_testgen_generated_claim_provenance: NodeArtifactProvenance = NodeArtifactProvenance {
+  node: affected_testgen_generated_claim_input,
+  artifact: affected_testgen_generated_claim_artifact
 }
 
-data affected_testgen_dependency_binding: EditLocusBinding = EditLocusBinding {
-  pattern: affected_testgen_pattern_source_dependency,
-  locus: affected_testgen_source_dependency
+
+data affected_testgen_source_dependency_provenance: NodeArtifactProvenance = NodeArtifactProvenance {
+  node: affected_testgen_source_dependency,
+  artifact: affected_testgen_source_dependency_artifact
 }
 
 
@@ -149,11 +146,13 @@ fn affected_testgen_claim_tree() -> InferredTree {
 fn affected_testgen_reading_from_fixture_diff(
   git_diff: GitDiffNameOnly
 ) -> Witness<AffectedSetReading> {
-  affected_set_reading_from_git_diff(
-    edit_read: affected_testgen_edit_read,
+  affected_set_reading_from_git_diff_provenance(
     graph: affected_testgen_claim_tree(),
     git_diff: git_diff,
-    bindings: [affected_testgen_binding, affected_testgen_dependency_binding]
+    provenance: [
+      affected_testgen_generated_claim_provenance,
+      affected_testgen_source_dependency_provenance
+    ]
   )
 }
 
