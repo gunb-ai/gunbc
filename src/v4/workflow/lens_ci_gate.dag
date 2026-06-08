@@ -9,6 +9,11 @@
 // `v4_lens_ci` CI job (`scripts/v4-lens-ci-gate.sh`) text-projects this list and `*_count` to drive
 // its discriminating, perturb-checked witnesses. `.github/workflows/ci.yml` is the direct hand-edited
 // CI authority; this file owns only the lens claim-run roster the gate consumes.
+//
+// Roster discipline: every row below was MEASURED discriminating-green by
+// `scripts/v4-lens-ci-gate.sh --perturb-check` (the witness returns Bool true under
+// `gunbc run --claim-run`, AND fails when its body is perturbed to `false`). Vacuous
+// greens (pass-under-perturb) are NOT wired. Re-measure before adding/removing rows.
 
 module v4.workflow.lens_ci_gate
 
@@ -20,35 +25,630 @@ type LensCiClaimRunRow {
   function: String
 }
 
-data lens_ci_claim_run_row_cost_atom_zero: LensCiClaimRunRow = LensCiClaimRunRow {
-  label: "lens_cost/atom_zero",
+data lens_ci_claim_run_row_affected_set__edit_locus_affected_set_wire_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/edit_locus_affected_set_wire_holds",
+  entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+  function: "edit_locus_affected_set_wire_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__edit_locus_affected_set_wire_fail_closed_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/edit_locus_affected_set_wire_fail_closed_holds",
+  entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+  function: "edit_locus_affected_set_wire_fail_closed_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__fail_closed_pending_escalation_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/fail_closed_pending_escalation_claim_holds",
+  entry: "src/v4/test/claim/lens_affected_set/fail_closed_pending_escalation.dag",
+  function: "fail_closed_pending_escalation_claim_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_boundary_prune_receipt_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_boundary_prune_receipt_claim_holds",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_boundary_prune_receipt.dag",
+  function: "irt1_boundary_prune_receipt_claim_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_empty_diff_frontier_receipt_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_empty_diff_frontier_receipt_claim_holds",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_empty_diff_frontier_receipt_claim_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_affected_set_empty_diff_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_affected_set_empty_diff_claim_holds",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_affected_set_empty_diff_claim_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_affected_set_fails_closed_without_purity_receipt: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_affected_set_fails_closed_without_purity_receipt",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_affected_set_fails_closed_without_purity_receipt"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_affected_set_fails_closed_with_malformed_purity_receipt: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_affected_set_fails_closed_with_malformed_purity_receipt",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_affected_set_fails_closed_with_malformed_purity_receipt"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_affected_set_nonroot_changed_edit_fails_closed_without_dimension_receipt: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_affected_set_nonroot_changed_edit_fails_closed_without_dimension_receipt",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_affected_set_nonroot_changed_edit_fails_closed_without_dimension_receipt"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_affected_set_missing_path_fails_closed: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_affected_set_missing_path_fails_closed",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_affected_set_missing_path_fails_closed"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_nonfrontier_dependency_without_read_receipt_reruns: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_nonfrontier_dependency_without_read_receipt_reruns",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_nonfrontier_dependency_without_read_receipt_reruns"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_nonfrontier_dependency_with_read_receipt_excludes: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_nonfrontier_dependency_with_read_receipt_excludes",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_nonfrontier_dependency_with_read_receipt_excludes"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_public_contains_dependency_with_read_receipt_reruns: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_public_contains_dependency_with_read_receipt_reruns",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag",
+  function: "irt1_public_contains_dependency_with_read_receipt_reruns"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_seed_edit_fold_acc_absorbs_fail_closed: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_seed_edit_fold_acc_absorbs_fail_closed",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_fail_closed_absorption_receipt.dag",
+  function: "irt1_seed_edit_fold_acc_absorbs_fail_closed"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_re_exec_frontier_from_diff_absorbs_after_fail_closed: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_re_exec_frontier_from_diff_absorbs_after_fail_closed",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_fail_closed_absorption_receipt.dag",
+  function: "irt1_re_exec_frontier_from_diff_absorbs_after_fail_closed"
+}
+
+data lens_ci_claim_run_row_affected_set__irt1_fail_closed_absorption_receipt_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/irt1_fail_closed_absorption_receipt_claim_holds",
+  entry: "src/v4/test/claim/lens_affected_set/irt1_fail_closed_absorption_receipt.dag",
+  function: "irt1_fail_closed_absorption_receipt_claim_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__affected_set_node_precision_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/affected_set_node_precision_claim_holds",
+  entry: "src/v4/test/claim/lens_affected_set/node_precision.dag",
+  function: "affected_set_node_precision_claim_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__projection_dep_in_frontier_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/projection_dep_in_frontier_claim_holds",
+  entry: "src/v4/test/claim/lens_affected_set/projection_dep_in_frontier.dag",
+  function: "projection_dep_in_frontier_claim_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__lens_affected_set_irt1_boundary_prune_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/lens_affected_set_irt1_boundary_prune_holds",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_boundary_prune_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__lens_affected_set_irt1_fail_closed_pending_escalation_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/lens_affected_set_irt1_fail_closed_pending_escalation_holds",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_fail_closed_pending_escalation_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__lens_affected_set_irt1_fail_closed_absorption_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/lens_affected_set_irt1_fail_closed_absorption_holds",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_fail_closed_absorption_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__lens_affected_set_irt1_empty_diff_frontier_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/lens_affected_set_irt1_empty_diff_frontier_holds",
+  entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
+  function: "lens_affected_set_irt1_empty_diff_frontier_holds"
+}
+
+data lens_ci_claim_run_row_affected_set__verified_by_in_frontier_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_affected_set/verified_by_in_frontier_claim_holds",
+  entry: "src/v4/test/claim/lens_affected_set/verified_by_in_frontier.dag",
+  function: "verified_by_in_frontier_claim_holds"
+}
+
+data lens_ci_claim_run_row_application__application_subterm_at_empty_path_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/application_subterm_at_empty_path_claim_holds",
+  entry: "src/v4/test/claim/lens_application/application_subterm_at_empty_path.dag",
+  function: "application_subterm_at_empty_path_claim_holds"
+}
+
+data lens_ci_claim_run_row_application__apply_lens_mode_gate_rejects_enforce: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/apply_lens_mode_gate_rejects_enforce",
+  entry: "src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag",
+  function: "apply_lens_mode_gate_rejects_enforce"
+}
+
+data lens_ci_claim_run_row_application__apply_lens_mode_gate_is_advisory_in_introspect: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/apply_lens_mode_gate_is_advisory_in_introspect",
+  entry: "src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag",
+  function: "apply_lens_mode_gate_is_advisory_in_introspect"
+}
+
+data lens_ci_claim_run_row_application__apply_lens_introspect_rejection_is_advisory_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/apply_lens_introspect_rejection_is_advisory_claim_holds",
+  entry: "src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag",
+  function: "apply_lens_introspect_rejection_is_advisory_claim_holds"
+}
+
+data lens_ci_claim_run_row_application__empty_required_lenses_skip_gate_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/empty_required_lenses_skip_gate_claim_holds",
+  entry: "src/v4/test/claim/lens_application/empty_required_lenses_skip_gate.dag",
+  function: "empty_required_lenses_skip_gate_claim_holds"
+}
+
+data lens_ci_claim_run_row_application__enforce_rejecting_gate_fires_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/enforce_rejecting_gate_fires_claim_holds",
+  entry: "src/v4/test/claim/lens_application/enforce_rejecting_gate_fires.dag",
+  function: "enforce_rejecting_gate_fires_claim_holds"
+}
+
+data lens_ci_claim_run_row_application__introspect_clean_tree_passes_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/introspect_clean_tree_passes_claim_holds",
+  entry: "src/v4/test/claim/lens_application/introspect_clean_tree_passes.dag",
+  function: "introspect_clean_tree_passes_claim_holds"
+}
+
+data lens_ci_claim_run_row_application__lens_application_introspect_advisory_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/lens_application_introspect_advisory_holds",
+  entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+  function: "lens_application_introspect_advisory_holds"
+}
+
+data lens_ci_claim_run_row_application__lens_application_synthesis_gap_polynomial_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/lens_application_synthesis_gap_polynomial_holds",
+  entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+  function: "lens_application_synthesis_gap_polynomial_holds"
+}
+
+data lens_ci_claim_run_row_application__substitute_at_ambiguous_duplicate_name_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/substitute_at_ambiguous_duplicate_name_claim_holds",
+  entry: "src/v4/test/claim/lens_application/substitute_at_ambiguous_duplicate_name.dag",
+  function: "substitute_at_ambiguous_duplicate_name_claim_holds"
+}
+
+data lens_ci_claim_run_row_application__substitute_at_ambiguous_duplicate_name_claim_rhs: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/substitute_at_ambiguous_duplicate_name_claim_rhs",
+  entry: "src/v4/test/claim/lens_application/substitute_at_ambiguous_duplicate_name.dag",
+  function: "substitute_at_ambiguous_duplicate_name_claim_rhs"
+}
+
+data lens_ci_claim_run_row_application__substitute_at_depth_three_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/substitute_at_depth_three_claim_holds",
+  entry: "src/v4/test/claim/lens_application/substitute_at_depth_three.dag",
+  function: "substitute_at_depth_three_claim_holds"
+}
+
+data lens_ci_claim_run_row_application__substitute_at_depth_two_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_application/substitute_at_depth_two_claim_holds",
+  entry: "src/v4/test/claim/lens_application/substitute_at_depth_two.dag",
+  function: "substitute_at_depth_two_claim_holds"
+}
+
+data lens_ci_claim_run_row_cost__atom_zero_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/atom_zero_claim_holds",
   entry: "src/v4/test/claim/lens_cost/atom_zero.dag",
   function: "atom_zero_claim_holds"
 }
 
-data lens_ci_claim_run_row_synthesis_polynomial_dominates_linear: LensCiClaimRunRow = LensCiClaimRunRow {
-  label: "lens_synthesis/polynomial_dominates_linear",
-  entry: "src/v4/test/claim/lens_synthesis/polynomial_dominates_linear.dag",
-  function: "polynomial_dominates_linear_claim_holds"
+data lens_ci_claim_run_row_cost__disj_max_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/disj_max_claim_holds",
+  entry: "src/v4/test/claim/lens_cost/disj_max.dag",
+  function: "disj_max_claim_holds"
 }
 
-data lens_ci_claim_run_row_coverage_hollow_type_defect_key: LensCiClaimRunRow = LensCiClaimRunRow {
-  label: "lens_coverage/hollow_type_defect_key",
+data lens_ci_claim_run_row_cost__loop_illegal_named_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/loop_illegal_named_claim_holds",
+  entry: "src/v4/test/claim/lens_cost/loop_illegal_named.dag",
+  function: "loop_illegal_named_claim_holds"
+}
+
+data lens_ci_claim_run_row_cost__loop_linear_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/loop_linear_claim_holds",
+  entry: "src/v4/test/claim/lens_cost/loop_linear.dag",
+  function: "loop_linear_claim_holds"
+}
+
+data lens_ci_claim_run_row_cost__loop_unknown_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/loop_unknown_claim_holds",
+  entry: "src/v4/test/claim/lens_cost/loop_unknown.dag",
+  function: "loop_unknown_claim_holds"
+}
+
+data lens_ci_claim_run_row_cost__map_linear_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/map_linear_claim_holds",
+  entry: "src/v4/test/claim/lens_cost/map_linear.dag",
+  function: "map_linear_claim_holds"
+}
+
+data lens_ci_claim_run_row_cost__nested_product_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/nested_product_claim_holds",
+  entry: "src/v4/test/claim/lens_cost/nested_product.dag",
+  function: "nested_product_claim_holds"
+}
+
+data lens_ci_claim_run_row_cost__p9_registry_fn_names_unique: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/p9_registry_fn_names_unique",
+  entry: "src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag",
+  function: "p9_registry_fn_names_unique"
+}
+
+data lens_ci_claim_run_row_cost__p9_registry_owner_receipt_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_cost/p9_registry_owner_receipt_holds",
+  entry: "src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag",
+  function: "p9_registry_owner_receipt_holds"
+}
+
+data lens_ci_claim_run_row_coverage__discriminant_predicate_defect_key_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_coverage/discriminant_predicate_defect_key_claim_holds",
+  entry: "src/v4/test/claim/lens_coverage/discriminant_predicate_defect_key.dag",
+  function: "discriminant_predicate_defect_key_claim_holds"
+}
+
+data lens_ci_claim_run_row_coverage__hollow_type_defect_key_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_coverage/hollow_type_defect_key_claim_holds",
   entry: "src/v4/test/claim/lens_coverage/hollow_type_defect_key.dag",
   function: "hollow_type_defect_key_claim_holds"
 }
 
-data lens_ci_claim_run_row_structural_resolution_binds_to_resolved: LensCiClaimRunRow = LensCiClaimRunRow {
-  label: "lens_structural_resolution/binds_to_resolved",
+data lens_ci_claim_run_row_coverage__near_miss_vacuous_not_parallel_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_coverage/near_miss_vacuous_not_parallel_claim_holds",
+  entry: "src/v4/test/claim/lens_coverage/near_miss_vacuous_not_parallel.dag",
+  function: "near_miss_vacuous_not_parallel_claim_holds"
+}
+
+data lens_ci_claim_run_row_coverage__parallel_authority_defect_key_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_coverage/parallel_authority_defect_key_claim_holds",
+  entry: "src/v4/test/claim/lens_coverage/parallel_authority_defect_key.dag",
+  function: "parallel_authority_defect_key_claim_holds"
+}
+
+data lens_ci_claim_run_row_coverage__sibling_degenerate_not_hollow_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_coverage/sibling_degenerate_not_hollow_claim_holds",
+  entry: "src/v4/test/claim/lens_coverage/sibling_degenerate_not_hollow.dag",
+  function: "sibling_degenerate_not_hollow_claim_holds"
+}
+
+data lens_ci_claim_run_row_effect__effect_depends_on_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_effect/effect_depends_on_claim_holds",
+  entry: "src/v4/test/claim/lens_effect/effect_depends_on.dag",
+  function: "effect_depends_on_claim_holds"
+}
+
+data lens_ci_claim_run_row_fact_density__computation_not_type_carrier_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_fact_density/computation_not_type_carrier_claim_holds",
+  entry: "src/v4/test/claim/lens_fact_density/computation_not_type_carrier.dag",
+  function: "computation_not_type_carrier_claim_holds"
+}
+
+data lens_ci_claim_run_row_fact_density__conj_positional_only_no_fact_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_fact_density/conj_positional_only_no_fact_claim_holds",
+  entry: "src/v4/test/claim/lens_fact_density/conj_positional_only_no_fact.dag",
+  function: "conj_positional_only_no_fact_claim_holds"
+}
+
+data lens_ci_claim_run_row_fact_density__fact_bundle_compile_lens_passes_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_fact_density/fact_bundle_compile_lens_passes_holds",
+  entry: "src/v4/test/claim/lens_fact_density/fact_bundle_compile_lens_passes.dag",
+  function: "fact_bundle_compile_lens_passes_holds"
+}
+
+data lens_ci_claim_run_row_fact_density__fact_bundle_named_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_fact_density/fact_bundle_named_claim_holds",
+  entry: "src/v4/test/claim/lens_fact_density/fact_bundle_named.dag",
+  function: "fact_bundle_named_claim_holds"
+}
+
+data lens_ci_claim_run_row_fact_density__hollow_alias_blocked_in_run_gates_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_fact_density/hollow_alias_blocked_in_run_gates_holds",
+  entry: "src/v4/test/claim/lens_fact_density/hollow_alias_blocked_in_run_gates.dag",
+  function: "hollow_alias_blocked_in_run_gates_holds"
+}
+
+data lens_ci_claim_run_row_fact_density__hollow_alias_blocked_via_always_required_lenses_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_fact_density/hollow_alias_blocked_via_always_required_lenses_holds",
+  entry: "src/v4/test/claim/lens_fact_density/hollow_alias_blocked_via_always_required_lenses.dag",
+  function: "hollow_alias_blocked_via_always_required_lenses_holds"
+}
+
+data lens_ci_claim_run_row_fact_density__hollow_alias_compile_lens_rejects_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_fact_density/hollow_alias_compile_lens_rejects_holds",
+  entry: "src/v4/test/claim/lens_fact_density/hollow_alias_compile_lens_rejects.dag",
+  function: "hollow_alias_compile_lens_rejects_holds"
+}
+
+data lens_ci_claim_run_row_fact_density__hollow_alias_no_fact_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_fact_density/hollow_alias_no_fact_claim_holds",
+  entry: "src/v4/test/claim/lens_fact_density/hollow_alias_no_fact.dag",
+  function: "hollow_alias_no_fact_claim_holds"
+}
+
+data lens_ci_claim_run_row_fact_density__kernel_ambient_bool_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_fact_density/kernel_ambient_bool_claim_holds",
+  entry: "src/v4/test/claim/lens_fact_density/kernel_ambient_bool.dag",
+  function: "kernel_ambient_bool_claim_holds"
+}
+
+data lens_ci_claim_run_row_idempotency__lens_idempotency_write_effect_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_idempotency/lens_idempotency_write_effect_holds",
+  entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
+  function: "lens_idempotency_write_effect_holds"
+}
+
+data lens_ci_claim_run_row_idempotency__idempotency_write_effect_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_idempotency/idempotency_write_effect_claim_holds",
+  entry: "src/v4/test/claim/lens_idempotency/write_effect.dag",
+  function: "idempotency_write_effect_claim_holds"
+}
+
+data lens_ci_claim_run_row_identical_variant_payload__lens_identical_variant_payload_unrealized_scaffold_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_identical_variant_payload/lens_identical_variant_payload_unrealized_scaffold_holds",
+  entry: "src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag",
+  function: "lens_identical_variant_payload_unrealized_scaffold_holds"
+}
+
+data lens_ci_claim_run_row_ownership__ownership_resource_dependency_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_ownership/ownership_resource_dependency_claim_holds",
+  entry: "src/v4/test/claim/lens_ownership/resource_dependency.dag",
+  function: "ownership_resource_dependency_claim_holds"
+}
+
+data lens_ci_claim_run_row_parallelism__parallelism_data_dependency_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_parallelism/parallelism_data_dependency_claim_holds",
+  entry: "src/v4/test/claim/lens_parallelism/data_dependency.dag",
+  function: "parallelism_data_dependency_claim_holds"
+}
+
+data lens_ci_claim_run_row_registry__lens_registry_required_ids_resolve_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_registry/lens_registry_required_ids_resolve_holds",
+  entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+  function: "lens_registry_required_ids_resolve_holds"
+}
+
+data lens_ci_claim_run_row_registry__lens_registry_singleton_row_counts_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_registry/lens_registry_singleton_row_counts_holds",
+  entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
+  function: "lens_registry_singleton_row_counts_holds"
+}
+
+data lens_ci_claim_run_row_structural_resolution__binds_to_resolved_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_structural_resolution/binds_to_resolved_claim_holds",
   entry: "src/v4/test/claim/lens_structural_resolution/binds_to_resolved.dag",
   function: "binds_to_resolved_claim_holds"
 }
 
+data lens_ci_claim_run_row_structural_resolution__facts_lookup_miss_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_structural_resolution/facts_lookup_miss_claim_holds",
+  entry: "src/v4/test/claim/lens_structural_resolution/facts_lookup_miss.dag",
+  function: "facts_lookup_miss_claim_holds"
+}
+
+data lens_ci_claim_run_row_structural_resolution__module_import_out_of_scope_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_structural_resolution/module_import_out_of_scope_claim_holds",
+  entry: "src/v4/test/claim/lens_structural_resolution/module_import_out_of_scope.dag",
+  function: "module_import_out_of_scope_claim_holds"
+}
+
+data lens_ci_claim_run_row_structural_resolution__unbound_symbol_at_use_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_structural_resolution/unbound_symbol_at_use_claim_holds",
+  entry: "src/v4/test/claim/lens_structural_resolution/unbound_symbol_at_use.dag",
+  function: "unbound_symbol_at_use_claim_holds"
+}
+
+data lens_ci_claim_run_row_structural_resolution__unresolved_infer_witness_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_structural_resolution/unresolved_infer_witness_claim_holds",
+  entry: "src/v4/test/claim/lens_structural_resolution/unresolved_infer_witness.dag",
+  function: "unresolved_infer_witness_claim_holds"
+}
+
+data lens_ci_claim_run_row_synthesis__constant_not_dominated_by_linear_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/constant_not_dominated_by_linear_claim_holds",
+  entry: "src/v4/test/claim/lens_synthesis/constant_not_dominated_by_linear.dag",
+  function: "constant_not_dominated_by_linear_claim_holds"
+}
+
+data lens_ci_claim_run_row_synthesis__exponential_dominates_polynomial_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/exponential_dominates_polynomial_claim_holds",
+  entry: "src/v4/test/claim/lens_synthesis/exponential_dominates_polynomial.dag",
+  function: "exponential_dominates_polynomial_claim_holds"
+}
+
+data lens_ci_claim_run_row_synthesis__factorial_dominates_exponential_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/factorial_dominates_exponential_claim_holds",
+  entry: "src/v4/test/claim/lens_synthesis/factorial_dominates_exponential.dag",
+  function: "factorial_dominates_exponential_claim_holds"
+}
+
+data lens_ci_claim_run_row_synthesis__linear_not_dominated_by_polynomial_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/linear_not_dominated_by_polynomial_claim_holds",
+  entry: "src/v4/test/claim/lens_synthesis/linear_not_dominated_by_polynomial.dag",
+  function: "linear_not_dominated_by_polynomial_claim_holds"
+}
+
+data lens_ci_claim_run_row_synthesis__polynomial_dominates_linear_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/polynomial_dominates_linear_claim_holds",
+  entry: "src/v4/test/claim/lens_synthesis/polynomial_dominates_linear.dag",
+  function: "polynomial_dominates_linear_claim_holds"
+}
+
+data lens_ci_claim_run_row_synthesis__synthesis_gap_it_lens_non_empty: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/synthesis_gap_it_lens_non_empty",
+  entry: "src/v4/test/claim/lens_synthesis/synthesis_gap_information_theoretic.dag",
+  function: "synthesis_gap_it_lens_non_empty"
+}
+
+data lens_ci_claim_run_row_synthesis__synthesis_gap_poly_lens_non_empty: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/synthesis_gap_poly_lens_non_empty",
+  entry: "src/v4/test/claim/lens_synthesis/synthesis_gap_polynomial.dag",
+  function: "synthesis_gap_poly_lens_non_empty"
+}
+
+data lens_ci_claim_run_row_synthesis__synthesis_no_tech_diagnostics_non_empty: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_synthesis/synthesis_no_tech_diagnostics_non_empty",
+  entry: "src/v4/test/claim/lens_synthesis/synthesis_no_technique_diagnostic.dag",
+  function: "synthesis_no_tech_diagnostics_non_empty"
+}
+
+data lens_ci_claim_run_row_testgen__scheduled_language_behavior_generators_cover_dag_inputs: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_testgen/scheduled_language_behavior_generators_cover_dag_inputs",
+  entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
+  function: "scheduled_language_behavior_generators_cover_dag_inputs"
+}
+
+data lens_ci_claim_run_row_testgen__bootstrap_generator_has_conj_dag_input_surface: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_testgen/bootstrap_generator_has_conj_dag_input_surface",
+  entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
+  function: "bootstrap_generator_has_conj_dag_input_surface"
+}
+
+data lens_ci_claim_run_row_testgen__lens_testgen_shadow_ci_run_receipt_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_testgen/lens_testgen_shadow_ci_run_receipt_holds",
+  entry: "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag",
+  function: "lens_testgen_shadow_ci_run_receipt_holds"
+}
+
+data lens_ci_claim_run_row_unused_parameters__unused_parameters_binds_to_edge_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unused_parameters/unused_parameters_binds_to_edge_claim_holds",
+  entry: "src/v4/test/claim/lens_unused_parameters/binds_to_edge.dag",
+  function: "unused_parameters_binds_to_edge_claim_holds"
+}
+
+data lens_ci_claim_run_row_unused_parameters__unused_parameters_non_use_edges_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unused_parameters/unused_parameters_non_use_edges_claim_holds",
+  entry: "src/v4/test/claim/lens_unused_parameters/non_use_edges.dag",
+  function: "unused_parameters_non_use_edges_claim_holds"
+}
+
+data lens_ci_claim_run_row_unused_parameters__unused_parameters_rollup_claim_holds: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "lens_unused_parameters/unused_parameters_rollup_claim_holds",
+  entry: "src/v4/test/claim/lens_unused_parameters/rollup_unused_declaration.dag",
+  function: "unused_parameters_rollup_claim_holds"
+}
+
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
-  lens_ci_claim_run_row_cost_atom_zero,
-  lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
-  lens_ci_claim_run_row_coverage_hollow_type_defect_key,
-  lens_ci_claim_run_row_structural_resolution_binds_to_resolved
+  lens_ci_claim_run_row_affected_set__edit_locus_affected_set_wire_holds,
+  lens_ci_claim_run_row_affected_set__edit_locus_affected_set_wire_fail_closed_holds,
+  lens_ci_claim_run_row_affected_set__fail_closed_pending_escalation_claim_holds,
+  lens_ci_claim_run_row_affected_set__irt1_boundary_prune_receipt_claim_holds,
+  lens_ci_claim_run_row_affected_set__irt1_empty_diff_frontier_receipt_claim_holds,
+  lens_ci_claim_run_row_affected_set__irt1_public_affected_set_empty_diff_claim_holds,
+  lens_ci_claim_run_row_affected_set__irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary,
+  lens_ci_claim_run_row_affected_set__irt1_public_affected_set_fails_closed_without_purity_receipt,
+  lens_ci_claim_run_row_affected_set__irt1_public_affected_set_fails_closed_with_malformed_purity_receipt,
+  lens_ci_claim_run_row_affected_set__irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt,
+  lens_ci_claim_run_row_affected_set__irt1_public_affected_set_nonroot_changed_edit_fails_closed_without_dimension_receipt,
+  lens_ci_claim_run_row_affected_set__irt1_public_affected_set_missing_path_fails_closed,
+  lens_ci_claim_run_row_affected_set__irt1_public_nonfrontier_dependency_without_read_receipt_reruns,
+  lens_ci_claim_run_row_affected_set__irt1_public_nonfrontier_dependency_with_read_receipt_excludes,
+  lens_ci_claim_run_row_affected_set__irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns,
+  lens_ci_claim_run_row_affected_set__irt1_public_contains_dependency_with_read_receipt_reruns,
+  lens_ci_claim_run_row_affected_set__irt1_seed_edit_fold_acc_absorbs_fail_closed,
+  lens_ci_claim_run_row_affected_set__irt1_re_exec_frontier_from_diff_absorbs_after_fail_closed,
+  lens_ci_claim_run_row_affected_set__irt1_fail_closed_absorption_receipt_claim_holds,
+  lens_ci_claim_run_row_affected_set__affected_set_node_precision_claim_holds,
+  lens_ci_claim_run_row_affected_set__projection_dep_in_frontier_claim_holds,
+  lens_ci_claim_run_row_affected_set__lens_affected_set_irt1_boundary_prune_holds,
+  lens_ci_claim_run_row_affected_set__lens_affected_set_irt1_fail_closed_pending_escalation_holds,
+  lens_ci_claim_run_row_affected_set__lens_affected_set_irt1_fail_closed_absorption_holds,
+  lens_ci_claim_run_row_affected_set__lens_affected_set_irt1_empty_diff_frontier_holds,
+  lens_ci_claim_run_row_affected_set__verified_by_in_frontier_claim_holds,
+  lens_ci_claim_run_row_application__application_subterm_at_empty_path_claim_holds,
+  lens_ci_claim_run_row_application__apply_lens_mode_gate_rejects_enforce,
+  lens_ci_claim_run_row_application__apply_lens_mode_gate_is_advisory_in_introspect,
+  lens_ci_claim_run_row_application__apply_lens_introspect_rejection_is_advisory_claim_holds,
+  lens_ci_claim_run_row_application__empty_required_lenses_skip_gate_claim_holds,
+  lens_ci_claim_run_row_application__enforce_rejecting_gate_fires_claim_holds,
+  lens_ci_claim_run_row_application__introspect_clean_tree_passes_claim_holds,
+  lens_ci_claim_run_row_application__lens_application_introspect_advisory_holds,
+  lens_ci_claim_run_row_application__lens_application_synthesis_gap_polynomial_holds,
+  lens_ci_claim_run_row_application__substitute_at_ambiguous_duplicate_name_claim_holds,
+  lens_ci_claim_run_row_application__substitute_at_ambiguous_duplicate_name_claim_rhs,
+  lens_ci_claim_run_row_application__substitute_at_depth_three_claim_holds,
+  lens_ci_claim_run_row_application__substitute_at_depth_two_claim_holds,
+  lens_ci_claim_run_row_cost__atom_zero_claim_holds,
+  lens_ci_claim_run_row_cost__disj_max_claim_holds,
+  lens_ci_claim_run_row_cost__loop_illegal_named_claim_holds,
+  lens_ci_claim_run_row_cost__loop_linear_claim_holds,
+  lens_ci_claim_run_row_cost__loop_unknown_claim_holds,
+  lens_ci_claim_run_row_cost__map_linear_claim_holds,
+  lens_ci_claim_run_row_cost__nested_product_claim_holds,
+  lens_ci_claim_run_row_cost__p9_registry_fn_names_unique,
+  lens_ci_claim_run_row_cost__p9_registry_owner_receipt_holds,
+  lens_ci_claim_run_row_coverage__discriminant_predicate_defect_key_claim_holds,
+  lens_ci_claim_run_row_coverage__hollow_type_defect_key_claim_holds,
+  lens_ci_claim_run_row_coverage__near_miss_vacuous_not_parallel_claim_holds,
+  lens_ci_claim_run_row_coverage__parallel_authority_defect_key_claim_holds,
+  lens_ci_claim_run_row_coverage__sibling_degenerate_not_hollow_claim_holds,
+  lens_ci_claim_run_row_effect__effect_depends_on_claim_holds,
+  lens_ci_claim_run_row_fact_density__computation_not_type_carrier_claim_holds,
+  lens_ci_claim_run_row_fact_density__conj_positional_only_no_fact_claim_holds,
+  lens_ci_claim_run_row_fact_density__fact_bundle_compile_lens_passes_holds,
+  lens_ci_claim_run_row_fact_density__fact_bundle_named_claim_holds,
+  lens_ci_claim_run_row_fact_density__hollow_alias_blocked_in_run_gates_holds,
+  lens_ci_claim_run_row_fact_density__hollow_alias_blocked_via_always_required_lenses_holds,
+  lens_ci_claim_run_row_fact_density__hollow_alias_compile_lens_rejects_holds,
+  lens_ci_claim_run_row_fact_density__hollow_alias_no_fact_claim_holds,
+  lens_ci_claim_run_row_fact_density__kernel_ambient_bool_claim_holds,
+  lens_ci_claim_run_row_idempotency__lens_idempotency_write_effect_holds,
+  lens_ci_claim_run_row_idempotency__idempotency_write_effect_claim_holds,
+  lens_ci_claim_run_row_identical_variant_payload__lens_identical_variant_payload_unrealized_scaffold_holds,
+  lens_ci_claim_run_row_ownership__ownership_resource_dependency_claim_holds,
+  lens_ci_claim_run_row_parallelism__parallelism_data_dependency_claim_holds,
+  lens_ci_claim_run_row_registry__lens_registry_required_ids_resolve_holds,
+  lens_ci_claim_run_row_registry__lens_registry_singleton_row_counts_holds,
+  lens_ci_claim_run_row_structural_resolution__binds_to_resolved_claim_holds,
+  lens_ci_claim_run_row_structural_resolution__facts_lookup_miss_claim_holds,
+  lens_ci_claim_run_row_structural_resolution__module_import_out_of_scope_claim_holds,
+  lens_ci_claim_run_row_structural_resolution__unbound_symbol_at_use_claim_holds,
+  lens_ci_claim_run_row_structural_resolution__unresolved_infer_witness_claim_holds,
+  lens_ci_claim_run_row_synthesis__constant_not_dominated_by_linear_claim_holds,
+  lens_ci_claim_run_row_synthesis__exponential_dominates_polynomial_claim_holds,
+  lens_ci_claim_run_row_synthesis__factorial_dominates_exponential_claim_holds,
+  lens_ci_claim_run_row_synthesis__linear_not_dominated_by_polynomial_claim_holds,
+  lens_ci_claim_run_row_synthesis__polynomial_dominates_linear_claim_holds,
+  lens_ci_claim_run_row_synthesis__synthesis_gap_it_lens_non_empty,
+  lens_ci_claim_run_row_synthesis__synthesis_gap_poly_lens_non_empty,
+  lens_ci_claim_run_row_synthesis__synthesis_no_tech_diagnostics_non_empty,
+  lens_ci_claim_run_row_testgen__scheduled_language_behavior_generators_cover_dag_inputs,
+  lens_ci_claim_run_row_testgen__bootstrap_generator_has_conj_dag_input_surface,
+  lens_ci_claim_run_row_testgen__lens_testgen_shadow_ci_run_receipt_holds,
+  lens_ci_claim_run_row_unused_parameters__unused_parameters_binds_to_edge_claim_holds,
+  lens_ci_claim_run_row_unused_parameters__unused_parameters_non_use_edges_claim_holds,
+  lens_ci_claim_run_row_unused_parameters__unused_parameters_rollup_claim_holds
 ]
 
-data lens_ci_claim_run_row_count: String = "4"
+data lens_ci_claim_run_row_count: String = "89"
