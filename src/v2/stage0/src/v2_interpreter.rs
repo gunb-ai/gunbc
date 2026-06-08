@@ -2165,8 +2165,15 @@ fn eval_algebra_method(
         // (ctrl#1476 B1; same Str-representation rule as `concat`).
         "contains" | "has" => match &receiver {
             Value::Map(m) => {
-                let key = args.first().cloned().unwrap_or(Value::Null);
-                match CanonKey::new(key) {
+                // Keep the one-argument diagnostic boundary (P3): a missing key argument is
+                // a typed error, not a silently-coerced `Null` membership probe. Arity is
+                // validated FIRST, then the provided key is canonicalized. The key may be
+                // any value; an un-keyable key (closure/fn/NaN) cannot be a member of a map
+                // (insert rejects it), so it soundly answers false rather than fabricating.
+                let key = args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "contains requires a key argument".to_string(),
+                })?;
+                match CanonKey::new(key.clone()) {
                     Some(ck) => Ok(Value::Bool(m.contains_key(&ck))),
                     None => Ok(Value::Bool(false)),
                 }
