@@ -1019,6 +1019,16 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         }
     }
 
+    if std::env::var("BWREN_DEBUG").is_ok() {
+        let pats: Vec<String> = arms
+            .iter()
+            .map(|a| format!("{:?}", arm_pattern(a.clone())))
+            .collect();
+        eprintln!(
+            "BWREN match fall-through on {:?}; arms: {:#?}",
+            scrutinee_val, pats
+        );
+    }
     Err(InterpError::PatternMatchFailure {
         value: format!("{}", scrutinee_val),
     })
