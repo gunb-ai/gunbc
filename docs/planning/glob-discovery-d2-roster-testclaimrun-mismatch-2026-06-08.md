@@ -13,13 +13,16 @@ disjoint *kinds*.
 | side | kind | count |
 |------|------|------:|
 | `v4_roster_pilot` run-roster | `fn() -> Bool` witness functions (run via `gunbc run --claim-run`) | **38** rows |
-| discovered `TestClaimRun` | `data x: TestClaimRun<..> = ..` declarations | **97** decls / 28 files (grep proxy) |
-| discovered `TestClaim` | `data x: TestClaim = <Variant>Claim { .. }` declarations | **547** decls (grep proxy) |
+| discovered `TestClaimRun` | `data x: TestClaimRun<..> = ..` declarations | **95** decls / 26 files |
+| discovered `TestClaim` | `data x: TestClaim = <Variant>Claim { .. }` declarations | **540** decls |
 | roster ∩ TestClaimRun decl-names | — | **0** |
 
-(Resolved-type census figures from the executable probe are in
-`src/v2/tests/src/glob_discovery_testclaim_census_test.rs`; grep proxies above agree with it
-and are quoted here for the reader who has no built tree.)
+All four figures are **resolved-type measurements** produced by the executable probe
+`src/v2/tests/src/glob_discovery_testclaim_census_test.rs` (one `compile_to_resolved` over
+the whole `src/v4` corpus, walking the resolved typed-module items; census restricted to
+`src/v4/test/claim/`). Raw `grep` over `src/v4/test` reports ~97/547 — slightly higher
+because it also counts type-def lines and decls in `src/v4/test` paths outside the
+`claim/` census scope; the resolved-type figures above are authoritative.
 
 This is an **architectural fork**, not a bug to patch:
 
@@ -27,12 +30,12 @@ This is an **architectural fork**, not a bug to patch:
   `scripts/v4-testclaim-smoke-roster.sh`. (The file restates each row twice: a
   `V4RosterPilotClaimRunRow { .. }` data literal **and** a `v4_roster_pilot_row_matches(..)`
   composition-guard call — 76 entry/function text pairs, 38 distinct rows.)
-* **System B** = the `TestClaimRun` / `TestClaim` *data-decl* corpus (97 + 547), evaluated by
+* **System B** = the `TestClaimRun` / `TestClaim` *data-decl* corpus (95 + 540), evaluated by
   `run_test_claim*` and folded by `workflow/testclaim_corpus_runner.dag` over
   `manual_corpus_node_subject_rows`.
 
 Discovering by resolved type `== TestClaimRun` recovers **none** of System A's witnesses;
-discovering by resolved type `== TestClaim(Run)` finds 97/547 data decls System A never lists.
+discovering by resolved type `== TestClaim(Run)` finds 95/540 data decls System A never lists.
 
 ## Why D2 cannot be satisfied as written
 
@@ -108,8 +111,9 @@ The other 35 rows (lens `sg_claims`, `extdeps_react/structural_receipts`, `std_t
 * `docs/planning/glob-discovery-d2-roster-testclaimrun-mismatch-2026-06-08.md` — this report.
 * `src/v2/tests/src/glob_discovery_testclaim_census_test.rs` — the executable census/probe:
   discovers `TestClaim`/`TestClaimRun` by resolved type across `src/v4/test/claim/**`
-  (real `compile_to_resolved` per file closure), pins the empty roster∩TestClaimRun
-  intersection, and prints the rename-vs-wrap mapping. Standalone `#[test]` (dormant in CI by
+  (one real `compile_to_resolved` over the whole `src/v4` corpus, ~130s), pins the empty
+  roster∩TestClaimRun intersection, and prints the rename-vs-wrap mapping. Standalone
+  `#[test]` (dormant in CI by
   design — see [[project_v2_tests_not_run_broadly_in_ci]]); run with
   `cargo test -p v2-compiler-tests glob_discovery_testclaim_census -- --nocapture`.
 
