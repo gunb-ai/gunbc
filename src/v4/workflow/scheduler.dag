@@ -5,7 +5,7 @@
 
 module v4.workflow.scheduler
 
-import v4.std.collection { Absent, List, Optional, Present }
+import v4.std.collection { List }
 import v4.std.algebra {
   contains,
   filter,
@@ -39,6 +39,10 @@ type SchedulerPlan
   | SchedulerPlanBlocked {
       evidence: SchedulerBlockedEvidence
     }
+
+type SchedulerFirstReadinessLayer
+  = SchedulerFirstReadinessLayerMissing
+  | SchedulerFirstReadinessLayerFound { layer: ReadinessLayer }
 
 fn scheduler_dependency_orders_execution(dependency: DependencyView) -> Bool {
   match dependency.kind {
@@ -162,19 +166,19 @@ fn scheduler_plan_from_dependencies(
   }
 }
 
-fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> Optional<ReadinessLayer> {
-  fold(layers, init: Absent, f: fn(acc, layer) {
+fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> SchedulerFirstReadinessLayer {
+  fold(layers, init: SchedulerFirstReadinessLayerMissing, f: fn(acc, layer) {
     match acc {
-      Present { value: _ } => acc
-      Absent => Present { value: layer }
+      SchedulerFirstReadinessLayerFound { layer: _ } => acc
+      SchedulerFirstReadinessLayerMissing => SchedulerFirstReadinessLayerFound { layer: layer }
     }
   })
 }
 
 fn runnable_frontier_from_layers(layers: List<ReadinessLayer>) -> RunnableFrontier {
   match scheduler_first_readiness_layer(layers: layers) {
-    Present { value: layer } => RunnableFrontier { ready: layer.ready }
-    Absent => RunnableFrontier { ready: [] }
+    SchedulerFirstReadinessLayerFound { layer: layer } => RunnableFrontier { ready: layer.ready }
+    SchedulerFirstReadinessLayerMissing => RunnableFrontier { ready: [] }
   }
 }
 
