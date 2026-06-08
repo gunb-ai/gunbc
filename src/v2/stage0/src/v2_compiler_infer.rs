@@ -1008,8 +1008,8 @@ pub fn type_node_is_callable(n: Rc<Node>) -> bool {
 }
 
 pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
-    ((v2_rt::string_length(&module_name) >= 13)
-        && (v2_rt::substring(&module_name, 0, 13).as_str() == "v2.compiler.".to_string().as_str()))
+    (module_name.len() >= 3 && &module_name[..3] == "v4.")
+        || (module_name.len() >= 13 && &module_name[..13] == "v2.compiler.")
 }
 
 pub fn nominal_call_arg_brand_mismatch(
