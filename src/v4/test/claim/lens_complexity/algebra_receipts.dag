@@ -108,5 +108,5 @@ fn variable_sensitive_dominance_actual() -> Bool {
   complexity_bound_dominates(
     a: variable_sensitive_dominance_claim.lhs,
     b: variable_sensitive_dominance_claim.rhs
-  )
+  ) == variable_sensitive_dominance_claim.expected_dominates
 }

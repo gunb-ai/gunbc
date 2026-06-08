@@ -104,6 +104,20 @@ data v4_roster_pilot_row_sg_rc_f6_owned: V4RosterPilotClaimRunRow = V4RosterPilo
   function: "sg_rc_f6_round_trip_owned"
 }
 
+// T3 Phase A (ctrl#1489) — SG-2 green-on-current claim-run witnesses only (mutation-proven).
+// instantiation/conj/sum witnesses stay in sg2_type_expression_projection.dag for Phase B (not rostered while red).
+data v4_roster_pilot_row_sg2_arrow: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "sg2 type-expr Arrow projects (X) -> Y",
+  entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+  function: "witness_sg2_arrow_holds"
+}
+
+data v4_roster_pilot_row_sg2_projection_falsification: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "sg2 type-expr projection falsification fail-closed",
+  entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+  function: "witness_sg2_projection_falsification_holds"
+}
+
 // Exemplar E1: v4.std.text smoke→witness migration (fold-delete W1). Discriminating
 // claim-run witnesses (mutation-proven red-under-mutation) carry the behavioral content
 // of the now-retired v4_std_text_dag_smoke_test.rs parse-surface greps; that .rs and its
@@ -215,8 +229,8 @@ data v4_roster_pilot_row_mvp1_typescript_emit_add_fn: V4RosterPilotClaimRunRow =
 // Wave-A W1: v4.extdeps.coordination smoke→witness (iii) A-fold-delete. Discriminating
 // claim-run witnesses (mutation-proven red-under-mutation) carry the executable
 // WIRECONTRACT-OBLIGATION-TABLE-T4.8 content of the obligation-table assertions removed from
-// v4_extdeps_coordination_dag_smoke_test.rs in the same PR. The remaining smoke receipts
-// (record-field shapes, shared-discriminant) are B and stay host-AST per the row's split.
+// v4_extdeps_coordination_dag_smoke_test.rs in the same PR. B-class decl-shape receipts
+// from that smoke were deleted per the white-box sweep (not migrated).
 data v4_roster_pilot_row_coordination_obligation_exchange: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "coordination obligation table exchange arm-sharp",
   entry: "src/v4/test/claim/extdeps/coordination_claims.dag",
@@ -248,6 +262,36 @@ data v4_roster_pilot_row_map_lookup_miss_witness_violates: V4RosterPilotClaimRun
   label: "native-map miss presents as Witness Violates (Null bridge)",
   entry: "src/v4/test/claim/manual/map_lookup_miss_witness_violates.dag",
   function: "map_lookup_miss_violates_and_hit_holds"
+}
+
+// Structural-key Map== is extensional set equality (decidable): a non-String-key map
+// equals itself and equals an independently-built map with the same key→latest-value
+// mapping, while distinct keys / values stay unequal. Carries the closure-form
+// Map==-always-false bug fix (native maps keyed by the Value-equality authority);
+// reverting it turns the struct_key_self_eq arm red.
+data v4_roster_pilot_row_map_structural_key_equality: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "structural-key Map== is extensional set equality",
+  entry: "src/v4/test/claim/manual/map_structural_key_equality.dag",
+  function: "map_structural_key_equality_holds"
+}
+
+// DERIVABLE-COERCION gap-proof acceptance test (nickname-triple CRUX matrix).
+data v4_roster_pilot_row_derivable_coercion_crux_substrate_gap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "derivable_coercion CRUX substrate gap (no faithful sibling rule)",
+  entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+  function: "witness_crux_substrate_gap"
+}
+
+data v4_roster_pilot_row_derivable_coercion_surfaces_distinct: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "derivable_coercion executing claim distinct surfaces",
+  entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+  function: "witness_claim_task_id_surfaces_distinct"
+}
+
+data v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "derivable_coercion executing claim CRUX substrate gap",
+  entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+  function: "witness_claim_crux_substrate_gap"
 }
 
 // Wave-A W2: lens smoke→witness fold-delete (application, idempotency, identical_variant,
@@ -329,6 +373,8 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_discriminant_intrinsic,
   v4_roster_pilot_row_caret_sigil_surface,
   v4_roster_pilot_row_sg_rc_f6_owned,
+  v4_roster_pilot_row_sg2_arrow,
+  v4_roster_pilot_row_sg2_projection_falsification,
   v4_roster_pilot_row_std_text_freemonoid_carrier,
   v4_roster_pilot_row_std_text_roundtrip,
   v4_roster_pilot_row_std_text_empty_roundtrip,
@@ -358,11 +404,15 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_lens_affected_set_irt1_empty_diff,
   v4_roster_pilot_row_lens_registry_required_ids_resolve,
   v4_roster_pilot_row_lens_registry_singleton_row_counts,
-  v4_roster_pilot_row_map_lookup_miss_witness_violates
+  v4_roster_pilot_row_map_lookup_miss_witness_violates,
+  v4_roster_pilot_row_map_structural_key_equality,
+  v4_roster_pilot_row_derivable_coercion_crux_substrate_gap,
+  v4_roster_pilot_row_derivable_coercion_surfaces_distinct,
+  v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "42"
+data v4_roster_pilot_claim_run_row_count: String = "49"
 
 
 fn v4_roster_pilot_row_matches(
@@ -399,6 +449,8 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_discriminant_intrinsic)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_caret_sigil_surface)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg_rc_f6_owned)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg2_arrow)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg2_projection_falsification)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_freemonoid_carrier)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_roundtrip)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_empty_roundtrip)
@@ -429,12 +481,16 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_required_ids_resolve)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_singleton_row_counts)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_map_lookup_miss_witness_violates)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_map_structural_key_equality)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_crux_substrate_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_surfaces_distinct)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 42)
-    && (v4_roster_pilot_claim_run_row_count == "42")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 49)
+    && (v4_roster_pilot_claim_run_row_count == "49")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -500,6 +556,16 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_sg_rc_f6_owned,
       entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
       function: "sg_rc_f6_round_trip_owned"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_sg2_arrow,
+      entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+      function: "witness_sg2_arrow_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_sg2_projection_falsification,
+      entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+      function: "witness_sg2_projection_falsification_holds"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_std_text_freemonoid_carrier,
@@ -650,6 +716,26 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_map_lookup_miss_witness_violates,
       entry: "src/v4/test/claim/manual/map_lookup_miss_witness_violates.dag",
       function: "map_lookup_miss_violates_and_hit_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_map_structural_key_equality,
+      entry: "src/v4/test/claim/manual/map_structural_key_equality.dag",
+      function: "map_structural_key_equality_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_derivable_coercion_crux_substrate_gap,
+      entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+      function: "witness_crux_substrate_gap"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_derivable_coercion_surfaces_distinct,
+      entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+      function: "witness_claim_task_id_surfaces_distinct"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap,
+      entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+      function: "witness_claim_crux_substrate_gap"
     )
 }
 
