@@ -30,12 +30,57 @@ if [[ ! -x "$bin" ]]; then
   exit 2
 fi
 
-rows=(
-  "lens_cost atom_zero src/v4/test/claim/lens_cost/atom_zero.dag atom_zero_claim_holds"
-  "lens_synthesis polynomial_dominates_linear src/v4/test/claim/lens_synthesis/polynomial_dominates_linear.dag polynomial_dominates_linear_claim_holds"
-  "lens_coverage hollow_type_defect_key src/v4/test/claim/lens_coverage/hollow_type_defect_key.dag hollow_type_defect_key_claim_holds"
-  "lens_structural_resolution binds_to_resolved src/v4/test/claim/lens_structural_resolution/binds_to_resolved.dag binds_to_resolved_claim_holds"
-)
+ci_model="src/v4/workflow/ci.dag"
+
+dag_string_data() {
+  local name="$1"
+  grep -E "^data ${name}: String = \"" "$root/$ci_model" \
+    | sed -n "s/^data ${name}: String = \"\\(.*\\)\"/\\1/p" \
+    | head -1
+}
+
+# List member names from `lens_ci_claim_run_rows` authority in ci.dag.
+list_claim_run_row_members() {
+  awk '
+    /data lens_ci_claim_run_rows:/ { in_list = 1; next }
+    in_list && /^\]/ { in_list = 0 }
+    in_list && /^  lens_ci_claim_run_row_/ {
+      gsub(/^  /, "")
+      gsub(/,.*/, "")
+      print
+    }
+  ' "$root/$ci_model"
+}
+
+# Project one list member binding:
+# `data <name>: LensCiClaimRunRow = LensCiClaimRunRow { ... }`.
+project_list_member_row() {
+  local name="$1"
+  awk -v n="$name" '
+    $0 ~ "^data " n ": LensCiClaimRunRow" { in_row = 1; label = ""; entry = ""; fn = "" }
+    in_row && /label: "/ {
+      sub(/.*label: "/, "")
+      sub(/".*/, "")
+      label = $0
+    }
+    in_row && /entry: "/ {
+      sub(/.*entry: "/, "")
+      sub(/".*/, "")
+      entry = $0
+    }
+    in_row && /function: "/ {
+      sub(/.*function: "/, "")
+      sub(/".*/, "")
+      fn = $0
+    }
+    in_row && /\}/ {
+      if (label != "" && entry != "" && fn != "") {
+        print label "\t" entry "\t" fn
+      }
+      in_row = 0
+    }
+  ' "$root/$ci_model"
+}
 
 run_row() {
   local source_root="$1" entry="$2" function="$3"
@@ -75,9 +120,22 @@ path.write_text(text[:brace] + "{\n  false\n}" + text[end:], encoding="utf-8")
 PY
 }
 
-for row in "${rows[@]}"; do
-  read -r family label entry function <<<"$row"
-  echo "::group::v4 lens CI: ${family}/${label}"
+expected_count="$(dag_string_data lens_ci_claim_run_row_count)"
+if [[ -z "$expected_count" ]]; then
+  echo "error: missing lens_ci_claim_run_row_count in $ci_model" >&2
+  exit 2
+fi
+
+row_count=0
+while IFS= read -r member; do
+  [[ -z "$member" ]] && continue
+  row="$(project_list_member_row "$member")"
+  if [[ -z "$row" ]]; then
+    echo "error: list member $member missing LensCiClaimRunRow binding in $ci_model" >&2
+    exit 2
+  fi
+  IFS=$'\t' read -r label entry function <<< "$row"
+  echo "::group::v4 lens CI: ${label}"
   run_row "src/v4" "$entry" "$function"
   echo "::endgroup::"
 
@@ -88,15 +146,26 @@ for row in "${rows[@]}"; do
     cp -a src/v4 "$tmp/src"
     perturbed_entry="$tmp/src/${entry#src/v4/}"
     perturb_function_to_false "$perturbed_entry" "$function"
-    echo "::group::v4 lens CI perturb: ${family}/${label}"
+    echo "::group::v4 lens CI perturb: ${label}"
     if run_row "$tmp/src" "$perturbed_entry" "$function"; then
-      echo "::error::perturbed witness still passed: ${family}/${label}"
+      echo "::error::perturbed witness still passed: ${label}"
       exit 1
     fi
     echo "::endgroup::"
     rm -rf "$tmp"
     trap - EXIT
   fi
-done
+  row_count=$((row_count + 1))
+done < <(list_claim_run_row_members)
 
-echo "::notice title=v4 lens CI::${#rows[@]} discriminating lens witness(es) passed"
+if [[ "$row_count" -eq 0 ]]; then
+  echo "error: lens_ci_claim_run_rows has no members in $ci_model" >&2
+  exit 2
+fi
+
+if [[ "$row_count" -ne "$expected_count" ]]; then
+  echo "error: lens CI transport projected ${row_count} rows; modeled count is ${expected_count}" >&2
+  exit 2
+fi
+
+echo "::notice title=v4 lens CI::${row_count} discriminating lens witness(es) passed"
