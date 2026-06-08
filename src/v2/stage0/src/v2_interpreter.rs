@@ -1268,6 +1268,27 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
+                    // Symmetric Witness projection: a *present* coproduct value bridges to
+                    // `Holds { value: <self> }`. A native `Value::Map` lookup returns the raw
+                    // stored value, and a `-> Witness`-annotated `.lookup` consumer (e.g.
+                    // parse_table_lookup / lookup_table) matches `Holds`/`Violates`, so a
+                    // present coproduct value must satisfy the `Holds` arm. Same absent-arm
+                    // exclusions (`Violates`/`None`/`none` stay absent → the `Violates` arm);
+                    // a genuine `Holds` is handled by nominal matching below.
+                    if name == "Holds"
+                        && variant_name != "Holds"
+                        && variant_name != "Violates"
+                        && variant_name != "None"
+                        && variant_name != "none"
+                    {
+                        let mut bindings = HashMap::new();
+                        for fb in field_bindings.iter() {
+                            let fb_pat = field_binding_pattern(fb.clone());
+                            let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                            bindings.extend(sub_bindings);
+                        }
+                        return Some(bindings);
+                    }
                     if variant_name != name {
                         return None;
                     }
@@ -1443,6 +1464,22 @@ fn match_pattern(
                 // Match on Option: Some { value: x } pattern
                 Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
                 _ if name == "Some" => {
+                    if matches!(value, Value::Null) {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                // Symmetric to the `Some` bridge above, for a `-> Witness` match: a present
+                // non-Variant value (e.g. a native-map `Int` lookup hit) bridges to
+                // `Holds { value: <self> }`. `Null` (a miss) does not match `Holds` — it
+                // falls through to the `Null → Violates` bridge above.
+                _ if name == "Holds" => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
