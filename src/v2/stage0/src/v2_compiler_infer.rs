@@ -1004,8 +1004,14 @@ pub fn set_element_types_mismatch(
 }
 
 pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
-    (module_name.len() >= 3 && &module_name[..3] == "v4.")
-        || (module_name.len() >= 13 && &module_name[..13] == "v2.compiler.")
+    {
+        let is_v4 = ((v2_rt::string_length(&module_name) >= 3)
+            && (v2_rt::substring(&module_name, 0, 3).as_str() == "v4.".to_string().as_str()));
+        let is_compiler_substrate = ((v2_rt::string_length(&module_name) >= 13)
+            && (v2_rt::substring(&module_name, 0, 13).as_str()
+                == "v2.compiler.".to_string().as_str()));
+        (is_v4 || is_compiler_substrate)
+    }
 }
 
 pub fn nominal_call_arg_brand_mismatch(
@@ -1013,17 +1019,21 @@ pub fn nominal_call_arg_brand_mismatch(
     actual: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let formal_name = authored_name_at(source_indices.clone(), formal.clone());
-    let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-    formal.connective.clone() != Connective::Arrow
-        && actual.connective.clone() != Connective::Arrow
-        && formal_name.as_str() != ""
-        && actual_name.as_str() != ""
-        && formal_name.as_str() != actual_name.as_str()
-        && structural_carrier_template_name(formal.clone(), source_indices.clone()).as_str()
-            == structural_carrier_template_name(actual.clone(), source_indices.clone()).as_str()
-        && !is_declared_container_alias_spelling(formal_name.clone())
-        && !is_declared_container_alias_spelling(actual_name.clone())
+    {
+        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
+        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+        ((((((((formal.connective.clone() != Connective::Arrow)
+            && (actual.connective.clone() != Connective::Arrow))
+            && (formal_name.clone().as_str() != "".to_string().as_str()))
+            && (actual_name.clone().as_str() != "".to_string().as_str()))
+            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
+            && (structural_carrier_template_name(formal.clone(), source_indices.clone())
+                .as_str()
+                == structural_carrier_template_name(actual.clone(), source_indices.clone())
+                    .as_str()))
+            && !is_declared_container_alias_spelling(formal_name.clone()))
+            && !is_declared_container_alias_spelling(actual_name.clone()))
+    }
 }
 
 pub fn container_element_nominal_brand_mismatch(
@@ -1069,14 +1079,14 @@ pub fn direct_call_arg_type_mismatch(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
+    (nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
         || container_element_nominal_brand_mismatch(
             formal.clone(),
             actual.clone(),
             type_env,
             module_name,
             source_indices.clone(),
-        )
+        ))
 }
 
 pub fn direct_call_arg_mismatch_diags(
@@ -12432,7 +12442,7 @@ pub fn topo_resolve_types(
                                 let result =
                                     resolve_node(pre.clone(), env.clone(), module_name.clone());
                                 let resolved = preserve_nominal_brand_on_resolve(
-                                    pre,
+                                    pre.clone(),
                                     result.resolved.clone(),
                                     binding.name.clone(),
                                     env.source_indices.clone(),
@@ -12443,7 +12453,7 @@ pub fn topo_resolve_types(
                                         ident.clone(),
                                         Rc::new(TypeBinding {
                                             name: name.clone(),
-                                            resolved: resolved,
+                                            resolved: resolved.clone(),
                                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                                         }),
                                     ),
@@ -12485,7 +12495,7 @@ pub fn topo_resolve_types(
                         let pre = binding.resolved.clone();
                         let result = resolve_node(pre.clone(), env.clone(), module_name.clone());
                         let resolved = preserve_nominal_brand_on_resolve(
-                            pre,
+                            pre.clone(),
                             result.resolved.clone(),
                             binding.name.clone(),
                             env.source_indices.clone(),
@@ -12496,7 +12506,7 @@ pub fn topo_resolve_types(
                                 ident.clone(),
                                 Rc::new(TypeBinding {
                                     name: name.clone(),
-                                    resolved: resolved,
+                                    resolved: resolved.clone(),
                                     provenance: Rc::new(SubValueRelation::SubValueUnknown),
                                 }),
                             ),

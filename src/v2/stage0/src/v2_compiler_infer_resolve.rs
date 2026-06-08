@@ -87,68 +87,82 @@ pub fn preserve_nominal_brand_on_resolve(
     brand_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if brand_name.as_str() != ""
-        && brand_name.as_str()
-            != authored_name_at(source_indices.clone(), structural.clone()).as_str()
-        && !is_declared_container_alias_spelling(brand_name.clone())
+    if (((brand_name.clone().as_str() != "".to_string().as_str())
+        && (brand_name.clone().as_str()
+            != authored_name_at(source_indices, structural.clone()).as_str()))
+        && !is_declared_container_alias_spelling(brand_name.clone()))
     {
-        with_authored_identity(identity, structural)
+        with_authored_identity(identity, structural.clone())
     } else {
-        structural
+        structural.clone()
     }
 }
 
 pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
-    let source_indices = env.source_indices.clone();
-    let brand = authored_name_at(source_indices.clone(), n.clone());
-    match lookup_type_for(env.clone(), n.clone()) {
-        Some(resolved) => {
-            let structural = if (((resolved.connective.clone() == Connective::NoConnective)
-                && ((resolved.children.clone().len() as i64) == 0))
-                && (resolved.inferred.clone() != None))
-            {
-                match resolved.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: target, .. }) => {
-                        resolve_node_bounded(target.clone(), env.clone(), module_name.clone(), 0)
-                            .resolved
-                            .clone()
+    {
+        let source_indices = env.source_indices.clone();
+        let brand = authored_name_at(source_indices.clone(), n.clone());
+        match lookup_type_for(env.clone(), n.clone()) {
+            Some(resolved) => {
+                let structural = if (((resolved.connective.clone() == Connective::NoConnective)
+                    && ((resolved.children.clone().len() as i64) == 0))
+                    && (resolved.inferred.clone() != None))
+                {
+                    match resolved.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => resolve_node_bounded(
+                            target.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                            0,
+                        )
+                        .resolved
+                        .clone(),
+                        _ => resolve_node_bounded(
+                            resolved.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                            0,
+                        )
+                        .resolved
+                        .clone(),
                     }
-                    _ => {
-                        resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
-                            .resolved
-                            .clone()
-                    }
-                }
-            } else {
-                resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
-                    .resolved
-                    .clone()
-            };
-            if brand.as_str() != ""
-                && brand.as_str()
-                    != authored_name_at(source_indices.clone(), structural.clone()).as_str()
-                && !is_declared_container_alias_spelling(brand.clone())
-            {
-                with_authored_identity(n.clone(), structural)
-            } else if (((resolved.connective.clone() == Connective::NoConnective)
-                && ((resolved.children.clone().len() as i64) == 0))
-                && (resolved.inferred.clone() != None))
-            {
-                match resolved.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: target, .. }) => {
-                        let target_resolved =
-                            resolve_node_bounded(target.clone(), env.clone(), module_name, 0)
+                } else {
+                    resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
+                        .resolved
+                        .clone()
+                };
+                if (((brand.clone().as_str() != "".to_string().as_str())
+                    && (brand.clone().as_str()
+                        != authored_name_at(source_indices.clone(), structural.clone()).as_str()))
+                    && !is_declared_container_alias_spelling(brand.clone()))
+                {
+                    with_authored_identity(n.clone(), structural.clone())
+                } else {
+                    if (((resolved.connective.clone() == Connective::NoConnective)
+                        && ((resolved.children.clone().len() as i64) == 0))
+                        && (resolved.inferred.clone() != None))
+                    {
+                        match resolved.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: target, .. }) => {
+                                let target_resolved = resolve_node_bounded(
+                                    target.clone(),
+                                    env.clone(),
+                                    module_name.clone(),
+                                    0,
+                                )
                                 .resolved
                                 .clone();
-                        with_authored_identity(n.clone(), target_resolved)
+                                with_authored_identity(n.clone(), target_resolved)
+                            }
+                            _ => resolved.clone(),
+                        }
+                    } else {
+                        resolved.clone()
                     }
-                    _ => resolved.clone(),
                 }
-            } else {
-                resolved.clone()
             }
+            None => n.clone(),
         }
-        None => n.clone(),
     }
 }
 
