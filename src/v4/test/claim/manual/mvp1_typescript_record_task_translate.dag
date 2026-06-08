@@ -174,6 +174,17 @@ data mvp1_ts_task_emit_receipt: Outcome<TargetSource> = anchor_mvp1_ts_task_emit
 
 data mvp1_ts_task_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_ts_task_compile_inferred_accepts()
 
+// T2 keystone execution witness — emit must produce the canonical Task type_alias source
+// `type Task = { id: TaskId, title: string, status: TaskStatus };` through the wave2a
+// derive grammar-relation row (NOT a hand-baked concrete-token list). Roster row consumer.
+fn mvp1_ts_task_emit_type_alias_accepts_holds() -> Bool {
+  match mvp1_ts_task_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      (source == ts_task_type_alias_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn mvp1_ts_task_emit_claim_outcome() -> Outcome<Node> {
   match mvp1_ts_task_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
