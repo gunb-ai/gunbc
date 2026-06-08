@@ -88,8 +88,8 @@ pub use crate::v2_compiler_infer_sigs::resolve_func_sigs;
 pub use crate::v2_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::KernelTypeBuild;
 pub use crate::v2_compiler_infer_types::{
-    bare_map_node, bare_set_node, callable_inferred, canonical_template_name, child_type_node,
-    emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
+    bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
+    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
     make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
@@ -1003,13 +1003,32 @@ pub fn set_element_types_mismatch(
 }
 
 pub fn type_node_is_callable(n: Rc<Node>) -> bool {
-    (n.params.clone().len() as i64) > 0
+    ((n.params.clone().len() as i64) > 0)
+}
+
+pub fn direct_call_set_element_types_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
+        false
+    } else {
+        set_element_types_mismatch(formal.clone(), actual.clone(), source_indices)
+    }
 }
 
 pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
-    (module_name.len() >= 3 && &module_name[..3] == "v4.")
-        || (module_name.len() >= 12 && &module_name[..12] == "v2.compiler.")
-        || (module_name.len() >= 8 && &module_name[..8] == "v2.std.")
+    {
+        let is_v4 = ((v2_rt::string_length(&module_name) >= 3)
+            && (v2_rt::substring(&module_name, 0, 3).as_str() == "v4.".to_string().as_str()));
+        let is_compiler_substrate = ((v2_rt::string_length(&module_name) >= 12)
+            && (v2_rt::substring(&module_name, 0, 12).as_str()
+                == "v2.compiler.".to_string().as_str()));
+        let is_std_substrate = ((v2_rt::string_length(&module_name) >= 8)
+            && (v2_rt::substring(&module_name, 0, 8).as_str() == "v2.std.".to_string().as_str()));
+        ((is_v4 || is_compiler_substrate) || is_std_substrate)
+    }
 }
 
 pub fn nominal_call_arg_brand_mismatch(
@@ -1017,17 +1036,21 @@ pub fn nominal_call_arg_brand_mismatch(
     actual: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let formal_name = authored_name_at(source_indices.clone(), formal.clone());
-    let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-    formal.connective.clone() != Connective::Arrow
-        && actual.connective.clone() != Connective::Arrow
-        && formal_name.as_str() != ""
-        && actual_name.as_str() != ""
-        && formal_name.as_str() != actual_name.as_str()
-        && structural_carrier_template_name(formal.clone(), source_indices.clone()).as_str()
-            == structural_carrier_template_name(actual.clone(), source_indices.clone()).as_str()
-        && !is_declared_container_alias_spelling(formal_name.clone())
-        && !is_declared_container_alias_spelling(actual_name.clone())
+    {
+        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
+        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+        ((((((((formal.connective.clone() != Connective::Arrow)
+            && (actual.connective.clone() != Connective::Arrow))
+            && (formal_name.clone().as_str() != "".to_string().as_str()))
+            && (actual_name.clone().as_str() != "".to_string().as_str()))
+            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
+            && (structural_carrier_template_name(formal.clone(), source_indices.clone())
+                .as_str()
+                == structural_carrier_template_name(actual.clone(), source_indices.clone())
+                    .as_str()))
+            && !is_declared_container_alias_spelling(formal_name.clone()))
+            && !is_declared_container_alias_spelling(actual_name.clone()))
+    }
 }
 
 pub fn container_element_nominal_brand_mismatch(
@@ -1073,14 +1096,19 @@ pub fn direct_call_arg_type_mismatch(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
+    ((nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
         || container_element_nominal_brand_mismatch(
             formal.clone(),
             actual.clone(),
             type_env,
             module_name,
             source_indices.clone(),
-        )
+        ))
+        || direct_call_set_element_types_mismatch(
+            formal.clone(),
+            actual.clone(),
+            source_indices.clone(),
+        ))
 }
 
 pub fn direct_call_arg_mismatch_diags(
@@ -1090,67 +1118,69 @@ pub fn direct_call_arg_mismatch_diags(
     type_env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    let source_indices = type_env.source_indices.clone();
-    Rc::new({
-        let mut __result = Vec::new();
-        for pair in Rc::new(
-            value_params
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, v)| (i as i64, v))
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        {
-            __result.extend(
-                (*{
-                    let formal_raw = param_node_type_expr(pair.1.clone());
-                    let formal_subst = substitute_generics(
-                        formal_raw.clone(),
-                        call_subst.clone(),
-                        source_indices.clone(),
-                    );
-                    let formal = peel_nominal_alias_identity(
-                        formal_subst.clone(),
-                        type_env.clone(),
-                        module_name.clone(),
-                    );
-                    match typed_args.clone().get(pair.0.clone() as usize).cloned() {
-                        Some(ta) => {
-                            let actual_raw = resolved_type(arg_value(ta.clone()));
-                            let actual = peel_nominal_alias_identity(
-                                actual_raw.clone(),
-                                type_env.clone(),
-                                module_name.clone(),
-                            );
-                            if direct_call_arg_type_mismatch(
-                                formal.clone(),
-                                actual.clone(),
-                                type_env.clone(),
-                                module_name.clone(),
-                                source_indices.clone(),
-                            ) {
-                                Rc::new(vec![type_mismatch_error(
-                                    node_type_shape(formal.clone(), source_indices.clone()),
-                                    node_type_shape(actual.clone(), source_indices.clone()),
-                                    arg_value(ta.clone()).span.clone(),
+    {
+        let source_indices = type_env.source_indices.clone();
+        Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                value_params
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*{
+                        let formal_raw = param_node_type_expr(pair.1.clone());
+                        let formal_subst = substitute_generics(
+                            formal_raw.clone(),
+                            call_subst.clone(),
+                            source_indices.clone(),
+                        );
+                        let formal = peel_nominal_alias_identity(
+                            formal_subst.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                        );
+                        match typed_args.clone().get(pair.0.clone() as usize).cloned() {
+                            Some(ta) => {
+                                let actual_raw = resolved_type(arg_value(ta.clone()));
+                                let actual = peel_nominal_alias_identity(
+                                    actual_raw.clone(),
+                                    type_env.clone(),
                                     module_name.clone(),
-                                )])
-                            } else {
-                                Rc::new(vec![])
+                                );
+                                if direct_call_arg_type_mismatch(
+                                    formal.clone(),
+                                    actual.clone(),
+                                    type_env.clone(),
+                                    module_name.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    Rc::new(vec![type_mismatch_error(
+                                        node_type_shape(formal.clone(), source_indices.clone()),
+                                        node_type_shape(actual.clone(), source_indices.clone()),
+                                        arg_value(ta.clone()).span.clone(),
+                                        module_name.clone(),
+                                    )])
+                                } else {
+                                    Rc::new(vec![])
+                                }
                             }
+                            None => Rc::new(vec![]),
                         }
-                        None => Rc::new(vec![]),
-                    }
-                })
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -157,11 +157,10 @@ pub fn structural_carrier_template_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if n.name.as_str() != "" {
+    if (n.name.clone().as_str() != "".to_string().as_str()) {
         canonical_template_name(
             Rc::new(Node {
                 name: n.name.clone(),
-                ident: n.ident.clone(),
                 span: n.span.clone(),
                 ident_span: Some(kernel_span(n.name.clone())),
                 children: n.children.clone(),
@@ -178,11 +177,12 @@ pub fn structural_carrier_template_name(
                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                 match_pattern: n.match_pattern.clone(),
                 expr_data: n.expr_data.clone(),
+                ident: None,
             }),
             source_indices,
         )
     } else {
-        canonical_template_name(n, source_indices)
+        canonical_template_name(n.clone(), source_indices)
     }
 }
 
