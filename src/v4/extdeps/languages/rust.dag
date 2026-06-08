@@ -220,6 +220,7 @@ import v4.std.node {
   Atom,
   Cardinality,
   Conj,
+  Disj,
   Edge,
   Named,
   Node,
@@ -4061,6 +4062,16 @@ fn rust_sg2_conj_xy_emitted() -> Node {
 fn rust_sg2_conj_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_binding_sg2_x, target: rust_sg2_atom_node(binding: rust_binding_sg2_x)),
+      rust_named_edge(name: rust_binding_sg2_y, target: rust_sg2_atom_node(binding: rust_binding_sg2_y))
+    ]
+  }
+}
+
+fn rust_sg2_disj_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
     children: [
       rust_named_edge(name: rust_binding_sg2_x, target: rust_sg2_atom_node(binding: rust_binding_sg2_x)),
       rust_named_edge(name: rust_binding_sg2_y, target: rust_sg2_atom_node(binding: rust_binding_sg2_y))

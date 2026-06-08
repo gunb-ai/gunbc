@@ -45,7 +45,7 @@ import v4.std.algebra {
   ring_field_add,
   ring_field_mul
 }
-import v4.std.collection { List, Map, Set, empty_map, map_insert }
+import v4.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -63,6 +63,7 @@ import v4.std.model_core {
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.collection { optional_absent, optional_present }
 import v4.std.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,
@@ -72,7 +73,29 @@ import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
-  target_model_edge_serialize_source
+  target_model_edge_serialize_source,
+  target_model_edge_type_expression_projection,
+  target_type_expr_field_arrow,
+  target_type_expr_field_atom,
+  target_type_expr_field_cardinality,
+  target_type_expr_field_close,
+  target_type_expr_field_conj,
+  target_type_expr_field_disj,
+  target_type_expr_field_field_label_separator,
+  target_type_expr_field_ident_token,
+  target_type_expr_field_instantiation,
+  target_type_expr_field_open,
+  target_type_expr_field_param_ident_token,
+  target_type_expr_field_param_list_separator,
+  target_type_expr_field_param_type_separator,
+  target_type_expr_field_separator,
+  target_type_expr_field_surface,
+  target_type_expr_field_variant_separator,
+  TargetAtomTypeShape,
+  TargetFunctionTypeShape,
+  TargetGenericApply,
+  TargetSumTypeShape,
+  TargetTypeExpressionProjection
 }
 import v4.extdeps.cpp_abi { CppTargetProfile }
 import v4.std.text { String }
@@ -254,6 +277,19 @@ data cpp_token_lbrace: Symbol = cpp_token_lbrace
 data cpp_token_kw_return: Symbol = cpp_token_kw_return
 data cpp_token_semicolon: Symbol = cpp_token_semicolon
 data cpp_token_rbrace: Symbol = cpp_token_rbrace
+// SG-2 TargetTypeExpressionProjection row tokens (angle-bracket generic apply + union pipe + arrow).
+data cpp_token_lt: Symbol = cpp_token_lt
+data cpp_token_gt: Symbol = cpp_token_gt
+data cpp_token_pipe: Symbol = cpp_token_pipe
+data cpp_token_arrow: Symbol = cpp_token_arrow
+data cpp_token_colon: Symbol = cpp_token_colon
+// SG-2 TargetTypeExpressionProjection row surfaces (one per connective form).
+data cpp_surface_type_atom: Symbol = cpp_surface_type_atom
+data cpp_surface_type_record: Symbol = cpp_surface_type_record
+data cpp_surface_type_sum: Symbol = cpp_surface_type_sum
+data cpp_surface_type_arrow: Symbol = cpp_surface_type_arrow
+data cpp_surface_type_cardinality: Symbol = cpp_surface_type_cardinality
+data cpp_surface_type_generic_apply: Symbol = cpp_surface_type_generic_apply
 data cpp_production_mvp1_fn_add: Symbol = cpp_production_mvp1_fn_add
 data cpp_binding_fn_add: Symbol = cpp_binding_fn_add
 data cpp_binding_param_x: Symbol = cpp_binding_param_x
@@ -1353,3 +1389,191 @@ fn cpp_wave1_lex() -> LexRules {
 // Anchor: https://eel.is/c++draft/basic.fundamental
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+// SG-2 — canonical per-connective TargetTypeExpressionProjection row for C++.
+// Single authority: carrier lives in v4.std.target_model; this is the per-language row only.
+// Connective → C++ surface (ISO/IEC 14882 template / union-style staging):
+//   atom          ident
+//   conj          { ... }  structural record surface
+//   disj          A | B    (std::variant-style union staging — shared variant_separator row)
+//   arrow         (T) -> U  trailing-return-style function type staging
+//   cardinality   Head<args>  template collection head + angle brackets
+//   instantiation generic apply Foo<X, Y>  angle brackets
+fn cpp_type_expression_projection() -> TargetTypeExpressionProjection {
+  TargetTypeExpressionProjection {
+    atom_form: TargetAtomTypeShape {
+      surface: cpp_surface_type_atom,
+      ident_token: cpp_token_ident
+    },
+    conj_form: TargetGenericApply {
+      surface: cpp_surface_type_record,
+      open: cpp_token_lbrace,
+      separator: cpp_token_comma,
+      field_label_separator: optional_present(value: cpp_token_colon),
+      close: cpp_token_rbrace
+    },
+    disj_form: TargetSumTypeShape {
+      surface: cpp_surface_type_sum,
+      variant_separator: cpp_token_pipe
+    },
+    arrow_form: TargetFunctionTypeShape {
+      surface: cpp_surface_type_arrow,
+      open: cpp_token_lparen,
+      close: cpp_token_rparen,
+      arrow: cpp_token_arrow,
+      param_ident_token: cpp_token_ident,
+      param_type_separator: cpp_token_colon,
+      param_list_separator: cpp_token_comma
+    },
+    cardinality_form: TargetGenericApply {
+      surface: cpp_surface_type_cardinality,
+      open: cpp_token_lt,
+      separator: cpp_token_comma,
+      field_label_separator: optional_absent(),
+      close: cpp_token_gt
+    },
+    instantiation_form: TargetGenericApply {
+      surface: cpp_surface_type_generic_apply,
+      open: cpp_token_lt,
+      separator: cpp_token_comma,
+      field_label_separator: optional_absent(),
+      close: cpp_token_gt
+    }
+  }
+}
+
+fn cpp_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: target_type_expr_field_surface, target: cpp_atom(id: form.surface)),
+      cpp_named_edge(name: target_type_expr_field_ident_token, target: cpp_atom(id: form.ident_token))
+    ]
+  }
+}
+
+fn cpp_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: match form.field_label_separator {
+      Present { value: s } =>
+        list_snoc_item(
+          xs: [
+            cpp_named_edge(name: target_type_expr_field_surface, target: cpp_atom(id: form.surface)),
+            cpp_named_edge(name: target_type_expr_field_open, target: cpp_atom(id: form.open)),
+            cpp_named_edge(name: target_type_expr_field_separator, target: cpp_atom(id: form.separator)),
+            cpp_named_edge(name: target_type_expr_field_close, target: cpp_atom(id: form.close))
+          ],
+          item: cpp_named_edge(name: target_type_expr_field_field_label_separator, target: cpp_atom(id: s))
+        )
+      Absent =>
+        [
+          cpp_named_edge(name: target_type_expr_field_surface, target: cpp_atom(id: form.surface)),
+          cpp_named_edge(name: target_type_expr_field_open, target: cpp_atom(id: form.open)),
+          cpp_named_edge(name: target_type_expr_field_separator, target: cpp_atom(id: form.separator)),
+          cpp_named_edge(name: target_type_expr_field_close, target: cpp_atom(id: form.close))
+        ]
+    }
+  }
+}
+
+fn cpp_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: target_type_expr_field_surface, target: cpp_atom(id: form.surface)),
+      cpp_named_edge(
+        name: target_type_expr_field_variant_separator,
+        target: cpp_atom(id: form.variant_separator)
+      )
+    ]
+  }
+}
+
+fn cpp_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: target_type_expr_field_surface, target: cpp_atom(id: form.surface)),
+      cpp_named_edge(name: target_type_expr_field_open, target: cpp_atom(id: form.open)),
+      cpp_named_edge(name: target_type_expr_field_close, target: cpp_atom(id: form.close)),
+      cpp_named_edge(name: target_type_expr_field_arrow, target: cpp_atom(id: form.arrow)),
+      cpp_named_edge(
+        name: target_type_expr_field_param_ident_token,
+        target: cpp_atom(id: form.param_ident_token)
+      ),
+      cpp_named_edge(
+        name: target_type_expr_field_param_type_separator,
+        target: cpp_atom(id: form.param_type_separator)
+      ),
+      cpp_named_edge(
+        name: target_type_expr_field_param_list_separator,
+        target: cpp_atom(id: form.param_list_separator)
+      )
+    ]
+  }
+}
+
+fn cpp_type_expression_projection_bundle_node() -> Node {
+  let row = cpp_type_expression_projection()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: target_type_expr_field_atom, target: cpp_type_expr_atom_shape_node(form: row.atom_form)),
+      cpp_named_edge(name: target_type_expr_field_conj, target: cpp_type_expr_generic_apply_shape_node(form: row.conj_form)),
+      cpp_named_edge(name: target_type_expr_field_disj, target: cpp_type_expr_sum_shape_node(form: row.disj_form)),
+      cpp_named_edge(name: target_type_expr_field_arrow, target: cpp_type_expr_arrow_shape_node(form: row.arrow_form)),
+      cpp_named_edge(
+        name: target_type_expr_field_cardinality,
+        target: cpp_type_expr_generic_apply_shape_node(form: row.cardinality_form)
+      ),
+      cpp_named_edge(
+        name: target_type_expr_field_instantiation,
+        target: cpp_type_expr_generic_apply_shape_node(form: row.instantiation_form)
+      )
+    ]
+  }
+}
+
+fn cpp_sg2_type_expr_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      xs: cpp_wave1_lex_rules(),
+      ys: [
+        cpp_lex_rule(token_class: cpp_token_lt, text: "<"),
+        cpp_lex_rule(token_class: cpp_token_gt, text: ">"),
+        cpp_lex_rule(token_class: cpp_token_pipe, text: " | "),
+        cpp_lex_rule(token_class: cpp_token_arrow, text: " -> "),
+        cpp_lex_rule(token_class: cpp_token_colon, text: ": ")
+      ]
+    )
+  }
+}
+
+fn cpp_sg2_type_expr_lex() -> LexRules {
+  ModeledLexRules { root: cpp_sg2_type_expr_lex_rules() }
+}
+
+data cpp_sg2_type_alias_text: String = "using Sg2Probe = std::shared_ptr<FooBar<X, Y>>;"
+
+fn cpp_sg2_type_expr_target_model_node(target_profile: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_snoc_item(
+      xs: cpp_mvp1_target_model_node(target_profile: target_profile).children,
+      item: cpp_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: cpp_type_expression_projection_bundle_node()
+      )
+    )
+  }
+}
+
+fn cpp_sg2_type_expr_target_model(target_profile: Node) -> TargetModel {
+  TargetModel {
+    bundle: cpp_sg2_type_expr_target_model_node(target_profile: target_profile),
+    lex: cpp_sg2_type_expr_lex(),
+    binding_spellings: cpp_mvp1_binding_spellings(),
+    authority_source_text: cpp_sg2_type_alias_text
+  }
+}
