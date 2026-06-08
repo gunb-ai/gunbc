@@ -1058,7 +1058,13 @@ fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<In
 fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
-      if !canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
+      if facts.grounding.node != node {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: eval_diagnostic(reason: eval_rejected_grounding_node_mismatch, node: node)
+          )
+        }
+      } else if !canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
         Rejected {
           diagnostics: diagnostics_singleton(
             d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
