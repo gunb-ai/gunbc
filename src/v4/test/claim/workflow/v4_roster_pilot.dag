@@ -328,6 +328,12 @@ data v4_roster_pilot_row_lens_registry_singleton_row_counts: V4RosterPilotClaimR
   function: "lens_registry_singleton_row_counts_holds"
 }
 
+data v4_roster_pilot_row_scheduler_runnable_frontier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "scheduler runnable frontier respects dependency order",
+  entry: "src/v4/test/claim/manual/scheduler_runnable_frontier.dag",
+  function: "scheduler_runnable_frontier_claims_hold"
+}
+
 
 data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_edit_locus_narrow,
@@ -374,11 +380,12 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_lens_affected_set_irt1_empty_diff,
   v4_roster_pilot_row_lens_registry_required_ids_resolve,
   v4_roster_pilot_row_lens_registry_singleton_row_counts,
-  v4_roster_pilot_row_map_lookup_miss_witness_violates
+  v4_roster_pilot_row_map_lookup_miss_witness_violates,
+  v4_roster_pilot_row_scheduler_runnable_frontier
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "45"
+data v4_roster_pilot_claim_run_row_count: String = "46"
 
 
 fn v4_roster_pilot_row_matches(
@@ -447,12 +454,13 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_required_ids_resolve)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_singleton_row_counts)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_map_lookup_miss_witness_violates)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_scheduler_runnable_frontier)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 45)
-    && (v4_roster_pilot_claim_run_row_count == "45")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 46)
+    && (v4_roster_pilot_claim_run_row_count == "46")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -679,6 +687,10 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       entry: "src/v4/test/claim/manual/map_lookup_miss_witness_violates.dag",
       function: "map_lookup_miss_violates_and_hit_holds"
     )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_scheduler_runnable_frontier,
+      entry: "src/v4/test/claim/manual/scheduler_runnable_frontier.dag",
+      function: "scheduler_runnable_frontier_claims_hold"
+    )
 }
-
 
