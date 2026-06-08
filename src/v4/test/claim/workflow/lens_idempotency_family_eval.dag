@@ -1,64 +1,40 @@
 // src/v4/test/claim/workflow/lens_idempotency_family_eval.dag
 // Scope: T-38B family CI receipt — lens_idempotency run_test_claim rows gate green over eval_mvp2 wedge.
-// Status: source-shape receipt; host transport runs witness_lens_idempotency_family_gate_closed.
+// Status: T-22 eval → TestClaimRun → CorpusEvalReport → VerdictTally (authoring-time witness).
 
 module v4.test.claim.workflow.lens_idempotency_family_eval
 
 
-import v4.compiler.eval { TestClaimRun, test_claim_run_verdict }
-import v4.std.algebra { fold_list, is_empty }
-import v4.std.collection { List }
+import v4.std.algebra { is_empty }
 import v4.std.logic { Bool }
-import v4.std.nat { Nat, Zero }
-import v4.std.node { Node }
-import v4.std.runtime { RuntimeValue }
-import v4.std.verdict {
-  VerdictTally,
-  verdict_tally_add,
-  verdict_tally_empty,
-  verdict_tally_total
-}
+import v4.std.nat { Zero }
 import v4.test.claim.lens_idempotency.family_receipt {
   lens_idempotency_runtime_value_rows
 }
-
-
-type LensIdempotencyFamilyEvalReport {
-  runs: List<TestClaimRun<Node, RuntimeValue>>
+import v4.test.claim.workflow.testclaim_corpus_runner {
+  CorpusEvalReport,
+  corpus_entries_from_node_runtime_value_runs,
+  corpus_report_tally
 }
 
 
-fn run_lens_idempotency_family_eval() -> LensIdempotencyFamilyEvalReport {
-  LensIdempotencyFamilyEvalReport {
-    runs: lens_idempotency_runtime_value_rows
+fn run_lens_idempotency_family_eval() -> CorpusEvalReport {
+  CorpusEvalReport {
+    entries: corpus_entries_from_node_runtime_value_runs(
+      runs: lens_idempotency_runtime_value_rows
+    )
   }
 }
 
 
-fn lens_idempotency_family_report_tally(report: LensIdempotencyFamilyEvalReport) -> VerdictTally {
-  fold_list(
-    xs: report.runs,
-    empty: verdict_tally_empty,
-    cons: fn(acc, run) {
-      verdict_tally_add(t: acc, v: test_claim_run_verdict(run: run))
-    }
-  )
-}
-
-
-fn lens_idempotency_family_report_total(report: LensIdempotencyFamilyEvalReport) -> Nat {
-  verdict_tally_total(t: lens_idempotency_family_report_tally(report: report))
-}
-
-
-fn lens_idempotency_family_all_pass(report: LensIdempotencyFamilyEvalReport) -> Bool {
-  let tally = lens_idempotency_family_report_tally(report: report)
+fn lens_idempotency_family_all_pass(report: CorpusEvalReport) -> Bool {
+  let tally = corpus_report_tally(r: report)
   (tally.fail == Zero) && (tally.deferred == Zero)
 }
 
 
-fn lens_idempotency_family_gate(report: LensIdempotencyFamilyEvalReport) -> Bool {
-  if is_empty(xs: report.runs) {
+fn lens_idempotency_family_gate(report: CorpusEvalReport) -> Bool {
+  if is_empty(xs: report.entries) {
     false
   } else {
     lens_idempotency_family_all_pass(report: report)
