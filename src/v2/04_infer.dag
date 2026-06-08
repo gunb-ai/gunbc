@@ -618,17 +618,51 @@ fn set_element_types_mismatch(recv_elem: Node, operand_elem: Node, source_indice
     && !node_type_compatible(left: recv_elem, right: operand_elem, source_indices: source_indices)
 }
 
+// One-level structural target of a brand alias leaf (carrier only; ignores ident_span).
+fn structural_alias_target(n: Node, env: TypeEnv) -> Node {
+  match lookup_type_for(env: env, node: n) {
+    Some { value: binding_resolved } =>
+      if binding_resolved.connective == NoConnective && binding_resolved.children |> count == 0 && binding_resolved.inferred != none {
+        match binding_resolved.inferred {
+          Some { value: Resolved { node: target } } => target
+          _ => binding_resolved
+        }
+      } else { binding_resolved }
+    None => n
+  }
+}
+
+fn call_arg_declaration_name(ta: Node, scope: InferScope) -> String {
+  let val = arg_value(n: ta)
+  match val.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let var_name = expr_var_name_at(texpr: val, source_indices: scope.type_env.source_indices)
+      match map_get(scope.locals, var_name) {
+        Some { value: binding } =>
+          authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved)
+        None => authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: val))
+      }
+    _ => authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: val))
+  }
+}
+
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
 // that share a structural carrier (UserId vs AccountId over Refined<String>)
 // without widening to every !node_type_compatible pair (e.g. fn vs Bool).
-fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let formal_name = authored_name_at(source_indices: source_indices, node: formal)
-  let actual_name = authored_name_at(source_indices: source_indices, node: actual)
-  !node_type_compatible(left: formal, right: actual, source_indices: source_indices)
-    && formal_name != ""
+fn nominal_call_arg_brand_mismatch(
+  formal: Node,
+  actual: Node,
+  formal_name: String,
+  actual_name: String,
+  env: TypeEnv
+) -> Bool {
+  let source_indices = env.source_indices
+  let formal_carrier = structural_alias_target(n: formal, env: env)
+  let actual_carrier = structural_alias_target(n: actual, env: env)
+  formal_name != ""
     && actual_name != ""
     && formal_name != actual_name
-    && canonical_template_name(n: formal, source_indices: source_indices) == canonical_template_name(n: actual, source_indices: source_indices)
+    && node_type_compatible(left: formal_carrier, right: actual_carrier, source_indices: source_indices)
     && !is_declared_container_alias_spelling(name: formal_name)
     && !is_declared_container_alias_spelling(name: actual_name)
 }
@@ -637,23 +671,29 @@ fn direct_call_arg_mismatch_diags(
   value_params: List<Node>,
   typed_args: List<Node>,
   call_subst: Map<String, Node>,
-  env: TypeEnv,
+  scope: InferScope,
   module_name: String
 ) -> List<ErrorNode> {
   flat_map(
     value_params |> enumerate,
     pair =>
       let formal_raw = param_node_type_expr(n: pair.second)
-      let formal_sub = substitute_generics(n: formal_raw, subst: call_subst, source_indices: env.source_indices)
-      let formal = resolve_node(n: formal_sub, env: env, module_name: module_name).resolved
+      let formal = substitute_generics(n: formal_raw, subst: call_subst, source_indices: scope.type_env.source_indices)
+      let formal_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
       match typed_args |> skip(pair.first) |> first {
         Some { value: ta } =>
-          let actual_raw = resolved_type(n: arg_value(n: ta))
-          let actual = resolve_node(n: actual_raw, env: env, module_name: module_name).resolved
-          if nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: env.source_indices) {
+          let actual = resolved_type(n: arg_value(n: ta))
+          let actual_name = call_arg_declaration_name(ta: ta, scope: scope)
+          if nominal_call_arg_brand_mismatch(
+            formal: formal,
+            actual: actual,
+            formal_name: formal_name,
+            actual_name: actual_name,
+            env: scope.type_env
+          ) {
             [type_mismatch_error(
-              expected: node_type_shape(n: formal, source_indices: env.source_indices),
-              got: node_type_shape(n: actual, source_indices: env.source_indices),
+              expected: node_type_shape(n: formal, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: actual, source_indices: scope.type_env.source_indices),
               span: arg_value(n: ta).span,
               module_name: module_name
             )]
@@ -1434,7 +1474,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           value_params: value_params_for_check,
           typed_args: typed_args,
           call_subst: call_subst,
-          env: scope.type_env,
+          scope: scope,
           module_name: scope.module_name
         )
         InferResult {

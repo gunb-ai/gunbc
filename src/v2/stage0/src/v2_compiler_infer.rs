@@ -999,30 +999,75 @@ pub fn set_element_types_mismatch(
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
 }
 
+pub fn structural_alias_target(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+    match lookup_type_for(env.clone(), n.clone()) {
+        Some(binding_resolved) => {
+            if (((binding_resolved.connective.clone() == Connective::NoConnective)
+                && ((binding_resolved.children.clone().len() as i64) == 0))
+                && (binding_resolved.inferred.clone() != None))
+            {
+                match binding_resolved.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+                    _ => binding_resolved.clone(),
+                }
+            } else {
+                binding_resolved.clone()
+            }
+        }
+        None => n.clone(),
+    }
+}
+
+pub fn call_arg_declaration_name(ta: Rc<Node>, scope: Rc<InferScope>) -> String {
+    let val = arg_value(ta.clone());
+    match (*val.expr_data).clone() {
+        ExprData::ExprVar { .. } => {
+            let var_name = expr_var_name_at(val.clone(), scope.type_env.clone().source_indices.clone());
+            match v2_rt::map_get(&scope.locals.clone(), var_name.clone()) {
+                Some(binding) => authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    binding.resolved.clone(),
+                ),
+                None => authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    resolved_type(val.clone()),
+                ),
+            }
+        }
+        _ => authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            resolved_type(val.clone()),
+        ),
+    }
+}
+
 pub fn nominal_call_arg_brand_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    formal_name: String,
+    actual_name: String,
+    env: Rc<TypeEnv>,
 ) -> bool {
-    {
-        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
-        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-        ((((((!node_type_compatible(formal.clone(), actual.clone(), source_indices.clone())
-            && (formal_name.clone().as_str() != "".to_string().as_str()))
-            && (actual_name.clone().as_str() != "".to_string().as_str()))
-            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
-            && (canonical_template_name(formal.clone(), source_indices.clone()).as_str()
-                == canonical_template_name(actual.clone(), source_indices.clone()).as_str()))
-            && !is_declared_container_alias_spelling(formal_name.clone()))
-            && !is_declared_container_alias_spelling(actual_name.clone()))
-    }
+    let source_indices = env.source_indices.clone();
+    let formal_carrier = structural_alias_target(formal.clone(), env.clone());
+    let actual_carrier = structural_alias_target(actual.clone(), env.clone());
+    ((formal_name.as_str() != "")
+        && (actual_name.as_str() != "")
+        && (formal_name.as_str() != actual_name.as_str())
+        && node_type_compatible(
+            formal_carrier.clone(),
+            actual_carrier.clone(),
+            source_indices.clone(),
+        )
+        && !is_declared_container_alias_spelling(formal_name.clone())
+        && !is_declared_container_alias_spelling(actual_name.clone()))
 }
 
 pub fn direct_call_arg_mismatch_diags(
     value_params: Rc<Vec<Rc<Node>>>,
     typed_args: Rc<Vec<Rc<Node>>>,
     call_subst: Rc<HashMap<String, Rc<Node>>>,
-    env: Rc<TypeEnv>,
+    scope: Rc<InferScope>,
     module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
@@ -1041,36 +1086,35 @@ pub fn direct_call_arg_mismatch_diags(
             __result.extend(
                 (*{
                     let formal_raw = param_node_type_expr(pair.1.clone());
-                    let formal_sub = substitute_generics(
+                    let formal = substitute_generics(
                         formal_raw.clone(),
                         call_subst.clone(),
-                        env.source_indices.clone(),
+                        scope.type_env.clone().source_indices.clone(),
                     );
-                    let formal = resolve_node(
-                        formal_sub.clone(),
-                        env.clone(),
-                        module_name.clone(),
-                    )
-                    .resolved
-                    .clone();
+                    let formal_name = authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        formal.clone(),
+                    );
                     match typed_args.clone().get(pair.0.clone() as usize).cloned() {
                         Some(ta) => {
-                            let actual_raw = resolved_type(arg_value(ta.clone()));
-                            let actual = resolve_node(
-                                actual_raw.clone(),
-                                env.clone(),
-                                module_name.clone(),
-                            )
-                            .resolved
-                            .clone();
+                            let actual = resolved_type(arg_value(ta.clone()));
+                            let actual_name = call_arg_declaration_name(ta.clone(), scope.clone());
                             if nominal_call_arg_brand_mismatch(
                                 formal.clone(),
                                 actual.clone(),
-                                env.source_indices.clone(),
+                                formal_name.clone(),
+                                actual_name.clone(),
+                                scope.type_env.clone(),
                             ) {
                                 Rc::new(vec![type_mismatch_error(
-                                    node_type_shape(formal.clone(), env.source_indices.clone()),
-                                    node_type_shape(actual.clone(), env.source_indices.clone()),
+                                    node_type_shape(
+                                        formal.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ),
+                                    node_type_shape(
+                                        actual.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ),
                                     arg_value(ta.clone()).span.clone(),
                                     module_name.clone(),
                                 )])
@@ -2841,7 +2885,7 @@ pub fn infer_expr(
                             value_params_for_check,
                             typed_args.clone(),
                             call_subst.clone(),
-                            scope.type_env.clone(),
+                            scope.clone(),
                             scope.module_name.clone(),
                         );
                         Rc::new(InferResult {
