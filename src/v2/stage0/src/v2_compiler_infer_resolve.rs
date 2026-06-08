@@ -81,11 +81,7 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
     })
 }
 
-pub fn peel_nominal_alias_identity(
-    n: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<Node> {
+pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
     match lookup_type_for(env.clone(), n.clone()) {
         Some(resolved) => {
             if (resolved.connective.clone() == NoConnective)
@@ -94,14 +90,10 @@ pub fn peel_nominal_alias_identity(
             {
                 match resolved.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
-                        let target_resolved = resolve_node_bounded(
-                            target.clone(),
-                            env.clone(),
-                            module_name,
-                            0,
-                        )
-                        .resolved
-                        .clone();
+                        let target_resolved =
+                            resolve_node_bounded(target.clone(), env.clone(), module_name, 0)
+                                .resolved
+                                .clone();
                         with_authored_identity(n.clone(), target_resolved)
                     }
                     _ => resolved,

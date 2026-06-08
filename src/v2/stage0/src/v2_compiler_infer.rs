@@ -91,12 +91,12 @@ pub use crate::v2_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, canonical_template_name, child_type_node,
     emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
-    structural_carrier_template_name,
     make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
     node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
     normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
-    resolved_type, template_return_has_variables, template_return_is_receiver_self,
+    resolved_type, structural_carrier_template_name, template_return_has_variables,
+    template_return_is_receiver_self,
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
@@ -1014,8 +1014,10 @@ pub fn nominal_call_arg_brand_mismatch(
             && (formal_name.clone().as_str() != "".to_string().as_str()))
             && (actual_name.clone().as_str() != "".to_string().as_str()))
             && (formal_name.clone().as_str() != actual_name.clone().as_str()))
-            && (structural_carrier_template_name(formal.clone(), source_indices.clone()).as_str()
-                == structural_carrier_template_name(actual.clone(), source_indices.clone()).as_str()))
+            && (structural_carrier_template_name(formal.clone(), source_indices.clone())
+                .as_str()
+                == structural_carrier_template_name(actual.clone(), source_indices.clone())
+                    .as_str()))
             && !is_declared_container_alias_spelling(formal_name.clone()))
             && !is_declared_container_alias_spelling(actual_name.clone()))
     }
