@@ -34,7 +34,7 @@ import v2.std.core {
   default_ident_span, kernel_span, node_name_span, intern
 }
 import v2.compiler.infer_types {
-  resolved_type, child_type_node, node_is_keyed_collection
+  resolved_type, child_type_node, node_is_keyed_collection, is_declared_container_alias_spelling
 }
 import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {
@@ -45,6 +45,65 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
     _ => false
+  }
+}
+
+// When peeling a one-level type alias to its structural target, keep the
+// declaration/reference ident_span so authored_name_at still reports the brand
+// name (UserId vs AccountId) instead of the shared carrier (Refined).
+fn with_authored_identity(identity: Node, structural: Node) -> Node {
+  Node {
+    name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
+    children: structural.children, connective: structural.connective, params: structural.params,
+    inferred: structural.inferred, return_cardinality: structural.return_cardinality,
+    uses: structural.uses, body: structural.body, transport: structural.transport,
+    properties: structural.properties, type_annotation: structural.type_annotation,
+    is_self_recursive: structural.is_self_recursive, has_non_tail_self_call: structural.has_non_tail_self_call,
+    match_pattern: structural.match_pattern, expr_data: structural.expr_data
+  }
+}
+
+// After env binding resolve, keep declaration-site brand on the structural carrier.
+fn preserve_nominal_brand_on_resolve(
+  identity: Node,
+  structural: Node,
+  brand_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Node {
+  if brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
+    && !is_declared_container_alias_spelling(name: brand_name) {
+    with_authored_identity(identity: identity, structural: structural)
+  } else { structural }
+}
+
+// Peel alias bindings for call-site arg check: structural carrier with
+// reference-site brand identity (bounded A3 — not a full re-resolve).
+fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
+  let source_indices = env.source_indices
+  let brand = authored_name_at(source_indices: source_indices, node: n)
+  match lookup_type_for(env: env, node: n) {
+    Some { value: resolved } =>
+      let structural = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
+        match resolved.inferred {
+          Some { value: Resolved { node: target } } =>
+            resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
+          _ => resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0).resolved
+        }
+      } else {
+        resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0).resolved
+      }
+      if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
+        && !is_declared_container_alias_spelling(name: brand) {
+        with_authored_identity(identity: n, structural: structural)
+      } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
+        match resolved.inferred {
+          Some { value: Resolved { node: target } } =>
+            let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
+            with_authored_identity(identity: n, structural: target_resolved)
+          _ => resolved
+        }
+      } else { resolved }
+    None => n
   }
 }
 
