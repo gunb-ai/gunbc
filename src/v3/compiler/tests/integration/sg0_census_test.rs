@@ -1004,13 +1004,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
     // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
-    // T-4.7 React framework substrate: `compile_to_dag` smoke on
-    // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics only). 7 A-class
-    // receipts are `.dag` witnesses; all 5 B-class declaration-shape receipts deleted
-    // (operator 2026-06-07 tightened keep-bar — no independent external oracle).
-    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
-    // (ROADMAP.md:74).
-    "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
+    // T-4.7 React framework substrate single-file smoke deleted: the live v4 full-tree
+    // rust emit probe now fail-closes on `gunbc compile --source-root src/v4 --target rust`
+    // with a 0-diagnostic receipt, covering `src/v4/extdeps/frameworks/react.dag` without
+    // a weaker v3 `compile_to_dag` oracle.
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
@@ -1458,9 +1455,10 @@ fn v4_parse_surface_smoke_roster_is_closed_to_growth() {
     // Pinned to the live count (ctrl#1467 §6.4). Retirements lower this; nothing raises it.
     // 18 (ratification) → 11 after the W-wave smoke→witness fold-deletes: #4511 broader-corpus
     // sweep removed lens_testgen + workflow_release; W3 #4512 removed the std
-    // grounding/model_core/target_realization trio. Tightened to the live floor so the subset
+    // grounding/model_core/target_realization trio; W3 follow-up deleted the React smoke,
+    // leaving only `v4_bin_main_dag_smoke_test.rs`. Tightened to the live floor so the subset
     // cannot grow back: a new v4 parse-surface smoke must instead land as a .dag claim-run witness.
-    const V4_DAG_SMOKE_CEILING: usize = 11;
+    const V4_DAG_SMOKE_CEILING: usize = 1;
     let v4_dag_smokes: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
         .iter()
         .copied()
