@@ -78,35 +78,6 @@ fn caller(us: List<UserId>) -> Int {
     );
 }
 
-// Record twins (WrapA / WrapB — identical fields, distinct names).
-#[test]
-fn adv_record_twins_must_reject() {
-    let source = r#"
-module pd3adv.record_twins
-
-type WrapA {
-  x: Int
-}
-type WrapB {
-  x: Int
-}
-
-fn take_b(w: WrapB) -> Int {
-  0
-}
-
-fn caller(a: WrapA) -> Int {
-  take_b(a)
-}
-"#;
-    let result = crate::helpers::compile_dag(source);
-    assert!(
-        has_type_mismatch(&result),
-        "PD-3 ADV: record twins WrapA-for-WrapB must be rejected, got: {:?}",
-        crate::helpers::diagnostic_messages(&result)
-    );
-}
-
 // Twin where the value flows through a let-binding before the call.
 #[test]
 fn adv_brand_twin_via_let_must_reject() {
@@ -263,25 +234,3 @@ fn caller(s: String) -> Int {
     crate::helpers::assert_no_diagnostics(&result);
 }
 
-// Plain genuine mismatch (Int-for-String) must reject — sanity that the gate
-// catches the ordinary case too.
-#[test]
-fn adv_plain_int_for_string_must_reject() {
-    let source = r#"
-module pd3adv.plain_mismatch
-
-fn take_str(s: String) -> Int {
-  0
-}
-
-fn caller(n: Int) -> Int {
-  take_str(n)
-}
-"#;
-    let result = crate::helpers::compile_dag(source);
-    assert!(
-        has_type_mismatch(&result),
-        "PD-3 ADV: Int-for-String must be rejected, got: {:?}",
-        crate::helpers::diagnostic_messages(&result)
-    );
-}

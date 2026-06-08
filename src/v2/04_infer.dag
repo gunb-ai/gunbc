@@ -634,6 +634,51 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: M
     && !is_declared_container_alias_spelling(name: actual_name)
 }
 
+// Same container spelling (List<T> vs List<U>): recurse into element types for
+// same-carrier brand-twin rejection without widening to unrelated mismatches.
+fn container_element_nominal_brand_mismatch(
+  formal: Node,
+  actual: Node,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  if node_is_element_collection(n: formal, source_indices: source_indices)
+    && node_is_element_collection(n: actual, source_indices: source_indices)
+    && authored_name_at(source_indices: source_indices, node: formal) == authored_name_at(source_indices: source_indices, node: actual) {
+    match formal.children |> first {
+      Some { value: formal_ch } =>
+        match actual.children |> first {
+          Some { value: actual_ch } =>
+            let formal_el = peel_nominal_alias_identity(
+              n: child_type_node(ch: formal_ch), env: type_env, module_name: module_name)
+            let actual_el = peel_nominal_alias_identity(
+              n: child_type_node(ch: actual_ch), env: type_env, module_name: module_name)
+            nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, source_indices: source_indices)
+          None => false
+        }
+      None => false
+    }
+  } else { false }
+}
+
+// Bounded call-site mismatch: same-carrier brand twins (top-level or in container
+// elements) plus declared-alias element mismatches (List<String> vs FreeMonoid<Int>).
+// Does not widen to every !node_type_compatible pair (fn vs Callable, record twins).
+fn direct_call_arg_type_mismatch(
+  formal: Node,
+  actual: Node,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    || container_element_nominal_brand_mismatch(
+      formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
+    || (set_element_types_mismatch(recv_elem: formal, operand_elem: actual, source_indices: source_indices)
+        && formal.connective != Arrow && actual.connective != Arrow)
+}
+
 fn direct_call_arg_mismatch_diags(
   value_params: List<Node>,
   typed_args: List<Node>,
@@ -652,7 +697,8 @@ fn direct_call_arg_mismatch_diags(
         Some { value: ta } =>
           let actual_raw = resolved_type(n: arg_value(n: ta))
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-          if nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices) {
+          if direct_call_arg_type_mismatch(
+            formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
               got: node_type_shape(n: actual, source_indices: source_indices),
