@@ -310,6 +310,15 @@ data go_binding_fn_add: Symbol = go_binding_fn_add
 data go_binding_param_x: Symbol = go_binding_param_x
 data go_binding_param_y: Symbol = go_binding_param_y
 data go_relation_rule_mvp1_fn_add: Symbol = go_relation_rule_mvp1_fn_add
+data go_inhabitant_field_mvp1_add_fn: Symbol = go_inhabitant_field_mvp1_add_fn
+data go_coercion_field_int_inhabitant_atom: Symbol = go_coercion_field_int_inhabitant_atom
+data go_coercion_field_int_facts: Symbol = go_coercion_field_int_facts
+data go_coercion_field_int_spelling: Symbol = go_coercion_field_int_spelling
+data go_coercion_field_int_width: Symbol = go_coercion_field_int_width
+data go_coercion_field_int_signed: Symbol = go_coercion_field_int_signed
+data go_coercion_field_int_overflow: Symbol = go_coercion_field_int_overflow
+data go_coercion_field_int_encoding: Symbol = go_coercion_field_int_encoding
+data go_coercion_field_int_std_projection: Symbol = go_coercion_field_int_std_projection
 data go_mvp1_source_literal: Symbol = go_mvp1_source_literal
 data go_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data go_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
@@ -1575,6 +1584,63 @@ fn go_declared_inhabitants_root() -> Node {
   }
 }
 
+// Zip-fold support nodes derived from go_facts_int constructors — not parallel fixture data.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+fn go_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
+  [
+    go_named_edge(
+      name: go_inhabitant_field_mvp1_add_fn,
+      target: go_mvp1_emitted_add_fn_node()
+    ),
+    go_named_edge(
+      name: go_coercion_field_int_inhabitant_atom,
+      target: go_inhabitant_atom(id: go_inhabitant_int)
+    ),
+    go_named_edge(
+      name: go_coercion_field_int_facts,
+      target: go_integer_facts_node(facts: go_facts_int)
+    ),
+    go_named_edge(
+      name: go_coercion_field_int_spelling,
+      target: go_inhabitant_atom(id: go_surface_spelling_int)
+    ),
+    go_named_edge(
+      name: go_coercion_field_int_width,
+      target: go_signed_int_width_node(width: SignedPlatformInt)
+    ),
+    go_named_edge(
+      name: go_coercion_field_int_signed,
+      target: go_inhabitant_atom(id: go_tag_signed)
+    ),
+    go_named_edge(
+      name: go_coercion_field_int_overflow,
+      target: go_overflow_node(overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow)
+    ),
+    go_named_edge(
+      name: go_coercion_field_int_encoding,
+      target: go_inhabitant_atom(id: go_repr_twos_complement_integer)
+    ),
+    go_named_edge(
+      name: go_coercion_field_int_std_projection,
+      target: go_inhabitant_atom(id: go_std_projection_int)
+    )
+  ]
+}
+
+fn go_mvp1_coercion_candidate_edges() -> List<Edge> {
+  list_append(
+    left: go_declared_inhabitants_root().children,
+    right: go_mvp1_int_zip_fold_closure_edges()
+  )
+}
+
+fn go_mvp1_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: go_mvp1_coercion_candidate_edges()
+  }
+}
+
 fn go_mvp1_selection_policy_node() -> Node {
   go_int_inhabitant_node()
 }
@@ -1583,7 +1649,6 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      go_named_edge(name: go_surface_fn_item, target: go_inhabitant_atom(id: go_surface_fn_item)),
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() }
@@ -1752,7 +1817,7 @@ fn go_mvp1_target_model_bundle_core() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
-      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_declared_inhabitants_root()),
+      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
       go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
       go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node())
     ]
@@ -1820,7 +1885,7 @@ fn go_mvp1_target_model_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
-      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_declared_inhabitants_root()),
+      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
       go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
       go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node()),
       go_named_edge(
@@ -1881,6 +1946,14 @@ fn go_ident_lex_rule() -> LexRule {
   }
 }
 
+// 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
+// every LiteralPattern.text below (e.g. "func " not "func", " + " not "+") as the interim
+// trivia policy: a token carries the layout adjacent to it so `x + y` renders with the
+// spaces the reference (`go_mvp1_source_text`) requires. Homomorphic with rust/python
+// wave-1 MVP-1 lex (same T-6 dissolve trigger). `go_whitespace_trivia_rule` above is
+// ingest-side horizontal-space subset only (see feature:go-semicolon-insertion-layout);
+// serialize round-trip spacing rides these literal texts until T-6 supplies
+// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout structurally.
 fn go_wave1_lex_rules() -> LexRuleSet {
   // Rule order is load-bearing: lex_try_rules prefers the later rule on equal-length
   // matches, so ident must precede keywords and fixed literals that must win ties.
@@ -1888,17 +1961,17 @@ fn go_wave1_lex_rules() -> LexRuleSet {
     rules: [
       go_whitespace_trivia_rule(),
       go_ident_lex_rule(),
-      go_keyword_lex_rule(token_class: go_token_kw_func, text: "func"),
+      go_keyword_lex_rule(token_class: go_token_kw_func, text: "func "),
       go_lex_rule(token_class: go_token_lparen, text: "("),
       // See feature:go-predeclared-identifier-binding above. This is a
       // fail-closed MVP type-reference token, not a claim that `int` is reserved.
-      go_lex_rule(token_class: go_token_ty_int, text: "int"),
-      go_lex_rule(token_class: go_token_comma, text: ","),
+      go_lex_rule(token_class: go_token_ty_int, text: " int"),
+      go_lex_rule(token_class: go_token_comma, text: ", "),
       go_lex_rule(token_class: go_token_rparen, text: ")"),
-      go_lex_rule(token_class: go_token_lbrace, text: "{"),
-      go_keyword_lex_rule(token_class: go_token_kw_return, text: "return"),
-      go_lex_rule(token_class: go_token_plus, text: "+"),
-      go_lex_rule(token_class: go_token_rbrace, text: "}")
+      go_lex_rule(token_class: go_token_lbrace, text: " { "),
+      go_keyword_lex_rule(token_class: go_token_kw_return, text: "return "),
+      go_lex_rule(token_class: go_token_plus, text: " + "),
+      go_lex_rule(token_class: go_token_rbrace, text: " }")
     ]
   }
 }

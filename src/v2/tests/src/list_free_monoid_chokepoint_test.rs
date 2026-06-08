@@ -136,6 +136,49 @@ fn lacks_substring() -> Bool {
     }
 }
 
+/// `.contains` membership over a FreeMonoid Cons/Empty chain must route through the
+/// chokepoint (free_monoid_to_vec), not the native-`Value::List` arm. A regression that
+/// matched the receiver as a bare `Value::List` would fail `expect_list` on the Cons-chain
+/// alias and error "contains not supported"; this pins element membership instead.
+///
+/// Distinct from `string_contains_multichar_substring_not_char_membership` (Str-substring
+/// path) and `freemonoid_cons_chain_length_routes_through_chokepoint` (length, not membership):
+/// it is the contains × FreeMonoid intersection that lens analysis (coverage.dag) relies on.
+#[test]
+fn contains_membership_over_freemonoid_cons_chain_routes_through_chokepoint() {
+    // Inline Empty/Cons coproduct: the chokepoint matches the variant *names*, so this
+    // exercises the identical FreeMonoid<->List bridge as v4.std.algebra (ctrl#1476 B1).
+    let src = r#"module test.fm_cons_contains
+type IntList = Empty | Cons { head: Int, tail: IntList }
+fn cons_three() -> IntList {
+  Cons { head: 1, tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } } }
+}
+fn member_present() -> Bool {
+  cons_three().contains(2)
+}
+fn member_absent() -> Bool {
+  cons_three().contains(9)
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    // Discriminating: a bare-`Value::List` regression errors on the Cons-chain alias.
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "member_present") {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected Bool(true) from Cons chain .contains(2), got {other:?}"),
+    }
+    match v2_interpreter::run(graph, resolved.source_indices.clone(), "member_absent") {
+        Ok(Value::Bool(false)) => {}
+        other => panic!("expected Bool(false) from Cons chain .contains(9), got {other:?}"),
+    }
+}
+
 /// BinOp::Add list concat must match .append: Str operand stays one element.
 #[test]
 fn list_add_str_operand_stays_single_element() {

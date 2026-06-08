@@ -782,6 +782,13 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
             "}".to_string(),
         ),
         LiteralValue::LitNull => "{\"kind\": \"LitNull\"}".to_string(),
+        LiteralValue::LitSymbol { value: inner, .. } => v2_rt::concat(
+            v2_rt::concat(
+                "{\"kind\": \"LitSymbol\", \"value\": ".to_string(),
+                json_quote(inner.clone()),
+            ),
+            "}".to_string(),
+        ),
     }
 }
 

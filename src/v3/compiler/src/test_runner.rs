@@ -6712,7 +6712,7 @@ fn render_literal(bits: &LiteralBits) -> String {
     match bits {
         LiteralBits::Int(value) => value.to_string(),
         LiteralBits::Bool(value) => value.to_string(),
-        LiteralBits::String(value) => quote_string(value),
+        LiteralBits::String(value) | LiteralBits::Symbol(value) => quote_string(value),
     }
 }
 

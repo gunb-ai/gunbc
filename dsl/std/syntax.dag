@@ -31,6 +31,8 @@ type LiteralValue
   | LitFloat { value: String }
   | LitBool { value: Bool }
   | LitNull
+  // Opaque symbol literal from `^IDENT` (spelling only; not a var-ref).
+  | LitSymbol { value: String }
 
 // -- Item body kinds --------------------------------------------------
 // How the body of a declaration is structured.

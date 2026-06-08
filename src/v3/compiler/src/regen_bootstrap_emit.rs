@@ -926,6 +926,7 @@ fn render_literal_bits(bits: &LiteralBits) -> String {
         LiteralBits::Int(value) => format!("LiteralBits::Int({value:?}.to_string())"),
         LiteralBits::Bool(value) => format!("LiteralBits::Bool({value})"),
         LiteralBits::String(value) => format!("LiteralBits::String({value:?}.to_string())"),
+        LiteralBits::Symbol(value) => format!("LiteralBits::Symbol({value:?}.to_string())"),
     }
 }
 

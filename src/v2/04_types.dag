@@ -22,7 +22,7 @@ import v2.std.core {
   NoExprData, ExprLiteral, ExprError,
   ExprErrorKind, SemanticExprError, InternalExprError,
   make_expr_node, make_expr_error_node,
-  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
+  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
   is_kernel_type,
   BinOp, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
@@ -979,6 +979,8 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
     LitFloat { value: _ } => float_type
     LitBool { value: _ } => bool_type
     LitNull => with_optional_cardinality(n: unit_type)
+    // Symbol is operationally String at runtime; `^IDENT` is an opaque spelling literal.
+    LitSymbol { value: _ } => string_type
   }
 }
 

@@ -264,7 +264,7 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
 }
 
 
-// 🟡 modeled-policy interim — feature:ai-16-r1-7-affected-set-frontier-kind-policy — consumer:v4.workflow.ci ci_select_from_affected_set — bind TASKS.md T-21 — dissolve-on-arrival: replace closed list with substrate dependency-policy carrier (dimension-parameterized frontier kinds); forbidden: permanent hardcoded match arms on DependencyKind outside this policy data.
+// 🟡 modeled-policy interim — feature:ai-16-r1-7-affected-set-frontier-kind-policy — consumer:v4.workflow.affected_set_selection ci_select_from_affected_set (relocated from the deleted v4.workflow.ci by PR #4543; lands at the #4540 rebase) — bind TASKS.md T-21 — dissolve-on-arrival: replace closed list with substrate dependency-policy carrier (dimension-parameterized frontier kinds); forbidden: permanent hardcoded match arms on DependencyKind outside this policy data.
 fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
   [ProjectionDependsOn, VerifiedBy, Contains]
 }
@@ -442,7 +442,7 @@ fn affected_set_closure_pass(dependencies: List<DependencyView>, acc: AffectedSe
 }
 
 
-// 🟡 whole-graph scan — feature:ai-16-r1-7-affected-set-o-affected-region — consumer:v4.workflow.ci ci_select_from_affected_set — bind TASKS.md T-21 — dissolve-on-arrival: content-hash + pure-boundary pruning + edit-locus scoping replace O(whole-program) transitive closure here; forbidden: permanent full-graph dependency walk without dimension/content-hash pruning (IRT requires O(affected-region) not O(whole-program)).
+// 🟡 whole-graph scan — feature:ai-16-r1-7-affected-set-o-affected-region — consumer:v4.workflow.affected_set_selection ci_select_from_affected_set (relocated from the deleted v4.workflow.ci by PR #4543; lands at the #4540 rebase) — bind TASKS.md T-21 — dissolve-on-arrival: content-hash + pure-boundary pruning + edit-locus scoping replace O(whole-program) transitive closure here; forbidden: permanent full-graph dependency walk without dimension/content-hash pruning (IRT requires O(affected-region) not O(whole-program)).
 fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) -> AffectedSetClosureAcc {
   fold(
     dependencies,
@@ -506,8 +506,11 @@ fn affected_set_rerun_nodes(affected_set_value: AffectedSet) -> RerunNodeSet {
 // dependency-closure frontier from `affected_set_reading`) is already the exact set of
 // Nodes whose rebuild/re-test the CI runner must rerun. Its `affected` list IS the rerun
 // frontier — no change-set re-derivation. This is the single authority converting a
-// node-precise reading into the `RerunNodeSet` consumed by `v4.workflow.ci`
-// `ci_select_from_affected_set_reading`. Always `Produced`; fail-closed for the reading
+// node-precise reading into the `RerunNodeSet`. (Its former CI consumer
+// `v4.workflow.ci ci_select_from_affected_set_reading` was deleted with ci.dag in PR #4543 —
+// only the affected-set-gate-consumed selectors were extracted into
+// `v4.workflow.affected_set_selection`; re-wiring the reading path is affected-set-lane work.)
+// Always `Produced`; fail-closed for the reading
 // path lives upstream in `affected_set_reading_from_git_diff` (Witness Violates).
 fn affected_set_reading_rerun_nodes(reading: AffectedSetReading) -> RerunNodeSet {
   RerunNodeSetProduced {

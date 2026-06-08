@@ -5,7 +5,8 @@
 # clean `compiled: N files emitted, 0 diagnostics` receipt. Missing compiler, v2 emit
 # failure, a missing receipt, or nonzero diagnostics fail the step.
 #
-# Authority: src/v4/workflow/ci.dag (T-24) + src/v4/TASKS.md T-24; r3 gates #98/#100 interim bridge.
+# Authority: .github/workflows/ci.yml (direct hand-edited CI authority) + src/v4/TASKS.md T-24;
+# r3 gates #98/#100 interim bridge. (The prior src/v4/workflow/ci.dag CI model was deleted.)
 # Pattern: .github/ci-floor/v4-bootstrap-viability.sh (compile + log receipt parsing).
 #
 # Env:
