@@ -1,14 +1,24 @@
 // src/v4/test/claim/impossible_bug/release_demos.dag
 // Scope: release impossible-bug demos over v4 TestClaim rows only.
-// The witnesses consume the existing claim programs in this directory:
-// complexity, idempotency, and transport drift are rejected by structural
-// diagnostics before any runtime transport or retry behavior can observe them.
+// The witnesses consume existing claim programs in this directory and route each
+// one through run_test_claim, so a diagnostic/lens regression turns the release
+// row red instead of passing on authored metadata alone.
 
 module v4.test.claim.impossible_bug.release_demos
 
 
+import v4.compiler.eval {
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_test_claim_subject,
+  run_test_claim,
+  test_claim_run_verdict
+}
 import v4.std.diagnostic { Accepted, NodeLocus, Rejected, Suggested }
 import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.std.runtime { RuntimeValue }
+import v4.std.verdict { Deferred, Fail, Pass }
 import v4.std.verification {
   DiagnosticClaim,
   IdempotencyContract,
@@ -32,6 +42,56 @@ import v4.test.claim.impossible_bug.transport_type_drift {
   claim_target_contract_drift_impossible,
   claim_wire_contract_drift_impossible
 }
+import v4.test.claim.manual.eval_runtime_mvp {
+  eval_mvp2_context,
+  eval_mvp2_evaluator_pin,
+  eval_mvp2_inferred_tree
+}
+
+
+fn release_demo_subject(claim: TestClaim) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: claim,
+    context: eval_mvp2_context(),
+    tree: eval_mvp2_inferred_tree(),
+    evaluator_pin: eval_mvp2_evaluator_pin
+  )
+}
+
+
+fn release_demo_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim(subject: release_demo_subject(claim: claim))
+}
+
+
+data run_release_complexity_over_bound: TestClaimRun<Node, RuntimeValue> = release_demo_run(
+  claim: claim_overcost_against_structural_bound_violates
+)
+
+
+data run_release_complexity_inhabitance: TestClaimRun<Node, RuntimeValue> = release_demo_run(
+  claim: claim_cost_contradicts_inhabitance_caught
+)
+
+
+data run_release_idempotency_append: TestClaimRun<Node, RuntimeValue> = release_demo_run(
+  claim: claim_repeated_append_in_idempotent_position_caught
+)
+
+
+data run_release_idempotency_loop: TestClaimRun<Node, RuntimeValue> = release_demo_run(
+  claim: claim_nonidempotent_in_idempotent_position_caught
+)
+
+
+data run_release_transport_target: TestClaimRun<Node, RuntimeValue> = release_demo_run(
+  claim: claim_target_contract_drift_impossible
+)
+
+
+data run_release_transport_wire: TestClaimRun<Node, RuntimeValue> = release_demo_run(
+  claim: claim_wire_contract_drift_impossible
+)
 
 
 fn diagnostic_reason_class_is(reason_class: ImpossibleBugClass, expected: ImpossibleBugClass) -> Bool {
@@ -66,12 +126,33 @@ fn diagnostic_claim_rejects_with_class(claim: TestClaim, expected: ImpossibleBug
 }
 
 
+fn release_demo_run_passes(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match test_claim_run_verdict(run: run) {
+    Pass => true
+    Fail { actual: _, falsification: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+
+fn release_demo_run_rejects_with_class(
+  run: TestClaimRun<Node, RuntimeValue>,
+  claim: TestClaim,
+  expected: ImpossibleBugClass
+) -> Bool {
+  release_demo_run_passes(run: run) &&
+    diagnostic_claim_rejects_with_class(claim: claim, expected: expected)
+}
+
+
 fn release_complexity_claims_are_lens_rejections() -> Bool {
-  diagnostic_claim_rejects_with_class(
+  release_demo_run_rejects_with_class(
+    run: run_release_complexity_over_bound,
     claim: claim_overcost_against_structural_bound_violates,
     expected: SuboptimalComplexity
   ) &&
-    diagnostic_claim_rejects_with_class(
+    release_demo_run_rejects_with_class(
+      run: run_release_complexity_inhabitance,
       claim: claim_cost_contradicts_inhabitance_caught,
       expected: SuboptimalComplexity
     )
@@ -79,11 +160,13 @@ fn release_complexity_claims_are_lens_rejections() -> Bool {
 
 
 fn release_idempotency_claims_are_lens_rejections() -> Bool {
-  diagnostic_claim_rejects_with_class(
+  release_demo_run_rejects_with_class(
+    run: run_release_idempotency_append,
     claim: claim_repeated_append_in_idempotent_position_caught,
     expected: IdempotencyContract
   ) &&
-    diagnostic_claim_rejects_with_class(
+    release_demo_run_rejects_with_class(
+      run: run_release_idempotency_loop,
       claim: claim_nonidempotent_in_idempotent_position_caught,
       expected: IdempotencyContract
     )
@@ -91,11 +174,13 @@ fn release_idempotency_claims_are_lens_rejections() -> Bool {
 
 
 fn release_transport_claims_are_lens_rejections() -> Bool {
-  diagnostic_claim_rejects_with_class(
+  release_demo_run_rejects_with_class(
+    run: run_release_transport_target,
     claim: claim_target_contract_drift_impossible,
     expected: TransportTypeDrift
   ) &&
-    diagnostic_claim_rejects_with_class(
+    release_demo_run_rejects_with_class(
+      run: run_release_transport_wire,
       claim: claim_wire_contract_drift_impossible,
       expected: TransportTypeDrift
     )
