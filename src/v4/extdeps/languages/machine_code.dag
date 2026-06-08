@@ -507,7 +507,7 @@ fn machine_code_model_core_wave1() -> ModelCore {
     partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
- machine_code_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+fn machine_code_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 

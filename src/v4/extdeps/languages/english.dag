@@ -118,7 +118,7 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
     MalformedSentence => FailClosed { feature: MalformedSentence }
   }
 }
- english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+fn english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 

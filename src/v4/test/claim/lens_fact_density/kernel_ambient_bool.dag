@@ -6,8 +6,7 @@ module v4.test.claim.lens_fact_density.kernel_ambient_bool
 
 import v4.lens.fact_density {
   KernelAmbientAtom,
-  carrier_spec_fact,
-  fact_density_kernel_ambient_bool
+  carrier_spec_fact
 }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, TypeNode }
@@ -22,7 +21,7 @@ import v4.std.verification {
 }
 
 data kernel_ambient_bool_input: Node = Node {
-  kind: TypeNode { connective: Atom { identity: fact_density_kernel_ambient_bool } },
+  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_bool } },
   children: []
 }
 

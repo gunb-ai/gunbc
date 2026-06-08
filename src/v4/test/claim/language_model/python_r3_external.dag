@@ -4,7 +4,6 @@
 
 module v4.test.claim.language_model.python_r3_external
 
-import v4.extdeps.languages.python { python_atom_realization_symbol }
 import v4.lens.leaf_model_verification {
   python_r3_external_fixture,
   python_r3_external_falsification_fixture_source,
@@ -50,8 +49,8 @@ data claim_python_r3_external_fixture_pair_wired: TestClaim = EqualsClaim {
   lhs: python_r3_external_claim_bool_atom(b: true),
   rhs: python_r3_external_claim_bool_atom(
     b: python_r3_external_fixture().claim_id == leaf_model_claim_python_r3_external_symbol_projection
-      && python_r3_external_fixture().surface_spelling_fact == python_atom_realization_symbol
-      && python_r3_external_fixture().encoding_spelling_fact == python_atom_realization_symbol
+      && python_r3_external_fixture().surface_spelling_fact == ^python_atom_realization_symbol
+      && python_r3_external_fixture().encoding_spelling_fact == ^python_atom_realization_symbol
       && python_r3_external_fixture().happy.source == python_r3_external_happy_fixture_source
       && python_r3_external_fixture().falsification.fixture.source == python_r3_external_falsification_fixture_source
   ),

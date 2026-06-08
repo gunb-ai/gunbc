@@ -2,7 +2,6 @@
 // Scope: T-13 worked claim — EffectDependsOn classifies as RequiresAlgebraWitness; witness envelope is Violates (fail-closed slot) while projection fact matches expected.
 // Status: T-38B — subject roster + run_test_claim + family receipt over eval_mvp2 runtime wedge.
 
-
 module v4.test.claim.lens_idempotency.write_effect
 
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -48,7 +47,6 @@ import v4.test.claim.lens_common.infer_fixture {
 import v4.test.claim.manual.eval_runtime_mvp {
   eval_mvp2_add_subgraph,
   eval_mvp2_context,
-  eval_mvp2_evaluator_pin,
   eval_mvp2_inferred_tree
 }
 data idempotency_child: Node = claim_atom_node(s: ^idempotency_child_symbol)
@@ -173,7 +171,7 @@ data subject_idempotency_write_effect_receipt: TestClaimEvalSubject<Node> = eval
   claim: claim_idempotency_write_effect_run_test_claim_receipt,
   context: eval_mvp2_context(),
   tree: eval_mvp2_inferred_tree(),
-  evaluator_pin: eval_mvp2_evaluator_pin
+  evaluator_pin: ^eval_mvp2_evaluator_pin
 )
 
 data run_idempotency_write_effect_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(

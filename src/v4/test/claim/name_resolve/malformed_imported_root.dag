@@ -7,7 +7,6 @@
 
 module v4.test.claim.name_resolve.malformed_imported_root
 
-
 import v4.compiler.name_resolve {
   AdmissionAccepted,
   AdmissionRejected,
@@ -18,9 +17,7 @@ import v4.compiler.name_resolve {
 }
 import v4.extdeps.languages.dag {
   dag_grammar_atom,
-  dag_named_edge,
-  dag_surface_module_header,
-  dag_surface_module_header_qualified_name
+  dag_named_edge
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v4.std.collection { empty_map }
@@ -45,7 +42,6 @@ fn malformed_claim_input(ok: Bool) -> Node {
   if ok { malformed_pass_node() } else { malformed_fail_node() }
 }
 
-
 fn malformed_qn_node() -> Node {
   fold_list_node(
     xs: Cons { head: ^malformed_seg, tail: Empty },
@@ -55,18 +51,17 @@ fn malformed_qn_node() -> Node {
   )
 }
 
-
 // Atom node with one Positional child — violates well_formed (Atom requires NoEdges).
 fn malformed_root_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: dag_surface_module_header,
-        target: dag_grammar_atom(id: dag_surface_module_header)
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
       dag_named_edge(
-        name: dag_surface_module_header_qualified_name,
+        name: ^dag_surface_module_header_qualified_name,
         target: malformed_qn_node()
       ),
       Edge {
@@ -80,11 +75,9 @@ fn malformed_root_node() -> Node {
   }
 }
 
-
 fn malformed_entry_name() -> QualifiedName {
   QnCons { head: ^malformed_seg, tail: QnEmpty }
 }
-
 
 fn roots_with_malformed_entry() -> FreeMonoid<Node> {
   Cons {
@@ -93,16 +86,13 @@ fn roots_with_malformed_entry() -> FreeMonoid<Node> {
   }
 }
 
-
 fn import_edge_for_malformed() -> Import {
   Import { target: malformed_entry_name(), visibility: ImportVisible }
 }
 
-
 fn initial_admission_state() -> AdmissionState {
   AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
 }
-
 
 fn admit_result_is_rejected(state: AdmissionState) -> Bool {
   match state {
@@ -111,7 +101,6 @@ fn admit_result_is_rejected(state: AdmissionState) -> Bool {
   }
 }
 
-
 data witness_malformed_root_is_rejected: Bool = admit_result_is_rejected(
   state: admit_import_entry(
     roots: roots_with_malformed_entry(),
@@ -119,7 +108,6 @@ data witness_malformed_root_is_rejected: Bool = admit_result_is_rejected(
     state: initial_admission_state()
   )
 )
-
 
 data claim_admit_malformed_root_is_rejected: TestClaim = CompilesClaim {
   label: "name_resolve/admit_import_entry: malformed module root is rejected",

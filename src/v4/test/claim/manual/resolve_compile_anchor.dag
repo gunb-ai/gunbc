@@ -6,7 +6,6 @@
 
 module v4.test.claim.manual.resolve_compile_anchor
 
-
 import v4.compiler.name_resolve {
   Admission,
   Import,
@@ -16,15 +15,10 @@ import v4.compiler.name_resolve {
 }
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.extdeps.languages.dag {
-  dag_c3_surface_sugar_fn,
-  dag_c3_surface_sugar_service,
-  dag_c3_surface_sugar_type,
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
   dag_language_model_wave1_void,
-  dag_named_edge,
-  dag_surface_module_header,
-  dag_surface_module_header_qualified_name
+  dag_named_edge
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
@@ -59,7 +53,7 @@ fn service_atom_conj_tree() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode {
-            connective: Atom { identity: dag_c3_surface_sugar_service }
+            connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: []
         }
@@ -68,7 +62,6 @@ fn service_atom_conj_tree() -> Node {
   }
 }
 
-
 fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
   resolve(
     tree: service_atom_conj_tree(),
@@ -76,14 +69,12 @@ fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<Resolved
   )
 }
 
-
 fn anchor_resolve_wave1_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
   resolve(
     tree: service_atom_conj_tree(),
     lm: dag_language_model_surface_empty_prelude()
   )
 }
-
 
 fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
   resolve(
@@ -94,7 +85,7 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
           label: Named { name: ^anchor_decl_first },
           target: Node {
             kind: TypeNode {
-              connective: Atom { identity: dag_c3_surface_sugar_service }
+              connective: Atom { identity: ^dag_c3_surface_sugar_service }
             },
             children: []
           }
@@ -103,7 +94,7 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
           label: Named { name: ^anchor_decl_second },
           target: Node {
             kind: TypeNode {
-              connective: Atom { identity: dag_c3_surface_sugar_type }
+              connective: Atom { identity: ^dag_c3_surface_sugar_type }
             },
             children: []
           }
@@ -113,7 +104,6 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
     lm: dag_language_model_wave1_void()
   )
 }
-
 
 fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
   resolve(
@@ -129,7 +119,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
                 label: Positional,
                 target: Node {
                   kind: TypeNode {
-                    connective: Atom { identity: dag_c3_surface_sugar_fn }
+                    connective: Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
                   children: []
                 }
@@ -138,7 +128,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
                 label: Positional,
                 target: Node {
                   kind: TypeNode {
-                    connective: Atom { identity: dag_c3_surface_sugar_service }
+                    connective: Atom { identity: ^dag_c3_surface_sugar_service }
                   },
                   children: []
                 }
@@ -147,7 +137,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
                 label: Positional,
                 target: Node {
                   kind: TypeNode {
-                    connective: Atom { identity: dag_c3_surface_sugar_fn }
+                    connective: Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
                   children: []
                 }
@@ -160,7 +150,6 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
     lm: dag_language_model_wave1_void()
   )
 }
-
 
 fn resolve_roots_claim_node(ok: Bool) -> Node {
   if ok {
@@ -176,7 +165,6 @@ fn resolve_roots_claim_node(ok: Bool) -> Node {
   }
 }
 
-
 fn resolve_imported_qn_node() -> Node {
   fold_list_node(
     xs: Cons { head: ^anchor_imported_path_segment, tail: Empty },
@@ -189,24 +177,23 @@ fn resolve_imported_qn_node() -> Node {
   )
 }
 
-
 fn resolve_imported_module_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: dag_surface_module_header,
-        target: dag_grammar_atom(id: dag_surface_module_header)
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
       dag_named_edge(
-        name: dag_surface_module_header_qualified_name,
+        name: ^dag_surface_module_header_qualified_name,
         target: resolve_imported_qn_node()
       ),
       Edge {
         label: Named { name: ^anchor_imported_decl },
         target: Node {
           kind: TypeNode {
-            connective: Atom { identity: dag_c3_surface_sugar_service }
+            connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: []
         }
@@ -214,7 +201,6 @@ fn resolve_imported_module_root() -> Node {
     ]
   }
 }
-
 
 fn resolve_subject_qn_node() -> Node {
   fold_list_node(
@@ -228,34 +214,32 @@ fn resolve_subject_qn_node() -> Node {
   )
 }
 
-
 fn resolve_subject_module_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: dag_surface_module_header,
-        target: dag_grammar_atom(id: dag_surface_module_header)
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
       dag_named_edge(
-        name: dag_surface_module_header_qualified_name,
+        name: ^dag_surface_module_header_qualified_name,
         target: resolve_subject_qn_node()
       )
     ]
   }
 }
 
-
 fn resolve_subject_module_root_with_import_use() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: dag_surface_module_header,
-        target: dag_grammar_atom(id: dag_surface_module_header)
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
       dag_named_edge(
-        name: dag_surface_module_header_qualified_name,
+        name: ^dag_surface_module_header_qualified_name,
         target: resolve_subject_qn_node()
       ),
       Edge {
@@ -266,11 +250,9 @@ fn resolve_subject_module_root_with_import_use() -> Node {
   }
 }
 
-
 fn resolve_subject_name() -> QualifiedName {
   QnCons { head: ^anchor_subject_path_segment, tail: QnEmpty }
 }
-
 
 fn resolve_roots_single_import() -> FreeMonoid<Node> {
   Cons {
@@ -282,7 +264,6 @@ fn resolve_roots_single_import() -> FreeMonoid<Node> {
   }
 }
 
-
 fn resolve_imported_use_tree() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^anchor_imported_decl } },
@@ -290,11 +271,9 @@ fn resolve_imported_use_tree() -> Node {
   }
 }
 
-
 fn resolve_import_target() -> QualifiedName {
   QnCons { head: ^anchor_imported_path_segment, tail: QnEmpty }
 }
-
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
   match resolve_with_admission(
@@ -317,7 +296,6 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 data claim_resolve_with_admission_imported_binding_accepts: TestClaim = CompilesClaim {
   label: "resolve/with_admission: visible imported module named export resolves via module-root projection",

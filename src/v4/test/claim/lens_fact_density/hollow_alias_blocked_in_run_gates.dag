@@ -9,7 +9,7 @@ import v4.compiler.compile {
   run_required_lens_gates
 }
 import v4.compiler.infer { InferredTree }
-import v4.lens.fact_density { fact_density_hollow_alias_locus }
+
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
@@ -50,7 +50,7 @@ fn hollow_alias_blocked_in_run_gates_holds() -> Bool {
     inferred: hollow_alias_run_gates_tree(),
     lenses: [fact_density_lens]
   ) {
-    Rejected { diagnostics: r } => r.head.reason == fact_density_hollow_alias_locus
+    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
   }
 }

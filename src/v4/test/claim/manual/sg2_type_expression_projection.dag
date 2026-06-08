@@ -32,9 +32,6 @@ import v4.extdeps.languages.rust {
   rust_sg2_malformed_sum_extra_positional_emitted,
   rust_sg2_rc_foobar_xy_emitted,
   rust_sg2_type_expr_target_model,
-  rust_token_comma,
-  rust_token_gt,
-  rust_token_lt,
   rust_type_expression_projection
 }
 import v4.std.target_model { target_type_expr_emitted_wire_decode }
@@ -202,9 +199,9 @@ fn sg2_mvp1_translate_fallback_accepts() -> Bool {
 // §10.6 bidirectional readability: ingest/emission share the same delimiter token-class row.
 fn sg2_instantiation_delimiters_bidirectional() -> Bool {
   let row = rust_type_expression_projection()
-  row.instantiation_form.open == rust_token_lt &&
-    row.instantiation_form.separator == rust_token_comma &&
-    row.instantiation_form.close == rust_token_gt
+  row.instantiation_form.open == ^rust_token_lt &&
+    row.instantiation_form.separator == ^rust_token_comma &&
+    row.instantiation_form.close == ^rust_token_gt
 }
 
 data claim_sg2_projection_structural: TestClaim = EqualsClaim {

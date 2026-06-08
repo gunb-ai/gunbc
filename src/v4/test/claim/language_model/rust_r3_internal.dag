@@ -4,8 +4,6 @@
 
 module v4.test.claim.language_model.rust_r3_internal
 
-
-import v4.extdeps.languages.rust { rust_atom_realization_symbol }
 import v4.lens.leaf_model_verification {
   rust_r3_internal_emit_coupling_both_projections_changed,
   rust_r3_internal_fixture
@@ -43,14 +41,12 @@ fn rust_r3_internal_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-
 fn rust_r3_internal_emit_coupling_fixture_wired() -> Bool {
   let receipt = rust_r3_internal_fixture()
   receipt.claim_id == leaf_model_claim_rust_r3_internal_symbol_coupling
-  && receipt.atom_realization_fact == rust_atom_realization_symbol
+  && receipt.atom_realization_fact == ^rust_atom_realization_symbol
   && rust_r3_internal_emit_coupling_both_projections_changed(receipt: receipt)
 }
-
 
 data claim_rust_r3_internal_emit_coupling_wired: TestClaim = EqualsClaim {
   label: "language_model/rust_r3_internal: emit-coupling receipt references rust_atom_realization_symbol and both projections change on row mutation",
@@ -67,7 +63,6 @@ fn rust_r3_internal_pending_verification_diagnostic() -> Diagnostic {
   }
 }
 
-
 data rust_r3_internal_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
   claim_id: leaf_model_claim_rust_r3_internal_symbol_coupling,
   happy_verdict: verdict_fail(
@@ -78,11 +73,9 @@ data rust_r3_internal_verification_run_receipt_default: LeafModelVerificationRun
   )
 }
 
-
 fn rust_r3_internal_verification_receipt_claim_id_wired() -> Bool {
   rust_r3_internal_verification_run_receipt_default.claim_id == leaf_model_claim_rust_r3_internal_symbol_coupling
 }
-
 
 data claim_rust_r3_internal_verification_receipt_shape: TestClaim = EqualsClaim {
   label: "language_model/rust_r3_internal: verification receipt carriers happy + falsification verdict slots",
@@ -91,6 +84,5 @@ data claim_rust_r3_internal_verification_receipt_shape: TestClaim = EqualsClaim 
   rhs: rust_r3_internal_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
-
 
 data rust_r3_internal_modeled_happy_expectation: TargetCompileVerdict = TargetCompileAccepted

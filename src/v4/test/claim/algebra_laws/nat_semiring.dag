@@ -3,9 +3,7 @@
 // Status: T-14 corpus rows; rung-8 execution wired in v4.test.claim.nat_semiring.rung_8.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
-
 module v4.test.claim.algebra_laws.nat_semiring
-
 
 import v4.std.diagnostic {
   Accepted,
@@ -17,17 +15,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.nat {
-  nat_algebra_law_subject_symbol_additive_monoid,
-  nat_algebra_law_subject_symbol_commutative_semiring,
-  nat_algebra_law_subject_symbol_inhabitant_nat,
-  law_nat_add_left_identity,
-  law_nat_add_right_identity,
-  law_nat_add_associativity,
-  law_nat_mul_left_identity,
-  law_nat_mul_annihilator,
-  law_nat_mul_associativity
-}
+
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.text { String }
 import v4.std.verification {ManualAnchorAbsent,
@@ -52,7 +40,6 @@ fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
 
-
 fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -64,41 +51,35 @@ fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node
   }
 }
 
-
 fn nat_add_law(law: Symbol) -> Node {
   algebra_law_subject(
-    algebra: nat_algebra_law_subject_symbol_additive_monoid,
-    inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+    algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+    inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
     law: law
   )
 }
-
 
 fn nat_mul_law(law: Symbol) -> Node {
   algebra_law_subject(
-    algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-    inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+    algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+    inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
     law: law
   )
 }
 
-
-data nat_add_left_identity_input: Node = nat_add_law(law: law_nat_add_left_identity)
-data nat_add_right_identity_input: Node = nat_add_law(law: law_nat_add_right_identity)
-data nat_add_associativity_input: Node = nat_add_law(law: law_nat_add_associativity)
-data nat_mul_left_identity_input: Node = nat_mul_law(law: law_nat_mul_left_identity)
-data nat_mul_annihilator_input: Node = nat_mul_law(law: law_nat_mul_annihilator)
-data nat_mul_associativity_input: Node = nat_mul_law(law: law_nat_mul_associativity)
-
+data nat_add_left_identity_input: Node = nat_add_law(law: ^law_nat_add_left_identity)
+data nat_add_right_identity_input: Node = nat_add_law(law: ^law_nat_add_right_identity)
+data nat_add_associativity_input: Node = nat_add_law(law: ^law_nat_add_associativity)
+data nat_mul_left_identity_input: Node = nat_mul_law(law: ^law_nat_mul_left_identity)
+data nat_mul_annihilator_input: Node = nat_mul_law(law: ^law_nat_mul_annihilator)
+data nat_mul_associativity_input: Node = nat_mul_law(law: ^law_nat_mul_associativity)
 
 data falsification_nat_add_wrong_identity: Node = nat_add_law(law: ^nat_law_wrong_identity_symbol)
-
 
 fn accepted_claim(label: String, anchor: ManualAnchorKey, input: Node) -> TestClaim {
   EqualsClaim { label: label, anchor: manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: TestClassification { tier: Tier1, layer: Unit  }
   }
 }
-
 
 data claim_nat_add_left_identity: TestClaim = accepted_claim(
   label: "Nat addition left identity law",
@@ -106,13 +87,11 @@ data claim_nat_add_left_identity: TestClaim = accepted_claim(
   input: nat_add_left_identity_input
 )
 
-
 data claim_nat_add_right_identity: TestClaim = accepted_claim(
   label: "Nat addition right identity law",
   anchor: ManualNatAddRightIdentity,
   input: nat_add_right_identity_input
 )
-
 
 data claim_nat_add_associativity: TestClaim = accepted_claim(
   label: "Nat addition associativity law",
@@ -120,13 +99,11 @@ data claim_nat_add_associativity: TestClaim = accepted_claim(
   input: nat_add_associativity_input
 )
 
-
 data claim_nat_mul_left_identity: TestClaim = accepted_claim(
   label: "Nat multiplication left identity law",
   anchor: ManualNatMulLeftIdentity,
   input: nat_mul_left_identity_input
 )
-
 
 data claim_nat_mul_annihilator: TestClaim = accepted_claim(
   label: "Nat multiplication annihilator law",
@@ -134,13 +111,11 @@ data claim_nat_mul_annihilator: TestClaim = accepted_claim(
   input: nat_mul_annihilator_input
 )
 
-
 data claim_nat_mul_associativity: TestClaim = accepted_claim(
   label: "Nat multiplication associativity law",
   anchor: ManualNatMulAssociativity,
   input: nat_mul_associativity_input
 )
-
 
 data claim_nat_add_wrong_identity_falsifies_law: TestClaim = DiagnosticClaim {
   label: "Nat addition wrong identity falsifies law claim",

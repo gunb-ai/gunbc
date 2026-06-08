@@ -10,7 +10,6 @@ import v4.extdeps.runtimes.v4_evaluator {
   v4_eval_wave1_boundary_allowance,
   v4_evaluator_execution_wave1,
   v4_evaluator_model_core_wave1,
-  v4_evaluator_runtime_id,
   v4_evaluator_runtime_wave1,
   v4_evaluator_value_representation_wave1
 }
@@ -31,12 +30,10 @@ import v4.workflow.bootstrap {
   BootstrapProjectionInputs,
   BootstrapSourceSnapshot,
   bootstrap_footprint,
-  bootstrap_footprint_not_realized,
   bootstrap_projection_closure_node,
   bootstrap_projection_inputs,
   bootstrap_source_snapshot_root,
   pinned_v4_fixed_point_hash,
-  pinned_v4_fixed_point_hash_pin,
   seed_capability_language_model,
   v4_stage0_hash
 }
@@ -61,7 +58,7 @@ fn bootstrap_footprint_anchor_bad_projection_inputs() -> BootstrapProjectionInpu
       language_model: seed_capability_language_model(),
       content_hash: BootstrapHashPin {
         digest: pinned_v4_fixed_point_hash,
-        pin: pinned_v4_fixed_point_hash_pin
+        pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
     target_model: rust_mvp1_target_model(),
@@ -94,7 +91,7 @@ fn bootstrap_footprint_non_canonical_violates() -> Bool {
   let bad_inputs = bootstrap_footprint_anchor_bad_projection_inputs()
   match bootstrap_footprint(inputs: bad_inputs) {
     Holds { value: _ } => false
-    Violates { diagnostic: d } => d.reason == bootstrap_footprint_not_realized
+    Violates { diagnostic: d } => d.reason == ^bootstrap_footprint_not_realized
   }
 }
 
@@ -105,7 +102,7 @@ fn bootstrap_footprint_anchor_bad_content_hash_projection_inputs() -> BootstrapP
       language_model: seed_capability_language_model(),
       content_hash: BootstrapHashPin {
         digest: v4_stage0_hash,
-        pin: pinned_v4_fixed_point_hash_pin
+        pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
     target_model: rust_mvp1_target_model(),
@@ -117,7 +114,7 @@ fn bootstrap_footprint_bad_content_hash_violates() -> Bool {
   let bad_inputs = bootstrap_footprint_anchor_bad_content_hash_projection_inputs()
   match bootstrap_footprint(inputs: bad_inputs) {
     Holds { value: _ } => false
-    Violates { diagnostic: d } => d.reason == bootstrap_footprint_not_realized
+    Violates { diagnostic: d } => d.reason == ^bootstrap_footprint_not_realized
   }
 }
 
@@ -133,7 +130,7 @@ fn bootstrap_footprint_anchor_bad_runtime_boundary() -> ResourceEffectBoundary {
 
 fn bootstrap_footprint_anchor_bad_runtime_model() -> V4EvaluatorRuntime {
   V4EvaluatorRuntime {
-    runtime_identity: v4_evaluator_runtime_id,
+    runtime_identity: ^v4_evaluator_runtime_id,
     core: v4_evaluator_model_core_wave1(),
     values: v4_evaluator_value_representation_wave1(),
     execution: v4_evaluator_execution_wave1(),
@@ -148,7 +145,7 @@ fn bootstrap_footprint_anchor_bad_runtime_projection_inputs() -> BootstrapProjec
       language_model: seed_capability_language_model(),
       content_hash: BootstrapHashPin {
         digest: pinned_v4_fixed_point_hash,
-        pin: pinned_v4_fixed_point_hash_pin
+        pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
     target_model: rust_mvp1_target_model(),
@@ -163,7 +160,7 @@ fn bootstrap_footprint_bad_runtime_same_identity_violates() -> Bool {
     && (bad_runtime != canonical_runtime)
     && (match bootstrap_footprint(inputs: bootstrap_footprint_anchor_bad_runtime_projection_inputs()) {
       Holds { value: _ } => false
-      Violates { diagnostic: d } => d.reason == bootstrap_footprint_not_realized
+      Violates { diagnostic: d } => d.reason == ^bootstrap_footprint_not_realized
     })
 }
 

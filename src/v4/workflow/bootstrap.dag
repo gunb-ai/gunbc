@@ -22,7 +22,6 @@ import v4.std.target_model {
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
-  v4_evaluator_runtime_id,
   v4_evaluator_runtime_wave1
 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
@@ -298,7 +297,7 @@ fn bootstrap_target_model_construct_inventory(target: TargetModel) -> List<Boots
 }
 
 fn bootstrap_runtime_model_construct_inventory(runtime: V4EvaluatorRuntime) -> List<BootstrapConstruct> {
-  if runtime.runtime_identity == v4_evaluator_runtime_id {
+  if runtime.runtime_identity == ^v4_evaluator_runtime_id {
     [BootstrapConstruct { identity: ^bootstrap_construct_runtime_model_subset }]
   } else {
     [BootstrapConstruct { identity: runtime.runtime_identity }]
@@ -358,7 +357,6 @@ fn bootstrap_hash_digest_in_fixture_constants(digest: Hash) -> Bool {
     || (digest == pinned_v4_fixed_point_hash)
 }
 
-
 fn bootstrap_hash_digest_fixture_atom_node(digest: Hash) -> Node {
   if digest == v4_stage0_hash {
     Node {
@@ -383,7 +381,6 @@ fn bootstrap_hash_digest_fixture_atom_node(digest: Hash) -> Node {
   }
 }
 
-
 fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -402,7 +399,6 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
     ]
   }
 }
-
 
 // 🟡 derived-operation — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; replace fixture-constant gate + closed (pin,digest) pair match with a total BootstrapHashPin digest coproduct projection.
 fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Outcome<Node> {
@@ -449,7 +445,6 @@ fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Outcome<Node> {
   }
 }
 
-
 fn bootstrap_plan_accepted_hash_pins_projectable(plan: BootstrapPlan) -> Bool {
   match bootstrap_hash_pin_projection_node(pin: plan.seed.produces_hash) {
     Accepted { value: _, diagnostics: _ } =>
@@ -477,14 +472,12 @@ fn bootstrap_plan_accepted_hash_pins_projectable(plan: BootstrapPlan) -> Bool {
   }
 }
 
-
 fn bootstrap_plan_accepted_hash_pins_projectable_ok() -> Bool {
   match bootstrap_plan {
     Accepted { value: plan, diagnostics: _ } => bootstrap_plan_accepted_hash_pins_projectable(plan: plan)
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 data bootstrap_plan_accepted_hash_pins_projectable_witness: Bool = bootstrap_plan_accepted_hash_pins_projectable_ok()
 
@@ -623,7 +616,7 @@ fn bootstrap_seed_honesty_discharge_witness(
       if axiom == ^seed_honesty_axiom {
         Holds {
           value: SeedHonestyDischarge {
-            ^seed_honesty_axiom: axiom,
+            seed_honesty_axiom: axiom,
             diverse_double_compilation: agreement
           }
         }
@@ -663,7 +656,6 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
   target_model: rust_mvp1_target_model(),
   runtime_model: v4_evaluator_runtime_wave1()
 }
-
 
 // --- P2: canonical manual corpus declaration symbols (CI + bootstrap harness single authority) ---
 // --- RR-A §5.2 / A.1: bootstrap evaluator corpus harness (stage0 Run entry) ---
@@ -807,7 +799,6 @@ data bootstrap_plan_fixpt_digest_mismatch_rejects: Outcome<BootstrapPlan> = boot
     pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: ^pinned_v4_fixed_point_hash_pin }
   }
 })
-
 
 data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
   seed: CompileStage {

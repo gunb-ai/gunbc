@@ -4,11 +4,6 @@
 
 module v4.test.claim.language_model.rust_r1
 
-
-import v4.extdeps.languages.rust {
-  rust_coercion_field_i32_spelling,
-  rust_surface_spelling_i32
-}
 import v4.lens.leaf_model_verification {
   rust_r1_fixture,
   rust_r1_falsification_fixture_source,
@@ -49,15 +44,14 @@ fn rust_r1_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-
 data claim_rust_r1_fixture_pair_wired: TestClaim = EqualsClaim {
   label: "language_model/rust_r1: fixture pair references rust_surface_spelling_i32 fact anchors",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: rust_r1_claim_bool_atom(b: true),
   rhs: rust_r1_claim_bool_atom(
     b: rust_r1_fixture().claim_id == leaf_model_claim_rust_r1_i32_surface_spelling
-      && rust_r1_fixture().surface_spelling_fact == rust_surface_spelling_i32
-      && rust_r1_fixture().coercion_spelling_fact == rust_coercion_field_i32_spelling
+      && rust_r1_fixture().surface_spelling_fact == ^rust_surface_spelling_i32
+      && rust_r1_fixture().coercion_spelling_fact == ^rust_coercion_field_i32_spelling
       && rust_r1_fixture().happy.source == rust_r1_happy_fixture_source
       && rust_r1_fixture().falsification.fixture.source == rust_r1_falsification_fixture_source
   ),
@@ -71,7 +65,6 @@ fn rust_r1_pending_verification_diagnostic() -> Diagnostic {
   }
 }
 
-
 // Receipt row default fail-closed until host runner overwrites (T-22 bridge follow-on).
 data rust_r1_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
   claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
@@ -83,7 +76,6 @@ data rust_r1_verification_run_receipt_default: LeafModelVerificationRunReceipt =
   )
 }
 
-
 data claim_rust_r1_verification_receipt_shape: TestClaim = EqualsClaim {
   label: "language_model/rust_r1: verification receipt carriers happy + falsification verdict slots",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -94,12 +86,10 @@ data claim_rust_r1_verification_receipt_shape: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-
 fn rust_r1_fixture_pair_carries_rust_dag_fact_anchors() -> Bool {
-  rust_r1_fixture().surface_spelling_fact == rust_surface_spelling_i32
-    && rust_r1_fixture().coercion_spelling_fact == rust_coercion_field_i32_spelling
+  rust_r1_fixture().surface_spelling_fact == ^rust_surface_spelling_i32
+    && rust_r1_fixture().coercion_spelling_fact == ^rust_coercion_field_i32_spelling
 }
-
 
 data claim_rust_r1_surface_spelling_fact_ids_stable: TestClaim = EqualsClaim {
   label: "language_model/rust_r1: fixture pair carries rust.dag i32 surface-spelling fact anchors",
@@ -108,7 +98,6 @@ data claim_rust_r1_surface_spelling_fact_ids_stable: TestClaim = EqualsClaim {
   rhs: rust_r1_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
-
 
 // Modeled expectation for falsification probe (rustc E0308).
 data rust_r1_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {

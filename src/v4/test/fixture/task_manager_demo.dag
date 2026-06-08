@@ -99,7 +99,7 @@ fn list_tasks() -> FreeMonoid<Task> {
 // Stand-in Symbol seed for `create_task`'s constructed `TaskId`; real id
 // minting lands with the persistence slice.
 // --- Endpoint identities --------------------------------------------------
- --- Endpoint addresses ---------------------------------------------------
+// --- Endpoint addresses ---------------------------------------------------
 // Minimal `NetworkAddress` instances — host spellings are placeholders; the
 // data-model demo cares about authority shape, not reachability. `port:
 // Absent` avoids requiring Succ-chain Nat literals for a value the demo

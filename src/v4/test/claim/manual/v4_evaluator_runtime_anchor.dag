@@ -15,7 +15,6 @@ import v4.extdeps.runtimes.v4_evaluator {
   v4_evaluator_execution_wave1,
   v4_evaluator_interpretation_wave1,
   v4_evaluator_model_core_wave1,
-  v4_evaluator_runtime_id,
   v4_evaluator_runtime_wave1,
   v4_evaluator_value_representation_wave1
 }
@@ -63,7 +62,7 @@ data v4_evaluator_anchor_boundary: ResourceEffectBoundary = v4_evaluator_anchor_
 
 data v4_evaluator_anchor_boundary_standalone: ResourceEffectBoundary = v4_evaluator_boundary_wave1()
 
-data witness_v4_evaluator_runtime_identity: Bool = v4_evaluator_anchor_runtime.runtime_identity == v4_evaluator_runtime_id
+data witness_v4_evaluator_runtime_identity: Bool = v4_evaluator_anchor_runtime.runtime_identity == ^v4_evaluator_runtime_id
 
 // T-22 registry receipt: InterpretationAlgebra == is structural on named top-level fn refs.
 data witness_v4_evaluator_interpretation_reinstantiation_eq: Bool = v4_evaluator_anchor_interpretation == v4_evaluator_anchor_interpretation_standalone

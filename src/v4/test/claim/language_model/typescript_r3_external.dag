@@ -4,7 +4,6 @@
 
 module v4.test.claim.language_model.typescript_r3_external
 
-import v4.extdeps.languages.typescript { ts_atom_realization_symbol }
 import v4.lens.leaf_model_verification {
   typescript_r3_external_fixture,
   typescript_r3_external_falsification_fixture_source,
@@ -50,8 +49,8 @@ data claim_typescript_r3_external_fixture_pair_wired: TestClaim = EqualsClaim {
   lhs: typescript_r3_external_claim_bool_atom(b: true),
   rhs: typescript_r3_external_claim_bool_atom(
     b: typescript_r3_external_fixture().claim_id == leaf_model_claim_ts_r3_external_symbol_projection
-      && typescript_r3_external_fixture().surface_spelling_fact == ts_atom_realization_symbol
-      && typescript_r3_external_fixture().encoding_spelling_fact == ts_atom_realization_symbol
+      && typescript_r3_external_fixture().surface_spelling_fact == ^ts_atom_realization_symbol
+      && typescript_r3_external_fixture().encoding_spelling_fact == ^ts_atom_realization_symbol
       && typescript_r3_external_fixture().happy.source == typescript_r3_external_happy_fixture_source
       && typescript_r3_external_fixture().falsification.fixture.source == typescript_r3_external_falsification_fixture_source
   ),

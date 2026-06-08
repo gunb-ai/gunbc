@@ -4,8 +4,6 @@
 
 module v4.test.claim.generated.testgen_category_wishlist
 
-
-import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.lens.testgen {
   AlgebraLaw,
   AlgebraLawSubject,
@@ -31,10 +29,7 @@ import v4.lens.testgen {
 import v4.std.algebra { length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.nat {
-  nat_algebra_law_subject_symbol_additive_monoid,
-  nat_algebra_law_subject_symbol_inhabitant_nat
-}
+
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
@@ -71,19 +66,16 @@ fn refinement_preservation_stub_locus() -> Locus {
   port_locus(port: ^refinement_preservation_stub_locus_port)
 }
 
-
 // Intentionally trivial: T-19 wishlist stub routes refinement preservation through refine (placeholder).
 // 🟡 gated — feature:refinement-preservation-stub-refine-placeholder — bind T-19 testgen follow-up — dissolve-on-arrival: replace admits=true with a real List<Node> predicate or delete the stub once the refinement-preservation generator emits from substrate; forbidden: permanent vacuous refinement without a dissolution receipt.
 fn refinement_preservation_stub_admits(xs: List<Node>) -> Bool {
   true
 }
 
-
 data refinement_preservation_stub_validation: Validation<List<Node>> = Validation {
   reason: ^refinement_preservation_stub_invalid,
   admits: refinement_preservation_stub_admits
 }
-
 
 // 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-19 testgen follow-up
 // with complexity (T-12); dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
@@ -91,7 +83,6 @@ data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Nod
   reason: ^refinement_preservation_stub_invalid,
   vacuous: vacuous_admits_marker
 }
-
 
 // Generator anchor: vacuous admits=true stub — refine accepts; pack helper is exhaustive-match only.
 // 🟡 gated — feature:refinement-preservation-stub-fallback — bind T-19 testgen follow-up — dissolve-on-arrival: replace oracle pack with Witness unwrap at the generator boundary; forbidden: permanent vacuous refinement without a dissolution receipt.
@@ -102,7 +93,6 @@ fn refinement_preservation_stub_generator_refined_terminal() -> Refined<List<Nod
     at: refinement_preservation_stub_locus()
   )
 }
-
 
 fn refinement_preservation_stub_generator_refined() -> Refined<List<Node>> {
   match refine(
@@ -115,7 +105,6 @@ fn refinement_preservation_stub_generator_refined() -> Refined<List<Node>> {
   }
 }
 
-
 // 🟡 gated — coproduct dissolution (docs/modeling-discipline.md Practice 4) — feature:t19-generator-oracle-basis-carrier — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — owner:T-19 testgen follow-up — dissolve-on-arrival: delete TestgenOracleBasis when each wishlist arm is replaced by its category-specific generated corpus and that corpus carries oracle basis through the concrete generator helper or emitted TestClaim shape; forbidden: permanent parallel oracle-category authority in the wishlist ledger.
 type TestgenOracleBasis
   = StructuralConstructionWitness
@@ -125,7 +114,6 @@ type TestgenOracleBasis
   | RoundTripDifferential
   | FrozenIoSnapshot
   | RefinementProjectionWitness
-
 
 type TestgenWishlistRow {
   generator: Generator<TestgenConcept>
@@ -150,7 +138,6 @@ fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
   }
 }
 
-
 fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimEqualsClaimVariant,
@@ -158,8 +145,8 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
     anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
     slot: AlgebraLaw {
       subject: AlgebraLawSubject {
-        algebra: nat_algebra_law_subject_symbol_additive_monoid,
-        inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+        algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+        inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
         law: law_nat_add_associativity,
       },
     },
@@ -167,7 +154,6 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
     profile_metadata: default_generator_profile(),
   }
 }
-
 
 fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
   Generator {
@@ -186,7 +172,6 @@ fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept>
   }
 }
 
-
 fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimCompilesClaimVariant,
@@ -203,7 +188,6 @@ fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
   }
 }
 
-
 fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimRoundTripClaimVariant,
@@ -211,7 +195,7 @@ fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: BidirectionalRoundtrip {
       subject: BidirectionalRoundtripSubject {
-        language: dag_language_model_surface_id,
+        language: ^dag_language_model_surface_id,
         production: ^t19_generator_wishlist_dag_surface_production,
       },
     },
@@ -219,7 +203,6 @@ fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
     profile_metadata: default_generator_profile(),
   }
 }
-
 
 fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConcept> {
   Generator {
@@ -234,7 +217,6 @@ fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConc
     profile_metadata: default_generator_profile(),
   }
 }
-
 
 fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
   Generator {
@@ -251,7 +233,6 @@ fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
     profile_metadata: default_generator_profile(),
   }
 }
-
 
 fn testgen_pending_non_tautological_generator_wishlist() -> List<TestgenWishlistRow> {
   [
@@ -272,7 +253,6 @@ fn testgen_pending_non_tautological_generator_wishlist() -> List<TestgenWishlist
     },
   ]
 }
-
 
 fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> {
   [
@@ -299,16 +279,13 @@ fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> 
   ]
 }
 
-
 fn pending_non_tautological_generator_count_is_three() -> Bool {
   length(xs: testgen_pending_non_tautological_generator_wishlist()) == 3
 }
 
-
 fn dispatched_non_tautological_generator_count_is_four() -> Bool {
   length(xs: testgen_dispatched_non_tautological_generators()) == 4
 }
-
 
 fn testgen_wishlist_count_node() -> Node {
   Node {
@@ -316,7 +293,6 @@ fn testgen_wishlist_count_node() -> Node {
     children: []
   }
 }
-
 
 fn testgen_wishlist_count_claim_rhs() -> Node {
   if pending_non_tautological_generator_count_is_three() && dispatched_non_tautological_generator_count_is_four() {
@@ -328,7 +304,6 @@ fn testgen_wishlist_count_claim_rhs() -> Node {
     }
   }
 }
-
 
 data claim_testgen_wishlist_formalized: TestClaim = EqualsClaim {
   label: "generated/testgen_category_wishlist: three pending non-tautological generator categories and four dispatched categories",

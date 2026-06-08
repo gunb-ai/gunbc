@@ -6,7 +6,6 @@
 
 module v4.extdeps.languages.dag
 
-
 import v4.std.collection { List, Set, Map, empty_map, map_insert }
 import v4.std.grammar {
   grammar_formal_terminal,
@@ -83,11 +82,16 @@ import v4.std.target_model {
 import v4.std.logic { Bool }
 import v4.std.algebra { Cons, Empty, fold_list, for_all, list_append, list_snoc_item }
 import v4.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus, outcome_accepted, outcome_rejected }
-import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName, qualified_name_for_all, qualified_name_from_node, qualified_name_projection_gated, qualified_name_structure_invalid }
+import v4.std.qualified_name {
+  QnCons,
+  QnEmpty,
+  QualifiedName,
+  qualified_name_for_all,
+  qualified_name_from_node
+}
 import v4.extdeps.languages.fidelity { DeclaredNormalized, FidelityDisposition }
 // RTADD / ctrl#1489 — MVP-1 add keystone target model (mirror rust_mvp1_target_model).
 data dag_mvp1_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
-
 
 fn dag_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -112,14 +116,12 @@ fn dag_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-
 type DagLanguageModel {
   lex: LexRules
   grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
 }
-
 
 fn dag_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
@@ -128,14 +130,12 @@ fn dag_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
-
 fn dag_literal_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
     pattern: LiteralPattern { text: text }
   }
 }
-
 
 fn dag_ident_lex_pattern() -> LexPattern {
   SequencePattern {
@@ -144,7 +144,6 @@ fn dag_ident_lex_pattern() -> LexPattern {
   }
 }
 
-
 fn dag_ident_lex_rule() -> LexRule {
   TokenRule {
     token_class: ^dag_token_ident,
@@ -152,14 +151,12 @@ fn dag_ident_lex_rule() -> LexRule {
   }
 }
 
-
 fn dag_int_literal_lex_rule() -> LexRule {
   TokenRule {
     token_class: ^dag_token_int_literal,
     pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
   }
 }
-
 
 fn dag_string_literal_lex_rule() -> LexRule {
   TokenRule {
@@ -172,13 +169,11 @@ fn dag_string_literal_lex_rule() -> LexRule {
   }
 }
 
-
 fn dag_whitespace_trivia_rule() -> LexRule {
   TriviaRule {
     pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
   }
 }
-
 
 fn dag_line_comment_trivia_rule() -> LexRule {
   TriviaRule {
@@ -188,7 +183,6 @@ fn dag_line_comment_trivia_rule() -> LexRule {
     }
   }
 }
-
 
 fn dag_block_comment_trivia_rule() -> LexRule {
   TriviaRule {
@@ -202,7 +196,6 @@ fn dag_block_comment_trivia_rule() -> LexRule {
     }
   }
 }
-
 
 fn dag_wave1_lex_rules() -> LexRuleSet {
   // Rule order is load-bearing: lex_try_rules prefers the later rule on equal-length
@@ -259,11 +252,9 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-
 fn dag_wave1_lex() -> LexRules {
   ModeledLexRules { root: dag_wave1_lex_rules() }
 }
-
 
 fn dag_grammar_atom(id: Symbol) -> Node {
   Node {
@@ -274,7 +265,6 @@ fn dag_grammar_atom(id: Symbol) -> Node {
   }
 }
 
-
 fn dag_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
     label: Named { name: name },
@@ -282,14 +272,12 @@ fn dag_named_edge(name: Symbol, target: Node) -> Edge {
   }
 }
 
-
 fn dag_positional_edge(target: Node) -> Edge {
   Edge {
     label: Positional,
     target: target
   }
 }
-
 
 // T-11: self-emission constructs the typed ConcreteSyntaxToken carrier and projects it through
 // the single shared serializer (v4.std.target_model.concrete_syntax_token_to_node). The Conj wire
@@ -299,15 +287,11 @@ fn emit_fixed_token(token_class: Symbol) -> Node {
   concrete_syntax_token_to_node(token: FixedToken { token_class: token_class })
 }
 
-
 fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
   concrete_syntax_token_to_node(
     token: BoundToken { token_class: token_class, binding: binding }
   )
 }
-
-
-
 
 fn emit_grammar_relation_row(
   production: GrammarProduction,
@@ -335,10 +319,6 @@ fn emit_grammar_relation_row(
     ]
   }
 }
-
-
-
-
 
 // Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
 fn dag_wave1_formal_productions() -> List<FormalProduction> {
@@ -1579,31 +1559,25 @@ fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-
 fn dag_grammar_nonterminal(production: Symbol) -> GrammarExpr {
   Nonterminal { production: production }
 }
-
 
 fn dag_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Sequence { left: left, right: right }
 }
 
-
 fn dag_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Choice { left: left, right: right }
 }
-
 
 fn dag_grammar_optional(element: GrammarExpr) -> GrammarExpr {
   Optional { element: element }
 }
 
-
 fn dag_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
   Repeat { element: element }
 }
-
 
 fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
@@ -1620,14 +1594,12 @@ fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_module_header_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_module),
     right: dag_grammar_nonterminal(production: ^dag_production_qualified_name)
   )
 }
-
 
 fn dag_grammar_qualified_name_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1641,7 +1613,6 @@ fn dag_grammar_qualified_name_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_generic_params_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
@@ -1652,7 +1623,6 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_ident),
@@ -1662,7 +1632,6 @@ fn dag_grammar_typed_param_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_param_list_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1675,7 +1644,6 @@ fn dag_grammar_param_list_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_qualified_type_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1696,13 +1664,11 @@ fn dag_grammar_qualified_type_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_type_list_expr() -> GrammarExpr {
   dag_grammar_comma_list_expr(
     item: dag_grammar_nonterminal(production: ^dag_production_type_expr)
   )
 }
-
 
 fn dag_grammar_fn_type_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1723,14 +1689,12 @@ fn dag_grammar_fn_type_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_type_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_qualified_type_expr(),
     right: dag_grammar_nonterminal(production: ^dag_production_fn_type)
   )
 }
-
 
 fn dag_grammar_import_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1742,7 +1706,6 @@ fn dag_grammar_import_block_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_field_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_ident),
@@ -1753,13 +1716,11 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_field_decl_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(item: dag_grammar_field_decl_expr())
   )
 }
-
 
 fn dag_grammar_field_decl_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1771,7 +1732,6 @@ fn dag_grammar_field_decl_block_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_fn_body_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
@@ -1782,14 +1742,12 @@ fn dag_grammar_fn_body_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_stmt_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_let_expr),
     right: dag_grammar_nonterminal(production: ^dag_production_expr)
   )
 }
-
 
 fn dag_grammar_let_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1803,7 +1761,6 @@ fn dag_grammar_let_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_expr_expr() -> GrammarExpr {
   dag_grammar_choice(
@@ -1821,7 +1778,6 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
   )
 }
 
-
 // Binary operator set matches the lex token declarations above; both live in
 // this file, so enumeration is the current canonical authority. Gate on a
 // future precedence table substrate when/if that lands.
@@ -1835,14 +1791,12 @@ fn dag_grammar_multiplicative_op_choice() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_additive_op_choice() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_plus),
     right: dag_grammar_terminal(token_class: ^dag_token_minus)
   )
 }
-
 
 fn dag_grammar_comparison_op_choice() -> GrammarExpr {
   dag_grammar_choice(
@@ -1857,14 +1811,12 @@ fn dag_grammar_comparison_op_choice() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_equality_op_choice() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_eq_eq),
     right: dag_grammar_terminal(token_class: ^dag_token_neq)
   )
 }
-
 
 fn dag_grammar_multiplicative_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1878,7 +1830,6 @@ fn dag_grammar_multiplicative_expr_helper() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_additive_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_multiplicative_expr_helper(),
@@ -1890,7 +1841,6 @@ fn dag_grammar_additive_expr_helper() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_comparison_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1904,7 +1854,6 @@ fn dag_grammar_comparison_expr_helper() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_equality_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_comparison_expr_helper(),
@@ -1916,7 +1865,6 @@ fn dag_grammar_equality_expr_helper() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_and_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1930,7 +1878,6 @@ fn dag_grammar_and_expr_helper() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_or_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_and_expr_helper(),
@@ -1942,7 +1889,6 @@ fn dag_grammar_or_expr_helper() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_pipe_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1956,11 +1902,9 @@ fn dag_grammar_pipe_expr_helper() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_binary_expr_expr() -> GrammarExpr {
   dag_grammar_pipe_expr_helper()
 }
-
 
 fn dag_grammar_unary_expr_expr() -> GrammarExpr {
   dag_grammar_choice(
@@ -1972,13 +1916,11 @@ fn dag_grammar_unary_expr_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_arg_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_arg))
   )
 }
-
 
 fn dag_grammar_field_init_list_helper() -> GrammarExpr {
   dag_grammar_optional(
@@ -1988,7 +1930,6 @@ fn dag_grammar_field_init_list_helper() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_pattern_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(
@@ -1996,7 +1937,6 @@ fn dag_grammar_pattern_list_helper() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_field_pattern_list_helper() -> GrammarExpr {
   dag_grammar_optional(
@@ -2006,18 +1946,15 @@ fn dag_grammar_field_pattern_list_helper() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_expr_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_expr))
   )
 }
 
-
 fn dag_grammar_untyped_params_helper() -> GrammarExpr {
   dag_grammar_comma_list_expr(item: dag_grammar_terminal(token_class: ^dag_token_ident))
 }
-
 
 fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -2028,7 +1965,6 @@ fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -2045,7 +1981,6 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_choice(
@@ -2060,7 +1995,6 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_primary_expr_expr() -> GrammarExpr {
   dag_grammar_choice(
@@ -2108,11 +2042,9 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_block_expr_expr() -> GrammarExpr {
   dag_grammar_nonterminal(production: ^dag_production_fn_body)
 }
-
 
 fn dag_grammar_arg_expr() -> GrammarExpr {
   dag_grammar_choice(
@@ -2127,7 +2059,6 @@ fn dag_grammar_arg_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_field_init_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_ident),
@@ -2137,7 +2068,6 @@ fn dag_grammar_field_init_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_match_expr_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -2155,7 +2085,6 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_match_arm_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_pattern),
@@ -2165,7 +2094,6 @@ fn dag_grammar_match_arm_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_constructor_pattern_suffix_expr() -> GrammarExpr {
   dag_grammar_optional(
@@ -2188,14 +2116,12 @@ fn dag_grammar_constructor_pattern_suffix_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_constructor_pattern_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_ident),
     right: dag_grammar_constructor_pattern_suffix_expr()
   )
 }
-
 
 // Pattern forms cover observed src/v4 branches: nullary constructors,
 // record-field patterns, keyword/literal patterns, and positional constructor
@@ -2216,7 +2142,6 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_field_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
@@ -2229,7 +2154,6 @@ fn dag_grammar_field_pattern_expr() -> GrammarExpr {
     right: dag_grammar_terminal(token_class: ^dag_token_ident)
   )
 }
-
 
 fn dag_grammar_if_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -2250,7 +2174,6 @@ fn dag_grammar_if_block_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_if_then_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_if),
@@ -2270,14 +2193,12 @@ fn dag_grammar_if_then_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_if_expr_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_if_then_expr(),
     right: dag_grammar_if_block_expr()
   )
 }
-
 
 fn dag_grammar_fn_literal_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -2303,7 +2224,6 @@ fn dag_grammar_fn_literal_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_import_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_import),
@@ -2314,14 +2234,12 @@ fn dag_grammar_import_decl_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_type_variant_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
     right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_field_decl_block))
   )
 }
-
 
 fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -2334,7 +2252,6 @@ fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_type_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -2357,7 +2274,6 @@ fn dag_grammar_type_decl_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_data_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_data),
@@ -2376,7 +2292,6 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -2402,7 +2317,6 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
@@ -2416,14 +2330,12 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   )
 }
 
-
 fn dag_grammar_module_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_module_header),
     right: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_top_level_item))
   )
 }
-
 
 fn dag_grammar_production(name: Symbol, expression: GrammarExpr, emitted: Symbol) -> GrammarProduction {
   GrammarProduction {
@@ -2433,7 +2345,6 @@ fn dag_grammar_production(name: Symbol, expression: GrammarExpr, emitted: Symbol
   }
 }
 
-
 fn dag_grammar_module_production() -> GrammarProduction {
   dag_grammar_production(
     name: ^dag_production_module,
@@ -2441,7 +2352,6 @@ fn dag_grammar_module_production() -> GrammarProduction {
     emitted: ^dag_surface_module
   )
 }
-
 
 fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
   Node {
@@ -2459,7 +2369,6 @@ fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
   }
 }
 
-
 fn emit_row_module_header(qualified_name: Node) -> Node {
   emit_grammar_relation_row(
     production: dag_grammar_production(
@@ -2474,7 +2383,6 @@ fn emit_row_module_header(qualified_name: Node) -> Node {
     ]
   )
 }
-
 
 fn emit_import_decl_emitted_node(
   qualified_name: Node,
@@ -2505,7 +2413,6 @@ fn emit_import_decl_emitted_node(
   }
 }
 
-
 fn emit_row_import_decl(
   qualified_name: Node,
   import_block: Node?
@@ -2530,7 +2437,6 @@ fn emit_row_import_decl(
     }
   )
 }
-
 
 fn emit_data_decl_emitted_node(
   name_binding: Symbol,
@@ -2560,7 +2466,6 @@ fn emit_data_decl_emitted_node(
   }
 }
 
-
 fn emit_row_data_decl(
   name_binding: Symbol,
   type_expr: Node,
@@ -2587,7 +2492,6 @@ fn emit_row_data_decl(
     ]
   )
 }
-
 
 fn dag_wave1_grammar_root() -> GrammarRoot {
   let module = dag_grammar_module_production()
@@ -2792,16 +2696,13 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-
 fn dag_wave1_g0_void_grammar() -> ParseGrammar {
   VoidGrammar
 }
 
-
 fn dag_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: dag_wave1_grammar_root() }
 }
-
 
 // wave-1 void LM canonical prelude atoms (TASKS T-8 / CP-1b bucket C).
 fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
@@ -2816,7 +2717,6 @@ fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
   }
 }
 
-
 fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
   Set {
     member: fn(_) {
@@ -2824,7 +2724,6 @@ fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
     }
   }
 }
-
 
 fn dag_language_model_wave1_canonical_symbols() -> Set<Symbol> {
   Set {
@@ -2835,7 +2734,6 @@ fn dag_language_model_wave1_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-
 fn dag_language_model_wave1_void() -> DagLanguageModel {
   DagLanguageModel {
     lex: dag_wave1_lex(),
@@ -2845,7 +2743,6 @@ fn dag_language_model_wave1_void() -> DagLanguageModel {
   }
 }
 
-
 fn dag_language_model_wave1() -> DagLanguageModel {
   DagLanguageModel {
     lex: dag_wave1_lex(),
@@ -2854,7 +2751,6 @@ fn dag_language_model_wave1() -> DagLanguageModel {
     canonical_symbols: dag_language_model_wave1_canonical_symbols()
   }
 }
-
 
 // compile-anchor empty prelude; same language_identity as wave1_void (TASKS T-8 / CP-1b bucket C).
 fn dag_language_model_surface_empty_prelude() -> DagLanguageModel {
@@ -2866,11 +2762,9 @@ fn dag_language_model_surface_empty_prelude() -> DagLanguageModel {
   }
 }
 
-
 fn dag_language_model_canonical_symbols(lm: DagLanguageModel) -> Set<Symbol> {
   lm.canonical_symbols
 }
-
 
 fn dag_wave1_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
@@ -2878,7 +2772,6 @@ fn dag_wave1_lex_token_symbol(sym: Symbol) -> Bool {
     token_class: sym
   )
 }
-
 
 // sync_tokens: declaration-start keywords used for error recovery in Repeat walks.
 fn dag_wave1_sync_tokens() -> Set<Symbol> {
@@ -2893,12 +2786,10 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
   }
 }
 
-
 // Pipeline-facing LM that wires the full modeled grammar — use this for T-7/T-8+ pipeline calls.
 fn dag_language_model_wave1_modeled() -> DagLanguageModel {
   dag_language_model_wave1()
 }
-
 
 // C5 ingest/emit fidelity disposition for the .dag surface trivia.
 // Trivia rules (whitespace, line comments, block comments) are stripped by the lexer;
@@ -2923,7 +2814,6 @@ fn dag_block_comment_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
   DeclaredNormalized { feature: DagBlockCommentDeclaredNormalized }
 }
 
-
 // 🟢 coproduct dissolution — module-header metadata edge names are fixed facts declared
 // alongside ^dag_surface_module_header / ^dag_surface_module_header_qualified_name; Named
 // edges bearing these symbols are structural header metadata, not declared exports.
@@ -2931,7 +2821,6 @@ fn dag_surface_module_header_metadata_edge(name: Symbol) -> Bool {
   (name == ^dag_surface_module_header)
     || (name == ^dag_surface_module_header_qualified_name)
 }
-
 
 // Caller-facing entry point for holders of a module header Node (emit or parse output): extracts
 // the declared QualifiedName by walking ^dag_surface_module_header_qualified_name to the fold_list_node
@@ -3203,17 +3092,14 @@ fn dag_mvp1_target_model() -> TargetModel {
   }
 }
 
-
 // T-36 / rung-3 RoundTripClaim precondition receipt — wave-1 lex/grammar/C5 trivia axes.
 fn dag_round_trip_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
 
-
 fn dag_round_trip_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
-
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-readiness-receipt-node — bind TASKS.md T-36 — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces Node/Atom axis witnesses in claim input; eval authority is dag_round_trip_wave1_authorities_ready only; forbidden: eval reading embedded ready atoms (P2).
 fn dag_round_trip_bool_node(pass: Bool) -> Node {
@@ -3223,7 +3109,6 @@ fn dag_round_trip_bool_node(pass: Bool) -> Node {
     dag_round_trip_atom(s: ^dag_round_trip_axis_not_ready)
   }
 }
-
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-lex-readiness — bind TASKS.md T-36 — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces conjunctive dag_wave1_lex_token_symbol Bool; forbidden: parallel wave-1 lex readiness classifier outside this authority cluster.
 fn dag_round_trip_lex_ready() -> Bool {
@@ -3242,7 +3127,6 @@ fn dag_round_trip_lex_ready() -> Bool {
   dag_wave1_lex_token_symbol(sym: ^dag_token_arrow)
 }
 
-
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-grammar-readiness — bind TASKS.md T-36 — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces conjunctive grammar_carries_symbol Bool; forbidden: parallel wave-1 grammar readiness classifier outside this authority cluster.
 fn dag_round_trip_grammar_ready(lm: DagLanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module) &&
@@ -3252,14 +3136,12 @@ fn dag_round_trip_grammar_ready(lm: DagLanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl)
 }
 
-
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-c5-fidelity-readiness — bind TASKS.md T-36 / dag.dag C5 DagTriviaNormalization — dissolve-on-arrival: substrate FidelityDisposition projection over DagTriviaNormalization replaces hand DeclaredNormalized arm equality; forbidden: parallel per-trivia Bool classifiers outside fidelity.dag / dag_whitespace_fidelity producers.
 fn dag_round_trip_normalization_declared() -> Bool {
   dag_whitespace_fidelity() == DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
   dag_line_comment_fidelity() == DeclaredNormalized { feature: DagLineCommentDeclaredNormalized } &&
   dag_block_comment_fidelity() == DeclaredNormalized { feature: DagBlockCommentDeclaredNormalized }
 }
-
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-wave1-authorities-ready — bind TASKS.md T-36 / 05_eval.dag RoundTripClaim — dissolve-on-arrival: typed DagRoundTripWave1Readiness substrate receipt replaces Bool conjunctive eval gate; eval re-derives lex/grammar/C5 from dag.dag only (P2); forbidden: eval reading embedded ready atoms in claim input.
 fn dag_round_trip_wave1_authorities_ready() -> Bool {
@@ -3268,7 +3150,6 @@ fn dag_round_trip_wave1_authorities_ready() -> Bool {
   dag_round_trip_grammar_ready(lm: lm) &&
   dag_round_trip_normalization_declared()
 }
-
 
 fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
   match find_named_child(root: root, name: ^dag_surface_module_header) {
@@ -3282,7 +3163,7 @@ fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
             Accepted { value: qn, diagnostics: _ } =>
               match qn {
                 QnEmpty => outcome_rejected(Diagnostic {
-                  reason: qualified_name_structure_invalid,
+                  reason: ^qualified_name_structure_invalid,
                   at: node_locus(node: root),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 })
@@ -3291,7 +3172,7 @@ fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
                     outcome_accepted(value: qn)
                   } else {
                     outcome_rejected(Diagnostic {
-                      reason: qualified_name_projection_gated,
+                      reason: ^qualified_name_projection_gated,
                       at: node_locus(node: root),
                       correction: Unavailable { reason: ExternalContractUnknown }
                     })

@@ -2,9 +2,7 @@
 // Scope: MVP-1 T-10/T-11 receipt — translate/emit/compile-inferred substrate + rust_mvp1 add-fn Accepted emit.
 // Status: T-11 Rust slice — grammar-inverse compile-inferred accepts for rust_mvp1_target_model + emitted add-fn tree; full source-ingest compile remains blocked on ingest staging.
 
-
 module v4.test.claim.manual.mvp1_rust_add_translate
-
 
 import v4.compiler.emit { emit }
 import v4.compiler.compile {
@@ -46,23 +44,14 @@ import v4.extdeps.languages.rust {
   Signed,
   Bits32,
   PanicOnOverflow,
-  TwoComplementWrap,
-  rust_inhabitant_i32,
-  rust_surface_spelling_i32,
-  rust_std_projection_int32,
-  rust_tag_scalar_int,
-  rust_tag_signed,
-  rust_tag_bits32,
-  rust_tag_panic_on_overflow,
-  rust_tag_two_complement_wrap
+  TwoComplementWrap
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
 import v4.std.target_model { TargetModel }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
-  infer_receipt_context,
-  infer_receipt_input_infer_add_mvp
+  infer_receipt_context
 }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { Map, empty_map }
@@ -74,9 +63,7 @@ import v4.std.coercion {
 }
 import v4.std.constraints {
   CanonicalGrounding,
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
+  CanonicalGroundingWitness
 }
 import v4.std.diagnostic {
   Accepted,
@@ -112,14 +99,12 @@ import v4.std.verification {
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
 
-
 fn mvp_int_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^mvp_add_int_atom } },
     children: []
   }
 }
-
 
 data mvp_add_arrow_node: Node = Node {
   kind: TypeNode { connective: Arrow },
@@ -130,12 +115,9 @@ data mvp_add_arrow_node: Node = Node {
   ]
 }
 
-
 data mvp1_rust_emitted_root: Node = rust_mvp1_fixture_emitted_add_fn
 
-
 data mvp1_rust_target_model: TargetModel = rust_mvp1_target_model()
-
 
 data mvp1_rust_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: rust_mvp1_target_model_node(),
@@ -144,13 +126,11 @@ data mvp1_rust_poisoned_authority_target_model: TargetModel = TargetModel {
   authority_source_text: mvp1_forbidden_authority_source_text
 }
 
-
 // Empty Conj bundle — missing target_model_edge_translation_rules; measure path must fail-closed.
 data mvp1_rust_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: []
 }
-
 
 data mvp1_rust_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: mvp1_rust_empty_translation_rules_bundle,
@@ -159,7 +139,6 @@ data mvp1_rust_missing_translation_rules_target: TargetModel = TargetModel {
   authority_source_text: ""
 }
 
-
 fn anchor_mvp1_serialize_rejects_missing_translation_rules() -> Outcome<TargetSource> {
   target_serialize_source_from_model(
     target: mvp1_rust_missing_translation_rules_target,
@@ -167,9 +146,7 @@ fn anchor_mvp1_serialize_rejects_missing_translation_rules() -> Outcome<TargetSo
   )
 }
 
-
 data mvp1_serialize_reject_receipt: Outcome<TargetSource> = anchor_mvp1_serialize_rejects_missing_translation_rules()
-
 
 fn mvp1_serialize_reject_claim_outcome() -> Outcome<Node> {
   match mvp1_serialize_reject_receipt {
@@ -187,11 +164,9 @@ fn mvp1_serialize_reject_claim_outcome() -> Outcome<Node> {
   }
 }
 
-
 fn mvp1_rust_i32_facts_node() -> Node {
   rust_integer_facts_node(facts: rust_facts_i32)
 }
-
 
 fn mvp1_rust_canonical_grounding(
   node: Node,
@@ -201,17 +176,16 @@ fn mvp1_rust_canonical_grounding(
     node: node,
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
+        property: ^constraint_property_being_canonical,
         evidence: algebra
       },
       closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
+        property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
     }
   }
 }
-
 
 // Per-node canonical grounding derived from rust_facts_i32 / inhabitant constructors (no Atom→i32 fabrication).
 // 🟡 gated — feature:W-T-10-mvp1-inferred-tree-grounding — bind TASKS.md T-10 (Tracked scaffolds) — dissolve-on: infer-authored facts replace hand-enumerated MVP fixture grounding; forbidden: generic algebra-evidence assignment across unrelated Atoms.
@@ -230,7 +204,7 @@ fn mvp1_rust_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> 
         algebra: mvp1_rust_i32_facts_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: rust_inhabitant_i32) {
+  } else if node == rust_inhabitant_atom(id: ^rust_inhabitant_i32) {
     Holds {
       value: mvp1_rust_canonical_grounding(
         node: node,
@@ -244,14 +218,14 @@ fn mvp1_rust_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> 
         algebra: node
       )
     }
-  } else if node == rust_inhabitant_atom(id: rust_surface_spelling_i32) {
+  } else if node == rust_inhabitant_atom(id: ^rust_surface_spelling_i32) {
     Holds {
       value: mvp1_rust_canonical_grounding(
         node: node,
         algebra: mvp1_rust_i32_facts_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: rust_std_projection_int32) {
+  } else if node == rust_inhabitant_atom(id: ^rust_std_projection_int32) {
     Holds {
       value: mvp1_rust_canonical_grounding(
         node: node,
@@ -286,21 +260,21 @@ fn mvp1_rust_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> 
         algebra: rust_mvp1_i32_overflow_disposition_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: rust_tag_scalar_int) {
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_scalar_int) {
     Holds {
       value: mvp1_rust_canonical_grounding(
         node: node,
         algebra: rust_mvp1_i32_scalar_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: rust_tag_signed) {
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_signed) {
     Holds {
       value: mvp1_rust_canonical_grounding(
         node: node,
         algebra: rust_mvp1_i32_scalar_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: rust_tag_bits32) {
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_bits32) {
     Holds {
       value: mvp1_rust_canonical_grounding(
         node: node,
@@ -321,14 +295,14 @@ fn mvp1_rust_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> 
         algebra: rust_mvp1_i32_overflow_disposition_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: rust_tag_panic_on_overflow) {
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_panic_on_overflow) {
     Holds {
       value: mvp1_rust_canonical_grounding(
         node: node,
         algebra: rust_overflow_node(overflow: PanicOnOverflow)
       )
     }
-  } else if node == rust_inhabitant_atom(id: rust_tag_two_complement_wrap) {
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_two_complement_wrap) {
     Holds {
       value: mvp1_rust_canonical_grounding(
         node: node,
@@ -345,7 +319,6 @@ fn mvp1_rust_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> 
     }
   }
 }
-
 
 fn mvp1_rust_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   match mvp1_rust_canonical_grounding_for(node: node) {
@@ -364,11 +337,9 @@ fn mvp1_rust_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   }
 }
 
-
 fn mvp1_rust_facts_lookup(key: Node) -> Witness<InferredFacts> {
   mvp1_rust_inferred_facts_for(node: key)
 }
-
 
 data mvp1_rust_inferred_tree: InferredTree = InferredTree {
   root: mvp1_rust_emitted_root,
@@ -377,16 +348,13 @@ data mvp1_rust_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-
 fn anchor_mvp1_translate_accepts() -> Outcome<Node> {
   translate(tree: mvp1_rust_inferred_tree, target: mvp1_rust_target_model)
 }
 
-
 fn anchor_mvp1_emit_accepts() -> Outcome<TargetSource> {
   emit(tree: mvp1_rust_inferred_tree, target: mvp1_rust_target_model)
 }
-
 
 fn anchor_mvp1_compile_inferred_accepts() -> Outcome<CompileOutput> {
   compile_inferred(
@@ -395,10 +363,8 @@ fn anchor_mvp1_compile_inferred_accepts() -> Outcome<CompileOutput> {
   )
 }
 
-
 // Typed emit receipt — preserves Outcome<TargetSource> without Node fabrication.
 data mvp1_emit_receipt: Outcome<TargetSource> = anchor_mvp1_emit_accepts()
-
 
 // R2 keystone execution witness — emit(add) must produce the canonical rust_mvp1 add-fn source
 // (`fn add(x: i32, y: i32) -> i32 { x + y }`), not a structural grep ratchet.
@@ -410,11 +376,9 @@ fn mvp1_rust_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-
 // Typed compile receipt — compile_inferred exercises compile → emit → translate → grammar inverse.
 // The target model intentionally poisons authority_source_text so a fallback read cannot pass.
 data mvp1_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_compile_inferred_accepts()
-
 
 // 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 // Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
@@ -437,7 +401,6 @@ fn mvp1_emit_claim_outcome() -> Outcome<Node> {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
-
 
 // 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 // Project compile Output to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
@@ -482,7 +445,6 @@ fn mvp1_coercion_quality_is_exact(q: CoercionQuality) -> Bool {
   }
 }
 
-
 fn mvp1_coerce_grounded_node_exact_structural_claim_outcome() -> Outcome<Node> {
   match coerce_grounded_node(
     source: mvp1_rust_emitted_root,
@@ -508,7 +470,6 @@ fn mvp1_coerce_grounded_node_exact_structural_claim_outcome() -> Outcome<Node> {
   }
 }
 
-
 data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/mvp1: anchor_mvp1_emit_accepts Accepted with canonical rust_mvp1 add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -516,7 +477,6 @@ data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
   expected_value: mvp1_rust_emitted_root,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_mvp1_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/mvp1: compile_inferred emits canonical rust_mvp1 add-fn source through grammar inverse",
@@ -526,7 +486,6 @@ data claim_mvp1_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_mvp1_coerce_grounded_node_exact_structural_accepts: TestClaim = CompilesClaim {
   label: "manual/mvp1: coerce_grounded_node accepts rust_mvp1 add-fn through exact-structural find_witness",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -534,7 +493,6 @@ data claim_mvp1_coerce_grounded_node_exact_structural_accepts: TestClaim = Compi
   expected_value: mvp1_rust_emitted_root,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 // T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node> via run_test_claim_assert (Verdict<Node>).
 // 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
@@ -544,10 +502,9 @@ data subject_mvp1_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEva
   tree: mvp1_rust_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: mvp1_rust_emitted_root,
-    evaluator_pin: infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
-
 
 data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_mvp1_emit_add_fn_accepts),
@@ -558,17 +515,15 @@ data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   )
 }
 
-
 data subject_mvp1_coerce_grounded_node_exact_structural_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_coerce_grounded_node_exact_structural_accepts,
   context: infer_receipt_context(),
   tree: mvp1_rust_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: mvp1_rust_emitted_root,
-    evaluator_pin: infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
-
 
 data run_mvp1_coerce_grounded_node_exact_structural_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_mvp1_coerce_grounded_node_exact_structural_accepts),
@@ -579,7 +534,6 @@ data run_mvp1_coerce_grounded_node_exact_structural_accepts: TestClaimRun<Node, 
   )
 }
 
-
 // T-22 TestClaimRun receipt — structural assert over projected compile Outcome<Node> via run_test_claim_assert (Verdict<Node>).
 // 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
@@ -588,10 +542,9 @@ data subject_mvp1_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = 
   tree: mvp1_rust_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: mvp1_rust_emitted_root,
-    evaluator_pin: infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
-
 
 data run_mvp1_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_mvp1_compile_inferred_add_fn_accepts),
@@ -602,7 +555,6 @@ data run_mvp1_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestCl
   )
 }
 
-
 data claim_mvp1_translate_module_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp1: translate stage module + coercion_fold call-site compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -611,7 +563,6 @@ data claim_mvp1_translate_module_compiles: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_mvp1_emit_module_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp1: emit stage module (serialize_target o translate) compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -619,7 +570,6 @@ data claim_mvp1_emit_module_compiles: TestClaim = CompilesClaim {
   expected_value: mvp_add_arrow_node,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_mvp1_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
   label: "manual/mvp1: target_serialize_source_from_model rejects bundle missing translation_rules",
@@ -635,17 +585,15 @@ data claim_mvp1_serialize_rejects_missing_translation_rules: TestClaim = Diagnos
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data subject_mvp1_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_serialize_rejects_missing_translation_rules,
   context: infer_receipt_context(),
   tree: mvp1_rust_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: mvp1_rust_emitted_root,
-    evaluator_pin: infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
-
 
 data run_mvp1_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(subject: subject_mvp1_serialize_rejects_missing_translation_rules),

@@ -10,7 +10,6 @@ import v4.lens.affected_set {
   mark_rerun
 }
 import v4.lens.affected_set_examples {
-  affected_set_example_dimension,
   affected_set_example_node,
   expected_affected_set_dimension_seed
 }
@@ -31,7 +30,7 @@ fn dimension_seed_rerun_claim_holds() -> Bool {
     frontier: empty_frontier(),
     key: ExclusionKey {
       at: affected_set_example_node,
-      dimension: affected_set_example_dimension
+      dimension: ^affected_set_example_dimension
     }
   ) == expected_affected_set_dimension_seed
 }

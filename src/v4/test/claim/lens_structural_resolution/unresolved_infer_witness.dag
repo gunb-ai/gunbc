@@ -22,14 +22,10 @@ import v4.test.claim.lens_structural_resolution.claim_carrier {
   lens_structural_resolution_actual
 }
 import v4.std.collection { Map }
-import v4.std.constraints {
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
+
 import v4.std.dependency {
   BindsTo,
-  DependencyView,
-  dependency_binds_to_edge
+  DependencyView
 }
 import v4.std.diagnostic { node_locus }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
@@ -48,7 +44,7 @@ data sr_infer_use: Node = sr_infer_claim_atom(s: ^sr_infer_use_symbol)
 data sr_infer_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_infer_use }
+    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_infer_use }
   ]
 }
 
@@ -66,7 +62,6 @@ fn sr_infer_resolved_facts() -> InferredFacts {
     descent_symbol: ^sr_infer_descent_symbol,
   )
 }
-
 
 fn sr_infer_usage_site_witness() -> Witness<InferredFacts> {
   Violates {

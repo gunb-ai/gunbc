@@ -4,7 +4,6 @@
 
 module v4.lens.testgen
 
-
 import v4.std.collection { List }
 import v4.std.algebra {
   FreeMonoid,
@@ -56,13 +55,7 @@ import v4.std.witness { StructuralPropertyWitness }
 import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
   NatAlgebraLawObligation,
-  nat_declared_algebra_law_obligations,
-  law_nat_add_associativity,
-  law_nat_add_left_identity,
-  law_nat_add_right_identity,
-  law_nat_mul_annihilator,
-  law_nat_mul_associativity,
-  law_nat_mul_left_identity
+  nat_declared_algebra_law_obligations
 }
 import v4.std.node {
   Atom,
@@ -91,7 +84,7 @@ import v4.extdeps.file_system {
   FileSystemOperations,
   Filesystem
 }
-import v4.extdeps.languages.dag { dag_language_model_surface_id }
+
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
@@ -188,29 +181,22 @@ import v4.std.artifact {
   test_claim_generated_artifact
 }
 
-
 // 🟢 coproduct dissolution — LB-P4-3212.
 type TypeConstructionSubject
 // 🟢 coproduct dissolution — LB-P4-3212
   = ConnectiveKernel { connective: Connective }
   | BehaviorValueSubject { behavior: Behavior }
 
-
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 
-
 type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }
-
-
 
 type LensApplicabilitySubject {
   lens: Symbol
   program: Node
 }
 
-
 type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
-
 
 // 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
 type FrozenLanguageBehaviorSnapshot {
@@ -219,12 +205,10 @@ type FrozenLanguageBehaviorSnapshot {
   expected_value: Node
 }
 
-
 // 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
 type LanguageBehaviorIoMock {
   snapshot: FrozenLanguageBehaviorSnapshot
 }
-
 
 // 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
 type LanguageBehaviorEquivalenceSubject {
@@ -232,13 +216,11 @@ type LanguageBehaviorEquivalenceSubject {
   language: Symbol
 }
 
-
 // 🟡 coproduct dissolution — T19-REFINEMENT-PRESERVATION.
 type RefinementPreservationSubject {
   refined: Refined<List<Node>>
   original: List<Node>
 }
-
 
 // 🟡 coproduct dissolution — LB-P4-3212.
 type TestgenConcept
@@ -254,7 +236,6 @@ type TestgenConcept
       mock: LanguageBehaviorIoMock
     }
   | RefinementPreservation { subject: RefinementPreservationSubject }
-
 
 // RULING-1: 🟡 needs-more-work — scheduling generator slot until LBE = L6 form×language coproduct shape ruled.
 // 🟡 bootstrap-limitation interim — feature:B-GENERATOR-MATCH-ARM-1 — Generator<C> record
@@ -274,19 +255,16 @@ type Generator<C> {
   profile_metadata: GeneratorProfile
 }
 
-
 // F.2-P1: testgen-local generation-profile metadata. v0 carries a single profile
 // reference Symbol (precedent: leaf_model_verification build_profile / tool_profile_ref);
 // the record shape lets profile facts grow without touching Generator construction sites.
 type GeneratorProfile { profile_ref: Symbol }
-
 
 // F.2-P1: default generation profile applied to all scheduled generators until the
 // testgen CLI (wise-wolf-799 lane) selects a profile per invocation.
 // F.2-P1: source file the testgen generators are authored in — the artifact file_path
 // for provenance until per-claim emit paths are modeled.
 data testgen_lens_file_path: String = "src/v4/lens/testgen.dag"
-
 
 fn default_generator_profile() -> GeneratorProfile {
   GeneratorProfile { profile_ref: ^testgen_default_profile_ref }
@@ -298,7 +276,6 @@ fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 // F.2-P1: canonical per-anchor GeneratorId table. Identity is DERIVED from the row's
 // ClaimAnchorKey (single authority — not a coarse static category symbol), so distinct
@@ -333,7 +310,6 @@ fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
   }
 }
 
-
 // F.2-P1: derive identity from a generated coproduct-exhaustiveness variant (one id per omitted arm).
 fn generator_id_for_coproduct_variant(v: TestClaimCoproductVariant) -> GeneratorId {
   match v {
@@ -345,14 +321,12 @@ fn generator_id_for_coproduct_variant(v: TestClaimCoproductVariant) -> Generator
   }
 }
 
-
 fn generator_id_for_generated_anchor(key: GeneratedAnchorKey) -> GeneratorId {
   match key {
     GeneratedCoproductExhaustiveness { omitted_variant } =>
       generator_id_for_coproduct_variant(v: omitted_variant)
   }
 }
-
 
 // F.2-P1: single-authority GeneratorId derivation — the row's ClaimAnchorKey IS its identity.
 fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId {
@@ -361,7 +335,6 @@ fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId {
     GeneratedClaimAnchor { generated_anchor } => generator_id_for_generated_anchor(key: generated_anchor)
   }
 }
-
 
 // F.2-P1: build a generator's provenance from its identity. The emitted artifact is a
 // refined GeneratedArtifact keyed by the same GeneratorId — the refined type makes
@@ -375,13 +348,11 @@ fn generator_provenance(id: GeneratorId) -> GeneratorProvenance {
   }
 }
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntry {
   path: AbsolutePath
   body: FileBody
 }
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 // 🟢 coproduct dissolution — LB-P4-3212.
@@ -390,14 +361,12 @@ type CorpusTraversalScope
   = RecursiveCorpusWalk
   | SingleDirectoryCorpusWalk
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 // 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusTraversalOrder
 // 🟢 coproduct dissolution — LB-P4-3212
   = LexicalPathOrder
   | FilesystemNativeOrder
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 // 🟢 coproduct dissolution — LB-P4-3212.
@@ -406,14 +375,12 @@ type CorpusDuplicatePolicy
   = PreserveDuplicateEntries
   | RejectDuplicatePaths
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusTraversalPolicy {
   scope: CorpusTraversalScope
   order: CorpusTraversalOrder
   duplicates: CorpusDuplicatePolicy
 }
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerationRequest {
@@ -424,33 +391,26 @@ type CorpusEnumerationRequest {
   traversal: CorpusTraversalPolicy
 }
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntryIngestResult = Outcome<Node>
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensReadResult<C> = Outcome<C>
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensReader<C> {
   lens: Symbol
   read: fn(Node) -> CorpusLensReadResult<C>
 }
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensObservation<C> {
@@ -459,10 +419,8 @@ type CorpusLensObservation<C> {
   output: C
 }
 
-
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
-
 
 // RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensDriver<C> = fn(
@@ -472,18 +430,13 @@ type CorpusLensDriver<C> = fn(
   CorpusLensReader<C>
 ) -> CorpusLensDriveResult<C>
 
-
 // RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
-
 
 data lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
 
-
 data lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)"
 
-
 data lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
-
 
 data refinement_label_nonempty_list_base: String = "generated/refinement: NonEmptyList preserves List base after refine"
 data idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
@@ -492,69 +445,60 @@ data idempotent_label_delete: String = "generated/idempotent_operation: DeleteEf
 data coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
 fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
     input_node: stub_empty_conj,
     expected_value: stub_empty_conj,
   }
 }
 
-
 fn lbe_frozen_snapshot_disj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
     input_node: stub_empty_disj,
     expected_value: stub_empty_disj,
   }
 }
 
-
 fn lbe_frozen_snapshot_transform_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
     input_node: stub_empty_transform,
     expected_value: stub_empty_transform,
   }
 }
 
-
 fn lbe_io_mock_conj_dag_surface() -> LanguageBehaviorIoMock {
   LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_conj_dag_surface() }
 }
-
 
 fn lbe_io_mock_disj_dag_surface() -> LanguageBehaviorIoMock {
   LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_disj_dag_surface() }
 }
 
-
 fn lbe_io_mock_transform_dag_surface() -> LanguageBehaviorIoMock {
   LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_transform_dag_surface() }
 }
 
-
 fn lbe_subject_conj_dag_surface() -> LanguageBehaviorEquivalenceSubject {
   LanguageBehaviorEquivalenceSubject {
     subject: ConnectiveKernel { connective: Conj },
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
   }
 }
-
 
 fn lbe_subject_disj_dag_surface() -> LanguageBehaviorEquivalenceSubject {
   LanguageBehaviorEquivalenceSubject {
     subject: ConnectiveKernel { connective: Disj },
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
   }
 }
-
 
 fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
   LanguageBehaviorEquivalenceSubject {
     subject: BehaviorValueSubject { behavior: Transform },
-    language: dag_language_model_surface_id,
+    language: ^dag_language_model_surface_id,
   }
 }
-
 
 fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<Node>>> {
   refine(
@@ -588,7 +532,6 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
   )
 }
 
-
 fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPreservationSubject> {
   let original = [stub_empty_conj]
   match refine_nonempty_node_list(xs: original, at: node_locus(node: stub_empty_conj)) {
@@ -603,7 +546,6 @@ fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPre
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
-
 
 fn testgen_emit_refinement_preservation_claim(
   anchor: ManualAnchorKey,
@@ -631,7 +573,6 @@ fn testgen_emit_refinement_preservation_claim(
   }
 }
 
-
 fn testgen_scheduled_refinement_preservation_generators() -> Outcome<List<Generator<TestgenConcept>>> {
   match bootstrap_claim_generator_for_manual_anchor(key: ManualRefinementNonEmptyListBase) {
     Accepted { value: generator, diagnostics: d } =>
@@ -642,7 +583,6 @@ fn testgen_scheduled_refinement_preservation_generators() -> Outcome<List<Genera
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
-
 
 fn testgen_emit_idempotent_operation_equals_claim(
   label: String,
@@ -660,7 +600,6 @@ fn testgen_emit_idempotent_operation_equals_claim(
     diagnostics: None,
   }
 }
-
 
 fn testgen_emit_idempotent_operation_claim(
   label: String,
@@ -687,7 +626,6 @@ fn testgen_emit_idempotent_operation_claim(
   }
 }
 
-
 fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempotentOperationSubject> {
   [
     sample_read_composable,
@@ -695,7 +633,6 @@ fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempoten
     sample_delete_composable,
   ]
 }
-
 
 fn testgen_emit_language_behavior_equivalence_claim(
   anchor: ManualAnchorKey,
@@ -744,7 +681,6 @@ fn testgen_emit_language_behavior_equivalence_claim(
   }
 }
 
-
 fn testgen_emit_algebra_law_claim(
   anchor: ManualAnchorKey,
   label: String,
@@ -781,7 +717,6 @@ fn testgen_emit_algebra_law_claim(
   }
 }
 
-
 fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase> {
   match algebra_law_subject_for_manual_anchor(anchor: anchor) {
     Accepted { value: subject, diagnostics: None } =>
@@ -797,7 +732,6 @@ fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawC
   }
 }
 
-
 fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject> {
   match anchor {
     ManualNatAddLeftIdentity =>
@@ -805,7 +739,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         value: AlgebraLawSubject {
           algebra: nat_algebra_law_subject_symbol_additive_monoid,
           inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_add_left_identity,
+          law: ^law_nat_add_left_identity,
         },
         diagnostics: None,
       }
@@ -814,7 +748,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         value: AlgebraLawSubject {
           algebra: nat_algebra_law_subject_symbol_additive_monoid,
           inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_add_right_identity,
+          law: ^law_nat_add_right_identity,
         },
         diagnostics: None,
       }
@@ -823,7 +757,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         value: AlgebraLawSubject {
           algebra: nat_algebra_law_subject_symbol_additive_monoid,
           inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_add_associativity,
+          law: ^law_nat_add_associativity,
         },
         diagnostics: None,
       }
@@ -832,7 +766,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         value: AlgebraLawSubject {
           algebra: nat_algebra_law_subject_symbol_commutative_semiring,
           inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_mul_left_identity,
+          law: ^law_nat_mul_left_identity,
         },
         diagnostics: None,
       }
@@ -841,7 +775,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         value: AlgebraLawSubject {
           algebra: nat_algebra_law_subject_symbol_commutative_semiring,
           inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_mul_annihilator,
+          law: ^law_nat_mul_annihilator,
         },
         diagnostics: None,
       }
@@ -850,7 +784,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         value: AlgebraLawSubject {
           algebra: nat_algebra_law_subject_symbol_commutative_semiring,
           inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-          law: law_nat_mul_associativity,
+          law: ^law_nat_mul_associativity,
         },
         diagnostics: None,
       }
@@ -867,11 +801,9 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
   }
 }
 
-
 fn algebra_law_subject_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
-
 
 fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
   Node {
@@ -884,7 +816,6 @@ fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
   }
 }
 
-
 fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -895,7 +826,6 @@ fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node 
   }
 }
 
-
 // 🟡 gated — feature:v4-std-int-to-node-encoding — bind node://adhoc-10fda09f-f25 — dissolve-on-arrival: v4.std primitive Int → Node encoder; forbidden: silent collapse of ByteRange Int positions to a variant-tag atom. Until arrival, witness_validity_extent_node fails closed on Textual{ByteRange} via witness_validity_byte_range_unencodable_diagnostic.
 fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
   Node {
@@ -903,7 +833,6 @@ fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
     children: []
   }
 }
-
 
 fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
   Node {
@@ -918,7 +847,6 @@ fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
   }
 }
 
-
 fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -932,7 +860,6 @@ fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
   }
 }
 
-
 fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^witness_validity_byte_range_unencodable,
@@ -940,7 +867,6 @@ fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> Diagnost
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 fn witness_validity_subject_node(
   source_facts: Node,
@@ -984,7 +910,6 @@ fn witness_validity_subject_node(
   )
 }
 
-
 fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
   match r {
     UserInputBoundary =>
@@ -995,7 +920,6 @@ fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_external)
   }
 }
-
 
 fn witness_validity_correction_node(c: Correction) -> Node {
   match c {
@@ -1019,7 +943,6 @@ fn witness_validity_correction_node(c: Correction) -> Node {
   }
 }
 
-
 fn witness_validity_extent_node(e: Extent) -> Outcome<Node> {
   match e {
     WholeFile =>
@@ -1035,7 +958,6 @@ fn witness_validity_extent_node(e: Extent) -> Outcome<Node> {
       )
   }
 }
-
 
 fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
   match l {
@@ -1092,7 +1014,6 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
   }
 }
 
-
 fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
   bind_outcome(o: witness_validity_locus_node(l: d.at), f: fn(at_node) {
     Accepted {
@@ -1117,7 +1038,6 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
     }
   })
 }
-
 
 // Consumes canonical fold_list_right (order-preserving structural output); no parallel walker.
 fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
@@ -1146,7 +1066,6 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
   )
 }
 
-
 fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcome<Node> {
   bind_outcome(o: witness_validity_diagnostic_node(d: d.head), f: fn(hn) {
     bind_outcome(o: witness_validity_diagnostic_list_node(xs: d.tail), f: fn(tn) {
@@ -1169,7 +1088,6 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcom
     })
   })
 }
-
 
 fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
   match ds {
@@ -1195,7 +1113,6 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
       })
   }
 }
-
 
 fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outcome<Node> {
   match o {
@@ -1244,7 +1161,6 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
   }
 }
 
-
 // T-19 witness-validity emit helper: oracle = v4.std.find_witness::verify_witness; emits
 // RoundTripClaim whose input bundles subject + oracle outcome. Rejected only when the
 // subject encoding fails closed (e.g. unencodable Textual{ByteRange} locus).
@@ -1275,7 +1191,6 @@ fn testgen_emit_witness_validity_claim(
     }
   )
 }
-
 
 fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenConcept>> {
   [
@@ -1315,7 +1230,6 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
   ]
 }
 
-
 fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^testgen_non_algebra_law_scheduled_slot,
@@ -1324,12 +1238,10 @@ fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
   }
 }
 
-
 type NatAlgebraLawScheduleRow {
   obligation: NatAlgebraLawObligation
   anchor: ManualAnchorKey
 }
-
 
 // 🟡 gated — record-shape bridge interim (docs/modeling-discipline.md Practice 11) — feature:nat-law-obligation-lens-migration — dissolve-on-arrival: NatAlgebraLawObligation (std/nat) is the authoritative L7 law-subject carrier; AlgebraLawSubject is the downstream lens-local shape; migrate testgen + coverage to consume NatAlgebraLawObligation directly and delete algebra_law_subject_from_nat_obligation in that same PR; forbidden: permanent parallel NatAlgebraLawObligation⇄AlgebraLawSubject record-shape drift across std/nat and lens/testgen.
 fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
@@ -1339,7 +1251,6 @@ fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> Algebr
     law: o.law,
   }
 }
-
 
 fn append_nat_obligation_if_law_matches(
   found: Outcome<NatAlgebraLawObligation>,
@@ -1356,7 +1267,6 @@ fn append_nat_obligation_if_law_matches(
       }
   }
 }
-
 
 fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawObligation> {
   fold_list(
@@ -1380,21 +1290,20 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
   )
 }
 
-
 // 🟡 gated — feature:nat-algebra-law-anchor-projection — bind task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
 // dissolve-on-arrival: law↔ManualAnchorKey projection is substrate-derived from NatAlgebraLawObligation schedule rows (std/nat authority + testgen reflection); delete this hand-rolled Symbol→ManualAnchorKey classifier in that same PR; forbidden: permanent per-law manual-anchor table drift from nat_declared_algebra_law_obligations().
 fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
-  if law == law_nat_add_left_identity {
+  if law == ^law_nat_add_left_identity {
     Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
-  } else if law == law_nat_add_right_identity {
+  } else if law == ^law_nat_add_right_identity {
     Accepted { value: ManualNatAddRightIdentity, diagnostics: None }
-  } else if law == law_nat_add_associativity {
+  } else if law == ^law_nat_add_associativity {
     Accepted { value: ManualNatAddAssociativity, diagnostics: None }
-  } else if law == law_nat_mul_left_identity {
+  } else if law == ^law_nat_mul_left_identity {
     Accepted { value: ManualNatMulLeftIdentity, diagnostics: None }
-  } else if law == law_nat_mul_annihilator {
+  } else if law == ^law_nat_mul_annihilator {
     Accepted { value: ManualNatMulAnnihilator, diagnostics: None }
-  } else if law == law_nat_mul_associativity {
+  } else if law == ^law_nat_mul_associativity {
     Accepted { value: ManualNatMulAssociativity, diagnostics: None }
   } else {
     Rejected {
@@ -1405,13 +1314,11 @@ fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
   }
 }
 
-
 fn testgen_manual_anchor_from_nat_obligation(
   o: NatAlgebraLawObligation
 ) -> Outcome<ManualAnchorKey> {
   testgen_manual_anchor_for_law(law: o.law)
 }
-
 
 fn nat_algebra_law_schedule_row_from_obligation(
   obligation: NatAlgebraLawObligation
@@ -1426,7 +1333,6 @@ fn nat_algebra_law_schedule_row_from_obligation(
     }
   )
 }
-
 
 // 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace nat_manual_anchor_key_eq call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent ManualAnchorKey Nat-arm equality table drift from std/verification.dag.
 fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
@@ -1465,7 +1371,6 @@ fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
   }
 }
 
-
 fn append_nat_algebra_law_schedule_row_if_anchor_matches(
   found: Outcome<NatAlgebraLawScheduleRow>,
   obligation: NatAlgebraLawObligation,
@@ -1487,7 +1392,6 @@ fn append_nat_algebra_law_schedule_row_if_anchor_matches(
   }
 }
 
-
 fn nat_algebra_law_schedule_row_for_manual_anchor(
   anchor: ManualAnchorKey
 ) -> Outcome<NatAlgebraLawScheduleRow> {
@@ -1507,7 +1411,6 @@ fn nat_algebra_law_schedule_row_for_manual_anchor(
     }
   )
 }
-
 
 fn testgen_algebra_law_generator_from_nat_obligation(
   obligation: NatAlgebraLawObligation
@@ -1532,7 +1435,6 @@ fn testgen_algebra_law_generator_from_nat_obligation(
   )
 }
 
-
 fn append_algebra_law_generator_from_nat_obligation(
   acc: Outcome<List<Generator<TestgenConcept>>>,
   obligation: NatAlgebraLawObligation
@@ -1553,7 +1455,6 @@ fn append_algebra_law_generator_from_nat_obligation(
   )
 }
 
-
 fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenConcept>>> {
   fold_list_right(
     xs: nat_declared_algebra_law_obligations(),
@@ -1567,7 +1468,6 @@ fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenC
   )
 }
 
-
 fn nat_algebra_law_obligation_for_manual_anchor(
   anchor: ManualAnchorKey
 ) -> Outcome<NatAlgebraLawObligation> {
@@ -1578,7 +1478,6 @@ fn nat_algebra_law_obligation_for_manual_anchor(
     }
   )
 }
-
 
 fn testgen_algebra_law_concept_for_manual_nat_anchor(
   anchor: ManualAnchorKey
@@ -1595,7 +1494,6 @@ fn testgen_algebra_law_concept_for_manual_nat_anchor(
     }
   )
 }
-
 
 fn testgen_algebra_law_subject_from_scheduled_generator(
   generator: Generator<TestgenConcept>
@@ -1642,7 +1540,6 @@ fn testgen_algebra_law_subject_from_scheduled_generator(
   }
 }
 
-
 fn append_algebra_law_subject_from_scheduled_generator(
   acc: List<AlgebraLawSubject>,
   generator: Generator<TestgenConcept>
@@ -1657,7 +1554,6 @@ fn append_algebra_law_subject_from_scheduled_generator(
     }
   )
 }
-
 
 fn testgen_algebra_law_subjects_from_scheduled_generators(
   generators: List<Generator<TestgenConcept>>
@@ -1679,7 +1575,6 @@ fn testgen_algebra_law_subjects_from_scheduled_generators(
   )
 }
 
-
 fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> {
   bind_outcome(
     o: testgen_scheduled_algebra_law_generators(),
@@ -1688,7 +1583,6 @@ fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> 
     }
   )
 }
-
 
 fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> GeneratedAnchorKey {
   GeneratedCoproductExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant }
@@ -1706,13 +1600,11 @@ fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> GeneratedAnchorKey 
   GeneratedCoproductExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant }
 }
 
-
 fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> TestClaimCoproductVariant {
   match anchor {
     GeneratedCoproductExhaustiveness { omitted_variant } => omitted_variant
   }
 }
-
 
 fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> Node {
   Node {
@@ -1722,7 +1614,6 @@ fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> 
     children: []
   }
 }
-
 
 fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
   Node {
@@ -1740,7 +1631,6 @@ fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
   }
 }
 
-
 fn coproduct_exhaustiveness_diagnostic(
   input: Node
 ) -> Diagnostic {
@@ -1750,7 +1640,6 @@ fn coproduct_exhaustiveness_diagnostic(
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-
 
 fn testgen_emit_coproduct_exhaustiveness_claim(
   anchor: GeneratedAnchorKey
@@ -1769,7 +1658,6 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
     diagnostics: None,
   }
 }
-
 
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
   [
@@ -1816,7 +1704,6 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
   ]
 }
 
-
 // F.2-P1 provenance integrity: a generator's identity must be the one DERIVED from its
 // own canonical anchor (single-authority — no row carries a foreign/colliding id), and it
 // must carry profile metadata. Checking against the anchor projection is the meaningful
@@ -1827,7 +1714,6 @@ fn generator_carries_provenance<C>(g: Generator<C>) -> Bool {
     && g.profile_metadata.profile_ref == ^testgen_default_profile_ref
 }
 
-
 fn all_generators_carry_provenance(gens: List<Generator<TestgenConcept>>) -> Bool {
   fold_list(
     xs: gens,
@@ -1835,7 +1721,6 @@ fn all_generators_carry_provenance(gens: List<Generator<TestgenConcept>>) -> Boo
     cons: fn(acc, g) { acc && generator_carries_provenance(g: g) },
   )
 }
-
 
 // Fail-closed: a scheduler that cannot produce its generators fails the witness rather
 // than vacuously passing — the claim is that ALL scheduled generators carry provenance.
@@ -1845,7 +1730,6 @@ fn outcome_generators_carry_provenance(o: Outcome<List<Generator<TestgenConcept>
     Rejected { diagnostics: d } => false
   }
 }
-
 
 // F.2-P1 close criterion: every scheduled generator carries consistent provenance +
 // profile metadata. Covers ALL four scheduled producers — the two direct-List schedulers
@@ -1858,7 +1742,6 @@ fn scheduled_generators_carry_provenance() -> Bool {
     && outcome_generators_carry_provenance(o: testgen_scheduled_algebra_law_generators())
 }
 
-
 // F.2-P2 / F.2.6 — static schedulers (always List) plus Outcome schedulers combined
 // fail-closed: any Rejected scheduler rejects the whole roster (P3 — no silent truncation).
 fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>> {
@@ -1867,7 +1750,6 @@ fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>>
     right: testgen_scheduled_coproduct_exhaustiveness_generators()
   )
 }
-
 
 fn testgen_scheduled_generators_outcome() -> Outcome<List<Generator<TestgenConcept>>> {
   let base = testgen_scheduled_generators_static_base()
@@ -1889,7 +1771,6 @@ fn testgen_scheduled_generators_outcome() -> Outcome<List<Generator<TestgenConce
   )
 }
 
-
 fn testgen_scheduled_generators_roster_holds() -> Bool {
   match testgen_scheduled_generators_outcome() {
     Accepted { value: gens, diagnostics: _ } => length(xs: gens) > 0
@@ -1897,18 +1778,15 @@ fn testgen_scheduled_generators_roster_holds() -> Bool {
   }
 }
 
-
 // 🟡 coproduct dissolution — feature:lens-testgen-shadow-ci-receipt — bind F.2-P2 / F.2.6 — dissolve-on-arrival: T-22 `TestClaimRun` evaluates `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses; delete `TestgenRunReceipt` when substrate eval owns roster facts; forbidden: permanent hand-Rust roster ratchet beside modeled witnesses.
 type TestgenRunReceipt {
   profile_ref: Symbol
   generators: List<Generator<TestgenConcept>>
 }
 
-
 fn generator_matches_profile(g: Generator<TestgenConcept>, profile_ref: Symbol) -> Bool {
   g.profile_metadata.profile_ref == profile_ref
 }
-
 
 fn testgen_scheduled_generators_matching_profile(
   gens: List<Generator<TestgenConcept>>,
@@ -1921,7 +1799,6 @@ fn testgen_scheduled_generators_matching_profile(
     }
   )
 }
-
 
 fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt> {
   bind_outcome(
@@ -1942,11 +1819,9 @@ fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt
   )
 }
 
-
 fn generator_id_eq(left: Generator<TestgenConcept>, right: Generator<TestgenConcept>) -> Bool {
   left.provenance.generator_id == right.provenance.generator_id
 }
-
 
 // Canonical roster equality for F.2-P2 receipts: FreeMonoid/List order is a carried fact
 // (facts-flow-forward). Authority: v4.std.algebra.zip_eq + generator_id_eq per position.
@@ -1963,7 +1838,6 @@ fn testgen_generators_roster_equal_by_id(
   )
 }
 
-
 fn testgen_run_receipt_carries_profile_roster(receipt: TestgenRunReceipt) -> Bool {
   match testgen_scheduled_generators_outcome() {
     Accepted { value: roster, diagnostics: _ } =>
@@ -1977,7 +1851,6 @@ fn testgen_run_receipt_carries_profile_roster(receipt: TestgenRunReceipt) -> Boo
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 fn manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -2038,7 +1911,6 @@ fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClai
       }
   }
 }
-
 
 fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
   match test_claim_anchor(c: claim) {
@@ -2153,7 +2025,6 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       }
   }
 }
-
 
 fn bootstrap_claim_generator_for_manual_anchor(
   key: ManualAnchorKey

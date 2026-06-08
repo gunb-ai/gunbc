@@ -1751,7 +1751,7 @@ type WasmModelCoreLawKey
   | WasmLawIntegerModularWrap
   | WasmLawFloatIeee754Rounding
   | WasmLawFloatNanInfCarriedByIeee754
- wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
+fn wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [

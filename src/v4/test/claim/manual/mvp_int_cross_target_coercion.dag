@@ -2,9 +2,7 @@
 // Scope: W3 cross-target int coercion receipts — Leg A fail-closed (python int → rust i32 exact rule);
 //   Leg B faithful widening (rust i32 → python int via preservation_rule_refinement_widening).
 
-
 module v4.test.claim.manual.mvp_int_cross_target_coercion
-
 
 import v4.compiler.eval { run_test_claim_assert }
 import v4.extdeps.languages.python {
@@ -29,9 +27,7 @@ import v4.std.coercion {
 }
 import v4.std.constraints {
   CanonicalGrounding,
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
+  CanonicalGroundingWitness
 }
 import v4.std.diagnostic {
   Accepted,
@@ -63,24 +59,22 @@ import v4.std.verification {
 }
 import v4.std.witness { StructuralPropertyWitness }
 
-
 fn python_unbounded_int_grounding() -> CanonicalGrounding {
   let source = python_int_inhabitant_node()
   CanonicalGrounding {
     node: source,
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
+        property: ^constraint_property_being_canonical,
         evidence: source
       },
       closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
+        property: ^constraint_property_candidate_set_closedness,
         evidence: source
       }
     }
   }
 }
-
 
 fn cross_target_python_to_rust_i32_coercion_fold() -> Outcome<CoercionResult> {
   bind_outcome(
@@ -98,7 +92,6 @@ fn cross_target_python_to_rust_i32_coercion_fold() -> Outcome<CoercionResult> {
   )
 }
 
-
 fn coercion_outcome_node_projection(actual: Outcome<CoercionResult>) -> Outcome<Node> {
   match actual {
     Accepted { value: r, diagnostics: ad } =>
@@ -107,13 +100,11 @@ fn coercion_outcome_node_projection(actual: Outcome<CoercionResult>) -> Outcome<
   }
 }
 
-
 data cross_target_upstream_find_witness_rejection: Diagnostic = Diagnostic {
   reason: find_witness_reason_no_candidate,
   at: node_locus(node: python_int_inhabitant_node()),
   correction: Unavailable { reason: ExternalContractUnknown }
 }
-
 
 data cross_target_coercion_expected_rejection: NonEmptyDiagnostics = NonEmptyDiagnostics {
   head: coercion_not_realized_diagnostic(
@@ -123,7 +114,6 @@ data cross_target_coercion_expected_rejection: NonEmptyDiagnostics = NonEmptyDia
   tail: [cross_target_upstream_find_witness_rejection]
 }
 
-
 data claim_cross_target_python_to_rust_i32_rejects: TestClaim = DiagnosticClaim {
   label: "manual/mvp_int_cross_target: python unbounded int -> rust declared inhabitants rejects (no exact witness)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -131,7 +121,6 @@ data claim_cross_target_python_to_rust_i32_rejects: TestClaim = DiagnosticClaim 
   expected_rejection: cross_target_coercion_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data witness_cross_target_python_to_rust_i32_rejects: Bool = match run_test_claim_assert(
   claim: claim_cross_target_python_to_rust_i32_rejects,
@@ -145,7 +134,6 @@ data witness_cross_target_python_to_rust_i32_rejects: Bool = match run_test_clai
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-
 fn cross_target_witness_claim_input(ok: Bool) -> Node {
   if ok {
     python_int_inhabitant_node()
@@ -153,7 +141,6 @@ fn cross_target_witness_claim_input(ok: Bool) -> Node {
     rust_inhabitant_i32_node()
   }
 }
-
 
 data claim_mvp_int_cross_target_coercion_module_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp_int_cross_target: cross-target coercion safety anchors compile",
@@ -163,7 +150,6 @@ data claim_mvp_int_cross_target_coercion_module_compiles: TestClaim = CompilesCl
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_cross_target_python_to_rust_i32_rejects_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp_int_cross_target: python int -> rust i32 coercion_fold rejects coercion_mismatch_no_target",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -172,24 +158,22 @@ data claim_cross_target_python_to_rust_i32_rejects_compiles: TestClaim = Compile
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 fn rust_i32_grounding() -> CanonicalGrounding {
   let source = rust_inhabitant_i32_node()
   CanonicalGrounding {
     node: source,
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
+        property: ^constraint_property_being_canonical,
         evidence: source
       },
       closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
+        property: ^constraint_property_candidate_set_closedness,
         evidence: source
       }
     }
   }
 }
-
 
 fn cross_target_rust_i32_to_python_int_coercion_fold() -> Outcome<CoercionResult> {
   bind_outcome(
@@ -207,7 +191,6 @@ fn cross_target_rust_i32_to_python_int_coercion_fold() -> Outcome<CoercionResult
   )
 }
 
-
 fn quality_is_widened(q: CoercionQuality) -> Bool {
   match q {
     Widened => true
@@ -215,7 +198,6 @@ fn quality_is_widened(q: CoercionQuality) -> Bool {
     Exact => false
   }
 }
-
 
 fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool {
   let outcome = cross_target_rust_i32_to_python_int_coercion_fold()
@@ -226,7 +208,6 @@ fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool {
   }
 }
 
-
 fn cross_target_widening_witness_claim_input(ok: Bool) -> Node {
   if ok {
     rust_inhabitant_i32_node()
@@ -234,7 +215,6 @@ fn cross_target_widening_witness_claim_input(ok: Bool) -> Node {
     python_int_inhabitant_node()
   }
 }
-
 
 data claim_cross_target_rust_i32_to_python_int_accepts: TestClaim = CompilesClaim {
   label: "manual/mvp_int_cross_target: rust i32 -> python int coercion_fold_refinement_widening accepts Widened",

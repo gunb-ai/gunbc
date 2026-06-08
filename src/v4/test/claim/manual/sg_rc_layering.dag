@@ -16,8 +16,6 @@ import v4.extdeps.languages.rust {
   rust_reference_layer_tokens,
   rust_sg2_binding_spellings,
   rust_sg2_type_expr_target_model,
-  rust_sg_rc_ctor_box_new,
-  rust_sg_rc_ctor_rc_new,
   rust_type_expression_projection
 }
 import v4.std.target_model {
@@ -105,8 +103,8 @@ fn sg_rc_ctor_binding_spelling(binding: Symbol, expected: String) -> Bool {
 }
 
 fn sg_rc_ctor_spellings_in_binding_map() -> Bool {
-  sg_rc_ctor_binding_spelling(binding: rust_sg_rc_ctor_rc_new, expected: "Rc::new")
-  && sg_rc_ctor_binding_spelling(binding: rust_sg_rc_ctor_box_new, expected: "Box::new")
+  sg_rc_ctor_binding_spelling(binding: ^rust_sg_rc_ctor_rc_new, expected: "Rc::new")
+  && sg_rc_ctor_binding_spelling(binding: ^rust_sg_rc_ctor_box_new, expected: "Box::new")
 }
 
 fn sg_rc_target() -> TargetModel {

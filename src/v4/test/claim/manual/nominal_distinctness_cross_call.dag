@@ -8,7 +8,6 @@
 
 module v4.test.claim.manual.nominal_distinctness_cross_call
 
-
 import v4.compiler.compile {
   Source,
   compile_ingest_staging
@@ -34,10 +33,7 @@ import v4.extdeps.languages.rust {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map }
-import v4.std.constraints {
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
+
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -84,17 +80,13 @@ import v4.std.witness { Holds, Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 data nominal_distinct_forbidden_authority_source_text: TargetSource = "nominal_distinct_forbidden_authority_source_text"
 
-
 data nominal_distinct_records_source: Source = "module nominal.distinct.records.probe\n\ntype WrapA {\n  value: Int\n}\n\ntype WrapB {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(b: WrapB) -> Int = expects_a(b)\n"
-
 
 // Fresh-nominal-type desugar stand-in: IntentId/IssueId as distinct nominal records
 // over String (wave-1 `type ident { field: … }` only — `where brand` is not parseable).
 data nominal_distinct_brands_source: Source = "module nominal.distinct.desugared_brands.probe\n\ntype IntentId {\n  value: String\n}\n\ntype IssueId {\n  value: String\n}\n\nfn expects_intent(x: IntentId) -> String = x.value\n\nfn call_site(i: IssueId) -> String = expects_intent(i)\n"
 
-
 data nominal_distinct_control_source: Source = "module nominal.distinct.control.probe\n\ntype WrapA {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(a: WrapA) -> Int = expects_a(a)\n"
-
 
 data nominal_distinct_compile_target: TargetModel = TargetModel {
   bundle: rust_mvp1_target_model_node(),
@@ -103,7 +95,6 @@ data nominal_distinct_compile_target: TargetModel = TargetModel {
   authority_source_text: nominal_distinct_forbidden_authority_source_text
 }
 
-
 fn nominal_distinct_input_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
@@ -111,11 +102,9 @@ fn nominal_distinct_input_node(sym: Symbol) -> Node {
   }
 }
 
-
 data nominal_distinct_records_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_records_input_symbol)
 data nominal_distinct_brands_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_brands_input_symbol)
 data nominal_distinct_control_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_control_input_symbol)
-
 
 fn anchor_nominal_distinct_records_compile() -> Outcome<TargetSource> {
   compile_ingest_staging(
@@ -124,14 +113,12 @@ fn anchor_nominal_distinct_records_compile() -> Outcome<TargetSource> {
   )
 }
 
-
 fn anchor_nominal_distinct_brands_compile() -> Outcome<TargetSource> {
   compile_ingest_staging(
     source: nominal_distinct_brands_source,
     target: nominal_distinct_compile_target
   )
 }
-
 
 fn anchor_nominal_distinct_control_compile() -> Outcome<TargetSource> {
   compile_ingest_staging(
@@ -140,11 +127,9 @@ fn anchor_nominal_distinct_control_compile() -> Outcome<TargetSource> {
   )
 }
 
-
 data nominal_distinct_records_compile_receipt: Outcome<TargetSource> = anchor_nominal_distinct_records_compile()
 data nominal_distinct_brands_compile_receipt: Outcome<TargetSource> = anchor_nominal_distinct_brands_compile()
 data nominal_distinct_control_compile_receipt: Outcome<TargetSource> = anchor_nominal_distinct_control_compile()
-
 
 fn nominal_distinct_cross_call_must_reject_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
@@ -154,7 +139,6 @@ fn nominal_distinct_cross_call_must_reject_diagnostic(at: Node) -> Diagnostic {
   }
 }
 
-
 fn nominal_distinct_compile_accepted_miss_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
     reason: ^nominal_distinct_compile_accepted_miss,
@@ -162,7 +146,6 @@ fn nominal_distinct_compile_accepted_miss_diagnostic(at: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 // Fail-closed: if compile wrongly Accepts, expected stays Rejected (must-reject anchor)
 // while runtime returns Accepted — DiagnosticClaim fails (not fail-open miss synthesis).
@@ -176,7 +159,6 @@ fn nominal_distinct_records_expected_rejection() -> NonEmptyDiagnostics {
   }
 }
 
-
 fn nominal_distinct_brands_expected_rejection() -> NonEmptyDiagnostics {
   match nominal_distinct_brands_compile_receipt {
     Rejected { diagnostics: r } => r
@@ -187,14 +169,12 @@ fn nominal_distinct_brands_expected_rejection() -> NonEmptyDiagnostics {
   }
 }
 
-
 fn nominal_distinct_control_compiles_ok() -> Bool {
   match nominal_distinct_control_compile_receipt {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 data claim_nominal_distinct_records_cross_call_rejects: TestClaim = DiagnosticClaim {
   label: "manual/nominal: structurally-identical WrapA/WrapB records reject cross-call",
@@ -204,7 +184,6 @@ data claim_nominal_distinct_records_cross_call_rejects: TestClaim = DiagnosticCl
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_nominal_distinct_branded_aliases_cross_call_rejects: TestClaim = DiagnosticClaim {
   label: "manual/nominal: IntentId/IssueId desugared nominal records reject cross-call",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -212,7 +191,6 @@ data claim_nominal_distinct_branded_aliases_cross_call_rejects: TestClaim = Diag
   expected_rejection: nominal_distinct_brands_expected_rejection(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_nominal_distinct_same_type_control_compiles: TestClaim = CompilesClaim {
   label: "manual/nominal: same-type WrapA cross-call compiles (positive control)",
@@ -222,7 +200,6 @@ data claim_nominal_distinct_same_type_control_compiles: TestClaim = CompilesClai
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 fn nominal_distinct_runtime_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^nominal_distinct_type_symbol } },
@@ -230,13 +207,11 @@ fn nominal_distinct_runtime_type_node() -> Node {
   }
 }
 
-
 fn nominal_distinct_runtime_unit(node: Node) -> RuntimeValue {
   RuntimeUnit {
     value: RuntimeUnitValue { unit_type: nominal_distinct_runtime_type_node() }
   }
 }
-
 
 fn nominal_distinct_compile_for_input(node: Node) -> Outcome<RuntimeValue> {
   if node == nominal_distinct_records_input {
@@ -264,14 +239,12 @@ fn nominal_distinct_compile_for_input(node: Node) -> Outcome<RuntimeValue> {
   }
 }
 
-
 fn nominal_distinct_allocate_literal(
   node: Node,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
   nominal_distinct_compile_for_input(node: node)
 }
-
 
 fn nominal_distinct_call_primitive(
   node: Node,
@@ -281,7 +254,6 @@ fn nominal_distinct_call_primitive(
   nominal_distinct_compile_for_input(node: node)
 }
 
-
 fn nominal_distinct_choose_branch(
   node: Node,
   _value: RuntimeValue,
@@ -290,14 +262,12 @@ fn nominal_distinct_choose_branch(
   Accepted { value: node, diagnostics: None }
 }
 
-
 fn nominal_distinct_step_loop(
   node: Node,
   _env: EvaluationEnvironment
 ) -> Outcome<ControlTransfer> {
   Accepted { value: Continue { value: nominal_distinct_runtime_unit(node: node) }, diagnostics: None }
 }
-
 
 fn nominal_distinct_bind_value(
   _key: EnvironmentBindingKey,
@@ -306,7 +276,6 @@ fn nominal_distinct_bind_value(
 ) -> Outcome<EvaluationEnvironment> {
   Accepted { value: env, diagnostics: None }
 }
-
 
 fn nominal_distinct_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
@@ -318,7 +287,6 @@ fn nominal_distinct_interpretation() -> InterpretationAlgebra {
   }
 }
 
-
 fn nominal_distinct_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
     allocate_literal: ^nominal_distinct_allocate_literal_sym,
@@ -329,14 +297,12 @@ fn nominal_distinct_interpretation_structure_witness() -> InterpretationStructur
   }
 }
 
-
 fn nominal_distinct_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
     strict: RankingDimension { measured: ^nominal_distinct_descent_dimension }
   }
 }
-
 
 fn nominal_distinct_facts(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
@@ -346,11 +312,9 @@ fn nominal_distinct_facts(node: Node) -> InferredFacts {
   )
 }
 
-
 fn nominal_distinct_fact_lookup(node: Node) -> Witness<InferredFacts> {
   Holds { value: nominal_distinct_facts(node: node) }
 }
-
 
 fn nominal_distinct_inferred_tree(root: Node) -> InferredTree {
   InferredTree {
@@ -359,7 +323,6 @@ fn nominal_distinct_inferred_tree(root: Node) -> InferredTree {
   }
 }
 
-
 fn nominal_distinct_context() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^nominal_distinct_interpretation_pin,
@@ -367,7 +330,6 @@ fn nominal_distinct_context() -> EvalContext {
     structure_witness: nominal_distinct_interpretation_structure_witness()
   )
 }
-
 
 fn nominal_distinct_subject(
   claim: TestClaim,
@@ -382,38 +344,31 @@ fn nominal_distinct_subject(
   )
 }
 
-
 data subject_nominal_distinct_records_cross_call_rejects: TestClaimEvalSubject<Node> = nominal_distinct_subject(
   claim: claim_nominal_distinct_records_cross_call_rejects,
   evaluator_pin: ^nominal_distinct_records_input_symbol
 )
-
 
 data subject_nominal_distinct_branded_aliases_cross_call_rejects: TestClaimEvalSubject<Node> = nominal_distinct_subject(
   claim: claim_nominal_distinct_branded_aliases_cross_call_rejects,
   evaluator_pin: ^nominal_distinct_brands_input_symbol
 )
 
-
 data subject_nominal_distinct_same_type_control_compiles: TestClaimEvalSubject<Node> = nominal_distinct_subject(
   claim: claim_nominal_distinct_same_type_control_compiles,
   evaluator_pin: ^nominal_distinct_control_input_symbol
 )
 
-
 data run_nominal_distinct_records_cross_call_rejects: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_nominal_distinct_records_cross_call_rejects
 )
-
 
 data run_nominal_distinct_branded_aliases_cross_call_rejects: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_nominal_distinct_branded_aliases_cross_call_rejects
 )
 
-
 data run_nominal_distinct_same_type_control_compiles: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_nominal_distinct_same_type_control_compiles
 )
-
 
 data witness_nominal_distinct_control_compile_anchor: Bool = nominal_distinct_control_compiles_ok()

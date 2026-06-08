@@ -20,16 +20,9 @@ import v4.compiler.eval {
 }
 import v4.compiler.translate { target_serialize_source_from_model }
 import v4.extdeps.languages.typescript {
-  ts_binding_param_x,
-  ts_binding_pr3_identity,
   ts_inhabitant_atom,
   ts_pr3_identity_source_text,
   ts_pr3_identity_typed_fn_emitted,
-  ts_production_pr3_typed_fn_decl,
-  ts_production_pr3_typed_param,
-  ts_production_wave2a_type_annotation,
-  ts_production_wave2a_type_number,
-  ts_token_ty_number,
   ts_pr3_identity_target_model_witness
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -39,9 +32,7 @@ import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node
 import v4.std.collection { Map, empty_map }
 import v4.std.constraints {
   CanonicalGrounding,
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
+  CanonicalGroundingWitness
 }
 import v4.std.diagnostic {
   Accepted,
@@ -77,11 +68,11 @@ fn mvp1_ts_pr3_canonical_grounding(node: Node, algebra: Node) -> CanonicalGround
     node: node,
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
+        property: ^constraint_property_being_canonical,
         evidence: algebra
       },
       closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
+        property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
     }
@@ -93,15 +84,15 @@ fn mvp1_ts_pr3_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding
     Holds {
       value: mvp1_ts_pr3_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ts_token_ty_number) {
+  } else if node == ts_inhabitant_atom(id: ^ts_token_ty_number) {
     Holds {
       value: mvp1_ts_pr3_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ts_binding_pr3_identity) {
+  } else if node == ts_inhabitant_atom(id: ^ts_binding_pr3_identity) {
     Holds {
       value: mvp1_ts_pr3_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ts_binding_param_x) {
+  } else if node == ts_inhabitant_atom(id: ^ts_binding_param_x) {
     Holds {
       value: mvp1_ts_pr3_canonical_grounding(node: node, algebra: node)
     }

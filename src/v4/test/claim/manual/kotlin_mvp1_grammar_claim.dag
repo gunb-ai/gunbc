@@ -12,8 +12,6 @@ import v4.compiler.parse {
 }
 import v4.compiler.tokenize { tokenize }
 import v4.extdeps.languages.kotlin {
-  kotlin_mvp1_parse_fixture_file,
-  kotlin_production_mvp1_fn_add,
   kotlin_mvp1_source_text,
   kotlin_wave1_lex,
   kotlin_wave1_grammar_root
@@ -61,7 +59,7 @@ fn kotlin_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
   match tokenize(
     text: kotlin_mvp1_source_text,
-    file: kotlin_mvp1_parse_fixture_file,
+    file: ^kotlin_mvp1_parse_fixture_file,
     rules: kotlin_wave1_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
@@ -72,7 +70,7 @@ fn kotlin_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
           parse_production(
             tokens: stream.tokens,
             validated: validated,
-            production_name: kotlin_production_mvp1_fn_add
+            production_name: ^kotlin_production_mvp1_fn_add
           )
       }
   }

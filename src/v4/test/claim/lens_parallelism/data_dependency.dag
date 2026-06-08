@@ -2,7 +2,6 @@
 // Scope: T-13 worked claim — DataDependsOn classifies as DataDependent over `ClassifiedDependencyView<ParallelismRelation>`.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
 
-
 module v4.test.claim.lens_parallelism.data_dependency
 
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -48,7 +47,6 @@ import v4.test.claim.lens_common.infer_fixture {
 import v4.test.claim.manual.eval_runtime_mvp {
   eval_mvp2_add_subgraph,
   eval_mvp2_context,
-  eval_mvp2_evaluator_pin,
   eval_mvp2_inferred_tree
 }
 data parallelism_child: Node = claim_atom_node(s: ^parallelism_child_symbol)
@@ -172,7 +170,7 @@ data subject_parallelism_data_dependency_receipt: TestClaimEvalSubject<Node> = e
   claim: claim_parallelism_data_dependency_run_test_claim_receipt,
   context: eval_mvp2_context(),
   tree: eval_mvp2_inferred_tree(),
-  evaluator_pin: eval_mvp2_evaluator_pin
+  evaluator_pin: ^eval_mvp2_evaluator_pin
 )
 
 data run_parallelism_data_dependency_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(

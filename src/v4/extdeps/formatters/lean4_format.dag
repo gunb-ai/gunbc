@@ -28,7 +28,7 @@ import v4.std.patch { ConfigPatchRecord, config_patch_layer }
 type Lean4NameValue
 type Lean4SyntaxValue
 type Lean4NatValue = Nat
- lean4_format_authoritative_locus() -> Locus {
+fn lean4_format_authoritative_locus() -> Locus {
   port_locus(port: ^lean4_format_authoritative_locus_port)
 }
 

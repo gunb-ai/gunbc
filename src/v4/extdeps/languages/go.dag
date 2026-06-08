@@ -256,7 +256,7 @@ type GoStringPrimitiveFacts {
   encoding: Symbol
   std_projection: Symbol
 }
- gated — feature:go-predeclared-identifier-binding — Go predeclared
+// 🟡 gated — feature:go-predeclared-identifier-binding — Go predeclared
 // identifiers such as `int` are not reserved. Wave 2a treats the MVP `int`
 // type reference as a fixed type token and therefore rejects programs that
 // shadow/use `int` as an ordinary identifier; dissolve-on: T-11 binding facts

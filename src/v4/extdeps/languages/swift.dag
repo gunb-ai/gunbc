@@ -2334,7 +2334,7 @@ fn swift_effect_semantics_wave2b() -> EffectSemanticsDecl {
     ]
   }
 }
- swift_fail_closed_partial_operation(
+fn swift_fail_closed_partial_operation(
   operation: Symbol,
   precondition: Symbol,
   reason: Symbol

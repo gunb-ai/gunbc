@@ -7,47 +7,23 @@
 
 module v4.lens.leaf_model_verification
 
-
 import v4.extdeps.languages.go {
-  go_atom_realization_symbol,
   go_facts_int,
   go_facts_int64,
   go_integer_algebra_inhabitance,
-  go_integer_facts_node,
-  go_repr_twos_complement_integer,
-  go_surface_spelling_int
+  go_integer_facts_node
 }
 import v4.extdeps.languages.python {
-  python_atom_realization_symbol,
-  python_facts_field_encoding,
-  python_integer_algebra_inhabitance_python_facts_int,
-  python_repr_int_arbitrary_precision,
-  python_surface_spelling_int
+  python_integer_algebra_inhabitance_python_facts_int
 }
-import v4.extdeps.typecheckers.pyright {
-  pyright_tool_id,
-  pyright_profile_l1_id,
-  pyright_diag_report_return_type,
-  pyright_diag_report_undefined_variable,
-  pyright_diag_report_missing_imports
-}
-import v4.extdeps.typecheckers.mypy {
-  mypy_tool_id,
-  mypy_profile_l1_id,
-  mypy_diag_return_value
-}
+
 import v4.extdeps.languages.typescript {
-  ts_atom_realization_symbol,
   ts_bigint_algebra_inhabitance_ts_facts_bigint,
   ts_number_algebra_inhabitance_ts_facts_number
 }
 import v4.extdeps.languages.rust {
-  rust_atom_realization_symbol,
-  rust_coercion_field_i32_spelling,
   rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_mvp1_target_model_staging,
-  rust_repr_integer_twos_complement,
-  rust_surface_spelling_i32,
   rust_target_atom_realization_symbol,
   rust_target_atom_type_form
 }
@@ -140,13 +116,11 @@ import v4.std.leaf_model_verification {
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 
-
 // Fact anchor: rust.dag declares surface spelling + coercion edge for i32.
 // Fixture embeds the spelled type + literal suffix so rustc is the external authority.
 data rust_r1_happy_fixture_source: String = "pub fn r1_test() -> i32 { 0i32 }\n"
 
 data rust_r1_falsification_fixture_source: String = "pub fn r1_test() -> i32 { \"string\" }\n"
-
 
 fn rust_r1_happy_fixture() -> LeafModelRustFixture {
   LeafModelRustFixture {
@@ -155,14 +129,12 @@ fn rust_r1_happy_fixture() -> LeafModelRustFixture {
   }
 }
 
-
 fn rust_r1_falsification_fixture() -> LeafModelRustFixture {
   LeafModelRustFixture {
     source: rust_r1_falsification_fixture_source,
     crate_type: leaf_model_rust_crate_type_lib
   }
 }
-
 
 fn rust_r1_fixture_pair() -> LeafModelFixturePair {
   LeafModelFixturePair {
@@ -179,7 +151,6 @@ fn rust_r1_fixture_pair() -> LeafModelFixturePair {
     }
   }
 }
-
 
 // Testgen port: `rust_r1_fixture` (docs/planning/v4-leaf-model-verification-2026-05-30.md §8).
 fn rust_r1_fixture() -> LeafModelFixturePair {
@@ -300,9 +271,9 @@ data python_cross_runtime_drift_fixed_width_value: String = "-922337203685477580
 fn python_cross_runtime_drift_probe() -> LeafModelCrossRuntimeDriftProbe {
   LeafModelCrossRuntimeDriftProbe {
     claim_id: leaf_model_claim_python_cross_runtime_drift_arbitrary_precision,
-    arbitrary_precision_fact: python_repr_int_arbitrary_precision,
-    fixed_width_rust_fact: rust_repr_integer_twos_complement,
-    fixed_width_go_fact: go_repr_twos_complement_integer,
+    arbitrary_precision_fact: ^python_repr_int_arbitrary_precision,
+    fixed_width_rust_fact: ^rust_repr_integer_twos_complement,
+    fixed_width_go_fact: ^go_repr_twos_complement_integer,
     arbitrary_precision_source: python_cross_runtime_drift_python_source,
     fixed_width_rust_source: python_cross_runtime_drift_rust_source,
     fixed_width_go_source: python_cross_runtime_drift_go_source,
@@ -333,9 +304,9 @@ data python_l2_parity_r3_value: String = "x"
 fn python_l2_parity_r2a_probe() -> LeafModelCrossTargetParityProbe {
   LeafModelCrossTargetParityProbe {
     claim_id: leaf_model_claim_python_l2_cross_target_parity_r2a_add,
-    python_fact: python_repr_int_arbitrary_precision,
-    rust_fact: rust_repr_integer_twos_complement,
-    go_fact: go_repr_twos_complement_integer,
+    python_fact: ^python_repr_int_arbitrary_precision,
+    rust_fact: ^rust_repr_integer_twos_complement,
+    go_fact: ^go_repr_twos_complement_integer,
     python_source: python_l2_parity_r2a_python_source,
     rust_source: python_l2_parity_r2a_rust_source,
     go_source: python_l2_parity_r2a_go_source,
@@ -349,9 +320,9 @@ fn python_l2_parity_r2a_probe() -> LeafModelCrossTargetParityProbe {
 fn python_l2_parity_r3_probe() -> LeafModelCrossTargetParityProbe {
   LeafModelCrossTargetParityProbe {
     claim_id: leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection,
-    python_fact: python_atom_realization_symbol,
-    rust_fact: rust_atom_realization_symbol,
-    go_fact: go_atom_realization_symbol,
+    python_fact: ^python_atom_realization_symbol,
+    rust_fact: ^rust_atom_realization_symbol,
+    go_fact: ^go_atom_realization_symbol,
     python_source: python_l2_parity_r3_python_source,
     rust_source: python_l2_parity_r3_rust_source,
     go_source: python_l2_parity_r3_go_source,
@@ -797,16 +768,16 @@ data python_l1_static_falsification_fixture_source: String = "def l1_test() -> i
 fn python_l1_static_fixture_pair() -> LeafModelPythonStaticFixturePair {
   LeafModelPythonStaticFixturePair {
     claim_id: leaf_model_claim_python_l1_static_return_type,
-    surface_spelling_fact: python_surface_spelling_int,
+    surface_spelling_fact: ^python_surface_spelling_int,
     happy: LeafModelPythonStaticHappyCase {
       artifact: TargetArtifact { source_text: python_l1_static_happy_fixture_source },
-      tool_profile_ref: pyright_profile_l1_id
+      tool_profile_ref: ^pyright_profile_l1_id
     },
     falsification: LeafModelPythonStaticFalsificationCase {
       artifact: TargetArtifact { source_text: python_l1_static_falsification_fixture_source },
-      tool_profile_ref: pyright_profile_l1_id,
-      tool_id: pyright_tool_id,
-      diagnostic_code: pyright_diag_report_return_type
+      tool_profile_ref: ^pyright_profile_l1_id,
+      tool_id: ^pyright_tool_id,
+      diagnostic_code: ^pyright_diag_report_return_type
     }
   }
 }
@@ -844,16 +815,16 @@ data python_l1_static_missing_import_falsification_fixture_source: String = "def
 fn python_l1_static_undefined_variable_fixture_pair() -> LeafModelPythonStaticFixturePair {
   LeafModelPythonStaticFixturePair {
     claim_id: leaf_model_claim_python_l1_static_undefined_variable,
-    surface_spelling_fact: python_surface_spelling_int,
+    surface_spelling_fact: ^python_surface_spelling_int,
     happy: LeafModelPythonStaticHappyCase {
       artifact: TargetArtifact { source_text: python_l1_static_undefined_variable_happy_fixture_source },
-      tool_profile_ref: pyright_profile_l1_id
+      tool_profile_ref: ^pyright_profile_l1_id
     },
     falsification: LeafModelPythonStaticFalsificationCase {
       artifact: TargetArtifact { source_text: python_l1_static_undefined_variable_falsification_fixture_source },
-      tool_profile_ref: pyright_profile_l1_id,
-      tool_id: pyright_tool_id,
-      diagnostic_code: pyright_diag_report_undefined_variable
+      tool_profile_ref: ^pyright_profile_l1_id,
+      tool_id: ^pyright_tool_id,
+      diagnostic_code: ^pyright_diag_report_undefined_variable
     }
   }
 }
@@ -861,16 +832,16 @@ fn python_l1_static_undefined_variable_fixture_pair() -> LeafModelPythonStaticFi
 fn python_l1_static_missing_import_fixture_pair() -> LeafModelPythonStaticFixturePair {
   LeafModelPythonStaticFixturePair {
     claim_id: leaf_model_claim_python_l1_static_missing_import,
-    surface_spelling_fact: python_surface_spelling_int,
+    surface_spelling_fact: ^python_surface_spelling_int,
     happy: LeafModelPythonStaticHappyCase {
       artifact: TargetArtifact { source_text: python_l1_static_missing_import_happy_fixture_source },
-      tool_profile_ref: pyright_profile_l1_id
+      tool_profile_ref: ^pyright_profile_l1_id
     },
     falsification: LeafModelPythonStaticFalsificationCase {
       artifact: TargetArtifact { source_text: python_l1_static_missing_import_falsification_fixture_source },
-      tool_profile_ref: pyright_profile_l1_id,
-      tool_id: pyright_tool_id,
-      diagnostic_code: pyright_diag_report_missing_imports
+      tool_profile_ref: ^pyright_profile_l1_id,
+      tool_id: ^pyright_tool_id,
+      diagnostic_code: ^pyright_diag_report_missing_imports
     }
   }
 }
@@ -887,16 +858,16 @@ fn python_l1_static_fixture_roster() -> List<LeafModelPythonStaticFixturePair> {
 fn python_l1_static_mypy_fixture_pair() -> LeafModelPythonStaticFixturePair {
   LeafModelPythonStaticFixturePair {
     claim_id: leaf_model_claim_python_l1_static_return_type,
-    surface_spelling_fact: python_surface_spelling_int,
+    surface_spelling_fact: ^python_surface_spelling_int,
     happy: LeafModelPythonStaticHappyCase {
       artifact: TargetArtifact { source_text: python_l1_static_happy_fixture_source },
-      tool_profile_ref: mypy_profile_l1_id
+      tool_profile_ref: ^mypy_profile_l1_id
     },
     falsification: LeafModelPythonStaticFalsificationCase {
       artifact: TargetArtifact { source_text: python_l1_static_falsification_fixture_source },
-      tool_profile_ref: mypy_profile_l1_id,
-      tool_id: mypy_tool_id,
-      diagnostic_code: mypy_diag_return_value
+      tool_profile_ref: ^mypy_profile_l1_id,
+      tool_id: ^mypy_tool_id,
+      diagnostic_code: ^mypy_diag_return_value
     }
   }
 }

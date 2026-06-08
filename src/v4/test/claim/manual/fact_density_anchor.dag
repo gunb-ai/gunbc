@@ -5,11 +5,9 @@
 
 module v4.test.claim.manual.fact_density_anchor
 
-
 import v4.lens.fact_density {
   carrier_spec_fact,
-  SourceSpecReadFact,
-  fact_density_kernel_ambient_bool
+  SourceSpecReadFact
 }
 import v4.std.node {
   Node,
@@ -38,22 +36,18 @@ data fact_density_anchor_fact_bundle: Node = Node {
   ]
 }
 
-
 data fact_density_anchor_kernel_ambient_bool: Node = Node {
-  kind: TypeNode { connective: Atom { identity: fact_density_kernel_ambient_bool } },
+  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_bool } },
   children: []
 }
-
 
 fn anchor_hollow_alias_read() -> SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_hollow_alias)
 }
 
-
 fn anchor_fact_bundle_read() -> SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_fact_bundle)
 }
-
 
 fn anchor_kernel_ambient_bool_read() -> SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_kernel_ambient_bool)

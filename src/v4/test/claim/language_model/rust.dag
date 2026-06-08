@@ -6,13 +6,8 @@ module v4.test.claim.language_model.rust
 
 import v4.extdeps.languages.rust {
   RustLanguageModel,
-  rust_atom_realization_symbol,
   rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_language_model_wave1,
-  rust_overflow_field_checked_arithmetic_checks_disabled,
-  rust_overflow_field_checked_arithmetic_checks_enabled,
-  rust_overflow_field_checked_arithmetic_debug_default,
-  rust_overflow_field_checked_arithmetic_release_default,
   rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32,
   rust_atom_realization_symbol_node,
   rust_leaf_model_fact_id_node_atom_realization_symbol,
@@ -57,7 +52,6 @@ fn rust_leaf_rustc_invocation() -> TargetInvocation {
     overflow_disposition_field: ^rust_leaf_overflow_disposition_field_not_applicable
   }
 }
-
 
 fn rust_leaf_r2b_invocation(build_profile: Symbol, overflow_disposition_field: Symbol) -> TargetInvocation {
   TargetInvocation {
@@ -117,7 +111,7 @@ data claim_rust_leaf_r2b_debug_default_overflow: RustLeafModelClaim = LeafModelC
   expectation: RustRuntimeBehaviorExpectation {
     invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_debug,
-      overflow_disposition_field: rust_overflow_field_checked_arithmetic_debug_default
+      overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_debug_default
     ),
     expected_outcome: Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
   },
@@ -126,13 +120,12 @@ data claim_rust_leaf_r2b_debug_default_overflow: RustLeafModelClaim = LeafModelC
     expected_failure_mode: RustRuntimeBehaviorExpectation {
       invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_debug,
-      overflow_disposition_field: rust_overflow_field_checked_arithmetic_debug_default
+      overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_debug_default
     ),
       expected_outcome: Wrap
     }
   }
 }
-
 
 // R2b sub-claim 2/4 — checked_arithmetic_release_default (live; TwoComplementWrap per rust.dag:531).
 data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = LeafModelClaim {
@@ -142,7 +135,7 @@ data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = LeafMode
   expectation: RustRuntimeBehaviorExpectation {
     invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_release,
-      overflow_disposition_field: rust_overflow_field_checked_arithmetic_release_default
+      overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_release_default
     ),
     expected_outcome: Wrap
   },
@@ -151,13 +144,12 @@ data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = LeafMode
     expected_failure_mode: RustRuntimeBehaviorExpectation {
       invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_release,
-      overflow_disposition_field: rust_overflow_field_checked_arithmetic_release_default
+      overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_release_default
     ),
       expected_outcome: Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
     }
   }
 }
-
 
 // 🟡 gated — feature:leaf-model-r2b-overflow-checks-runner — bind PR #3971 §5 R2b sub-claims 3–4 / design-rust-dag-leafmodel-instantiation.md —
 // dissolve-on-arrival: fixture runner supports explicit `-C overflow-checks=on|off` independent of debug/release profile (owner: quick-tern-735 Step 4.x); until then runner reports not_checked for these rows.
@@ -169,7 +161,7 @@ data claim_rust_leaf_r2b_overflow_checks_enabled_overflow: RustLeafModelClaim = 
   expectation: RustRuntimeBehaviorExpectation {
     invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_debug,
-      overflow_disposition_field: rust_overflow_field_checked_arithmetic_checks_enabled
+      overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_enabled
     ),
     expected_outcome: Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
   },
@@ -178,13 +170,12 @@ data claim_rust_leaf_r2b_overflow_checks_enabled_overflow: RustLeafModelClaim = 
     expected_failure_mode: RustRuntimeBehaviorExpectation {
       invocation_form: rust_leaf_r2b_invocation(
         build_profile: ^rust_leaf_rustc_build_debug,
-        overflow_disposition_field: rust_overflow_field_checked_arithmetic_checks_enabled
+        overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_enabled
       ),
       expected_outcome: Wrap
     }
   }
 }
-
 
 // R2b sub-claim 4/4 — checked_arithmetic_overflow_checks_disabled (not_checked stub; action duplicates release-default).
 data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim = LeafModelClaim {
@@ -194,7 +185,7 @@ data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim =
   expectation: RustRuntimeBehaviorExpectation {
     invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_release,
-      overflow_disposition_field: rust_overflow_field_checked_arithmetic_checks_disabled
+      overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_disabled
     ),
     expected_outcome: Wrap
   },
@@ -203,7 +194,7 @@ data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim =
     expected_failure_mode: RustRuntimeBehaviorExpectation {
       invocation_form: rust_leaf_r2b_invocation(
         build_profile: ^rust_leaf_rustc_build_release,
-        overflow_disposition_field: rust_overflow_field_checked_arithmetic_checks_disabled
+        overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_disabled
       ),
       expected_outcome: Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
     }

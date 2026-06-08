@@ -6,7 +6,6 @@
 
 module v4.test.claim.language_model.go_r3_external
 
-import v4.extdeps.languages.go { go_atom_realization_symbol }
 import v4.lens.leaf_model_verification {
   go_leaf_model_fact_atom,
   go_r3_external_fixture,
@@ -54,7 +53,7 @@ data claim_go_r3_external_fixture_pair_wired: TestClaim = EqualsClaim {
   lhs: go_r3_external_claim_bool_atom(b: true),
   rhs: go_r3_external_claim_bool_atom(
     b: go_r3_external_fixture().claim_id == leaf_model_claim_go_r3_external_symbol_projection
-      && go_r3_external_fixture().fact_anchor == go_leaf_model_fact_atom(id: go_atom_realization_symbol)
+      && go_r3_external_fixture().fact_anchor == go_leaf_model_fact_atom(id: ^go_atom_realization_symbol)
       && go_r3_external_fixture().happy.source == go_r3_external_happy_fixture_source
       && go_r3_external_fixture().expected_happy_verdict == TargetCompileAccepted
       && go_r3_external_fixture().falsification.fixture.source == go_r3_external_falsification_fixture_source

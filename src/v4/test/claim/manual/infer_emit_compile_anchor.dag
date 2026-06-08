@@ -2,9 +2,7 @@
 // Scope: Tier-1 compile anchor for infer/emit/compile Wave-1 boundary (T-10 MVP fixture).
 // Status: T-10 — stub targets fail-closed; rust_mvp1 fixture accepts emit + compile_inferred.
 
-
 module v4.test.claim.manual.infer_emit_compile_anchor
-
 
 import v4.compiler.compile {
   CompileMode,
@@ -42,18 +40,13 @@ import v4.std.diagnostic {
 }
 import v4.std.algebra { Empty }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
-import v4.std.constraints {
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
-import v4.std.witness { Violates, Witness }
 
+import v4.std.witness { Violates, Witness }
 
 data anchor_stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },
   children: []
 }
-
 
 data anchor_stub_target_model: TargetModel = TargetModel {
   bundle: anchor_stub_empty_conj,
@@ -61,7 +54,6 @@ data anchor_stub_target_model: TargetModel = TargetModel {
   binding_spellings: empty_map(),
   authority_source_text: Empty
 }
-
 
 data anchor_stub_source: Source = Empty
 data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes(
@@ -76,7 +68,6 @@ data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes
   }
 )
 
-
 data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
   lookup: fn(_) {
     Violates {
@@ -89,17 +80,14 @@ data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
   }
 }
 
-
 data anchor_stub_inferred_tree: InferredTree = InferredTree {
   root: anchor_stub_empty_conj,
   facts: anchor_stub_empty_facts_map
 }
 
-
 fn anchor_infer_rejects() -> Outcome<InferredTree> {
   infer(tree: anchor_stub_empty_conj)
 }
-
 
 fn anchor_emit_rejects() -> Outcome<TargetSource> {
   emit(
@@ -108,11 +96,9 @@ fn anchor_emit_rejects() -> Outcome<TargetSource> {
   )
 }
 
-
 fn anchor_emit_mvp1_accepts() -> Outcome<TargetSource> {
   anchor_mvp1_emit_accepts()
 }
-
 
 fn anchor_compile_inferred_mvp1_accepts() -> Outcome<CompileOutput> {
   compile_inferred(
@@ -120,7 +106,6 @@ fn anchor_compile_inferred_mvp1_accepts() -> Outcome<CompileOutput> {
     mode: TranslateTo { target: mvp1_rust_target_model }
   )
 }
-
 
 fn anchor_compile_rejects() -> Outcome<TargetSource> {
   compile_ingest_staging(source: anchor_stub_source, target: anchor_stub_target_model)

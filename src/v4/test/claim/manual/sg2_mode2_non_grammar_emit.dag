@@ -17,7 +17,6 @@ import v4.compiler.translate {
   translate_apply_use_site_ownership_to_projected_type
 }
 import v4.extdeps.languages.rust {
-  rust_binding_sg2_lex_only_atom,
   rust_sg2_arrow_xy_emitted,
   rust_sg2_binding_spellings,
   rust_sg2_conj_xy_emitted,
@@ -243,7 +242,7 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
 }
 
 fn sg2_mode2_lex_only_absent_from_binding_spellings() -> Bool {
-  match rust_sg2_binding_spellings().lookup(rust_binding_sg2_lex_only_atom) {
+  match rust_sg2_binding_spellings().lookup(^rust_binding_sg2_lex_only_atom) {
     None => true
     Some { value: _ } => false
   }

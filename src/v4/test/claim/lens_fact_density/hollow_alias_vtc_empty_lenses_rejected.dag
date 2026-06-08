@@ -9,7 +9,7 @@ import v4.compiler.compile {
   Eval,
   validate_then_compile
 }
-import v4.lens.fact_density { fact_density_hollow_alias_locus }
+
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
@@ -36,7 +36,7 @@ fn hollow_alias_vtc_empty_lenses_rejected_holds() -> Bool {
     lenses: [],
     mode: Eval { runtime: hollow_alias_el_root }
   ) {
-    Rejected { diagnostics: r } => r.head.reason == fact_density_hollow_alias_locus
+    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
   }
 }

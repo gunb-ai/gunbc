@@ -12,10 +12,7 @@ import v4.lens.affected_set {
   Propagates,
   FrontierDependency,
   FrontierProduced,
-  affected_set_boundary_pure_receipt_edge,
   affected_set_boundary_pure_receipt_node,
-  affected_set_default_dimension,
-  affected_set_dimension_not_read_receipt_edge,
   affected_set,
   canonical_transitive_frontier,
   canonical_propagation_receipt,
@@ -47,7 +44,6 @@ import v4.test.claim.lens_affected_set.node_precision {
   affected_set_mid,
   affected_set_mid_to_leaf_dependency,
   affected_set_root,
-  affected_set_root_edge_symbol,
   affected_set_root_to_mid_dependency
 }
 
@@ -67,7 +63,7 @@ data irt1_public_pure_boundary_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: affected_set_boundary_pure_receipt_edge },
+      label: Named { name: ^affected_set_boundary_pure_receipt_edge },
       target: irt1_public_pure_boundary_receipt
     }
   ]
@@ -77,7 +73,7 @@ data irt1_public_malformed_pure_boundary_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: affected_set_boundary_pure_receipt_edge },
+      label: Named { name: ^affected_set_boundary_pure_receipt_edge },
       target: irt1_public_malformed_pure_boundary_receipt
     }
   ]
@@ -99,7 +95,7 @@ data irt1_public_malformed_receipted_unchanged_edit: Edit = Edit {
 }
 
 data irt1_public_nonroot_changed_edit: Edit = Edit {
-  at: Path { steps: [affected_set_root_edge_symbol] },
+  at: Path { steps: [^affected_set_root_edge_symbol] },
   replacement: affected_set_claim_failure_node
 }
 data irt1_public_missing_path_edit: Edit = Edit {
@@ -107,7 +103,7 @@ data irt1_public_missing_path_edit: Edit = Edit {
   replacement: affected_set_claim_failure_node
 }
 data irt1_public_dimension_not_read_receipt_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: affected_set_default_dimension } },
+  kind: TypeNode { connective: Atom { identity: ^affected_set_default_dimension } },
   children: []
 }
 
@@ -120,7 +116,7 @@ data irt1_public_receipted_usage_site: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: affected_set_dimension_not_read_receipt_edge },
+      label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
       target: irt1_public_dimension_not_read_receipt_node
     }
   ]
@@ -130,7 +126,7 @@ data irt1_public_mismatched_receipted_usage_site: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: affected_set_dimension_not_read_receipt_edge },
+      label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
       target: irt1_public_mismatched_dimension_not_read_receipt_node
     }
   ]
@@ -176,7 +172,7 @@ data irt1_public_mid_to_leaf_frontier_dependency: FrontierDependency = FrontierD
 
 data irt1_public_propagation_edit_dimension: EditDimension = EditDimension {
   edit: irt1_public_changed_edit,
-  dimension: affected_set_default_dimension
+  dimension: ^affected_set_default_dimension
 }
 
 fn irt1_empty_diff_frontier_receipt_claim_holds() -> Bool {
@@ -251,7 +247,7 @@ fn irt1_public_nonroot_frontier_points_to_ancestor() -> Bool {
     dag: affected_set_root,
     edit_dimension: EditDimension {
       edit: irt1_public_nonroot_changed_edit,
-      dimension: affected_set_default_dimension
+      dimension: ^affected_set_default_dimension
     }
   ) {
     FrontierProduced { dependencies: dependencies } =>

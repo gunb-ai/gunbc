@@ -10,7 +10,7 @@ import v4.compiler.compile {
   fact_density_lens
 }
 import v4.compiler.infer { InferredTree }
-import v4.lens.fact_density { fact_density_hollow_alias_locus }
+
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
@@ -52,7 +52,7 @@ fn hollow_alias_compile_lens_rejects_holds() -> Bool {
     inferred: hollow_alias_cl_tree(),
     mode: CompileLensEnforce
   ) {
-    Rejected { diagnostics: r } => r.head.reason == fact_density_hollow_alias_locus
+    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
   }
 }

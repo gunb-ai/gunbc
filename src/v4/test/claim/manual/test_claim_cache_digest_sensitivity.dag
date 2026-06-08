@@ -18,15 +18,10 @@ import v4.compiler.eval {
 }
 import v4.extdeps.runtimes.v4_evaluator {
   v4_eval_wave1_allocate_literal,
-  v4_eval_wave1_allocate_literal_sym,
   v4_eval_wave1_bind_value,
-  v4_eval_wave1_bind_value_sym,
   v4_eval_wave1_call_primitive,
-  v4_eval_wave1_call_primitive_sym,
   v4_eval_wave1_choose_branch,
-  v4_eval_wave1_choose_branch_sym,
   v4_eval_wave1_step_loop,
-  v4_eval_wave1_step_loop_sym,
   v4_eval_wave1_unit_type_node,
   v4_evaluator_interpretation_structure_witness
 }
@@ -454,20 +449,20 @@ fn tcc_interp_stub_call_body() -> InterpretationAlgebra {
 fn tcc_witness_stub_allocate_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
     allocate_literal: ^tcc_stub_alloc_a_sym,
-    call_primitive: v4_eval_wave1_call_primitive_sym,
-    choose_branch: v4_eval_wave1_choose_branch_sym,
-    step_loop: v4_eval_wave1_step_loop_sym,
-    bind_value: v4_eval_wave1_bind_value_sym
+    call_primitive: ^v4_eval_wave1_call_primitive_sym,
+    choose_branch: ^v4_eval_wave1_choose_branch_sym,
+    step_loop: ^v4_eval_wave1_step_loop_sym,
+    bind_value: ^v4_eval_wave1_bind_value_sym
   }
 }
 
 fn tcc_witness_stub_call_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: v4_eval_wave1_allocate_literal_sym,
+    allocate_literal: ^v4_eval_wave1_allocate_literal_sym,
     call_primitive: ^tcc_stub_call_b_sym,
-    choose_branch: v4_eval_wave1_choose_branch_sym,
-    step_loop: v4_eval_wave1_step_loop_sym,
-    bind_value: v4_eval_wave1_bind_value_sym
+    choose_branch: ^v4_eval_wave1_choose_branch_sym,
+    step_loop: ^v4_eval_wave1_step_loop_sym,
+    bind_value: ^v4_eval_wave1_bind_value_sym
   }
 }
 
