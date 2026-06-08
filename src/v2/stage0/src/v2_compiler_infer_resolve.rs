@@ -12,7 +12,7 @@ pub use crate::v2_compiler_infer_env::{
 };
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_types::{
-    child_type_node, node_is_keyed_collection, resolved_type,
+    child_type_node, is_declared_container_alias_spelling, node_is_keyed_collection, resolved_type,
 };
 use crate::v2_rt;
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
@@ -55,6 +55,114 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
+    }
+}
+
+pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        name: structural.name.clone(),
+        ident: structural.ident.clone(),
+        span: structural.span.clone(),
+        ident_span: identity.ident_span.clone(),
+        children: structural.children.clone(),
+        connective: structural.connective.clone(),
+        params: structural.params.clone(),
+        inferred: structural.inferred.clone(),
+        return_cardinality: structural.return_cardinality.clone(),
+        uses: structural.uses.clone(),
+        body: structural.body.clone(),
+        transport: structural.transport.clone(),
+        properties: structural.properties.clone(),
+        type_annotation: structural.type_annotation.clone(),
+        is_self_recursive: structural.is_self_recursive.clone(),
+        has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
+        match_pattern: structural.match_pattern.clone(),
+        expr_data: structural.expr_data.clone(),
+    })
+}
+
+pub fn preserve_nominal_brand_on_resolve(
+    identity: Rc<Node>,
+    structural: Rc<Node>,
+    brand_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    if (((brand_name.clone().as_str() != "".to_string().as_str())
+        && (brand_name.clone().as_str()
+            != authored_name_at(source_indices, structural.clone()).as_str()))
+        && !is_declared_container_alias_spelling(brand_name.clone()))
+    {
+        with_authored_identity(identity, structural.clone())
+    } else {
+        structural.clone()
+    }
+}
+
+pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
+    {
+        let source_indices = env.source_indices.clone();
+        let brand = authored_name_at(source_indices.clone(), n.clone());
+        match lookup_type_for(env.clone(), n.clone()) {
+            Some(resolved) => {
+                let structural = if (((resolved.connective.clone() == Connective::NoConnective)
+                    && ((resolved.children.clone().len() as i64) == 0))
+                    && (resolved.inferred.clone() != None))
+                {
+                    match resolved.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => resolve_node_bounded(
+                            target.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                            0,
+                        )
+                        .resolved
+                        .clone(),
+                        _ => resolve_node_bounded(
+                            resolved.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                            0,
+                        )
+                        .resolved
+                        .clone(),
+                    }
+                } else {
+                    resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
+                        .resolved
+                        .clone()
+                };
+                if (((brand.clone().as_str() != "".to_string().as_str())
+                    && (brand.clone().as_str()
+                        != authored_name_at(source_indices.clone(), structural.clone()).as_str()))
+                    && !is_declared_container_alias_spelling(brand.clone()))
+                {
+                    with_authored_identity(n.clone(), structural.clone())
+                } else {
+                    if (((resolved.connective.clone() == Connective::NoConnective)
+                        && ((resolved.children.clone().len() as i64) == 0))
+                        && (resolved.inferred.clone() != None))
+                    {
+                        match resolved.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: target, .. }) => {
+                                let target_resolved = resolve_node_bounded(
+                                    target.clone(),
+                                    env.clone(),
+                                    module_name.clone(),
+                                    0,
+                                )
+                                .resolved
+                                .clone();
+                                with_authored_identity(n.clone(), target_resolved)
+                            }
+                            _ => resolved.clone(),
+                        }
+                    } else {
+                        resolved.clone()
+                    }
+                }
+            }
+            None => n.clone(),
+        }
     }
 }
 
