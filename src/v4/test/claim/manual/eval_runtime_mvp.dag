@@ -22,7 +22,7 @@ import v4.compiler.infer {
 }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection { List, Map, list_nth }
+import v4.std.collection { List, Map, empty_map, list_nth }
 import v4.std.constraints {
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
@@ -355,9 +355,26 @@ fn eval_mvp2_actual() -> Outcome<RuntimeValue> {
 }
 
 
+fn eval_mvp2_empty_environment() -> EvaluationEnvironment {
+  EvaluationEnvironment {
+    bindings: empty_map()
+  }
+}
+
+
 data witness_eval_mvp2_add_accepts_five: Bool = match eval_mvp2_actual() {
   Accepted { value: RuntimePrimitive { value: p }, diagnostics: None } =>
     (p.primitive_type == eval_mvp2_i64_node()) && (count(p.bytes) == 5)
+  _ => false
+}
+
+
+data witness_eval_mvp2_call_primitive_rejects_bad_args: Bool = match eval_mvp2_call_primitive(
+  _node: eval_mvp2_add_subgraph_node,
+  args: [],
+  _env: eval_mvp2_empty_environment()
+) {
+  Rejected { diagnostics: _ } => true
   _ => false
 }
 
