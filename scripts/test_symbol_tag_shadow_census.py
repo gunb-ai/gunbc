@@ -46,6 +46,13 @@ fn payload_projection(v: BridgeProbe) -> Symbol {
   }
 }
 
+fn field_label_shadow_discriminant(v: BridgeProbe) -> Symbol {
+  match v {
+    ProbeAlpha { probe_alpha_tag: _ } => probe_alpha_tag
+    ProbeBeta { probe_beta_tag: _ } => probe_beta_tag
+  }
+}
+
 fn dotted_projection(v: BridgeProbe, projection: Projection) -> Symbol {
   match v {
     ProbeAlpha { x: _ } => projection.alpha.surface
@@ -56,7 +63,11 @@ fn dotted_projection(v: BridgeProbe, projection: Projection) -> Symbol {
     tags, bridges, shadow_syms, pin_tests = census.analyze("fixture.dag", text)
     if tags != {"probe_alpha_tag", "probe_beta_tag"}:
         raise SystemExit(f"unexpected tags: {tags}")
-    if bridges != [("real_discriminant", 2, {"probe_alpha_tag", "probe_beta_tag"})]:
+    expected_bridges = [
+        ("real_discriminant", 2, {"probe_alpha_tag", "probe_beta_tag"}),
+        ("field_label_shadow_discriminant", 2, {"probe_alpha_tag", "probe_beta_tag"}),
+    ]
+    if bridges != expected_bridges:
         raise SystemExit(f"unexpected bridges: {bridges}")
     if shadow_syms != {"probe_alpha_tag", "probe_beta_tag"}:
         raise SystemExit(f"unexpected shadow symbols: {shadow_syms}")

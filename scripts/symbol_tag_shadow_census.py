@@ -51,11 +51,28 @@ def pattern_bindings(pattern):
     """Best-effort variable bindings in a constructor arm pattern."""
     if not pattern:
         return set()
-    return {
-        token
-        for token in re.findall(r"\b[a-z]\w*\b", pattern)
-        if token != "_"
-    }
+    inner = pattern[1:-1]
+    if pattern.startswith("("):
+        return {
+            token
+            for token in re.findall(r"\b[a-z]\w*\b", inner)
+            if token != "_"
+        }
+
+    bindings = set()
+    for field in inner.split(","):
+        field = field.strip()
+        if not field:
+            continue
+        if ":" not in field:
+            if re.fullmatch(r"[a-z]\w*", field) and field != "_":
+                bindings.add(field)
+            continue
+        _, value = field.split(":", 1)
+        value = value.strip()
+        if re.fullmatch(r"[a-z]\w*", value) and value != "_":
+            bindings.add(value)
+    return bindings
 
 
 def analyze(path, text):
