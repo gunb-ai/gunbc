@@ -483,3 +483,53 @@ fn witness_sg2_projection_falsification_holds() -> Bool {
     && !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_missing_surface_emitted())
     && !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_positional_emitted())
 }
+
+// DEBUG (remove after green): narrow claim-run failures.
+fn debug_sg2_arrow_serialize_accepts() -> Bool {
+  sg2_serialize_accepts(emitted: rust_sg2_arrow_xy_emitted())
+}
+
+fn debug_sg2_conj_serialize_accepts() -> Bool {
+  sg2_serialize_accepts(emitted: rust_sg2_conj_xy_emitted())
+}
+
+fn debug_sg2_instantiation_project_accepts() -> Bool {
+  match project_type_expression_node(
+    node: rust_sg2_instantiation_source_type_node(),
+    target: rust_sg2_type_expr_target_model(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn debug_sg2_atom_project_accepts() -> Bool {
+  match project_type_expression_node(
+    node: rust_sg2_atom_node(binding: rust_binding_sg2_x),
+    target: rust_sg2_type_expr_target_model(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn debug_sg2_conj_text_matches_brace_only() -> Bool {
+  sg2_serialized_text(emitted: rust_sg2_conj_xy_emitted()) == "{ X, Y }"
+}
+
+fn debug_sg2_conj_text_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: rust_sg2_conj_xy_emitted()) == sg2_expected_conj_text
+}
+
+fn debug_sg2_arrow_project_accepts() -> Bool {
+  match project_type_expression_node(
+    node: rust_sg2_arrow_source_type_node(),
+    target: rust_sg2_type_expr_target_model(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
