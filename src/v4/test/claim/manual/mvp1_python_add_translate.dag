@@ -295,6 +295,16 @@ fn anchor_mvp1_python_compile_inferred_accepts() -> Outcome<CompileOutput> {
 data mvp1_python_emit_receipt: Outcome<TargetSource> = anchor_mvp1_python_emit_accepts()
 
 
+// R2 keystone execution witness — emit(add) must produce the canonical python_mvp1 add-fn source.
+fn mvp1_python_emit_add_fn_accepts_holds() -> Bool {
+  match mvp1_python_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      (source == python_mvp1_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
 data mvp1_python_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_python_compile_inferred_accepts()
 
 
