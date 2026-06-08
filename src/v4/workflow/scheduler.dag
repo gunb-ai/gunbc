@@ -7,11 +7,10 @@ module v4.workflow.scheduler
 
 import v4.std.collection { List }
 import v4.std.algebra {
+  contains,
   filter,
   for_all,
-  list_append,
-  list_snoc_item,
-  non_empty
+  list_snoc_item
 }
 import v4.std.dependency {
   DependencyView,
@@ -30,19 +29,8 @@ type SchedulerPlan {
   layers: List<ReadinessLayer>
 }
 
-type SchedulerLayerFoldAcc {
-  scheduled: List<Node>
-  layers: List<ReadinessLayer>
-}
-
-fn scheduler_node_in_list(nodes: List<Node>, needle: Node) -> Bool {
-  fold(nodes, init: false, f: fn(found, node) {
-    found || (node == needle)
-  })
-}
-
 fn scheduler_append_node_once(nodes: List<Node>, node: Node) -> List<Node> {
-  if scheduler_node_in_list(nodes: nodes, needle: node) {
+  if contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
     nodes
   } else {
     list_snoc_item(xs: nodes, item: node)
@@ -64,7 +52,7 @@ fn scheduler_dependency_unblocked(
   candidate: Node
 ) -> Bool {
   if dependency.dependent == candidate {
-    scheduler_node_in_list(nodes: scheduled, needle: dependency.source)
+    contains(xs: scheduled, item: dependency.source, eq: fn(left, right) { left == right })
   } else {
     true
   }
@@ -88,7 +76,7 @@ fn scheduler_node_unblocked(
 }
 
 fn scheduler_node_unscheduled(scheduled: List<Node>, candidate: Node) -> Bool {
-  scheduler_node_in_list(nodes: scheduled, needle: candidate) == false
+  contains(xs: scheduled, item: candidate, eq: fn(left, right) { left == right }) == false
 }
 
 fn runnable_frontier_from_dependencies(
@@ -111,52 +99,6 @@ fn runnable_frontier_from_dependencies(
   }
 }
 
-fn scheduler_layer_fold_step(
-  nodes: List<Node>,
-  dependencies: List<DependencyView>,
-  acc: SchedulerLayerFoldAcc
-) -> SchedulerLayerFoldAcc {
-  let runnable = runnable_frontier_from_dependencies(
-    nodes: nodes,
-    dependencies: dependencies,
-    scheduled: acc.scheduled
-  )
-  if non_empty(xs: runnable.ready) {
-    SchedulerLayerFoldAcc {
-      scheduled: list_append(left: acc.scheduled, right: runnable.ready),
-      layers: list_snoc_item(
-        xs: acc.layers,
-        item: ReadinessLayer { ready: runnable.ready }
-      )
-    }
-  } else {
-    acc
-  }
-}
-
-fn scheduler_layers_from_dependencies(
-  nodes: List<Node>,
-  dependencies: List<DependencyView>
-) -> List<ReadinessLayer> {
-  fold(nodes, init: SchedulerLayerFoldAcc { scheduled: [], layers: [] }, f: fn(acc, _) {
-    scheduler_layer_fold_step(nodes: nodes, dependencies: dependencies, acc: acc)
-  }).layers
-}
-
-fn scheduler_plan_from_dependencies(
-  nodes: List<Node>,
-  dependencies: List<DependencyView>
-) -> SchedulerPlan {
-  SchedulerPlan {
-    runnable: runnable_frontier_from_dependencies(
-      nodes: nodes,
-      dependencies: dependencies,
-      scheduled: []
-    ),
-    layers: scheduler_layers_from_dependencies(nodes: nodes, dependencies: dependencies)
-  }
-}
-
 fn runnable_frontier(graph_node: Node) -> RunnableFrontier {
   let dependencies = dependency_lens(root: graph_node)
   runnable_frontier_from_dependencies(
@@ -167,17 +109,12 @@ fn runnable_frontier(graph_node: Node) -> RunnableFrontier {
 }
 
 fn scheduler_layers(graph_node: Node) -> List<ReadinessLayer> {
-  let dependencies = dependency_lens(root: graph_node)
-  let nodes = scheduler_dependency_nodes(dependencies: dependencies)
-  scheduler_layers_from_dependencies(nodes: nodes, dependencies: dependencies)
+  topological_layers(graph_node: graph_node)
 }
 
 fn scheduler_plan(graph_node: Node) -> SchedulerPlan {
-  let dependencies = dependency_lens(root: graph_node)
-  let nodes = scheduler_dependency_nodes(dependencies: dependencies)
-  scheduler_plan_from_dependencies(nodes: nodes, dependencies: dependencies)
-}
-
-fn dependency_fold_layers(graph_node: Node) -> List<ReadinessLayer> {
-  topological_layers(graph_node: graph_node)
+  SchedulerPlan {
+    runnable: runnable_frontier(graph_node: graph_node),
+    layers: scheduler_layers(graph_node: graph_node)
+  }
 }

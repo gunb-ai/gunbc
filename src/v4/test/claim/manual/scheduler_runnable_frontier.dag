@@ -8,13 +8,14 @@ import v4.std.collection { List }
 import v4.std.dependency {
   DataDependsOn,
   DependencyView,
-  ReadinessLayer
+  topological_layers
 }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.workflow.scheduler {
-  SchedulerPlan,
-  scheduler_plan_from_dependencies
+  RunnableFrontier,
+  runnable_frontier_from_dependencies,
+  scheduler_plan
 }
 
 data scheduler_root_symbol: Symbol = scheduler_root_symbol
@@ -86,43 +87,54 @@ data scheduler_fixture_reversed_dependencies: List<DependencyView> = [
   }
 ]
 
-data scheduler_expected_layers: List<ReadinessLayer> = [
-  ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] },
-  ReadinessLayer { ready: [scheduler_emit_node] }
-]
-
-fn scheduler_fixture_plan() -> SchedulerPlan {
-  scheduler_plan_from_dependencies(
+fn scheduler_initial_frontier() -> RunnableFrontier {
+  runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
-    dependencies: scheduler_fixture_dependencies
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: []
   )
 }
 
-fn scheduler_reversed_fixture_plan() -> SchedulerPlan {
-  scheduler_plan_from_dependencies(
+fn scheduler_after_independent_frontier() -> RunnableFrontier {
+  runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
-    dependencies: scheduler_fixture_reversed_dependencies
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: [scheduler_build_node, scheduler_test_node]
   )
 }
 
-fn scheduler_layers_compute_independent_frontier() -> Bool {
-  scheduler_fixture_plan().layers == scheduler_expected_layers
+fn scheduler_reversed_initial_frontier() -> RunnableFrontier {
+  runnable_frontier_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_reversed_dependencies,
+    scheduled: []
+  )
+}
+
+fn scheduler_layers_reuse_dependency_fold() -> Bool {
+  scheduler_plan(graph_node: scheduler_fixture_graph).layers == topological_layers(graph_node: scheduler_fixture_graph)
 }
 
 fn scheduler_plan_carries_runnable_frontier() -> Bool {
-  scheduler_fixture_plan().runnable.ready == [scheduler_build_node, scheduler_test_node]
+  scheduler_initial_frontier().ready == [scheduler_build_node, scheduler_test_node]
+}
+
+fn scheduler_next_frontier_after_independent_work() -> Bool {
+  scheduler_after_independent_frontier().ready == [scheduler_emit_node]
 }
 
 fn scheduler_reversed_dependencies_change_frontier() -> Bool {
-  scheduler_reversed_fixture_plan().runnable.ready != scheduler_fixture_plan().runnable.ready
+  scheduler_reversed_initial_frontier().ready != scheduler_initial_frontier().ready
 }
 
-data scheduler_runnable_frontier_independent_layer_receipt: Bool = scheduler_layers_compute_independent_frontier()
+data scheduler_runnable_frontier_reuses_dependency_fold: Bool = scheduler_layers_reuse_dependency_fold()
 
 data scheduler_runnable_frontier_plan_carries_ready_set: Bool = scheduler_plan_carries_runnable_frontier()
+
+data scheduler_runnable_frontier_next_layer_receipt: Bool = scheduler_next_frontier_after_independent_work()
 
 data scheduler_runnable_frontier_discriminates_dependency_order: Bool = scheduler_reversed_dependencies_change_frontier()
 
 fn scheduler_runnable_frontier_claims_hold() -> Bool {
-  scheduler_runnable_frontier_independent_layer_receipt && scheduler_runnable_frontier_plan_carries_ready_set && scheduler_runnable_frontier_discriminates_dependency_order
+  scheduler_runnable_frontier_reuses_dependency_fold && scheduler_runnable_frontier_plan_carries_ready_set && scheduler_runnable_frontier_next_layer_receipt && scheduler_runnable_frontier_discriminates_dependency_order
 }
