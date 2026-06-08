@@ -36,6 +36,7 @@ import v4.std.algebra {
   BooleanAlgebra,
   boolean_algebra_node,
   commutative_semiring_node,
+  Cons,
   Empty,
   fold_list,
   group_field_inverse,
@@ -104,7 +105,9 @@ import v4.std.target_model {
   TargetFunctionTypeShape,
   TargetGenericApply,
   TargetSumTypeShape,
-  TargetTypeExpressionProjection
+  TargetTypeExpressionProjection,
+  target_type_expr_arrow_emitted,
+  target_type_expr_atom_emitted
 }
 import v4.extdeps.cpp_abi { CppTargetProfile }
 import v4.std.text { String }
@@ -299,6 +302,9 @@ data cpp_surface_type_sum: Symbol = cpp_surface_type_sum
 data cpp_surface_type_arrow: Symbol = cpp_surface_type_arrow
 data cpp_surface_type_cardinality: Symbol = cpp_surface_type_cardinality
 data cpp_surface_type_generic_apply: Symbol = cpp_surface_type_generic_apply
+data cpp_binding_sg2_x: Symbol = cpp_binding_sg2_x
+data cpp_binding_sg2_y: Symbol = cpp_binding_sg2_y
+data cpp_sg2_type_alias_literal: Symbol = cpp_sg2_type_alias_literal
 data cpp_production_mvp1_fn_add: Symbol = cpp_production_mvp1_fn_add
 data cpp_binding_fn_add: Symbol = cpp_binding_fn_add
 data cpp_binding_param_x: Symbol = cpp_binding_param_x
@@ -1584,5 +1590,96 @@ fn cpp_sg2_type_expr_target_model(target_profile: Node) -> TargetModel {
     lex: cpp_sg2_type_expr_lex(),
     binding_spellings: cpp_mvp1_binding_spellings(),
     authority_source_text: cpp_sg2_type_alias_text
+  }
+}
+
+fn cpp_sg2_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), cpp_binding_sg2_x, "X"),
+    cpp_binding_sg2_y,
+    "Y"
+  )
+}
+
+fn cpp_sg2_serialize_source_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(
+        name: serialize_source_field_source_text,
+        target: cpp_atom(id: cpp_sg2_type_alias_literal)
+      )
+    ]
+  }
+}
+
+fn cpp_sg2_type_expr_projection_probe_bundle_core(target_profile: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: cpp_type_expression_projection_bundle_node()
+      ),
+      cpp_named_edge(
+        name: target_model_edge_serialize_source,
+        target: cpp_sg2_serialize_source_node()
+      ),
+      cpp_named_edge(
+        name: target_model_edge_translation_rules,
+        target: cpp_mvp1_translation_rules_node(target_profile: target_profile)
+      ),
+      cpp_named_edge(
+        name: target_model_edge_selection_policy,
+        target: cpp_mvp1_selection_policy_node(target_profile: target_profile)
+      ),
+      cpp_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: cpp_mvp1_declared_inhabitants_root(target_profile: target_profile)
+      )
+    ]
+  }
+}
+
+fn cpp_sg2_type_expr_projection_probe_target_model(target_profile: Node) -> TargetModel {
+  TargetModel {
+    bundle: cpp_sg2_type_expr_projection_probe_bundle_core(target_profile: target_profile),
+    lex: cpp_sg2_type_expr_lex(),
+    binding_spellings: cpp_sg2_binding_spellings(),
+    authority_source_text: cpp_sg2_type_alias_text
+  }
+}
+
+fn cpp_sg2_atom_node(binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: binding } },
+    children: []
+  }
+}
+
+fn cpp_sg2_arrow_xy_emitted() -> Node {
+  target_type_expr_arrow_emitted(
+    form: cpp_type_expression_projection().arrow_form,
+    inputs: Cons {
+      head: target_type_expr_atom_emitted(
+        form: cpp_type_expression_projection().atom_form,
+        identity: cpp_binding_sg2_x
+      ),
+      tail: Empty
+    },
+    output: target_type_expr_atom_emitted(
+      form: cpp_type_expression_projection().atom_form,
+      identity: cpp_binding_sg2_y
+    )
+  )
+}
+
+fn cpp_sg2_arrow_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: cpp_sg2_atom_node(binding: cpp_binding_sg2_x) },
+      Edge { label: Positional, target: cpp_sg2_atom_node(binding: cpp_binding_sg2_y) }
+    ]
   }
 }
