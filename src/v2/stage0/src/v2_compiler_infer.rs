@@ -1002,6 +1002,22 @@ pub fn set_element_types_mismatch(
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
 }
 
+pub fn type_node_is_callable(n: Rc<Node>) -> bool {
+    (n.params.clone().len() as i64) > 0
+}
+
+pub fn direct_call_set_element_types_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone()) {
+        false
+    } else {
+        set_element_types_mismatch(formal.clone(), actual.clone(), source_indices)
+    }
+}
+
 pub fn nominal_call_arg_brand_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -1066,6 +1082,10 @@ pub fn direct_call_arg_mismatch_diags(
                                 module_name.clone(),
                             );
                             if nominal_call_arg_brand_mismatch(
+                                formal.clone(),
+                                actual.clone(),
+                                source_indices.clone(),
+                            ) || direct_call_set_element_types_mismatch(
                                 formal.clone(),
                                 actual.clone(),
                                 source_indices.clone(),

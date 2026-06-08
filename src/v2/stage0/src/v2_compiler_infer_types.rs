@@ -153,6 +153,18 @@ pub fn is_declared_container_alias_spelling(name: String) -> bool {
     }
 }
 
+pub fn ident_span_equal(left: Rc<Node>, right: Rc<Node>) -> bool {
+    match (&left.ident_span, &right.ident_span) {
+        (Some(left_id), Some(right_id)) => {
+            left_id.file == right_id.file
+                && left_id.start == right_id.start
+                && left_id.end == right_id.end
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 pub fn structural_carrier_template_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1893,16 +1905,27 @@ pub fn node_type_compatible(
                                     if (left_opt.clone() || right_opt.clone()) {
                                         break false;
                                     } else {
-                                        break (authored_name_at(
-                                            source_indices.clone(),
-                                            left.clone(),
-                                        )
-                                        .as_str()
-                                            == authored_name_at(
+                                        let left_auth =
+                                            authored_name_at(source_indices.clone(), left.clone());
+                                        let right_auth =
+                                            authored_name_at(source_indices.clone(), right.clone());
+                                        if left_auth.as_str() != right_auth.as_str() {
+                                            break false;
+                                        } else if ((left.children.clone().len() as i64) > 0)
+                                            && ((right.children.clone().len() as i64) > 0)
+                                            && !node_is_element_collection(
+                                                left.clone(),
                                                 source_indices.clone(),
-                                                right.clone(),
                                             )
-                                            .as_str());
+                                            && !node_is_element_collection(
+                                                right.clone(),
+                                                source_indices.clone(),
+                                            )
+                                        {
+                                            break ident_span_equal(left.clone(), right.clone());
+                                        } else {
+                                            break true;
+                                        }
                                     }
                                 }
                             }
