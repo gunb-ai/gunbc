@@ -228,14 +228,24 @@ print_affected_testgen_real_diff_evidence() {
   local diff_base=""
   local diff_label=""
 
-  if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1 && [[ -n "${GITHUB_BASE_REF:-}" ]]; then
-    git fetch --no-tags --depth=200 origin "${GITHUB_BASE_REF}:${GITHUB_BASE_REF}" >/dev/null 2>&1 || true
-    base_ref="${GITHUB_BASE_REF}"
+  if [[ -n "${GITHUB_BASE_REF:-}" ]]; then
+    git fetch --no-tags --depth=200 origin \
+      "+refs/heads/${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}" >/dev/null 2>&1 || true
+    base_ref="refs/remotes/origin/${GITHUB_BASE_REF}"
+  fi
+
+  if [[ -n "${GITHUB_REF:-}" ]]; then
+    git fetch --no-tags --depth=200 origin \
+      "+${GITHUB_REF}:refs/remotes/origin/affected-testgen-current" >/dev/null 2>&1 || true
   fi
 
   if git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
     if diff_base="$(git merge-base "$base_ref" HEAD 2>/dev/null)"; then
       diff_label="${base_ref}...HEAD"
+    else
+      diff_base="$base_ref"
+      diff_label="${base_ref}..HEAD"
+      echo "::notice title=affected-testgen evidence::base ref ${base_ref} has no merge base in checkout; using direct ${diff_label}"
     fi
   fi
 
