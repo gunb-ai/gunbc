@@ -30,7 +30,7 @@ use crate::std_syntax::AlgebraFieldKind::{
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::{
     container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
@@ -86,6 +86,7 @@ pub enum TokenShape {
     ShOr,
     ShQuestion,
     ShNullCoalesce,
+    ShCaret,
     ShPipe,
     ShPipeArrow,
     ShLitStr,

@@ -15,7 +15,7 @@ use crate::std_syntax::BodyKind::{
     BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
 };
 use crate::std_syntax::ItemFormKind::OtherForm;
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
 pub use crate::std_types::SourceSpan;
@@ -34,11 +34,11 @@ use crate::v2_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcar
 use crate::v2_std_core::OperationModifier::{Hermetic, Idempotent, Readonly};
 use crate::v2_std_core::StringPart::{Interpolation, Text};
 use crate::v2_std_core::TokenShape::{
-    ShAnd, ShArrow, ShBang, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq, ShFatArrow,
-    ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat, ShLitInt,
-    ShLitStr, ShLt, ShMinus, ShNe, ShNewline, ShNullCoalesce, ShOr, ShPercent, ShPipe, ShPipeArrow,
-    ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin, ShStrEnd,
-    ShStrMid, ShUnknown,
+    ShAnd, ShArrow, ShBang, ShCaret, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq,
+    ShFatArrow, ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat,
+    ShLitInt, ShLitStr, ShLt, ShMinus, ShNe, ShNewline, ShNullCoalesce, ShOr, ShPercent, ShPipe,
+    ShPipeArrow, ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin,
+    ShStrEnd, ShStrMid, ShUnknown,
 };
 use crate::v2_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v2_std_core::{
@@ -1404,6 +1404,7 @@ pub fn shape_display_name(shape: TokenShape) -> String {
         TokenShape::ShOr => "Or".to_string(),
         TokenShape::ShQuestion => "Question".to_string(),
         TokenShape::ShNullCoalesce => "NullCoalesce".to_string(),
+        TokenShape::ShCaret => "Caret".to_string(),
         TokenShape::ShPipe => "Pipe".to_string(),
         TokenShape::ShPipeArrow => "PipeArrow".to_string(),
         TokenShape::ShLitStr => "LitStr".to_string(),
@@ -10667,6 +10668,132 @@ pub fn parse_prefix(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Exp
     }
 }
 
+pub fn parse_caret_expr(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+    {
+        let span = token_span(tokens.clone().first().cloned());
+        let dummy_expr = parse_recovery_placeholder();
+        let after_caret = Rc::new(
+            tokens
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .collect::<Vec<_>>(),
+        );
+        let next = after_caret.clone().first().cloned();
+        let next_shape = match next.clone() {
+            Some(t) => Some(t.shape.clone()),
+            None => None,
+        };
+        match next_shape.clone() {
+            Some(TokenShape::ShIdent) => {
+                let spelling = next.clone().unwrap().text.clone();
+                let end_span = token_span(next.clone());
+                let lit_span = make_span(span.start.clone(), end_span.end.clone());
+                Rc::new(ExprResult {
+                    expr: make_expr_node(
+                        Rc::new(ExprData::ExprLiteral {
+                            value: Rc::new(LiteralValue::LitSymbol { value: spelling }),
+                        }),
+                        Rc::new(vec![]),
+                        None,
+                        lit_span,
+                    ),
+                    tokens: Rc::new(
+                        after_caret
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                    ctx: ctx.clone(),
+                    err: None,
+                })
+            }
+            Some(TokenShape::ShLParen) => {
+                let r = parse_expr(
+                    Rc::new(
+                        after_caret
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                    ctx.clone(),
+                );
+                if has_err(r.err.clone()) {
+                    return Rc::new(ExprResult {
+                        expr: r.expr.clone(),
+                        tokens: r.tokens.clone(),
+                        ctx: r.ctx.clone(),
+                        err: r.err.clone(),
+                    });
+                }
+                let tokens = skip_newlines(r.tokens.clone());
+                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
+                if has_err(r2.err.clone()) {
+                    return Rc::new(ExprResult {
+                        expr: dummy_expr,
+                        tokens: r2.tokens.clone(),
+                        ctx: r.ctx.clone(),
+                        err: r2.err.clone(),
+                    });
+                }
+                let call_span = make_span(
+                    span.start.clone(),
+                    r2.token.clone().span.clone().end.clone(),
+                );
+                let callee = make_named_expr_node(
+                    "discriminant".to_string(),
+                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(vec![]),
+                    None,
+                    call_span.clone(),
+                    kernel_span("discriminant".to_string()),
+                );
+                let call = make_call_expr(
+                    callee,
+                    Rc::new(vec![r.expr.clone()]),
+                    call_span.clone(),
+                    ctx.source_indices.clone(),
+                );
+                Rc::new(ExprResult {
+                    expr: call,
+                    tokens: r2.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: None,
+                })
+            }
+            _ => {
+                let found = match next_shape.clone() {
+                    Some(shape) => shape_display_name(shape.clone()),
+                    None => "EOF".to_string(),
+                };
+                Rc::new(ExprResult {
+                    expr: parse_recovery_expr(
+                        span.clone(),
+                        format!(
+                            "expected identifier or `(` after `^`, found {}",
+                            found.clone()
+                        ),
+                    ),
+                    tokens: after_caret.clone(),
+                    ctx: ctx.clone(),
+                    err: Some(parse_error(
+                        format!(
+                            "expected identifier or `(` after `^`, found {}",
+                            found.clone()
+                        ),
+                        span.clone(),
+                    )),
+                })
+            }
+        }
+    }
+}
+
 pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tok = tokens.clone().first().cloned();
@@ -10835,6 +10962,7 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
                 })
             }
             Some(TokenShape::ShStrBegin) => parse_string_interp(tokens.clone(), ctx.clone()),
+            Some(TokenShape::ShCaret) => parse_caret_expr(tokens.clone(), ctx.clone()),
             Some(TokenShape::ShIdent) => {
                 let n = tok.clone().unwrap().text.clone();
                 parse_ident_expr(tokens.clone(), ctx.clone(), n.clone())
