@@ -1003,15 +1003,8 @@ pub fn set_element_types_mismatch(
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
 }
 
-pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
-    {
-        let is_v4 = ((v2_rt::string_length(&module_name) >= 3)
-            && (v2_rt::substring(&module_name, 0, 3).as_str() == "v4.".to_string().as_str()));
-        let is_compiler_substrate = ((v2_rt::string_length(&module_name) >= 13)
-            && (v2_rt::substring(&module_name, 0, 13).as_str()
-                == "v2.compiler.".to_string().as_str()));
-        (is_v4 || is_compiler_substrate)
-    }
+pub fn type_node_is_callable(n: Rc<Node>) -> bool {
+    ((n.params.clone().len() as i64) > 0)
 }
 
 pub fn nominal_call_arg_brand_mismatch(
@@ -1079,14 +1072,18 @@ pub fn direct_call_arg_type_mismatch(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
-        || container_element_nominal_brand_mismatch(
-            formal.clone(),
-            actual.clone(),
-            type_env,
-            module_name,
-            source_indices.clone(),
-        ))
+    if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
+        false
+    } else {
+        (nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
+            || container_element_nominal_brand_mismatch(
+                formal.clone(),
+                actual.clone(),
+                type_env,
+                module_name,
+                source_indices.clone(),
+            ))
+    }
 }
 
 pub fn direct_call_arg_mismatch_diags(
@@ -2909,18 +2906,13 @@ pub fn infer_expr(
                             }
                             __result
                         });
-                        let arg_compat_diags =
-                            if module_skips_direct_call_arg_check(scope.module_name.clone()) {
-                                Rc::new(vec![])
-                            } else {
-                                direct_call_arg_mismatch_diags(
-                                    value_params_for_check,
-                                    typed_args.clone(),
-                                    call_subst.clone(),
-                                    scope.type_env.clone(),
-                                    scope.module_name.clone(),
-                                )
-                            };
+                        let arg_compat_diags = direct_call_arg_mismatch_diags(
+                            value_params_for_check,
+                            typed_args.clone(),
+                            call_subst.clone(),
+                            scope.type_env.clone(),
+                            scope.module_name.clone(),
+                        );
                         Rc::new(InferResult {
                             typed: make_named_expr_node(
                                 func_name.clone(),
