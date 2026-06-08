@@ -115,6 +115,39 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
   resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0)
 }
 
+fn is_nominal_alias_decl(n: Node) -> Bool {
+  n.connective == NoConnective && n.children |> count == 0 && n.inferred != none && n.params |> count == 0
+}
+
+// Resolve a TypeEnv binding while preserving declarator identity on nominal
+// aliases (M1 / A3). Use-site resolve still peels via resolve_node (C2.3).
+fn resolve_type_binding(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
+  if is_nominal_alias_decl(n: n) {
+    let decl_name = authored_name(env: env, node: n)
+    match n.inferred {
+      Some { value: Resolved { node: target } } =>
+        let target_result = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0)
+        let target_resolved = target_result.resolved
+        NodeResolveResult {
+          resolved: Node {
+            name: decl_name, span: n.span, ident_span: n.ident_span,
+            children: target_resolved.children, connective: target_resolved.connective, params: [],
+            inferred: target_resolved.inferred, return_cardinality: n.return_cardinality,
+            uses: n.uses, body: n.body, transport: n.transport,
+            properties: target_resolved.properties, type_annotation: n.type_annotation,
+            is_self_recursive: is_recursive_type_by_name(env: env, name: decl_name),
+            has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
+            expr_data: n.expr_data
+          },
+          diagnostics: target_result.diagnostics
+        }
+      _ => resolve_node(n: n, env: env, module_name: module_name)
+    }
+  } else {
+    resolve_node(n: n, env: env, module_name: module_name)
+  }
+}
+
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }

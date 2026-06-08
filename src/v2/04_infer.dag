@@ -98,7 +98,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v2.compiler.infer_resolve {
-  resolve_node, resolve_item_types,
+  resolve_node, resolve_type_binding, resolve_item_types,
   NodeResolveResult, ItemResult
 }
 import v2.compiler.infer_sigs {
@@ -5655,7 +5655,7 @@ fn topo_resolve_types(
       let ident = intern(table: env.intern_table, s: name).id
       match map_get(env.bindings, ident) {
         Some { value: binding } =>
-          let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+          let result = resolve_type_binding(n: binding.resolved, env: env, module_name: module_name)
           BindingsAccum {
             bindings: map_insert(acc.bindings, ident, TypeBinding { name: name, resolved: result.resolved, provenance: SubValueUnknown }),
             diagnostics: concat(acc.diagnostics, result.diagnostics)
@@ -5673,7 +5673,7 @@ fn topo_resolve_types(
     let ident = intern(table: env.intern_table, s: name).id
     match map_get(env.bindings, ident) {
       Some { value: binding } =>
-        let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+        let result = resolve_type_binding(n: binding.resolved, env: env, module_name: module_name)
         BindingsAccum {
           bindings: map_insert(acc.bindings, ident, TypeBinding { name: name, resolved: result.resolved, provenance: SubValueUnknown }),
           diagnostics: concat(acc.diagnostics, result.diagnostics)
