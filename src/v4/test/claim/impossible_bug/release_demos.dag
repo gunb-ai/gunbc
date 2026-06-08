@@ -1,31 +1,15 @@
 // src/v4/test/claim/impossible_bug/release_demos.dag
 // Scope: release impossible-bug demos over v4 TestClaim rows only.
-// The witnesses consume existing claim programs in this directory, derive an
-// actual diagnostic outcome from the release-demo lens, and route that outcome
-// through run_test_claim_assert so lens drift turns the release row red.
+// The witnesses consume existing impossible-bug claim metadata and require the
+// corresponding executable v4 lens surfaces to stay green. No release-local
+// diagnostic table is accepted as proof.
 
 module v4.test.claim.impossible_bug.release_demos
 
 
-import v4.compiler.eval {
-  TestClaimEvalSubject,
-  run_test_claim_assert
-}
-import v4.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  NodeLocus,
-  NonEmptyDiagnostics,
-  None,
-  Outcome,
-  Rejected,
-  Suggested,
-  diagnostics_singleton,
-  node_locus
-}
+import v4.lens.leaf_model_verification { python_cross_runtime_drift_probe }
+import v4.std.diagnostic { Accepted, NodeLocus, Rejected, Suggested }
 import v4.std.logic { Bool }
-import v4.std.node { Node, Symbol }
-import v4.std.verdict { Deferred, Fail, Pass, Verdict }
 import v4.std.verification {
   DiagnosticClaim,
   IdempotencyContract,
@@ -35,147 +19,26 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   TransportTypeDrift,
-  impossible_bug_class_from_diagnostic_reason,
-  impossible_bug_reason_idempotency_repetition,
-  impossible_bug_reason_idempotency_violation,
-  impossible_bug_reason_suboptimal_complexity,
-  impossible_bug_reason_suboptimal_inhabitance,
-  impossible_bug_reason_target_transport_drift,
-  impossible_bug_reason_transport_drift
+  impossible_bug_class_from_diagnostic_reason
 }
 import v4.test.claim.impossible_bug.idempotency_contract {
-  falsification_nonidempotent_in_idempotent_position,
-  falsification_repeated_append_in_idempotent_position,
   claim_nonidempotent_in_idempotent_position_caught,
-  claim_repeated_append_in_idempotent_position_caught,
-  idempotent_inhabitant_input
+  claim_repeated_append_in_idempotent_position_caught
 }
 import v4.test.claim.impossible_bug.suboptimal_complexity {
   claim_cost_contradicts_inhabitance_caught,
-  claim_overcost_against_structural_bound_violates,
-  expected_complexity_rejection,
-  falsification_cost_contradicts_inhabitance,
-  falsification_overcost_against_structural_bound,
-  within_bound_input
+  claim_overcost_against_structural_bound_violates
 }
 import v4.test.claim.impossible_bug.transport_type_drift {
-  falsification_target_contract_drift,
-  falsification_wire_contract_drift,
   claim_target_contract_drift_impossible,
-  claim_wire_contract_drift_impossible,
-  shared_wire_contract_input
+  claim_wire_contract_drift_impossible
 }
-
-
-fn release_demo_rejection(input: Node, reason: Symbol, correction: Node) -> NonEmptyDiagnostics {
-  diagnostics_singleton(
-    d: Diagnostic {
-      reason: reason,
-      at: node_locus(node: input),
-      correction: Suggested { node: correction }
-    }
-  )
+import v4.test.claim.language_model.python_cross_runtime_drift {
+  python_cross_runtime_drift_probe_diverges,
+  python_cross_runtime_drift_probe_is_wired
 }
-
-
-fn release_demo_lens_actual(input: Node) -> Outcome<Node> {
-  if input == falsification_overcost_against_structural_bound {
-    Rejected {
-      diagnostics: expected_complexity_rejection(
-        input: input,
-        reason: impossible_bug_reason_suboptimal_complexity,
-        correction: within_bound_input
-      )
-    }
-  } else if input == falsification_cost_contradicts_inhabitance {
-    Rejected {
-      diagnostics: expected_complexity_rejection(
-        input: input,
-        reason: impossible_bug_reason_suboptimal_inhabitance,
-        correction: within_bound_input
-      )
-    }
-  } else if input == falsification_repeated_append_in_idempotent_position {
-    Rejected {
-      diagnostics: release_demo_rejection(
-        input: input,
-        reason: impossible_bug_reason_idempotency_repetition,
-        correction: idempotent_inhabitant_input
-      )
-    }
-  } else if input == falsification_nonidempotent_in_idempotent_position {
-    Rejected {
-      diagnostics: release_demo_rejection(
-        input: input,
-        reason: impossible_bug_reason_idempotency_violation,
-        correction: idempotent_inhabitant_input
-      )
-    }
-  } else if input == falsification_target_contract_drift {
-    Rejected {
-      diagnostics: release_demo_rejection(
-        input: input,
-        reason: impossible_bug_reason_target_transport_drift,
-        correction: shared_wire_contract_input
-      )
-    }
-  } else if input == falsification_wire_contract_drift {
-    Rejected {
-      diagnostics: release_demo_rejection(
-        input: input,
-        reason: impossible_bug_reason_transport_drift,
-        correction: shared_wire_contract_input
-      )
-    }
-  } else {
-    Accepted { value: input, diagnostics: None }
-  }
-}
-
-
-fn release_demo_verdict(claim: TestClaim, input: Node) -> Verdict<TestClaimEvalSubject<Node>, Node> {
-  run_test_claim_assert(
-    claim: claim,
-    actual: release_demo_lens_actual(input: input),
-    at: input
-  )
-}
-
-
-data verdict_release_complexity_over_bound: Verdict<TestClaimEvalSubject<Node>, Node> = release_demo_verdict(
-  claim: claim_overcost_against_structural_bound_violates,
-  input: falsification_overcost_against_structural_bound
-)
-
-
-data verdict_release_complexity_inhabitance: Verdict<TestClaimEvalSubject<Node>, Node> = release_demo_verdict(
-  claim: claim_cost_contradicts_inhabitance_caught,
-  input: falsification_cost_contradicts_inhabitance
-)
-
-
-data verdict_release_idempotency_append: Verdict<TestClaimEvalSubject<Node>, Node> = release_demo_verdict(
-  claim: claim_repeated_append_in_idempotent_position_caught,
-  input: falsification_repeated_append_in_idempotent_position
-)
-
-
-data verdict_release_idempotency_loop: Verdict<TestClaimEvalSubject<Node>, Node> = release_demo_verdict(
-  claim: claim_nonidempotent_in_idempotent_position_caught,
-  input: falsification_nonidempotent_in_idempotent_position
-)
-
-
-data verdict_release_transport_target: Verdict<TestClaimEvalSubject<Node>, Node> = release_demo_verdict(
-  claim: claim_target_contract_drift_impossible,
-  input: falsification_target_contract_drift
-)
-
-
-data verdict_release_transport_wire: Verdict<TestClaimEvalSubject<Node>, Node> = release_demo_verdict(
-  claim: claim_wire_contract_drift_impossible,
-  input: falsification_wire_contract_drift
-)
+import v4.test.claim.lens_idempotency.write_effect { idempotency_write_effect_claim_holds }
+import v4.test.claim.lens_synthesis.synthesis_gap_polynomial { synthesis_gap_poly_lens_non_empty }
 
 
 fn diagnostic_reason_class_is(reason_class: ImpossibleBugClass, expected: ImpossibleBugClass) -> Bool {
@@ -210,33 +73,29 @@ fn diagnostic_claim_rejects_with_class(claim: TestClaim, expected: ImpossibleBug
 }
 
 
-fn release_demo_verdict_passes(v: Verdict<TestClaimEvalSubject<Node>, Node>) -> Bool {
-  match v {
-    Pass => true
-    Fail { actual: _, falsification: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+fn release_complexity_lens_catches() -> Bool {
+  synthesis_gap_poly_lens_non_empty()
 }
 
 
-fn release_demo_run_rejects_with_class(
-  verdict: Verdict<TestClaimEvalSubject<Node>, Node>,
-  claim: TestClaim,
-  expected: ImpossibleBugClass
-) -> Bool {
-  release_demo_verdict_passes(v: verdict) &&
-    diagnostic_claim_rejects_with_class(claim: claim, expected: expected)
+fn release_idempotency_lens_catches() -> Bool {
+  idempotency_write_effect_claim_holds()
+}
+
+
+fn release_transport_drift_probe_catches() -> Bool {
+  python_cross_runtime_drift_probe_is_wired(p: python_cross_runtime_drift_probe()) &&
+    python_cross_runtime_drift_probe_diverges(p: python_cross_runtime_drift_probe())
 }
 
 
 fn release_complexity_claims_are_lens_rejections() -> Bool {
-  release_demo_run_rejects_with_class(
-    verdict: verdict_release_complexity_over_bound,
+  release_complexity_lens_catches() &&
+    diagnostic_claim_rejects_with_class(
     claim: claim_overcost_against_structural_bound_violates,
     expected: SuboptimalComplexity
   ) &&
-    release_demo_run_rejects_with_class(
-      verdict: verdict_release_complexity_inhabitance,
+    diagnostic_claim_rejects_with_class(
       claim: claim_cost_contradicts_inhabitance_caught,
       expected: SuboptimalComplexity
     )
@@ -244,13 +103,12 @@ fn release_complexity_claims_are_lens_rejections() -> Bool {
 
 
 fn release_idempotency_claims_are_lens_rejections() -> Bool {
-  release_demo_run_rejects_with_class(
-    verdict: verdict_release_idempotency_append,
+  release_idempotency_lens_catches() &&
+    diagnostic_claim_rejects_with_class(
     claim: claim_repeated_append_in_idempotent_position_caught,
     expected: IdempotencyContract
   ) &&
-    release_demo_run_rejects_with_class(
-      verdict: verdict_release_idempotency_loop,
+    diagnostic_claim_rejects_with_class(
       claim: claim_nonidempotent_in_idempotent_position_caught,
       expected: IdempotencyContract
     )
@@ -258,13 +116,12 @@ fn release_idempotency_claims_are_lens_rejections() -> Bool {
 
 
 fn release_transport_claims_are_lens_rejections() -> Bool {
-  release_demo_run_rejects_with_class(
-    verdict: verdict_release_transport_target,
+  release_transport_drift_probe_catches() &&
+    diagnostic_claim_rejects_with_class(
     claim: claim_target_contract_drift_impossible,
     expected: TransportTypeDrift
   ) &&
-    release_demo_run_rejects_with_class(
-      verdict: verdict_release_transport_wire,
+    diagnostic_claim_rejects_with_class(
       claim: claim_wire_contract_drift_impossible,
       expected: TransportTypeDrift
     )
