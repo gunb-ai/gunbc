@@ -22,7 +22,7 @@ import v4.compiler.infer {
 }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection { List, Map }
+import v4.std.collection { List, Map, list_nth }
 import v4.std.constraints {
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
@@ -206,17 +206,21 @@ fn eval_mvp2_arg_is_two_literal(value: RuntimeValue) -> Bool {
 }
 
 
+fn eval_mvp2_args_absent_diagnostic() -> Diagnostic {
+  eval_diagnostic(reason: eval_mvp2_args_not_two_literals, node: eval_mvp2_add_subgraph_node)
+}
+
 fn eval_mvp2_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
   if count(args) == 2 {
-    match first(args) {
-      Some { value: left } =>
-        match first(skip(args, 1)) {
-          Some { value: right } =>
+    match list_nth(xs: args, wanted: 0, absent: eval_mvp2_args_absent_diagnostic()) {
+      Holds { value: left } =>
+        match list_nth(xs: args, wanted: 1, absent: eval_mvp2_args_absent_diagnostic()) {
+          Holds { value: right } =>
             eval_mvp2_arg_is_two_literal(value: left)
               && eval_mvp2_arg_is_two_literal(value: right)
-          None => false
+          Violates { diagnostic: _ } => false
         }
-      None => false
+      Violates { diagnostic: _ } => false
     }
   } else {
     false
