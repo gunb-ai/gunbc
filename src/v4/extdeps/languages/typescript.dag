@@ -1914,6 +1914,25 @@ fn ts_wave2a_task_target_model_bundle_witness() -> Witness<Node> {
                 ts_named_edge(
                   name: target_model_edge_serialize_source,
                   target: serialize
+                ),
+                // 🟡 gated — feature:grammar-derive-tree-emit-realize — bind node://adhoc-c984ab6c-b52
+                // (EMIT T2 escalation) — dissolve-on-arrival: the grammar-inverse serialize path
+                // realizes a Conj-positional grammar-DERIVATION tree to source.
+                // Carrying the SG-2 type-expression projection routes the record tree through
+                // translate_node_with_projection's grammar-first short-circuit (the correct route:
+                // a derivation tree's Conj slots are grammar-RHS order, NOT a well_formed semantic
+                // TypeNode, so it has no canonical grounding to coerce — the grammar relation row
+                // is its authority). This bypasses the MVP-1 coerce_grounded_node rejection
+                // (infer_canonical_grounding_incoherent) BUT then hits a SECOND load-bearing guard:
+                // 06_translate.dag grammar_inverse_source_validated:840 calls well_formed() on the
+                // derived serialize_source, which is legitimately mixed named (source_text/grammar)
+                // + positional (token) edges → not LabeledEdges → translate_grammar_inverse_not_realized.
+                // Realizing this needs a model-first decision on derivation-tree well-formedness in a
+                // load-bearing stage (escalated, not done under this brief). Until then this row stays
+                // RED — no roster registration claiming green.
+                ts_named_edge(
+                  name: target_model_edge_type_expression_projection,
+                  target: ts_type_expression_projection_bundle_node()
                 )
               ]
             }
