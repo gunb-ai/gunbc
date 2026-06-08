@@ -226,10 +226,18 @@ fn eval_mvp2_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
 
 fn eval_mvp2_call_primitive(
   _node: Node,
-  _args: List<RuntimeValue>,
+  args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  Accepted { value: eval_mvp2_five_value(), diagnostics: None }
+  if eval_mvp2_args_are_two_literals(args: args) {
+    Accepted { value: eval_mvp2_five_value(), diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: eval_diagnostic(reason: eval_mvp2_args_not_two_literals, node: _node)
+      )
+    }
+  }
 }
 
 
