@@ -1,0 +1,71 @@
+// src/v4/test/claim/workflow/lens_parallelism_family_eval.dag
+// Scope: T-38B family CI receipt — lens_parallelism run_test_claim rows gate green over eval_mvp2 wedge.
+// Status: source-shape receipt; host transport runs witness_lens_parallelism_family_gate_closed.
+
+module v4.test.claim.workflow.lens_parallelism_family_eval
+
+
+import v4.compiler.eval { TestClaimRun, test_claim_run_verdict }
+import v4.std.algebra { fold_list, is_empty }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.nat { Nat, Zero }
+import v4.std.node { Node }
+import v4.std.runtime { RuntimeValue }
+import v4.std.verdict {
+  VerdictTally,
+  verdict_tally_add,
+  verdict_tally_empty,
+  verdict_tally_total
+}
+import v4.test.claim.lens_parallelism.family_receipt {
+  lens_parallelism_runtime_value_rows
+}
+
+
+type LensParallelismFamilyEvalReport {
+  runs: List<TestClaimRun<Node, RuntimeValue>>
+}
+
+
+fn run_lens_parallelism_family_eval() -> LensParallelismFamilyEvalReport {
+  LensParallelismFamilyEvalReport {
+    runs: lens_parallelism_runtime_value_rows
+  }
+}
+
+
+fn lens_parallelism_family_report_tally(report: LensParallelismFamilyEvalReport) -> VerdictTally {
+  fold_list(
+    xs: report.runs,
+    empty: verdict_tally_empty,
+    cons: fn(acc, run) {
+      verdict_tally_add(t: acc, v: test_claim_run_verdict(run: run))
+    }
+  )
+}
+
+
+fn lens_parallelism_family_report_total(report: LensParallelismFamilyEvalReport) -> Nat {
+  verdict_tally_total(t: lens_parallelism_family_report_tally(report: report))
+}
+
+
+fn lens_parallelism_family_all_pass(report: LensParallelismFamilyEvalReport) -> Bool {
+  let tally = lens_parallelism_family_report_tally(report: report)
+  (tally.fail == Zero) && (tally.deferred == Zero)
+}
+
+
+fn lens_parallelism_family_gate(report: LensParallelismFamilyEvalReport) -> Bool {
+  if is_empty(xs: lens_parallelism_runtime_value_rows) {
+    false
+  } else {
+    lens_parallelism_family_all_pass(report: report)
+  }
+}
+
+
+data witness_lens_parallelism_family_gate_closed: Bool = lens_parallelism_family_gate(
+  report: run_lens_parallelism_family_eval()
+)
