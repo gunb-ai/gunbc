@@ -1272,10 +1272,7 @@ pub fn resolve_node_bounded(
                                                     Some(InferredNode::Resolved {
                                                         node: target,
                                                         ..
-                                                    }) => with_authored_identity(
-                                                        n.clone(),
-                                                        target.clone(),
-                                                    ),
+                                                    }) => target.clone(),
                                                     _ => resolved.clone(),
                                                 }
                                             } else {

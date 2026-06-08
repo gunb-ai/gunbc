@@ -1905,27 +1905,16 @@ pub fn node_type_compatible(
                                     if (left_opt.clone() || right_opt.clone()) {
                                         break false;
                                     } else {
-                                        let left_auth =
-                                            authored_name_at(source_indices.clone(), left.clone());
-                                        let right_auth =
-                                            authored_name_at(source_indices.clone(), right.clone());
-                                        if left_auth.as_str() != right_auth.as_str() {
-                                            break false;
-                                        } else if ((left.children.clone().len() as i64) > 0)
-                                            && ((right.children.clone().len() as i64) > 0)
-                                            && !node_is_element_collection(
-                                                left.clone(),
+                                        break (authored_name_at(
+                                            source_indices.clone(),
+                                            left.clone(),
+                                        )
+                                        .as_str()
+                                            == authored_name_at(
                                                 source_indices.clone(),
-                                            )
-                                            && !node_is_element_collection(
                                                 right.clone(),
-                                                source_indices.clone(),
                                             )
-                                        {
-                                            break ident_span_equal(left.clone(), right.clone());
-                                        } else {
-                                            break true;
-                                        }
+                                            .as_str());
                                     }
                                 }
                             }
