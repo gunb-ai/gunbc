@@ -213,3 +213,37 @@ fn mvp1_dag_add_emit_ingest_round_trip_holds() -> Bool {
     && mvp1_dag_grammar_inverse_holds()
     && mvp1_dag_ingest_via_coerce_matches_canonical()
 }
+
+// Authority string probe helpers (delete after pinning dag_mvp1_source_text).
+data mvp1_dag_probe_a: TargetSource = "fn add(x:Int, y:Int) -> Int { x + y }"
+data mvp1_dag_probe_b: TargetSource = "fn add(x:Int, y:Int) -> Int {x + y}"
+data mvp1_dag_probe_c: TargetSource = "fn add(x:Int, y:Int) -> Int { x+y }"
+data mvp1_dag_probe_d: TargetSource = "fn add(x:Int,y:Int) -> Int { x + y }"
+
+fn mvp1_dag_probe_emit_matches_a() -> Bool {
+  match mvp1_dag_emit_receipt {
+    Accepted { value: source, diagnostics: _ } => source == mvp1_dag_probe_a
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn mvp1_dag_probe_emit_matches_b() -> Bool {
+  match mvp1_dag_emit_receipt {
+    Accepted { value: source, diagnostics: _ } => source == mvp1_dag_probe_b
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn mvp1_dag_probe_emit_matches_c() -> Bool {
+  match mvp1_dag_emit_receipt {
+    Accepted { value: source, diagnostics: _ } => source == mvp1_dag_probe_c
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn mvp1_dag_probe_emit_matches_d() -> Bool {
+  match mvp1_dag_emit_receipt {
+    Accepted { value: source, diagnostics: _ } => source == mvp1_dag_probe_d
+    Rejected { diagnostics: _ } => false
+  }
+}

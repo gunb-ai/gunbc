@@ -260,7 +260,9 @@ data dag_surface_spelling_int: Symbol = dag_surface_spelling_int
 data dag_inhabitant_field_int: Symbol = dag_inhabitant_field_int
 data dag_inhabitant_field_atom: Symbol = dag_inhabitant_field_atom
 data dag_inhabitant_field_mvp1_add_fn: Symbol = dag_inhabitant_field_mvp1_add_fn
-data dag_mvp1_source_text: String = "fn add(x: Int, y: Int) -> Int { x + y }"
+data dag_coercion_field_int_inhabitant_atom: Symbol = dag_coercion_field_int_inhabitant_atom
+data dag_coercion_field_int_surface_spelling: Symbol = dag_coercion_field_int_surface_spelling
+data dag_mvp1_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
 
 fn dag_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -3166,6 +3168,14 @@ fn dag_mvp1_zip_fold_closure_edges() -> List<Edge> {
     dag_named_edge(
       name: dag_inhabitant_field_mvp1_add_fn,
       target: dag_mvp1_fixture_emitted_add_fn
+    ),
+    dag_named_edge(
+      name: dag_coercion_field_int_inhabitant_atom,
+      target: dag_inhabitant_atom(id: dag_inhabitant_int)
+    ),
+    dag_named_edge(
+      name: dag_coercion_field_int_surface_spelling,
+      target: dag_inhabitant_atom(id: dag_surface_spelling_int)
     )
   ]
 }

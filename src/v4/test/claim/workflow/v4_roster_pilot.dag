@@ -177,6 +177,13 @@ data v4_roster_pilot_row_mvp1_rust_emit_add_fn: V4RosterPilotClaimRunRow = V4Ros
   function: "mvp1_rust_emit_add_fn_accepts_holds"
 }
 
+// RTADD (ctrl#1489 D1) — dag add keystone emit→ingest round-trip via shared find_witness fold.
+data v4_roster_pilot_row_mvp1_dag_add_round_trip: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "mvp1 dag add emit→ingest round-trip (RTADD ctrl#1489)",
+  entry: "src/v4/test/claim/manual/mvp1_dag_add_round_trip.dag",
+  function: "mvp1_dag_add_emit_ingest_round_trip_holds"
+}
+
 // Wave-A W1: v4.extdeps.coordination smoke→witness (iii) A-fold-delete. Discriminating
 // claim-run witnesses (mutation-proven red-under-mutation) carry the executable
 // WIRECONTRACT-OBLIGATION-TABLE-T4.8 content of the obligation-table assertions removed from
@@ -305,6 +312,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_extdeps_react_element_children,
   v4_roster_pilot_row_extdeps_react_child_element_wraps,
   v4_roster_pilot_row_mvp1_rust_emit_add_fn,
+  v4_roster_pilot_row_mvp1_dag_add_round_trip,
   v4_roster_pilot_row_coordination_obligation_exchange,
   v4_roster_pilot_row_coordination_obligation_settlement,
   v4_roster_pilot_row_parse_table_token_position_indices,
@@ -510,6 +518,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_mvp1_rust_emit_add_fn,
       entry: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
       function: "mvp1_rust_emit_add_fn_accepts_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_mvp1_dag_add_round_trip,
+      entry: "src/v4/test/claim/manual/mvp1_dag_add_round_trip.dag",
+      function: "mvp1_dag_add_emit_ingest_round_trip_holds"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_coordination_obligation_exchange,
