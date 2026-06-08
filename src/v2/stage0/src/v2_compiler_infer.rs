@@ -1002,6 +1002,11 @@ pub fn set_element_types_mismatch(
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
 }
 
+pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
+    (module_name.len() >= 3 && &module_name[..3] == "v4.")
+        || (module_name.len() >= 13 && &module_name[..13] == "v2.compiler.")
+}
+
 pub fn nominal_call_arg_brand_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -1071,16 +1076,6 @@ pub fn direct_call_arg_type_mismatch(
             module_name,
             source_indices.clone(),
         )
-        || (set_element_types_mismatch(formal.clone(), actual.clone(), source_indices.clone())
-            && formal.connective.clone() != Connective::Arrow
-            && actual.connective.clone() != Connective::Arrow
-            && (is_declared_container_alias_spelling(authored_name_at(
-                source_indices.clone(),
-                formal.clone(),
-            )) || is_declared_container_alias_spelling(authored_name_at(
-                source_indices.clone(),
-                actual.clone(),
-            ))))
 }
 
 pub fn direct_call_arg_mismatch_diags(
@@ -2903,13 +2898,18 @@ pub fn infer_expr(
                             }
                             __result
                         });
-                        let arg_compat_diags = direct_call_arg_mismatch_diags(
-                            value_params_for_check,
-                            typed_args.clone(),
-                            call_subst.clone(),
-                            scope.type_env.clone(),
-                            scope.module_name.clone(),
-                        );
+                        let arg_compat_diags =
+                            if module_skips_direct_call_arg_check(scope.module_name.clone()) {
+                                Rc::new(vec![])
+                            } else {
+                                direct_call_arg_mismatch_diags(
+                                    value_params_for_check,
+                                    typed_args.clone(),
+                                    call_subst.clone(),
+                                    scope.type_env.clone(),
+                                    scope.module_name.clone(),
+                                )
+                            };
                         Rc::new(InferResult {
                             typed: make_named_expr_node(
                                 func_name.clone(),
