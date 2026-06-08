@@ -186,8 +186,11 @@ files, and they are NOT the same problem:
 | `07_target_carriers.dag` | 18 | `TargetModel` / `TargetSource` carriers | thin; fine | `TargetModel`, `TargetSource` |
 | `self_host.dag` | 150 | self-host ratchet scaffold | scaffold | (2 claims) |
 
-**`workflow/ci.dag` (6044 lines)** — *not* a compiler stage. Facet-4 CI workflow model,
-imported by 6 workflow claims. Bloated; separate reset/trim track gated on those claims.
+**`workflow/ci.dag`** — *deleted* (operator GO 2026-06-08). Was a ~6,300-line descriptive-only
+facet-4 CI workflow model with no runtime consumer; its 6 importing workflow claims were tests *of*
+that model and were deleted with it. CI is hand-authored directly in `.github/workflows/ci.yml`. The
+only fragment with a real consumer (the must-pass lens-CI claim-run roster) survives in
+`src/v4/workflow/lens_ci_gate.dag`.
 
 **Reset shape (all Tier-2 files):** port/logic split — keep the must-preserve type surface so
 the 253-claim corpus + 8 lenses keep compiling, replace the logic behind it. Naive deletion
