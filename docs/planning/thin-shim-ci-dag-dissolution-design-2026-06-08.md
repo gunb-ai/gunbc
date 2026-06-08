@@ -62,6 +62,87 @@ src/v4/workflow/ci.dag     →  modeled pipeline/selection authority (shrinks; n
 
 Ratified transport precedent: `dsl/gunbc/ci_emission.dag` `BinaryShim` — one GHA job, `run: ./gunbc-ci --workflow ci --event "$GITHUB_EVENT_PATH"`. Today `gunbc_ci.rs` dispatch is stubbed; Stage (a) may start **dumb run-all** inside the runner before selection wiring is complete.
 
+### 2.3 End state (Stage b) — `ci.dag` + `ci.yml`
+
+Steady state after Shape-B emit and hand-`ci.yml` fold-delete. **Single emission authority:** `ci.dag` models facts; Shape-B projects `ci.yml`; runner executes — no dual YAML representation.
+
+```mermaid
+flowchart TB
+  subgraph DAG["src/v4/workflow/ci.dag — modeled authority (compact)"]
+    direction TB
+    subgraph KEPT["Retained carriers"]
+      P["ci_pipeline<br/>jobs + gates"]
+      C["CiCommand coproduct"]
+      WF["ci_pipeline_well_formed"]
+      SEL["ci_select_ci_jobs_from_affected_set<br/>CiComponentAffected<br/>CiSelectionReceipt"]
+      T38["TestClaimCorpusEvalCommand<br/>T-38 structural bridge"]
+    end
+    subgraph GONE["Deleted in Stage (a) — dual-rep sprawl"]
+      LWS["CiLiveWorkflowStepSignal<br/>YAML step mirrors"]
+      UPS["Per-step CiUpsertStep rows<br/>shadowing ci.yml"]
+      FIX["Shadow receipt fixtures<br/>superseded by runner"]
+    end
+    KEPT --> P
+    P --> C
+    P --> WF
+    SEL --> P
+    T38 --> P
+  end
+
+  subgraph EMIT["Stage (b): Shape-B projection"]
+    PROJ["project_github_actions<br/>whole-output cert"]
+    PERTURB["perturb runner run: line → cert RED"]
+    PROJ --> PERTURB
+  end
+
+  subgraph YML[".github/workflows/ci.yml — ~40–60 lines (emitted, sole transport)"]
+    direction TB
+    META["on · permissions · concurrency · env"]
+    subgraph JOBS["GHA-owned jobs only"]
+      INFRA["infra_isolation<br/>runner de-priv floor"]
+      CI["ci — single job"]
+    end
+    subgraph STEPS["ci job steps (orchestration only)"]
+      CO["checkout"]
+      TC["toolchain install"]
+      CA["cache restore / save"]
+      SEC["secrets injection"]
+      RUN["./gunbc-ci --workflow ci<br/>--event $GITHUB_EVENT_PATH"]
+    end
+    META --> JOBS
+    CI --> STEPS
+    CO --> TC --> CA --> SEC --> RUN
+  end
+
+  subgraph RUNNER["gunbc-ci — in-repo runner (owns in-job semantics)"]
+    direction LR
+    D["discover<br/>affected"] --> S["select<br/>from ci.dag"]
+    S --> X["execute<br/>CiCommand rows"]
+    X --> R["report +<br/>exit code"]
+  end
+
+  DAG -->|"Shape-B emit"| EMIT
+  EMIT -->|"fold-DELETE hand ci.yml"| YML
+  RUN --> RUNNER
+  DAG -.->|"read at runtime"| RUNNER
+
+  style GONE fill:#fee,stroke:#c66,stroke-dasharray: 5 5
+  style KEPT fill:#efe,stroke:#6c6
+  style YML fill:#eef,stroke:#66c
+  style RUNNER fill:#ffe,stroke:#cc6
+```
+
+**Reading the diagram:**
+
+| Box | Role |
+|-----|------|
+| **Green (`ci.dag` retained)** | Pipeline membership, command taxonomy, well-formedness, affected-set selection — runner reads these at execution time |
+| **Red dashed (`ci.dag` deleted)** | Descriptive bridges that duplicated YAML step text; gone after Stage (a) cut list |
+| **Blue (`ci.yml`)** | Thin emitted shell: GHA triggers, required job names, checkout/toolchain/cache/secrets, one runner invocation |
+| **Yellow (`gunbc-ci`)** | All gate logic that today lives split across multi-job ci.yml steps |
+
+Stage (a) interim: hand-maintained `ci.yml` thins toward the blue box; runner may **run-all** before selection wiring (a.5). Stage (b) replaces hand YAML with emitted output and deletes the hand file.
+
 ---
 
 ## §3 — Stage ordering (ctrl#1490 row map)
