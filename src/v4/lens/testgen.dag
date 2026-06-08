@@ -489,8 +489,8 @@ data refinement_label_nonempty_list_base: String = "generated/refinement: NonEmp
 data idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
 data idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
 data idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
-coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
-n lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
+data coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
+fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
     language: dag_language_model_surface_id,
     input_node: stub_empty_conj,

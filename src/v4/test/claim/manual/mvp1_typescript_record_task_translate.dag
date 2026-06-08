@@ -65,7 +65,7 @@ import v4.std.verification {
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
-ata mvp1_ts_task_emitted_root: Node = ts_wave2a_task_type_alias_emitted()
+data mvp1_ts_task_emitted_root: Node = ts_wave2a_task_type_alias_emitted()
 
 fn mvp1_ts_task_target_model_for_emit() -> Witness<TargetModel> {
   ts_wave2a_task_target_model_witness()

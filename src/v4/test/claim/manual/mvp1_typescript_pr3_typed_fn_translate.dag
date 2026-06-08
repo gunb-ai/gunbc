@@ -66,7 +66,7 @@ import v4.std.verification {
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
-ata mvp1_ts_pr3_emitted_root: Node = ts_pr3_identity_typed_fn_emitted()
+data mvp1_ts_pr3_emitted_root: Node = ts_pr3_identity_typed_fn_emitted()
 
 fn mvp1_ts_pr3_target_model_for_emit() -> Witness<TargetModel> {
   ts_pr3_identity_target_model_witness()

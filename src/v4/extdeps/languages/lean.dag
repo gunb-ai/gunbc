@@ -267,7 +267,7 @@ type LeanLanguageModel {
   canonical_symbols: Set<Symbol>
   core: ModelCore
 }
-an_facts_int8: LeanPrimitiveFacts = LeanPrimitiveFacts {
+data lean_facts_int8: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_int8,
   scalar: IntScalar { kind: Signed, width: Bits8 },
   representation: ^lean_repr_fixed_precision_integer
@@ -326,7 +326,7 @@ data lean_facts_bool: LeanPrimitiveFacts = LeanPrimitiveFacts {
   scalar: BoolScalar,
   representation: ^lean_repr_bool_inductive
 }
-Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
 data lean_mvp1_source_text: String = "def dec (n : Int32) : Int32 := n - 1\n  termination_by n"
 data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_int8,

@@ -183,7 +183,7 @@ type JavaGrammarRelationRow {
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
-chedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
+// Law-kind schedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
 // 🟡 needs-more-work — feature:java-model-core-law-keys — scaffold:T-4-wave-2b · declared law-kind coproduct for java_model_core_law_node kind edge; dissolve-on: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
 type JavaModelCoreLawKey
   = JavaLawIntegerAddAssociativeModular
@@ -194,7 +194,7 @@ type JavaModelCoreLawKey
   | JavaLawIntegerModularWrap
   | JavaLawBoolBoundedLattice
   | JavaLawBoolComplement
-Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
+// Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
 fn java_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^java_token_kw_static },

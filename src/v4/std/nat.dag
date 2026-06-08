@@ -87,7 +87,7 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
 
 // Practice-8 scheduling Symbols — T19-VHDR-3332
 // RULING-1: 🟢 pretty-much-done — nominal scheduling symbols
-AlgebraLawObligation {
+type NatAlgebraLawObligation {
   algebra: Symbol
   inhabitant: Symbol
   law: Symbol

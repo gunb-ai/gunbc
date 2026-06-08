@@ -623,7 +623,7 @@ fn rust_r3_external_fixture() -> LeafModelFixturePair {
 }
 
 // R3-internal — Symbol TargetAtomRealization row mutation must move type + value projections together (PR #3971 §4).
-a rust_r3_internal_mutated_row: TargetAtomRealization = TargetAtomRealization {
+data rust_r3_internal_mutated_row: TargetAtomRealization = TargetAtomRealization {
   source_carrier: symbol_kernel_type_node(),
   target_model: rust_mvp1_target_model_staging(),
   type_form: rust_target_atom_type_form(spelling: ^rust_r3_internal_mutated_type_spelling),

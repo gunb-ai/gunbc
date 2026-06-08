@@ -387,8 +387,8 @@ type RustGrammarRelationRow {
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
-falsification probe bindings — Node-keyed spellings, not name-keyed emitter branches.
--kind schedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
+// SG-2 falsification probe bindings — Node-keyed spellings, not name-keyed emitter branches.
+// Law-kind schedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
 // 🟡 needs-more-work — feature:rust-model-core-law-keys — scaffold:T-4-wave-2b · declared law-kind coproduct for rust_model_core_law_node kind edge; dissolve-on: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
 type RustModelCoreLawKey
   = RustLawIntegerAddAssociativeWhenRepresentable

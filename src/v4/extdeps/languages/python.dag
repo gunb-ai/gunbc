@@ -176,7 +176,7 @@ type PythonSingletonPrimitiveFacts {
   kind: PythonSingletonKind
   std_projection: Symbol
 }
-f-model Layer-A — derived fact exposure + PLANNED SG-1 slot (mirror rust.dag:809–813).
+// Leaf-model Layer-A — derived fact exposure + PLANNED SG-1 slot (mirror rust.dag:809–813).
 data python_integer_algebra_inhabitance_python_facts_int: AlgebraInhabitanceDecl = python_integer_algebra_inhabitance(facts: python_facts_int)
 data python_atom_realization_symbol_node: Node = python_inhabitant_atom(id: ^python_atom_realization_symbol)
 // 🟡 gated — feature:python-formal-epsilon-shim-terminal — bind TASKS.md T-7 / CP-1b —

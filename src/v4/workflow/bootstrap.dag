@@ -114,7 +114,7 @@ type FixptStage1Stage2 {
 }
 
 type SeedHonestyDischarge {
-  ^seed_honesty_axiom: Symbol
+  seed_honesty_axiom: Symbol
   diverse_double_compilation: DiverseCompilationAgreement
 }
 

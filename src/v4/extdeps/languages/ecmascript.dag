@@ -194,11 +194,11 @@ type EcmascriptSingletonPrimitiveFacts {
   kind: EcmascriptSingletonKind
   std_projection: Symbol
 }
-ut-baked composite tokens (🟡 feature:T-6-token-layout-trivia-policy — see lex header).
-/ 🟡 gated — feature:ecmascript-formal-epsilon-shim-terminal — bind TASKS.md T-7 / CP-1b —
+// Layout-baked composite tokens (🟡 feature:T-6-token-layout-trivia-policy — see lex header).
+// 🟡 gated — feature:ecmascript-formal-epsilon-shim-terminal — bind TASKS.md T-7 / CP-1b —
 // dissolve-on: std/grammar canonical epsilon carrier; empty FormalProduction.rhs lowers
 // without fabricated parse-only token_class.
-ta ecmascript_mvp1_source_text: String = "function add(x, y) { return x + y; }"
+data ecmascript_mvp1_source_text: String = "function add(x, y) { return x + y; }"
 
 fn ecmascript_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [

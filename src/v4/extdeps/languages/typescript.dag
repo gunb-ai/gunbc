@@ -238,9 +238,9 @@ type TsGrammarRelationRow {
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
-peExpressionProjection row tokens (angle-bracket generic apply + fat-arrow type).
+// SG-2 TargetTypeExpressionProjection row tokens (angle-bracket generic apply + fat-arrow type).
 // SG-2 TargetTypeExpressionProjection row surfaces (one per connective form).
-SIGN-6 / #3900 ratified Task surface (bit-identical).
+// DESIGN-6 / #3900 ratified Task surface (bit-identical).
 data ts_task_type_alias_source_text: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
 data ts_pr3_identity_source_text: String = "function identity(x: number): number { return x; }"
 fn ts_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -2905,7 +2905,7 @@ type TsStringPrimitiveFacts {
   std_projection: Symbol
   code_unit_inhabitant: Symbol
 }
-ata ts_facts_string: TsStringPrimitiveFacts = TsStringPrimitiveFacts {
+data ts_facts_string: TsStringPrimitiveFacts = TsStringPrimitiveFacts {
   surface_spelling: ^ts_surface_spelling_string,
   encoding: ^ts_repr_string_utf16_code_unit_sequence,
   std_projection: ^ts_std_projection_string,

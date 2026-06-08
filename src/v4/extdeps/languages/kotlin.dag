@@ -211,7 +211,7 @@ type KotlinGrammarRelationRow {
   head: ConcreteSyntaxToken
   tail: List<ConcreteSyntaxToken>
 }
-kotlin_integer_overflow_unspecified_marker() -> KotlinIntegerOverflowUnspecified {
+fn kotlin_integer_overflow_unspecified_marker() -> KotlinIntegerOverflowUnspecified {
   KotlinIntegerOverflowUnspecified {}
 }
 
@@ -331,9 +331,9 @@ data kotlin_nonnumeric_facts_catalog: List<KotlinNonNumericPrimitiveFacts> = [
   kotlin_facts_unit,
   kotlin_facts_nothing
 ]
-Type-reference binding: lexically ^kotlin_token_ident, semantically kotlin_facts_int inhabitant.
-/ MVP function-item emitted facts (GrammarProduction.emitted); edge names are canonical symbols.
-/ Non-empty by construction: head is mandatory; tail may be Empty without fabricating syntax.
+// Type-reference binding: lexically kotlin_token_ident, semantically kotlin_facts_int inhabitant.
+// MVP function-item emitted facts (GrammarProduction.emitted); edge names are canonical symbols.
+// Non-empty by construction: head is mandatory; tail may be Empty without fabricating syntax.
 data kotlin_mvp1_concrete_token_head: ConcreteSyntaxToken = FixedToken { token_class: ^kotlin_token_kw_fun }
 
 fn kotlin_mvp1_concrete_token_tail() -> List<ConcreteSyntaxToken> {

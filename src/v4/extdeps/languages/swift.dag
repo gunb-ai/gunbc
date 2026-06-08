@@ -220,7 +220,7 @@ type SwiftGrammarRelationRow {
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
-vp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn swift_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^swift_token_kw_func },
     BoundToken { token_class: ^swift_token_ident, binding: ^swift_binding_fn_add },
@@ -1905,7 +1905,7 @@ fn swift_language_model_wave1() -> SwiftLanguageModel {
     core: swift_model_core_wave1()
   }
 }
-n swift_float_inhabitant_node(id: Symbol, facts: SwiftFloatPrimitiveFacts) -> Node {
+fn swift_float_inhabitant_node(id: Symbol, facts: SwiftFloatPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [

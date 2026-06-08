@@ -648,7 +648,7 @@ type LlvmFloatPrimitiveFacts {
   kind: LlvmWave1FloatKind
   std_projection: Symbol
 }
-ata llvm_facts_i32: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
+data llvm_facts_i32: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
   surface_spelling: ^llvm_surface_spelling_i32,
   wave1_bits: Wave1Bits32,
   std_projection: ^llvm_std_projection_i32,

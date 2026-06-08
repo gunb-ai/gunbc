@@ -283,7 +283,7 @@ fn go_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^go_token_rbrace }
   ]
 }
-a go_facts_int8: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
+data go_facts_int8: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_int8,
   width: SignedBits8,
   encoding: ^go_repr_twos_complement_integer,

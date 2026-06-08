@@ -160,7 +160,7 @@ type WasmGrammarRelationRow {
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
-ncrete_tokens() -> List<ConcreteSyntaxToken> {
+fn wasm_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^wasm_token_lparen },
     FixedToken { token_class: ^wasm_token_kw_func },
