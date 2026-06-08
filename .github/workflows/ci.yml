@@ -165,7 +165,7 @@ jobs:
   affected:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 15
+    timeout-minutes: 25
     outputs:
       v2: ${{ steps.detect.outputs.v2 }}
       v3: ${{ steps.detect.outputs.v3 }}
@@ -255,6 +255,19 @@ jobs:
         name: affected-set-ci-receipt
         path: ${{ runner.temp }}/affected-set-ci-receipt.json
         if-no-files-found: warn
+    - name: Cache gunbc binary (affected testgen)
+      id: affected-v2-bin
+      uses: actions/cache@v5
+      with:
+        path: target/release/gunbc
+        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (affected testgen)
+      if: steps.affected-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: Affected set generates and runs TestClaims
+      run: bash scripts/v4-affected-testgen-gate.sh --perturb-check
   # §11.7.1 Class A safety floor -- stage0 freshness + bootstrap dag parity. The M1 rust+dag emit
   # probe runs in the parallel `ci_floor_emit` job (split for concurrency; see gunb-ai/ctrl#1458).
   ci_floor:
