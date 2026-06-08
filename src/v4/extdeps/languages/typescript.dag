@@ -398,6 +398,15 @@ data ts_pr3_identity_source_text: String = "function identity(x: number): number
 data ts_pr3_identity_source_literal: Symbol = ts_pr3_identity_source_literal
 
 data ts_relation_rule_mvp1_fn_add: Symbol = ts_relation_rule_mvp1_fn_add
+data ts_inhabitant_field_mvp1_add_fn: Symbol = ts_inhabitant_field_mvp1_add_fn
+data ts_coercion_field_number_inhabitant_atom: Symbol = ts_coercion_field_number_inhabitant_atom
+data ts_coercion_field_number_facts: Symbol = ts_coercion_field_number_facts
+data ts_coercion_field_number_spelling: Symbol = ts_coercion_field_number_spelling
+data ts_coercion_field_number_arithmetic: Symbol = ts_coercion_field_number_arithmetic
+data ts_coercion_field_number_bitwise: Symbol = ts_coercion_field_number_bitwise
+data ts_coercion_field_number_width: Symbol = ts_coercion_field_number_width
+data ts_coercion_field_number_ieee754: Symbol = ts_coercion_field_number_ieee754
+data ts_coercion_field_number_std_projection: Symbol = ts_coercion_field_number_std_projection
 
 data ts_mvp1_source_literal: Symbol = ts_mvp1_source_literal
 data ts_mvp1_source_text_field: Symbol = serialize_source_field_source_text
@@ -620,6 +629,63 @@ fn ts_declared_inhabitants_root() -> Node {
       ts_named_edge(name: ts_inhabitant_field_bigint, target: ts_inhabitant_bigint_node()),
       ts_named_edge(name: ts_inhabitant_field_boolean, target: ts_inhabitant_boolean_node())
     ]
+  }
+}
+
+// Zip-fold support nodes derived from ts_facts_number constructors — not parallel fixture data.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+fn ts_mvp1_number_zip_fold_closure_edges() -> List<Edge> {
+  [
+    ts_named_edge(
+      name: ts_inhabitant_field_mvp1_add_fn,
+      target: ts_mvp1_emitted_add_fn_node()
+    ),
+    ts_named_edge(
+      name: ts_coercion_field_number_inhabitant_atom,
+      target: ts_inhabitant_atom(id: ts_inhabitant_number)
+    ),
+    ts_named_edge(
+      name: ts_coercion_field_number_facts,
+      target: ts_number_facts_node(facts: ts_facts_number)
+    ),
+    ts_named_edge(
+      name: ts_coercion_field_number_spelling,
+      target: ts_inhabitant_atom(id: ts_surface_spelling_number)
+    ),
+    ts_named_edge(
+      name: ts_coercion_field_number_arithmetic,
+      target: ts_number_arithmetic_semantics_node()
+    ),
+    ts_named_edge(
+      name: ts_coercion_field_number_bitwise,
+      target: ts_number_bitwise_semantics_node()
+    ),
+    ts_named_edge(
+      name: ts_coercion_field_number_width,
+      target: ts_inhabitant_atom(id: ts_tag_bits64)
+    ),
+    ts_named_edge(
+      name: ts_coercion_field_number_ieee754,
+      target: ts_inhabitant_atom(id: ts_ieee754_binary64)
+    ),
+    ts_named_edge(
+      name: ts_coercion_field_number_std_projection,
+      target: ts_inhabitant_atom(id: ts_std_projection_float64)
+    )
+  ]
+}
+
+fn ts_mvp1_coercion_candidate_edges() -> List<Edge> {
+  list_append(
+    left: ts_declared_inhabitants_root().children,
+    right: ts_mvp1_number_zip_fold_closure_edges()
+  )
+}
+
+fn ts_mvp1_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: ts_mvp1_coercion_candidate_edges()
   }
 }
 
@@ -1187,7 +1253,7 @@ fn ts_pr3_identity_target_model_bundle_witness() -> Witness<Node> {
                 ),
                 ts_named_edge(
                   name: target_model_edge_declared_inhabitants,
-                  target: ts_declared_inhabitants_root()
+                  target: ts_mvp1_declared_inhabitants_root()
                 ),
                 ts_named_edge(
                   name: target_model_edge_translation_rules,
@@ -1296,7 +1362,7 @@ fn ts_mvp1_target_model_node() -> Node {
       ),
       ts_named_edge(
         name: target_model_edge_declared_inhabitants,
-        target: ts_declared_inhabitants_root()
+        target: ts_mvp1_declared_inhabitants_root()
       ),
       ts_named_edge(
         name: target_model_edge_translation_rules,
@@ -1839,7 +1905,7 @@ fn ts_wave2a_task_target_model_bundle_witness() -> Witness<Node> {
                 ),
                 ts_named_edge(
                   name: target_model_edge_declared_inhabitants,
-                  target: ts_declared_inhabitants_root()
+                  target: ts_mvp1_declared_inhabitants_root()
                 ),
                 ts_named_edge(
                   name: target_model_edge_translation_rules,

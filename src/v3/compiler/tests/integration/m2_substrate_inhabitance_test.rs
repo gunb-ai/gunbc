@@ -2047,6 +2047,7 @@ fn substrate_coproducts_match_runtime_carriers() {
             (String::from("LitInt"), vec![String::from("_0")]),
             (String::from("LitBool"), vec![String::from("_0")]),
             (String::from("LitString"), vec![String::from("_0")]),
+            (String::from("LitSymbol"), vec![String::from("_0")]),
         ]
     );
     assert_eq!(
@@ -2337,6 +2338,7 @@ fn substrate_coproducts_match_runtime_carriers() {
             (String::from("Int"), vec![String::from("_0")]),
             (String::from("Bool"), vec![String::from("_0")]),
             (String::from("String"), vec![String::from("_0")]),
+            (String::from("Symbol"), vec![String::from("_0")]),
         ]
     );
     assert_eq!(

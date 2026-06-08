@@ -1,6 +1,8 @@
 // src/v4/test/claim/manual/mvp1_cpp_add_translate.dag
 // Scope: MVP-1 T-10/T-11 receipt — grammar-inverse compile-inferred accepts for cpp_mvp1 add-fn tree.
 // Status: T-11 C++ slice — mirrors mvp1_rust_add_translate.dag; authority_source_text poisoned on compile path.
+// T1 tranche: no mvp1_cpp_emit_add_fn_accepts_holds witness here — C++ emit roster enrollment deferred
+// to T3 (TargetTypeExpressionProjection); extdeps zip-fold/profile wiring is inert groundwork only.
 
 
 module v4.test.claim.manual.mvp1_cpp_add_translate
@@ -34,9 +36,12 @@ import v4.extdeps.languages.cpp {
   cpp_integer_facts_node,
   cpp_integer_scalar_fact_node,
   cpp_mvp1_binding_spellings,
+  cpp_mvp1_emitted_add_fn_node,
   cpp_mvp1_source_text,
   cpp_mvp1_target_model,
   cpp_mvp1_target_model_node,
+  cpp_mvp1_target_profile,
+  cpp_mvp1_target_profile_atom,
   cpp_signed_integer_facts,
   cpp_signed_integer_spelling_node,
   cpp_surface_spelling_int,
@@ -100,34 +105,20 @@ data mvp1_cpp_grounding_miss: Symbol = mvp1_cpp_grounding_miss
 data mvp1_cpp_emit_source_mismatch: Symbol = mvp1_cpp_emit_source_mismatch
 data mvp1_cpp_compile_source_mismatch: Symbol = mvp1_cpp_compile_source_mismatch
 data mvp1_cpp_serialize_unexpected_accept: Symbol = mvp1_cpp_serialize_unexpected_accept
-data mvp1_cpp_target_profile_atom: Symbol = mvp1_cpp_target_profile_atom
 data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
-
-
-data mvp1_cpp_target_profile: Node = Node {
-  kind: TypeNode { connective: Atom { identity: mvp1_cpp_target_profile_atom } },
-  children: []
-}
 
 
 data mvp1_cpp_int_primitive_facts: CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
   spelling: Int,
   surface_spelling: cpp_surface_spelling_int,
-  target_profile: mvp1_cpp_target_profile
+  target_profile: cpp_mvp1_target_profile
 )
 
 
-data mvp1_cpp_int_inhabitant: Node = cpp_int_inhabitant_node(target_profile: mvp1_cpp_target_profile)
+data mvp1_cpp_int_inhabitant: Node = cpp_int_inhabitant_node(target_profile: cpp_mvp1_target_profile)
 
 
-data mvp1_cpp_emitted_root: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: mvp1_cpp_int_inhabitant },
-    Edge { label: Positional, target: mvp1_cpp_int_inhabitant },
-    Edge { label: Positional, target: mvp1_cpp_int_inhabitant }
-  ]
-}
+data mvp1_cpp_emitted_root: Node = cpp_mvp1_emitted_add_fn_node(target_profile: cpp_mvp1_target_profile)
 
 
 data mvp1_cpp_int_facts_node: Node = cpp_integer_facts_node(facts: mvp1_cpp_int_primitive_facts)
@@ -142,11 +133,11 @@ data mvp1_cpp_int_width_node: Node = mvp1_cpp_int_primitive_facts.width_fact
 data mvp1_cpp_int_spelling_node: Node = cpp_signed_integer_spelling_node(spelling: Int)
 
 
-data mvp1_cpp_target_model: TargetModel = cpp_mvp1_target_model(target_profile: mvp1_cpp_target_profile)
+data mvp1_cpp_target_model: TargetModel = cpp_mvp1_target_model()
 
 
 data mvp1_cpp_poisoned_authority_target_model: TargetModel = TargetModel {
-  bundle: cpp_mvp1_target_model_node(target_profile: mvp1_cpp_target_profile),
+  bundle: cpp_mvp1_target_model_node(target_profile: cpp_mvp1_target_profile),
   lex: cpp_wave1_lex(),
   binding_spellings: cpp_mvp1_binding_spellings(),
   authority_source_text: mvp1_forbidden_authority_source_text
@@ -287,7 +278,7 @@ fn mvp1_cpp_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: mvp1_cpp_int_width_node
       )
     }
-  } else if node == mvp1_cpp_target_profile {
+  } else if node == cpp_mvp1_target_profile {
     Holds {
       value: mvp1_cpp_canonical_grounding(
         node: node,

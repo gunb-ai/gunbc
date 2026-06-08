@@ -10,7 +10,7 @@
 //! There is no pre-coded threshold in-tree: the deliverable is per-PR JSON the operator aggregates
 //! to decide whether to flip `ci_floor` from "always run" to affected-set-gated.
 //!
-//! Distinct from the Wave-3 modeled `CiSelectionReceipt` (`src/v4/workflow/ci.dag`, PR #4224): that
+//! Distinct from the Wave-3 modeled `CiSelectionReceipt` (queued eval substrate, PR #4224): that
 //! is the selection-receipt *substrate* (Shadow/Active, modeled-vs-host parity witness, path to
 //! TestClaim projection). This receipt is an ops timing ledger emitted *alongside* it, never inside
 //! `CiSelectionReceipt`. The shared input is the affected-set partition over `git diff`.
@@ -59,7 +59,7 @@ pub struct AffectedSetCiReceipt {
     pub release_distribution_only: bool,
     /// Would the `ci_floor` v2→v4 bootstrap path (v2 build + bootstrap viability + M1 emit probe)
     /// be required? Mirrors `ci_v4_bootstrap_gate_result_skip_guard_if` and
-    /// `M1RustEmitProbeCommand` job masks in `src/v4/workflow/ci.dag` (needs-closure pulls
+    /// `M1RustEmitProbeCommand` job masks in `.github/workflows/ci.yml` (needs-closure pulls
     /// `v2_compile_src_v4` for testclaim/workflow_policy/release_distribution, not only v4).
     pub bootstrap_required: bool,
     /// Number of TestClaims the node-frontier selection would run. v1: 0 (claim selection not wired
@@ -111,7 +111,7 @@ pub fn component_partition(flags: CiComponentAffected) -> (Vec<String>, Vec<Stri
 /// Whether the Wave-1 `ci_floor` bootstrap path would run under affected-set gating.
 ///
 /// Authority: `ci_v4_bootstrap_gate_result_skip_guard_if` and `M1RustEmitProbeCommand` masks in
-/// `src/v4/workflow/ci.dag` — v4 bootstrap + M1 fire when any of
+/// `.github/workflows/ci.yml` — v4 bootstrap + M1 fire when any of
 /// `{v4, testclaim_corpus, workflow_policy, release_distribution}` is selected; `v2` bucket
 /// additionally requires the v2 gunbc build. v3-only is out of scope for this floor slice.
 pub fn bootstrap_required(flags: CiComponentAffected) -> bool {
@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn claim_only_diff_requires_bootstrap_via_modeled_needs_closure() {
-        // TestClaim corpus jobs need v2_compile_src_v4 + M1 (ci.dag needs-closure), even when v2/v4
+        // TestClaim corpus jobs need v2_compile_src_v4 + M1 (ci.yml needs-closure), even when v2/v4
         // bucket bits alone would be false.
         let flags = flags_for(["src/v4/test/claim/workflow/affected_set_ci_runner.dag"]);
         assert!(flags.testclaim_corpus);
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn partition_is_a_complete_disjoint_cover() {
-        let flags = flags_for(["src/v4/workflow/ci.dag"]);
+        let flags = flags_for([".github/ci-floor/v4-m1-rust-emit-probe.sh"]);
         let (selected, skipped) = component_partition(flags);
         assert_eq!(selected.len() + skipped.len(), COMPONENT_BUCKETS.len());
         for bucket in COMPONENT_BUCKETS {

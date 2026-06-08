@@ -129,6 +129,7 @@ pub fn bracket_role(kind: &TokenKind) -> Option<BracketRole> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryPrefixDispatch {
+    Caret,
     If,
     List,
     Match,
@@ -141,6 +142,7 @@ pub enum PrimaryPrefixDispatch {
 /// `PrimaryPrefixDispatch` is emitted from those rows — not a substrate coproduct.
 pub fn primary_prefix_dispatch(kind: &TokenKind) -> Option<PrimaryPrefixDispatch> {
     match kind {
+        TokenKind::Caret => Some(PrimaryPrefixDispatch::Caret),
         TokenKind::KwIf => Some(PrimaryPrefixDispatch::If),
         TokenKind::KwMatch => Some(PrimaryPrefixDispatch::Match),
         TokenKind::LBrace => Some(PrimaryPrefixDispatch::Record),

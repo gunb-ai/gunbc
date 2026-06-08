@@ -6,6 +6,7 @@ pub enum LiteralBits {
     Int(String),
     Bool(bool),
     String(String),
+    Symbol(String),
 }
 
 #[derive(Debug, Clone)]

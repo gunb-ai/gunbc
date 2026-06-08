@@ -1070,6 +1070,11 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                 LiteralBits::Int(_) => (dag.int_shape(), "Int"),
                 LiteralBits::Bool(_) => (dag.bool_shape(), "Bool"),
                 LiteralBits::String(_) => (dag.string_shape(), "String"),
+                LiteralBits::Symbol(_) => (
+                    dag.declaration_by_name("Symbol")
+                        .map(|decl| TypeShape::new(decl.id)),
+                    "Symbol",
+                ),
             };
             let Some(ty) = shape_and_name.0 else {
                 return Decision::fail(

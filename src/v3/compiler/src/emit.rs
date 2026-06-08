@@ -3426,7 +3426,7 @@ fn render_value(v: &crate::dag::ValueNode, literals: &LiteralSyntaxBinding) -> S
         LiteralBits::Int(decimal) => decimal.clone(),
         LiteralBits::Bool(true) => literals.true_keyword.clone(),
         LiteralBits::Bool(false) => literals.false_keyword.clone(),
-        LiteralBits::String(s) => format!(
+        LiteralBits::String(s) | LiteralBits::Symbol(s) => format!(
             "{}{}{}",
             literals.string_delimiter,
             s.replace('\\', "\\\\").replace('"', "\\\""),

@@ -672,6 +672,7 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
             Ok(Value::Float(f))
         }
         LiteralValue::LitStr { value } => Ok(Value::Str(value.clone())),
+        LiteralValue::LitSymbol { value } => Ok(Value::Str(value.clone())),
         LiteralValue::LitNull => Ok(Value::Null),
     }
 }

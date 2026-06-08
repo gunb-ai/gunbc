@@ -110,18 +110,7 @@ data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text
 data mvp1_go_int_inhabitant: Node = go_int_inhabitant_node()
 
 
-data mvp1_go_fn_item_atom: Node = go_inhabitant_atom(id: go_surface_fn_item)
-
-
-data mvp1_go_emitted_root: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    go_named_edge(name: go_surface_fn_item, target: mvp1_go_fn_item_atom),
-    Edge { label: Positional, target: mvp1_go_int_inhabitant },
-    Edge { label: Positional, target: mvp1_go_int_inhabitant },
-    Edge { label: Positional, target: mvp1_go_int_inhabitant }
-  ]
-}
+data mvp1_go_emitted_root: Node = go_mvp1_emitted_add_fn_node()
 
 
 data mvp1_go_int_facts_node: Node = go_integer_facts_node(facts: go_facts_int)
@@ -218,13 +207,6 @@ fn mvp1_go_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
       value: mvp1_go_canonical_grounding(
         node: node,
         algebra: node
-      )
-    }
-  } else if node == mvp1_go_fn_item_atom {
-    Holds {
-      value: mvp1_go_canonical_grounding(
-        node: node,
-        algebra: mvp1_go_emitted_root
       )
     }
   } else if node == mvp1_go_int_inhabitant {
@@ -368,6 +350,16 @@ fn anchor_mvp1_go_compile_inferred_accepts() -> Outcome<CompileOutput> {
 
 
 data mvp1_go_emit_receipt: Outcome<TargetSource> = anchor_mvp1_go_emit_accepts()
+
+
+// R2 keystone execution witness — emit(add) must produce the canonical go_mvp1 add-fn source.
+fn mvp1_go_emit_add_fn_accepts_holds() -> Bool {
+  match mvp1_go_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      (source == go_mvp1_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 
 data mvp1_go_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_go_compile_inferred_accepts()
