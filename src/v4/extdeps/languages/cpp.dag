@@ -45,7 +45,17 @@ import v4.std.algebra {
   ring_field_add,
   ring_field_mul
 }
-import v4.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert }
+import v4.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  Set,
+  empty_map,
+  map_insert,
+  optional_absent,
+  optional_present
+}
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -63,7 +73,6 @@ import v4.std.model_core {
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
-import v4.std.collection { optional_absent, optional_present }
 import v4.std.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,
