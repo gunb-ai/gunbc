@@ -144,10 +144,6 @@ type ModelCoreWave1BoolLawKey
   | ModelCoreWave1BoolDistributivity
   | ModelCoreWave1BoolComplementInvolution
   | ModelCoreWave1BoolComplementBounds
-data model_core_wave1_bool_law_bounded_lattice_identities: Symbol = model_core_wave1_bool_law_bounded_lattice_identities
-data model_core_wave1_bool_law_distributivity: Symbol = model_core_wave1_bool_law_distributivity
-data model_core_wave1_bool_law_complement_involution: Symbol = model_core_wave1_bool_law_complement_involution
-data model_core_wave1_bool_law_complement_bounds: Symbol = model_core_wave1_bool_law_complement_bounds
 data model_core_wave1_law_field_subject: Symbol = model_core_wave1_law_field_subject
 data model_core_wave1_law_field_algebra: Symbol = model_core_wave1_law_field_algebra
 data model_core_wave1_law_field_kind: Symbol = model_core_wave1_law_field_kind
@@ -211,16 +207,6 @@ fn model_core_wave1_bool_inhabitance() -> AlgebraInhabitanceDecl {
 }
 
 
-fn model_core_wave1_bool_law_symbol(key: ModelCoreWave1BoolLawKey) -> Symbol {
-  match key {
-    ModelCoreWave1BoolBoundedLatticeIdentities => model_core_wave1_bool_law_bounded_lattice_identities
-    ModelCoreWave1BoolDistributivity => model_core_wave1_bool_law_distributivity
-    ModelCoreWave1BoolComplementInvolution => model_core_wave1_bool_law_complement_involution
-    ModelCoreWave1BoolComplementBounds => model_core_wave1_bool_law_complement_bounds
-  }
-}
-
-
 fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -235,7 +221,7 @@ fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
       },
       Edge {
         label: Named { name: model_core_wave1_law_field_kind },
-        target: model_core_wave1_atom(id: model_core_wave1_bool_law_symbol(key: key))
+        target: model_core_wave1_atom(id: discriminant(v: key))
       },
     ]
   }
