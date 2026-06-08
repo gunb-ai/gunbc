@@ -40,7 +40,7 @@
 |---------------------------------------------|----------------------------------|
 | Checkout | Discover affected paths / components |
 | Toolchain install | Decide what to run (selection, scheduling) |
-| Cache restore / save | Execute selected work |
+| Cache restore / save **transport** (GHA `actions/cache` mechanism) | **Per-operation cache keys** (from `CiUpsertStep` / `cache_interface` — see §2.4) |
 | Secrets injection | Report results |
 | Matrix fan-out (only if truly required) | Exit code / fail-closed |
 | Required-check job names | |
@@ -62,7 +62,29 @@ src/v4/workflow/ci.dag     →  modeled pipeline/selection authority (shrinks; n
 
 Ratified transport precedent: `dsl/gunbc/ci_emission.dag` `BinaryShim` — one GHA job, `run: ./gunbc-ci --workflow ci --event "$GITHUB_EVENT_PATH"`. Today `gunbc_ci.rs` dispatch is stubbed; Stage (a) may start **dumb run-all** inside the runner before selection wiring is complete.
 
-### 2.3 End state (Stage b) — `ci.dag` + `ci.yml`
+### 2.4 Per-operation cache (Upsert design — you read this correctly)
+
+The mermaid below must **not** be read as one shared cache for all build/test work. The landed
+`CiUpsertStep<T>` substrate gives **each pipeline operation its own cache identity**:
+
+| Mechanism | Authority | Identity |
+|-----------|-----------|----------|
+| `CiUpsertStep` per command | `ci.dag` — one row per execution step | `ci_upsert_step_cache_digest` = `content_hash` of full step projection (inputs + verify + create + resolve + payload_type) |
+| `CiStepSelection` | selection receipt partition | per-step `cache_digest` alongside `inputs_consulted` |
+| `CacheInterfaceFacts` | `dsl/std/cache_interface.dag` | `content_hash(canonical Upsert subject)` — **not** `hashFiles(...)` (P2; see ci.dag L862–878) |
+
+Example: `ci_upsert_v3_determinism_execution` carries its own input file-set, projects
+`V3DeterminismCommand`, and tags `ci_cache_cmd_v3_determinism_tag` — distinct from
+`ci_upsert_v2_bootstrap_smoke_execution` / `ci_cache_cmd_v2_bootstrap_tag`.
+
+**YAML vs runner split for cache:**
+
+- **GHA-owned (may appear in thin ci.yml):** coarse transport caches with no per-command semantics — e.g. rustup/toolchain store, repo-level `actions/cache` envelope when the backend is `gha_actions_cache_facts`.
+- **Runner-owned (per build/test operation):** restore/save keyed by the modeled upsert digest for each selected `CiCommand` row — sccache (`sccache_local_facts`), cargo target dir (`cargo_target_dir_facts`), compiled artifacts. The runner consults `ci_upsert_row_cache_digest_for_step_id` (or Shape-B projection of the same facts) **before/after** each operation, not once for the whole job.
+
+Stage (b) Shape-B may emit **N cache blocks** from upsert rows (one per operation that needs a GHA-backed store) **or** keep a single `gunbc-ci` step where the runner performs N keyed restore/save cycles internally. Either way, **key authority is per `CiUpsertStep`, not one job-wide key.** Hand `hashFiles` / ad-hoc `cache_key:` strings are interim transport repair only (ci.dag cache-interface note).
+
+### 2.5 End state (Stage b) — `ci.dag` + `ci.yml`
 
 Steady state after Shape-B emit and hand-`ci.yml` fold-delete. **Single emission authority:** `ci.dag` models facts; Shape-B projects `ci.yml`; runner executes — no dual YAML representation.
 
@@ -75,6 +97,8 @@ flowchart TB
       C["CiCommand coproduct"]
       WF["ci_pipeline_well_formed"]
       SEL["ci_select_ci_jobs_from_affected_set<br/>CiComponentAffected<br/>CiSelectionReceipt"]
+      UPS["CiUpsertStep rows<br/>per-op inputs + cache_digest"]
+      CACHE["cache_interface facts<br/>key = content_hash(upsert)"]
       T38["TestClaimCorpusEvalCommand<br/>T-38 structural bridge"]
     end
     subgraph GONE["Deleted in Stage (a) — dual-rep sprawl"]
@@ -105,20 +129,25 @@ flowchart TB
     subgraph STEPS["ci job steps (orchestration only)"]
       CO["checkout"]
       TC["toolchain install"]
-      CA["cache restore / save"]
+      CA0["cache: toolchain / rustup<br/>(GHA transport, coarse)"]
       SEC["secrets injection"]
       RUN["./gunbc-ci --workflow ci<br/>--event $GITHUB_EVENT_PATH"]
     end
     META --> JOBS
     CI --> STEPS
-    CO --> TC --> CA --> SEC --> RUN
+    CO --> TC --> CA0 --> SEC --> RUN
   end
 
   subgraph RUNNER["gunbc-ci — in-repo runner (owns in-job semantics)"]
-    direction LR
-    D["discover<br/>affected"] --> S["select<br/>from ci.dag"]
-    S --> X["execute<br/>CiCommand rows"]
-    X --> R["report +<br/>exit code"]
+    direction TB
+    D["discover affected"] --> S["select CiJob rows"]
+    S --> LOOP["for each selected operation"]
+    subgraph PEROP["per CiUpsertStep / CiCommand"]
+      direction LR
+      CR["restore cache<br/>key = upsert digest"] --> EX["execute"] --> CS["save cache<br/>same digest"]
+    end
+    LOOP --> PEROP
+    PEROP --> R["report + exit code"]
   end
 
   DAG -->|"Shape-B emit"| EMIT
@@ -139,7 +168,8 @@ flowchart TB
 | **Green (`ci.dag` retained)** | Pipeline membership, command taxonomy, well-formedness, affected-set selection — runner reads these at execution time |
 | **Red dashed (`ci.dag` deleted)** | Descriptive bridges that duplicated YAML step text; gone after Stage (a) cut list |
 | **Blue (`ci.yml`)** | Thin emitted shell: GHA triggers, required job names, checkout/toolchain/cache/secrets, one runner invocation |
-| **Yellow (`gunbc-ci`)** | All gate logic that today lives split across multi-job ci.yml steps |
+| **Yellow (`gunbc-ci`)** | Selection, per-operation execute, and **per-operation cache** keyed by `CiUpsertStep` digest |
+| **Upsert rows** | One cache identity per build/test operation — not a single job-wide cache key |
 
 Stage (a) interim: hand-maintained `ci.yml` thins toward the blue box; runner may **run-all** before selection wiring (a.5). Stage (b) replaces hand YAML with emitted output and deletes the hand file.
 
@@ -184,7 +214,7 @@ Requires per-PR cut list to Mgr-C:
 | Bucket | ~Lines | Rationale |
 |--------|--------|-----------|
 | `CiLiveWorkflowStepSignal` / `M1CiLiveWorkflowSignal` ledger rows | ~200 | YAML step mirrors; runner owns execution |
-| Per-step `CiUpsertStep` rows that only exist to shadow ci.yml steps | ~1000+ | Descriptive; not selection authority |
+| Per-step `CiUpsertStep` rows that **only** shadow ci.yml step *text* (duplicate shell, not cache authority) | varies | Delete YAML mirrors; **keep** rows whose `cache_digest` + `inputs` are the cache/selection authority |
 | Wave-2 shell exception table arms whose YAML step is retired | ~200 | Static floor until dynamic selection replaces |
 | Shadow receipt **fixtures** superseded by runner receipts | ~500 | Keep until runner emits equivalent partition |
 
