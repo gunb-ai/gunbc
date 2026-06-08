@@ -261,13 +261,16 @@ data cpp_binding_param_y: Symbol = cpp_binding_param_y
 data cpp_relation_rule_mvp1_fn_add: Symbol = cpp_relation_rule_mvp1_fn_add
 data cpp_inhabitant_field_mvp1_add_fn: Symbol = cpp_inhabitant_field_mvp1_add_fn
 data cpp_coercion_field_int_inhabitant_atom: Symbol = cpp_coercion_field_int_inhabitant_atom
-data cpp_coercion_field_int_inhabitant: Symbol = cpp_coercion_field_int_inhabitant
 data cpp_coercion_field_int_facts: Symbol = cpp_coercion_field_int_facts
 data cpp_coercion_field_int_spelling: Symbol = cpp_coercion_field_int_spelling
 data cpp_coercion_field_int_signed: Symbol = cpp_coercion_field_int_signed
 data cpp_coercion_field_int_width: Symbol = cpp_coercion_field_int_width
 data cpp_coercion_field_int_encoding: Symbol = cpp_coercion_field_int_encoding
 data cpp_coercion_field_int_overflow: Symbol = cpp_coercion_field_int_overflow
+data cpp_coercion_field_int_scalar: Symbol = cpp_coercion_field_int_scalar
+data cpp_coercion_field_int_width_fact: Symbol = cpp_coercion_field_int_width_fact
+data cpp_coercion_field_int_spelling_node: Symbol = cpp_coercion_field_int_spelling_node
+data cpp_coercion_field_int_target_profile: Symbol = cpp_coercion_field_int_target_profile
 data cpp_mvp1_source_literal: Symbol = cpp_mvp1_source_literal
 data cpp_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data cpp_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
@@ -1063,7 +1066,16 @@ fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
 // Zip-fold support nodes derived from cpp signed-int facts — not parallel fixture data.
 // 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
 fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
+  let facts = cpp_signed_integer_facts(
+    spelling: Int,
+    surface_spelling: cpp_surface_spelling_int,
+    target_profile: target_profile
+  )
   [
+    cpp_named_edge(
+      name: cpp_inhabitant_field_int,
+      target: cpp_int_inhabitant_node(target_profile: target_profile)
+    ),
     cpp_named_edge(
       name: cpp_inhabitant_field_mvp1_add_fn,
       target: cpp_mvp1_emitted_add_fn_node(target_profile: target_profile)
@@ -1073,18 +1085,8 @@ fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
       target: cpp_atom(id: cpp_inhabitant_int)
     ),
     cpp_named_edge(
-      name: cpp_coercion_field_int_inhabitant,
-      target: cpp_int_inhabitant_node(target_profile: target_profile)
-    ),
-    cpp_named_edge(
       name: cpp_coercion_field_int_facts,
-      target: cpp_integer_facts_node(
-        facts: cpp_signed_integer_facts(
-          spelling: Int,
-          surface_spelling: cpp_surface_spelling_int,
-          target_profile: target_profile
-        )
-      )
+      target: cpp_integer_facts_node(facts: facts)
     ),
     cpp_named_edge(
       name: cpp_coercion_field_int_spelling,
@@ -1105,15 +1107,28 @@ fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
     cpp_named_edge(
       name: cpp_coercion_field_int_overflow,
       target: cpp_atom(id: cpp_tag_representable_result_required)
+    ),
+    cpp_named_edge(
+      name: cpp_coercion_field_int_scalar,
+      target: cpp_integer_scalar_fact_node(facts: facts)
+    ),
+    cpp_named_edge(
+      name: cpp_coercion_field_int_width_fact,
+      target: facts.width_fact
+    ),
+    cpp_named_edge(
+      name: cpp_coercion_field_int_spelling_node,
+      target: cpp_signed_integer_spelling_node(spelling: Int)
+    ),
+    cpp_named_edge(
+      name: cpp_coercion_field_int_target_profile,
+      target: target_profile
     )
   ]
 }
 
 fn cpp_mvp1_coercion_candidate_edges(target_profile: Node) -> List<Edge> {
-  list_append(
-    left: cpp_declared_inhabitants_root(target_profile: target_profile).children,
-    right: cpp_mvp1_int_zip_fold_closure_edges(target_profile: target_profile)
-  )
+  cpp_mvp1_int_zip_fold_closure_edges(target_profile: target_profile)
 }
 
 fn cpp_mvp1_declared_inhabitants_root(target_profile: Node) -> Node {
@@ -1291,6 +1306,17 @@ fn cpp_mvp1_binding_spellings() -> Map<Symbol, String> {
     cpp_binding_param_y,
     "y"
   )
+}
+
+data cpp_mvp1_target_profile_atom: Symbol = cpp_mvp1_target_profile_atom
+
+data cpp_mvp1_target_profile: Node = Node {
+  kind: TypeNode { connective: Atom { identity: cpp_mvp1_target_profile_atom } },
+  children: []
+}
+
+fn cpp_mvp1_target_model() -> TargetModel {
+  cpp_mvp1_target_model(target_profile: cpp_mvp1_target_profile)
 }
 
 fn cpp_mvp1_target_model(target_profile: Node) -> TargetModel {
