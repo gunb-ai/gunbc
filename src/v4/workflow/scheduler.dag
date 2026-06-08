@@ -31,6 +31,8 @@ type RunnableFrontier {
 type SchedulerBlockedEvidence
   = SchedulerNoRunnableFrontier { unscheduled: List<Node> }
 
+// 🟡 coproduct dissolution — feature:scheduler-plan-outcome — consumer:scheduler_plan_from_dependencies
+// dissolve-on-arrival: workflow execution state projects complete/runnable/blocked directly from dependency facts.
 type SchedulerPlan
   = SchedulerPlanComplete {
       layers: List<ReadinessLayer>,
@@ -356,60 +358,4 @@ fn scheduler_plan(graph_node: Node) -> SchedulerPlan {
     layers: scheduler_layers(graph_node: graph_node),
     blocked: [graph_node]
   )
-}
-    nodes: nodes,
-    dependencies: dependencies,
-    scheduled: scheduled
-  )
-  if non_empty(xs: runnable.ready) {
-    SchedulerPlanProduced {
-      layers: [
-        ReadinessLayer {
-          ready: runnable.ready
-        }
-      ]
-    }
-  } else {
-    SchedulerPlanBlocked {
-      evidence: scheduler_blocked_evidence(nodes: nodes, scheduled: scheduled)
-    }
-  }
-}
-
-fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> SchedulerFirstReadinessLayer {
-  fold(layers, init: SchedulerFirstReadinessLayerMissing, f: fn(acc, layer) {
-    match acc {
-      SchedulerFirstReadinessLayerFound { layer: _ } => acc
-      SchedulerFirstReadinessLayerMissing => SchedulerFirstReadinessLayerFound { layer: layer }
-    }
-  })
-}
-
-fn runnable_frontier_from_layers(layers: List<ReadinessLayer>) -> RunnableFrontier {
-  match scheduler_first_readiness_layer(layers: layers) {
-    SchedulerFirstReadinessLayerFound { layer: layer } => RunnableFrontier { ready: layer.ready }
-    SchedulerFirstReadinessLayerMissing => RunnableFrontier { ready: [] }
-  }
-}
-
-fn runnable_frontier(graph_node: Node) -> RunnableFrontier {
-  runnable_frontier_from_layers(layers: scheduler_layers(graph_node: graph_node))
-}
-
-fn scheduler_layers(graph_node: Node) -> List<ReadinessLayer> {
-  topological_layers(graph_node: graph_node)
-}
-
-fn scheduler_plan(graph_node: Node) -> SchedulerPlan {
-  let layers = scheduler_layers(graph_node: graph_node)
-  let runnable = runnable_frontier_from_layers(layers: layers)
-  if non_empty(xs: runnable.ready) {
-    SchedulerPlanProduced {
-      layers: layers
-    }
-  } else {
-    SchedulerPlanBlocked {
-      evidence: SchedulerNoRunnableFrontier { unscheduled: [graph_node] }
-    }
-  }
 }

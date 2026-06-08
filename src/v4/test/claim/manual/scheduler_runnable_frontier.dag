@@ -9,6 +9,7 @@ import v4.std.dependency {
   Contains,
   DataDependsOn,
   DependencyView,
+  ReadinessLayer,
   topological_layers
 }
 import v4.std.logic { Bool }
@@ -17,17 +18,20 @@ import v4.workflow.scheduler {
   RunnableFrontier,
   SchedulerNoRunnableFrontier,
   SchedulerPlanBlocked,
-  SchedulerPlanProduced,
+  SchedulerPlanComplete,
+  SchedulerPlanRunnable,
   runnable_frontier,
   runnable_frontier_from_dependencies,
   scheduler_plan,
-  scheduler_plan_from_dependencies
+  scheduler_plan_from_dependencies,
+  scheduler_step_plan_from_dependencies
 }
 
 data scheduler_root_symbol: Symbol = scheduler_root_symbol
 data scheduler_build_symbol: Symbol = scheduler_build_symbol
 data scheduler_test_symbol: Symbol = scheduler_test_symbol
 data scheduler_emit_symbol: Symbol = scheduler_emit_symbol
+data scheduler_missing_source_symbol: Symbol = scheduler_missing_source_symbol
 
 data scheduler_build_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: scheduler_build_symbol } },
@@ -41,6 +45,11 @@ data scheduler_test_node: Node = Node {
 
 data scheduler_emit_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: scheduler_emit_symbol } },
+  children: []
+}
+
+data scheduler_missing_source_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: scheduler_missing_source_symbol } },
   children: []
 }
 
@@ -115,6 +124,15 @@ data scheduler_missing_prerequisite_dependencies: List<DependencyView> = [
   }
 ]
 
+data scheduler_mixed_runnable_blocked_dependencies: List<DependencyView> = [
+  DependencyView {
+    source: scheduler_missing_source_node,
+    dependent: scheduler_test_node,
+    kind: DataDependsOn,
+    usage_site: scheduler_test_node
+  }
+]
+
 fn scheduler_initial_frontier() -> RunnableFrontier {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
@@ -149,8 +167,9 @@ fn scheduler_contains_noise_frontier() -> RunnableFrontier {
 
 fn scheduler_layers_reuse_dependency_fold() -> Bool {
   match scheduler_plan(graph_node: scheduler_fixture_graph) {
-    SchedulerPlanProduced { layers: layers } => layers == topological_layers(graph_node: scheduler_fixture_graph)
-    SchedulerPlanBlocked { evidence: _ } => false
+    SchedulerPlanComplete { layers: layers, scheduled: _ } => layers == topological_layers(graph_node: scheduler_fixture_graph)
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
 
@@ -180,8 +199,57 @@ fn scheduler_missing_prerequisite_blocks_with_evidence() -> Bool {
     dependencies: scheduler_missing_prerequisite_dependencies,
     scheduled: []
   ) {
-    SchedulerPlanProduced { layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier { unscheduled: unscheduled } } => unscheduled == [scheduler_build_node]
+    SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier { unscheduled: unscheduled }, scheduled: scheduled, remaining: remaining, layers: layers } => unscheduled == [scheduler_build_node] && scheduled == [] && remaining == [scheduler_build_node] && layers == []
+  }
+}
+
+fn scheduler_step_plan_exposes_runnable_state() -> Bool {
+  match scheduler_step_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: []
+  ) {
+    SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled, remaining: remaining, layers: layers } => frontier.ready == [scheduler_build_node, scheduler_test_node] && scheduled == [scheduler_build_node, scheduler_test_node] && remaining == [scheduler_emit_node] && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }]
+    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+  }
+}
+
+fn scheduler_full_plan_completes_all_work() -> Bool {
+  match scheduler_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: []
+  ) {
+    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == [scheduler_build_node, scheduler_test_node, scheduler_emit_node] && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }, ReadinessLayer { ready: [scheduler_emit_node] }]
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+  }
+}
+
+fn scheduler_all_scheduled_completes_without_blocking() -> Bool {
+  match scheduler_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: scheduler_fixture_nodes
+  ) {
+    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == scheduler_fixture_nodes && layers == []
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+  }
+}
+
+fn scheduler_mixed_runnable_then_blocked_reports_remaining() -> Bool {
+  match scheduler_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_mixed_runnable_blocked_dependencies,
+    scheduled: []
+  ) {
+    SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier { unscheduled: unscheduled }, scheduled: scheduled, remaining: remaining, layers: layers } => unscheduled == [scheduler_test_node] && scheduled == [scheduler_build_node, scheduler_emit_node] && remaining == [scheduler_test_node] && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
   }
 }
 
@@ -199,6 +267,14 @@ data scheduler_runnable_frontier_ignores_contains_edges: Bool = scheduler_contai
 
 data scheduler_runnable_frontier_blocks_missing_prerequisite: Bool = scheduler_missing_prerequisite_blocks_with_evidence()
 
+data scheduler_runnable_frontier_step_plan_is_runnable: Bool = scheduler_step_plan_exposes_runnable_state()
+
+data scheduler_runnable_frontier_full_plan_completes: Bool = scheduler_full_plan_completes_all_work()
+
+data scheduler_runnable_frontier_all_scheduled_completes: Bool = scheduler_all_scheduled_completes_without_blocking()
+
+data scheduler_runnable_frontier_mixed_plan_blocks: Bool = scheduler_mixed_runnable_then_blocked_reports_remaining()
+
 fn scheduler_runnable_frontier_claims_hold() -> Bool {
-  scheduler_runnable_frontier_reuses_dependency_fold && scheduler_runnable_frontier_projects_canonical_first_layer && scheduler_runnable_frontier_dependency_ready_set && scheduler_runnable_frontier_next_layer_receipt && scheduler_runnable_frontier_discriminates_dependency_order && scheduler_runnable_frontier_ignores_contains_edges && scheduler_runnable_frontier_blocks_missing_prerequisite
+  scheduler_runnable_frontier_reuses_dependency_fold && scheduler_runnable_frontier_projects_canonical_first_layer && scheduler_runnable_frontier_dependency_ready_set && scheduler_runnable_frontier_next_layer_receipt && scheduler_runnable_frontier_discriminates_dependency_order && scheduler_runnable_frontier_ignores_contains_edges && scheduler_runnable_frontier_blocks_missing_prerequisite && scheduler_runnable_frontier_step_plan_is_runnable && scheduler_runnable_frontier_full_plan_completes && scheduler_runnable_frontier_all_scheduled_completes && scheduler_runnable_frontier_mixed_plan_blocks
 }
