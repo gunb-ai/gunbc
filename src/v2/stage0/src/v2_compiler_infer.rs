@@ -96,7 +96,7 @@ pub use crate::v2_compiler_infer_types::{
     node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
     normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
     resolved_type, structural_carrier_template_name, template_return_has_variables,
-    template_return_is_receiver_self,
+    template_return_is_receiver_self, type_node_is_callable,
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
@@ -1000,10 +1000,6 @@ pub fn set_element_types_mismatch(
     ((set_element_type_is_concrete(recv_elem.clone())
         && set_element_type_is_concrete(operand_elem.clone()))
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
-}
-
-pub fn type_node_is_callable(n: Rc<Node>) -> bool {
-    ((n.params.clone().len() as i64) > 0)
 }
 
 pub fn direct_call_set_element_types_mismatch(

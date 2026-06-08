@@ -1564,9 +1564,13 @@ pub fn resolve_type_variables_from_template(
     }
 }
 
+pub fn type_node_is_callable(n: Rc<Node>) -> bool {
+    ((n.params.clone().len() as i64) > 0)
+}
+
 pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
     {
-        let is_callable = ((n.params.clone().len() as i64) > 0);
+        let is_callable = type_node_is_callable(n.clone());
         if is_callable {
             match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
