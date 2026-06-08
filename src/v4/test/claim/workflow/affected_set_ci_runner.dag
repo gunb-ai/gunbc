@@ -30,7 +30,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v4.workflow.ci {
+import v4.workflow.affected_set_selection {
   ci_select_from_affected_set,
   ci_select_from_rerun_nodes,
   test_claim_in_rerun_frontier

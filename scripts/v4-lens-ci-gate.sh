@@ -30,7 +30,7 @@ if [[ ! -x "$bin" ]]; then
   exit 2
 fi
 
-ci_model="src/v4/workflow/ci.dag"
+ci_model="src/v4/workflow/lens_ci_gate.dag"
 
 dag_string_data() {
   local name="$1"
@@ -39,7 +39,7 @@ dag_string_data() {
     | head -1
 }
 
-# List member names from `lens_ci_claim_run_rows` authority in ci.dag.
+# List member names from `lens_ci_claim_run_rows` authority in lens_ci_gate.dag.
 list_claim_run_row_members() {
   awk '
     /data lens_ci_claim_run_rows:/ { in_list = 1; next }
