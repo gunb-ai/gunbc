@@ -202,7 +202,7 @@ fn mvp1_dag_ingest_via_coerce_matches_canonical() -> Bool {
     target: mvp1_dag_target_model
   ) {
     Accepted { value: result, diagnostics: d } =>
-      (result.target == dag_mvp1_fixture_int_inhabitant)
+      (result.target == dag_mvp1_fixture_emitted_add_fn)
         && mvp1_dag_coercion_quality_is_faithful(q: result.quality)
         && (d == None)
     Rejected { diagnostics: _ } => false
