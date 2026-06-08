@@ -221,9 +221,9 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - See [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Two shapes of omni-emission" for the full Shape A vs Shape B treatment, including the per-target cost structure and the load-bearing reason the distinction must not be blurred.
 
 **Meta-process modeling:**
-- Bootstrap, CI, and build orchestration modeled as .dag workflows (`src/v4/workflow/bootstrap.dag`, `src/v4/workflow/ci.dag`). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
+- Bootstrap and build orchestration modeled as .dag workflows (`src/v4/workflow/bootstrap.dag`). CI is hand-authored directly in `.github/workflows/ci.yml` (the prior `src/v4/workflow/ci.dag` mirror was a descriptive-only model with no runtime consumer and was deleted; ci.yml is the direct authority). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
 - `dag run` is the primary execution path.
-- Adding a CI gate, a Node field, or a target language requires editing one .dag file.
+- Adding a Node field or a target language requires editing one .dag file. (CI gates are the exception: they are hand-authored in `.github/workflows/ci.yml`, the direct CI authority — not modeled as `.dag` data.)
 
 **Self-hosting — four facets:**
 
@@ -256,9 +256,9 @@ Self-hosting is not one capability; it's four. All four are targets.
    deliverable, couples to testgen.**
 
 4. **Recursive-flex / self-application.** gunbc applies its own correctness/
-   cost/parallelism lenses to its own **build/CI pipeline**, which
-   is modeled as `.dag` data (`src/v4/workflow/bootstrap.dag`,
-   `src/v4/workflow/ci.dag`). The same lens framework users get for their own
+   cost/parallelism lenses to its own **build pipeline**, which
+   is modeled as `.dag` data (`src/v4/workflow/bootstrap.dag`; CI itself is
+   hand-authored in `.github/workflows/ci.yml`, not modeled). The same lens framework users get for their own
    programs applies recursively to gunbc's own build/CI behavior —
    typed lenses for cost / complexity / parallelism over the
    pipeline that produces gunbc itself. (Timing is a projection of the

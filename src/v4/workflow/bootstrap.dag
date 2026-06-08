@@ -719,7 +719,7 @@ data v4_test_claim_workflow_testclaim_corpus_runner: Symbol = v4_test_claim_work
 // pinned stage0 binary — not a new shell script (project_no_new_shell).
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
 // feature:rr-a-bootstrap-evaluator-corpus-harness — consumer: v4.workflow.cli
-// GunbcTestCorpusHarnessRoute / v4.workflow.ci TestClaimCorpusEvalCommand — bind
+// GunbcTestCorpusHarnessRoute (the v4.workflow.ci TestClaimCorpusEvalCommand half was deleted with ci.dag in PR #4543) — bind
 // docs/planning/v4-runtime-testclaim-rr-a-worksheet-2026-06-02.md §5.2 A.1 — dissolve-on-arrival:
 // delete when CI invokes `run_test_claim` at execution time via the bootstrap pin and A.3b
 // `HostVerdictSurfaceExecutionStatus` = RuntimeVerdicts is the sole terminal pass (RR-A §6);

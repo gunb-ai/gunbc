@@ -3,8 +3,9 @@
 // Status: filled — semantic authority for tag trigger, six-target matrix (musl linux x2,
 //   darwin x2, windows msvc x2), published triples + GH Release artifact basenames (`.exe` on
 //   windows rows), musl cross + native darwin/windows builds, GH Release upload intent.
-//   YamlStatic `release_pipeline → .github/workflows/release.yml` deferred (same posture as
-//   `src/v4/workflow/ci.dag` / TASKS T-24). `.github/workflows/release.yml` is a hand-synced
+//   YamlStatic `release_pipeline → .github/workflows/release.yml` deferred (TASKS T-24; note
+//   `src/v4/workflow/ci.dag` was deleted in PR #4543 — CI is hand-authored directly in ci.yml, so
+//   release is the remaining workflow with a deferred-YAML posture). `.github/workflows/release.yml` is a hand-synced
 //   projection until emission lands. End-user install moves to `install.dag` (Phase 1b).
 
 module v4.workflow.release_dist
