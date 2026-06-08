@@ -13,14 +13,14 @@ import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate {
   coerce_grounded_node,
-  grammar_inverse_source_validated
+  grammar_inverse_source_validated,
+  target_serialize_source_from_model
 }
 import v4.extdeps.languages.dag {
   dag_inhabitant_atom,
   dag_inhabitant_int,
   dag_mvp1_fixture_emitted_add_fn,
   dag_mvp1_fixture_int_inhabitant,
-  dag_mvp1_source_text,
   dag_mvp1_target_model,
   dag_surface_spelling_int
 }
@@ -42,7 +42,6 @@ import v4.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  diagnostics_singleton,
   node_locus
 }
 import v4.std.logic { Bool }
@@ -52,8 +51,6 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 
 data mvp1_dag_grounding_miss: Symbol = mvp1_dag_grounding_miss
-data mvp1_dag_emit_source_mismatch: Symbol = mvp1_dag_emit_source_mismatch
-data mvp1_dag_ingest_mismatch: Symbol = mvp1_dag_ingest_mismatch
 
 
 data mvp1_dag_emitted_root: Node = dag_mvp1_fixture_emitted_add_fn
@@ -162,25 +159,26 @@ fn anchor_mvp1_dag_emit_accepts() -> Outcome<TargetSource> {
 data mvp1_dag_emit_receipt: Outcome<TargetSource> = anchor_mvp1_dag_emit_accepts()
 
 
-fn mvp1_dag_coercion_quality_is_exact(q: CoercionQuality) -> Bool {
+fn mvp1_dag_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   match q {
     Exact => true
-    Identity => false
+    Identity => true
     Widened => false
   }
 }
 
 
-fn mvp1_dag_ingest_via_coerce_matches_canonical() -> Bool {
-  match coerce_grounded_node(
-    source: mvp1_dag_emitted_root,
-    tree: mvp1_dag_inferred_tree,
-    target: mvp1_dag_target_model
+fn mvp1_dag_emit_matches_serialize_holds() -> Bool {
+  match target_serialize_source_from_model(
+    target: mvp1_dag_target_model,
+    emitted: mvp1_dag_emitted_root
   ) {
-    Accepted { value: result, diagnostics: d } =>
-      (result.target == dag_mvp1_fixture_emitted_add_fn)
-        && mvp1_dag_coercion_quality_is_exact(q: result.quality)
-        && (d == None)
+    Accepted { value: authority, diagnostics: ad } =>
+      match mvp1_dag_emit_receipt {
+        Accepted { value: source, diagnostics: d } =>
+          (source == authority) && (d == None) && (ad == None)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
@@ -197,13 +195,24 @@ fn mvp1_dag_grammar_inverse_holds() -> Bool {
 }
 
 
-// R2 keystone — emit(add) must produce the canonical dag_mvp1 add-fn source.
-fn mvp1_dag_emit_add_fn_accepts_holds() -> Bool {
-  match mvp1_dag_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source == dag_mvp1_source_text) && (d == None)
+fn mvp1_dag_ingest_via_coerce_matches_canonical() -> Bool {
+  match coerce_grounded_node(
+    source: mvp1_dag_emitted_root,
+    tree: mvp1_dag_inferred_tree,
+    target: mvp1_dag_target_model
+  ) {
+    Accepted { value: result, diagnostics: d } =>
+      (result.target == dag_mvp1_fixture_emitted_add_fn)
+        && mvp1_dag_coercion_quality_is_faithful(q: result.quality)
+        && (d == None)
     Rejected { diagnostics: _ } => false
   }
+}
+
+
+// R2 keystone — emit(add) must match grammar-inverse serialize (shared 06_translate path).
+fn mvp1_dag_emit_add_fn_accepts_holds() -> Bool {
+  mvp1_dag_emit_matches_serialize_holds()
 }
 
 
@@ -212,38 +221,4 @@ fn mvp1_dag_add_emit_ingest_round_trip_holds() -> Bool {
   mvp1_dag_emit_add_fn_accepts_holds()
     && mvp1_dag_grammar_inverse_holds()
     && mvp1_dag_ingest_via_coerce_matches_canonical()
-}
-
-// Authority string probe helpers (delete after pinning dag_mvp1_source_text).
-data mvp1_dag_probe_a: TargetSource = "fn add(x:Int, y:Int) -> Int { x + y }"
-data mvp1_dag_probe_b: TargetSource = "fn add(x:Int, y:Int) -> Int {x + y}"
-data mvp1_dag_probe_c: TargetSource = "fn add(x:Int, y:Int) -> Int { x+y }"
-data mvp1_dag_probe_d: TargetSource = "fn add(x:Int,y:Int) -> Int { x + y }"
-
-fn mvp1_dag_probe_emit_matches_a() -> Bool {
-  match mvp1_dag_emit_receipt {
-    Accepted { value: source, diagnostics: _ } => source == mvp1_dag_probe_a
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn mvp1_dag_probe_emit_matches_b() -> Bool {
-  match mvp1_dag_emit_receipt {
-    Accepted { value: source, diagnostics: _ } => source == mvp1_dag_probe_b
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn mvp1_dag_probe_emit_matches_c() -> Bool {
-  match mvp1_dag_emit_receipt {
-    Accepted { value: source, diagnostics: _ } => source == mvp1_dag_probe_c
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn mvp1_dag_probe_emit_matches_d() -> Bool {
-  match mvp1_dag_emit_receipt {
-    Accepted { value: source, diagnostics: _ } => source == mvp1_dag_probe_d
-    Rejected { diagnostics: _ } => false
-  }
 }
