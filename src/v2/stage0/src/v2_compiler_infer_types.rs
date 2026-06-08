@@ -153,6 +153,39 @@ pub fn is_declared_container_alias_spelling(name: String) -> bool {
     }
 }
 
+pub fn structural_carrier_template_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if n.name.as_str() != "" {
+        canonical_template_name(
+            Rc::new(Node {
+                name: n.name.clone(),
+                ident: n.ident.clone(),
+                span: n.span.clone(),
+                ident_span: Some(kernel_span(n.name.clone())),
+                children: n.children.clone(),
+                connective: n.connective.clone(),
+                params: n.params.clone(),
+                inferred: n.inferred.clone(),
+                return_cardinality: n.return_cardinality.clone(),
+                uses: n.uses.clone(),
+                body: n.body.clone(),
+                transport: n.transport.clone(),
+                properties: n.properties.clone(),
+                type_annotation: n.type_annotation.clone(),
+                is_self_recursive: n.is_self_recursive.clone(),
+                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                match_pattern: n.match_pattern.clone(),
+                expr_data: n.expr_data.clone(),
+            }),
+            source_indices,
+        )
+    } else {
+        canonical_template_name(n, source_indices)
+    }
+}
+
 pub fn is_product_type(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::Conj)
 }

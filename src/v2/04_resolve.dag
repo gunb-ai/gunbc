@@ -63,6 +63,23 @@ fn with_authored_identity(identity: Node, structural: Node) -> Node {
   }
 }
 
+// Peel AliasLeaf bindings for call-site arg check: structural carrier with
+// reference-site brand identity (bounded A3 — not a full re-resolve).
+fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
+  match lookup_type_for(env: env, node: n) {
+    Some { value: resolved } =>
+      if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
+        match resolved.inferred {
+          Some { value: Resolved { node: target } } =>
+            let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
+            with_authored_identity(identity: n, structural: target_resolved)
+          _ => resolved
+        }
+      } else { resolved }
+    None => n
+  }
+}
+
 // =========================================================================
 // Result types for type resolution
 // =========================================================================

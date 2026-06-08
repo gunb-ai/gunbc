@@ -40,6 +40,8 @@ mod parse;
 #[cfg(test)]
 mod pb_method_template_projection_consumability;
 #[cfg(test)]
+mod pd3_adversarial;
+#[cfg(test)]
 mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;
