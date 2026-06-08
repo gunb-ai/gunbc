@@ -7,10 +7,14 @@
 
 use std::rc::Rc;
 
-use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
+use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v2_compiler::v2_interpreter::{self, Value};
 
-use crate::helpers::resolve_imports_transitively;
+use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
+
+fn v4_source_roots() -> Vec<std::path::PathBuf> {
+    vec![workspace_root().join("src/v4")]
+}
 
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     let msgs: Vec<String> = result
@@ -25,6 +29,22 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
         msgs,
         result.graph.is_some()
     );
+}
+
+fn run_v4_module(entry: &str, content: &str, witness_fn: &str) -> Value {
+    let sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
+        entry,
+        content,
+        &v4_source_roots(),
+    );
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    v2_interpreter::run(graph, resolved.source_indices.clone(), witness_fn)
+        .unwrap_or_else(|e| panic!("run {witness_fn}: {e:?}"))
 }
 
 /// Detection: red if Witness Holds/Violates bridging is removed from match_pattern.
@@ -46,40 +66,49 @@ fn match_pattern_bridges_witness_holds_to_some() {
 }
 
 #[test]
-fn witness_holds_matches_some_pattern_at_runtime() {
-    let src = r#"module test.witness_bridge
-type Witness<T>
-  = Holds { value: T }
-  | Violates { diagnostic: Int }
+fn map_get_bridges_witness_lookup_to_present_absent() {
+    let src = r#"module test.witness_map_get
+import v4.std.collection { empty_map, map_get, map_insert }
+import v4.std.diagnostic { Accepted, Rejected }
 
-fn probe_holds() -> Int {
-  match Holds { value: 42 } {
-    Some { value: v } => v
-    None => 0
+fn found() -> Bool {
+  let m = empty_map() |> map_insert("k", 42)
+  match map_get(m, "k") {
+    Accepted { value: Present { value: v }, diagnostics: _ } => v == 42
+    Accepted { value: Absent, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
-fn probe_violates() -> Int {
-  match Violates { diagnostic: 1 } {
-    Some { value: v } => v
-    None => 99
+fn missing() -> Bool {
+  let m = empty_map()
+  match map_get(m, "k") {
+    Accepted { value: Present { value: _ }, diagnostics: _ } => false
+    Accepted { value: Absent, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 "#;
-    let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
-    assert_resolved_no_hard_errors(&resolved);
-    let graph = resolved
-        .graph
-        .as_ref()
-        .expect("graph after successful resolve");
-
-    match v2_interpreter::run(graph, resolved.source_indices.clone(), "probe_holds") {
-        Ok(Value::Int(42)) => {}
-        other => panic!("expected Int(42) from Holds→Some bridge, got {other:?}"),
+    match run_v4_module("test/witness_map_get.dag", src, "found") {
+        Value::Bool(true) => {}
+        other => panic!("expected Bool(true) from map_get on Witness Holds, got {other:?}"),
     }
-    match v2_interpreter::run(graph, resolved.source_indices.clone(), "probe_violates") {
-        Ok(Value::Int(99)) => {}
-        other => panic!("expected Int(99) from Violates→None bridge, got {other:?}"),
+    match run_v4_module("test/witness_map_get.dag", src, "missing") {
+        Value::Bool(true) => {}
+        other => panic!("expected Bool(true) from map_get on Witness Violates, got {other:?}"),
+    }
+}
+
+#[test]
+fn mark_excluded_no_longer_pattern_match_fails() {
+    let entry = "src/v4/test/claim/lens_affected_set/excluded_propagation_proof.dag";
+    let content = std::fs::read_to_string(workspace_root().join(entry))
+        .unwrap_or_else(|e| panic!("read {entry}: {e}"));
+    // Returns Bool (true or false) — the pre-fix crash was PatternMatchFailure on Holds.
+    match run_v4_module(entry, &content, "excluded_propagation_proof_claim_holds") {
+        Value::Bool(_) => {}
+        other => panic!(
+            "expected Bool witness from mark_excluded path, not crash; got {other:?}"
+        ),
     }
 }
