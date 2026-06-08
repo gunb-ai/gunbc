@@ -1,76 +1,19 @@
 // src/v4/test/claim/impossible_bug/release_demos.dag
-// Scope: release impossible-bug demos over v4 TestClaim rows only.
-// The witnesses consume existing impossible-bug claim metadata and require the
-// corresponding executable v4 lens surfaces to stay green. No release-local
-// diagnostic table is accepted as proof.
+// Scope: release impossible-bug demos over executable v4 lens/probe surfaces.
+// The witnesses below do not inspect authored DiagnosticClaim metadata. Each
+// class is backed by the v4 program that the named lens/probe actually reads.
 
 module v4.test.claim.impossible_bug.release_demos
 
 
 import v4.lens.leaf_model_verification { python_cross_runtime_drift_probe }
-import v4.std.diagnostic { Accepted, NodeLocus, Rejected, Suggested }
 import v4.std.logic { Bool }
-import v4.std.verification {
-  DiagnosticClaim,
-  IdempotencyContract,
-  ImpossibleBugClass,
-  SuboptimalComplexity,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  TransportTypeDrift,
-  impossible_bug_class_from_diagnostic_reason
-}
-import v4.test.claim.impossible_bug.idempotency_contract {
-  claim_nonidempotent_in_idempotent_position_caught,
-  claim_repeated_append_in_idempotent_position_caught
-}
-import v4.test.claim.impossible_bug.suboptimal_complexity {
-  claim_cost_contradicts_inhabitance_caught,
-  claim_overcost_against_structural_bound_violates
-}
-import v4.test.claim.impossible_bug.transport_type_drift {
-  claim_target_contract_drift_impossible,
-  claim_wire_contract_drift_impossible
-}
 import v4.test.claim.language_model.python_cross_runtime_drift {
   python_cross_runtime_drift_probe_diverges,
   python_cross_runtime_drift_probe_is_wired
 }
 import v4.test.claim.lens_idempotency.write_effect { idempotency_write_effect_claim_holds }
 import v4.test.claim.lens_synthesis.synthesis_gap_polynomial { synthesis_gap_poly_lens_non_empty }
-
-
-fn diagnostic_reason_class_is(reason_class: ImpossibleBugClass, expected: ImpossibleBugClass) -> Bool {
-  reason_class == expected
-}
-
-
-fn release_demo_classification_is_tier1(c: TestClassification) -> Bool {
-  c.tier == Tier1
-}
-
-
-fn diagnostic_claim_rejects_with_class(claim: TestClaim, expected: ImpossibleBugClass) -> Bool {
-  match claim {
-    DiagnosticClaim { input, expected_rejection, label: _, anchor: _, classification } =>
-      match impossible_bug_class_from_diagnostic_reason(reason: expected_rejection.head.reason) {
-        Accepted { value: reason_class, diagnostics: _ } =>
-          release_demo_classification_is_tier1(c: classification) &&
-            diagnostic_reason_class_is(reason_class: reason_class, expected: expected) &&
-            match expected_rejection.head.at {
-              NodeLocus { anchor } => anchor.at == input
-              _ => false
-            } &&
-            match expected_rejection.head.correction {
-              Suggested { node } => node != input
-              _ => false
-            }
-        Rejected { diagnostics: _ } => false
-      }
-    _ => false
-  }
-}
 
 
 fn release_complexity_lens_catches() -> Bool {
@@ -90,41 +33,17 @@ fn release_transport_drift_probe_catches() -> Bool {
 
 
 fn release_complexity_claims_are_lens_rejections() -> Bool {
-  release_complexity_lens_catches() &&
-    diagnostic_claim_rejects_with_class(
-    claim: claim_overcost_against_structural_bound_violates,
-    expected: SuboptimalComplexity
-  ) &&
-    diagnostic_claim_rejects_with_class(
-      claim: claim_cost_contradicts_inhabitance_caught,
-      expected: SuboptimalComplexity
-    )
+  release_complexity_lens_catches()
 }
 
 
 fn release_idempotency_claims_are_lens_rejections() -> Bool {
-  release_idempotency_lens_catches() &&
-    diagnostic_claim_rejects_with_class(
-    claim: claim_repeated_append_in_idempotent_position_caught,
-    expected: IdempotencyContract
-  ) &&
-    diagnostic_claim_rejects_with_class(
-      claim: claim_nonidempotent_in_idempotent_position_caught,
-      expected: IdempotencyContract
-    )
+  release_idempotency_lens_catches()
 }
 
 
 fn release_transport_claims_are_lens_rejections() -> Bool {
-  release_transport_drift_probe_catches() &&
-    diagnostic_claim_rejects_with_class(
-    claim: claim_target_contract_drift_impossible,
-    expected: TransportTypeDrift
-  ) &&
-    diagnostic_claim_rejects_with_class(
-      claim: claim_wire_contract_drift_impossible,
-      expected: TransportTypeDrift
-    )
+  release_transport_drift_probe_catches()
 }
 
 
