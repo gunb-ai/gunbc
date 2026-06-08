@@ -1,6 +1,7 @@
 // src/v4/test/claim/manual/sg2_cpp_type_expression_projection.dag
 // Scope: SG-2 C++ executed consumer for cpp_type_expression_projection row (E-10 / E-6).
-// Status: minimal arrow projection + serialize receipt; not rostered (Phase A rust witnesses only).
+// Status: Bool claim-run witnesses + peer TestClaim carriers; roster deferred until
+// witness_cpp_sg2_arrow_holds is fold-green (checkpoint 3 / dissolve-on fold-equivalence).
 
 module v4.test.claim.manual.sg2_cpp_type_expression_projection
 
@@ -24,15 +25,41 @@ import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
 import v4.std.text { String }
+import v4.std.verification {
+  CompilesClaim,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 
+data cpp_sg2_pass_sym: Symbol = cpp_sg2_pass_sym
 data cpp_sg2_fail_sym: Symbol = cpp_sg2_fail_sym
 data cpp_sg2_fail_text: String = ""
 data cpp_sg2_expected_arrow_text: String = "(X) -> Y"
+
+fn cpp_sg2_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: cpp_sg2_pass_sym } },
+    children: []
+  }
+}
 
 fn cpp_sg2_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: cpp_sg2_fail_sym } },
     children: []
+  }
+}
+
+fn cpp_sg2_claim_input(ok: Bool) -> Node {
+  if ok {
+    cpp_sg2_pass_node()
+  } else {
+    cpp_sg2_fail_node()
   }
 }
 
@@ -76,4 +103,30 @@ fn witness_cpp_sg2_arrow_holds() -> Bool {
 fn witness_cpp_sg2_projection_row_delimiters_holds() -> Bool {
   cpp_sg2_instantiation_delimiters_bidirectional()
     && cpp_type_expression_projection().arrow_form.arrow == cpp_token_arrow
+}
+
+data claim_cpp_sg2_projection_row_delimiters: TestClaim = CompilesClaim {
+  label: "manual/sg2_cpp: cpp_type_expression_projection row delimiters bidirectional",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: cpp_sg2_claim_input(ok: cpp_sg2_instantiation_delimiters_bidirectional()),
+  expected_value: cpp_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_cpp_sg2_arrow_projection_structural: TestClaim = EqualsClaim {
+  label: "manual/sg2_cpp: Arrow projects to golden (X) -> Y emitted node",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: cpp_sg2_project_arrow_emitted(),
+  rhs: cpp_sg2_arrow_xy_emitted(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_cpp_sg2_arrow_serialize: TestClaim = CompilesClaim {
+  label: "manual/sg2_cpp: serialized arrow is (X) -> Y",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: cpp_sg2_claim_input(
+    ok: cpp_sg2_serialized_text(emitted: cpp_sg2_project_arrow_emitted()) == cpp_sg2_expected_arrow_text
+  ),
+  expected_value: cpp_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
