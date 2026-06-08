@@ -185,8 +185,9 @@ fn m1_brand_twins_over_refined_base_remain_distinct_in_infer_representation() {
     let source = r#"
 module m1.brand_twins
 
-import v4.std.refinement { Refined }
-
+type Refined<T> {
+  base: T
+}
 type UserId = Refined<String>
 type AccountId = Refined<String>
 "#;
