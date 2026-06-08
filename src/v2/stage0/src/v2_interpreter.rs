@@ -1655,7 +1655,19 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         let key = args.first().ok_or_else(|| InterpError::TypeError {
             msg: "lookup requires a key argument".to_string(),
         })?;
-        return raw_map_lookup(&receiver_val, key, env, ctx);
+        let raw = raw_map_lookup(&receiver_val, key, env, ctx)?;
+        // The std contract is `Map.lookup: fn(K) -> Witness<V>` (v4.std.collection). The
+        // record-form map's `lookup` closure already returns a Witness (Holds/Violates);
+        // the native `Value::Map` chokepoint returns the raw stored value (present) or
+        // `Null` (miss), so lift it into the same Witness coproduct here. This keeps
+        // `.lookup` consistent across both representations — e.g. std `map_get`'s
+        // `Some`/`None` match reconciles via the existing Holds→Some / Violates→None
+        // bridges whether a key resolves to a scalar or a coproduct value. (`.get`, `[]`,
+        // and the `lookup` builtin keep returning the raw value.)
+        if matches!(receiver_val, Value::Map(_)) {
+            return Ok(witness_from_native_lookup(raw));
+        }
+        return Ok(raw);
     }
 
     // Record/Variant field holding a function: `r.field(args)` calls the field's closure/fn.
@@ -3462,6 +3474,34 @@ fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<Vec<Value>>> {
                 msg: format!("{} expects a list, got {}", context, val.type_label()),
             }),
         },
+    }
+}
+
+/// Lift a native `Value::Map` key-probe result into the `Witness<V>` coproduct that
+/// the `Map.lookup: fn(K) -> Witness<V>` contract declares: a present value becomes
+/// `Holds { value }`, the `Null` miss sentinel becomes `Violates { diagnostic: Null }`
+/// (a native miss has no structured diagnostic — mirrors the Null→Violates match
+/// bridge). Variant `type_name` is cosmetic here; consumers dispatch on `variant_name`.
+fn witness_from_native_lookup(raw: Value) -> Value {
+    match raw {
+        Value::Null => {
+            let mut fields = HashMap::new();
+            fields.insert("diagnostic".to_string(), Value::Null);
+            Value::Variant {
+                type_name: "Witness".to_string(),
+                variant_name: "Violates".to_string(),
+                fields: Rc::new(fields),
+            }
+        }
+        present => {
+            let mut fields = HashMap::new();
+            fields.insert("value".to_string(), present);
+            Value::Variant {
+                type_name: "Witness".to_string(),
+                variant_name: "Holds".to_string(),
+                fields: Rc::new(fields),
+            }
+        }
     }
 }
 
