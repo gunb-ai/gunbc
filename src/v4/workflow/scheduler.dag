@@ -5,17 +5,22 @@
 
 module v4.workflow.scheduler
 
-import v4.std.collection { List }
+import v4.std.collection { Absent, List, Optional, Present }
 import v4.std.algebra {
   contains,
   filter,
   for_all,
-  list_snoc_item
+  list_snoc_item,
+  non_empty
 }
 import v4.std.dependency {
+  BarrierBefore,
+  BootstrapDependsOn,
+  DataDependsOn,
   DependencyView,
+  EffectDependsOn,
   ReadinessLayer,
-  dependency_lens,
+  ResourceDependsOn,
   topological_layers
 }
 import v4.std.node { Node }
@@ -24,9 +29,30 @@ type RunnableFrontier {
   ready: List<Node>
 }
 
-type SchedulerPlan {
-  runnable: RunnableFrontier
-  layers: List<ReadinessLayer>
+type SchedulerBlockedEvidence
+  = SchedulerNoRunnableFrontier { unscheduled: List<Node> }
+
+type SchedulerPlan
+  = SchedulerPlanProduced {
+      layers: List<ReadinessLayer>
+    }
+  | SchedulerPlanBlocked {
+      evidence: SchedulerBlockedEvidence
+    }
+
+fn scheduler_dependency_orders_execution(dependency: DependencyView) -> Bool {
+  match dependency.kind {
+    DataDependsOn => true
+    EffectDependsOn => true
+    ResourceDependsOn => true
+    BarrierBefore => true
+    BootstrapDependsOn => true
+    _ => false
+  }
+}
+
+fn scheduler_execution_dependencies(dependencies: List<DependencyView>) -> List<DependencyView> {
+  filter(xs: dependencies, predicate: scheduler_dependency_orders_execution)
 }
 
 fn scheduler_append_node_once(nodes: List<Node>, node: Node) -> List<Node> {
@@ -84,13 +110,14 @@ fn runnable_frontier_from_dependencies(
   dependencies: List<DependencyView>,
   scheduled: List<Node>
 ) -> RunnableFrontier {
+  let execution_dependencies = scheduler_execution_dependencies(dependencies: dependencies)
   RunnableFrontier {
     ready: filter(
       xs: nodes,
       predicate: fn(candidate) {
         scheduler_node_unscheduled(scheduled: scheduled, candidate: candidate)
           && scheduler_node_unblocked(
-            dependencies: dependencies,
+            dependencies: execution_dependencies,
             scheduled: scheduled,
             candidate: candidate
           )
@@ -99,13 +126,60 @@ fn runnable_frontier_from_dependencies(
   }
 }
 
-fn runnable_frontier(graph_node: Node) -> RunnableFrontier {
-  let dependencies = dependency_lens(root: graph_node)
-  runnable_frontier_from_dependencies(
-    nodes: scheduler_dependency_nodes(dependencies: dependencies),
+fn scheduler_blocked_evidence(nodes: List<Node>, scheduled: List<Node>) -> SchedulerBlockedEvidence {
+  SchedulerNoRunnableFrontier {
+    unscheduled: filter(
+      xs: nodes,
+      predicate: fn(candidate) {
+        scheduler_node_unscheduled(scheduled: scheduled, candidate: candidate)
+      }
+    )
+  }
+}
+
+fn scheduler_plan_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> SchedulerPlan {
+  let runnable = runnable_frontier_from_dependencies(
+    nodes: nodes,
     dependencies: dependencies,
-    scheduled: []
+    scheduled: scheduled
   )
+  if non_empty(xs: runnable.ready) {
+    SchedulerPlanProduced {
+      layers: [
+        ReadinessLayer {
+          ready: runnable.ready
+        }
+      ]
+    }
+  } else {
+    SchedulerPlanBlocked {
+      evidence: scheduler_blocked_evidence(nodes: nodes, scheduled: scheduled)
+    }
+  }
+}
+
+fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> Optional<ReadinessLayer> {
+  fold(layers, init: Absent, f: fn(acc, layer) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: layer }
+    }
+  })
+}
+
+fn runnable_frontier_from_layers(layers: List<ReadinessLayer>) -> RunnableFrontier {
+  match scheduler_first_readiness_layer(layers: layers) {
+    Present { value: layer } => RunnableFrontier { ready: layer.ready }
+    Absent => RunnableFrontier { ready: [] }
+  }
+}
+
+fn runnable_frontier(graph_node: Node) -> RunnableFrontier {
+  runnable_frontier_from_layers(layers: scheduler_layers(graph_node: graph_node))
 }
 
 fn scheduler_layers(graph_node: Node) -> List<ReadinessLayer> {
@@ -113,8 +187,15 @@ fn scheduler_layers(graph_node: Node) -> List<ReadinessLayer> {
 }
 
 fn scheduler_plan(graph_node: Node) -> SchedulerPlan {
-  SchedulerPlan {
-    runnable: runnable_frontier(graph_node: graph_node),
-    layers: scheduler_layers(graph_node: graph_node)
+  let layers = scheduler_layers(graph_node: graph_node)
+  let runnable = runnable_frontier_from_layers(layers: layers)
+  if non_empty(xs: runnable.ready) {
+    SchedulerPlanProduced {
+      layers: layers
+    }
+  } else {
+    SchedulerPlanBlocked {
+      evidence: SchedulerNoRunnableFrontier { unscheduled: [graph_node] }
+    }
   }
 }
