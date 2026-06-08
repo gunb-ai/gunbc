@@ -972,9 +972,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
     // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
-    // White-box sweep (#4511): broader-corpus dual-rep smokes deleted (wave-owned rows untouched).
-    // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
-    "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
+    // White-box sweep (#4511 + B7 closeout): all v4_*_dag_smoke_test.rs retired — last row
+    // `v4_bin_main_dag_smoke_test.rs` deleted (B-class decl-shape/source-grep duplicate of
+    // t15 harness; parse rides `claim_t15_self_host_fixed_point.dag` import of v4.bin.main).
     // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
     // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
     // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
@@ -1449,12 +1449,10 @@ fn sg0_v3_test_hand_authored_subratchet() {
 #[test]
 fn v4_parse_surface_smoke_roster_is_closed_to_growth() {
     // Pinned to the live count (ctrl#1467 §6.4). Retirements lower this; nothing raises it.
-    // 18 (ratification) → 11 after the W-wave smoke→witness fold-deletes: #4511 broader-corpus
-    // sweep removed lens_testgen + workflow_release; W3 #4512 removed the std
-    // grounding/model_core/target_realization trio; W3 follow-up deleted the React smoke,
-    // leaving only `v4_bin_main_dag_smoke_test.rs`. Tightened to the live floor so the subset
-    // cannot grow back: a new v4 parse-surface smoke must instead land as a .dag claim-run witness.
-    const V4_DAG_SMOKE_CEILING: usize = 1;
+    // 18 (ratification) → 0 after W-wave fold-deletes + B7 closeout: #4511 broader-corpus
+    // sweep, W3 #4512 std trio, React smoke, and final bin_main B-class delete. Subset is
+    // empty; a new v4 parse-surface smoke must instead land as a .dag claim-run witness.
+    const V4_DAG_SMOKE_CEILING: usize = 0;
     let v4_dag_smokes: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
         .iter()
         .copied()
