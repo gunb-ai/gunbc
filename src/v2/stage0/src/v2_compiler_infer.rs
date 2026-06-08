@@ -1069,10 +1069,6 @@ pub fn direct_call_arg_mismatch_diags(
                                 formal.clone(),
                                 actual.clone(),
                                 source_indices.clone(),
-                            ) || set_element_types_mismatch(
-                                formal.clone(),
-                                actual.clone(),
-                                source_indices.clone(),
                             ) {
                                 Rc::new(vec![type_mismatch_error(
                                     node_type_shape(formal.clone(), source_indices.clone()),

@@ -651,8 +651,7 @@ fn direct_call_arg_mismatch_diags(
         Some { value: ta } =>
           let actual_raw = resolved_type(n: arg_value(n: ta))
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-          if nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
-            || set_element_types_mismatch(recv_elem: formal, operand_elem: actual, source_indices: source_indices) {
+          if nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
               got: node_type_shape(n: actual, source_indices: source_indices),
