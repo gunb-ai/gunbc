@@ -23,7 +23,6 @@ fn has_type_mismatch(result: &v2_compiler::v2_compiler_compile::PipelineResult) 
 // ── (1) FALSE-ACCEPT brand-twin: harder variants than the basic positive ──
 
 // Twin in 2nd arg position — guards the enumerate/skip index pairing.
-#[ignore = "KNOWN-RED (A3 verifier): expanded PD-3 gate false-accepts brand twins -- brand alias expanded to Refined<base> before node_type_compatible, brand name erased. Un-ignore when brand identity survives resolution. See PR #4528 report."]
 #[test]
 fn adv_brand_twin_in_second_arg_must_reject() {
     let source = r#"
@@ -52,7 +51,6 @@ fn caller(uid: UserId) -> String {
 }
 
 // Twin nested inside a container element — brand must survive recursion.
-#[ignore = "KNOWN-RED (A3 verifier): expanded PD-3 gate false-accepts brand twins -- brand alias expanded to Refined<base> before node_type_compatible, brand name erased. Un-ignore when brand identity survives resolution. See PR #4528 report."]
 #[test]
 fn adv_brand_twin_in_list_element_must_reject() {
     let source = r#"
@@ -110,7 +108,6 @@ fn caller(a: WrapA) -> Int {
 }
 
 // Twin where the value flows through a let-binding before the call.
-#[ignore = "KNOWN-RED (A3 verifier): expanded PD-3 gate false-accepts brand twins -- brand alias expanded to Refined<base> before node_type_compatible, brand name erased. Un-ignore when brand identity survives resolution. See PR #4528 report."]
 #[test]
 fn adv_brand_twin_via_let_must_reject() {
     let source = r#"
