@@ -133,17 +133,19 @@ type SurfacePattern
       span: SourceSpan
     }
 
-// 🟢 TERMINAL at parse_surface surface-literal scope. Three literal classes are irreducible
+// 🟢 TERMINAL at parse_surface surface-literal scope. Four literal classes are irreducible
 // input distinctions here; ledger: patterns 1–4 N/A (no finer substrate split without changing
 // the language surface). **Naming contract:** SurfaceLiteral variant labels MUST stay `Int` /
-// `Bool` / `String` — the same names as the historical handwritten parser — so generated Rust
-// matches `lower.rs` and every `SurfaceLiteral::…` constructor site. Do not rename to
-// `IntLit` / `BoolLit` / `StringLit` (tokenizer token kinds, not surface literals).
+// `Bool` / `String` / `Symbol` — the same names as the historical handwritten parser — so
+// generated Rust matches `lower.rs` and every `SurfaceLiteral::…` constructor site. Do not
+// rename to `IntLit` / `BoolLit` / `StringLit` (tokenizer token kinds, not surface literals).
 // `Int` payload: signed decimal string (matches `LiteralBits::LitInt` / tokenizer).
+// `Symbol` payload: opaque IDENT spelling from `^IDENT` (matches `LiteralBits::LitSymbol`).
 type SurfaceLiteral
   = Int(String)
   | Bool(Bool)
   | String(String)
+  | Symbol(String)
 
 // 🟡 SCAFFOLD — expression carrier mirror; same dissolution trigger as `SurfaceType`.
 type SurfaceExpr

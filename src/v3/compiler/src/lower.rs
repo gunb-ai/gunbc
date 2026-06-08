@@ -8,7 +8,7 @@
 //
 // Computation-side lowering follows M0 semantics unchanged:
 //
-//   SurfaceLiteral::{Int,Bool,String} → Value(LiteralBits::*)
+//   SurfaceLiteral::{Int,Bool,String,Symbol} → Value(LiteralBits::*)
 //   Var (local)              → scope lookup
 //   Var (unresolved)         → placeholder port + ResolveError
 //   Call                     → Transform { target: TransformTarget::Callable(DeclarationId), inputs }
@@ -6955,10 +6955,12 @@ fn lower_scalar_literal_for_type(
         SurfaceLiteral::Int(v) => LiteralBits::Int(v.clone()),
         SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
         SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
+        SurfaceLiteral::Symbol(v) => LiteralBits::Symbol(v.clone()),
     };
     let int_decl_id = dag.declaration_by_name("Int").map(|d| d.id);
     let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
+    let symbol_decl_id = dag.declaration_by_name("Symbol").map(|d| d.id);
     let type_ok = match &literal_bits {
         LiteralBits::Int(s) => {
             let Ok(int_value) = BigInt::from_str(s.as_str()) else {
@@ -6993,6 +6995,14 @@ fn lower_scalar_literal_for_type(
                 .unwrap_or(false)
                 || optional_element_type(dag, expected_type).is_some_and(|element| {
                     walks_to(dag, element, string_decl_id.unwrap_or(element))
+                })
+        }
+        LiteralBits::Symbol(_) => {
+            symbol_decl_id
+                .map(|id| walks_to(dag, expected_type, id))
+                .unwrap_or(false)
+                || optional_element_type(dag, expected_type).is_some_and(|element| {
+                    walks_to(dag, element, symbol_decl_id.unwrap_or(element))
                 })
         }
     };
@@ -9724,6 +9734,7 @@ fn lower_expr(
                 SurfaceLiteral::Int(v) => LiteralBits::Int(v.clone()),
                 SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
                 SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
+                SurfaceLiteral::Symbol(v) => LiteralBits::Symbol(v.clone()),
             };
             dag.push_node(Behavior::Value(ValueNode {
                 id: node_id,

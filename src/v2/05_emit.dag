@@ -436,6 +436,7 @@ fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) 
   match value.expr_data {
     ExprLiteral { value: v } => match v {
       LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
+      LitSymbol { value: s } => concat("\"", escape_json_string(s: s), "\"")
       LitInt { value: i } => to_string(value: i)
       LitFloat { value: f } => f
       LitBool { value: b } => if b { "true" } else { "false" }
@@ -568,6 +569,7 @@ fn is_null_coalesce(op: BinOp) -> Bool {
 fn rust_literal_for_pattern(value: LiteralValue) -> String {
   match value {
     LitStr { value: s } => emit_string_literal(s: s, suffix: "")
+    LitSymbol { value: s } => emit_string_literal(s: s, suffix: ".to_string()")
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f
     LitBool { value: b } => if b { emit_keyword(key: "true", target: Rust) } else { emit_keyword(key: "false", target: Rust) }
@@ -602,6 +604,15 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
     LitFloat { value: f } => f
     LitBool { value: b } => if b { emit_keyword(key: "true", target: target) } else { emit_keyword(key: "false", target: target) }
     LitNull => emit_keyword(key: "null", target: target)
+    LitSymbol { value: s } =>
+      let suffix = match literal_suffix(target: target, dag_name: "Symbol") {
+        Some { value: sfx } => sfx
+        None => match literal_suffix(target: target, dag_name: "String") {
+          Some { value: sfx } => sfx
+          None => emit_error_expr(message: "missing TypeCheckpoint for Symbol literal suffix", target: target)
+        }
+      }
+      emit_string_literal(s: s, suffix: suffix)
   }
 }
 

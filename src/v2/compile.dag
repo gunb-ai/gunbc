@@ -642,6 +642,8 @@ fn serialize_literal(value: LiteralValue) -> String {
     LitBool { value: inner } =>
       concat("{\"kind\": \"LitBool\", \"value\": ", json_bool(value: inner), "}")
     LitNull => "{\"kind\": \"LitNull\"}"
+    LitSymbol { value: inner } =>
+      concat("{\"kind\": \"LitSymbol\", \"value\": ", json_quote(s: inner), "}")
   }
 }
 

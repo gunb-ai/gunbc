@@ -7,11 +7,11 @@ pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
 pub use crate::v2_std_core::make_file_span;
 use crate::v2_std_core::TokenShape::{
-    ShAnd, ShArrow, ShBang, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq, ShFatArrow,
-    ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat, ShLitInt,
-    ShLitStr, ShLt, ShMinus, ShNe, ShNewline, ShNullCoalesce, ShOr, ShPercent, ShPipe, ShPipeArrow,
-    ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin, ShStrEnd,
-    ShStrMid, ShUnknown,
+    ShAnd, ShArrow, ShBang, ShCaret, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq,
+    ShFatArrow, ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat,
+    ShLitInt, ShLitStr, ShLt, ShMinus, ShNe, ShNewline, ShNullCoalesce, ShOr, ShPercent, ShPipe,
+    ShPipeArrow, ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin,
+    ShStrEnd, ShStrMid, ShUnknown,
 };
 pub use crate::v2_std_core::{Token, TokenShape};
 use crate::NonEmptyBTreeSet;
@@ -42,6 +42,7 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
             __m.insert("*".to_string(), TokenShape::ShStar);
             __m.insert("%".to_string(), TokenShape::ShPercent);
             __m.insert("/".to_string(), TokenShape::ShSlash);
+            __m.insert("^".to_string(), TokenShape::ShCaret);
             Rc::new(__m)
         };
     }
