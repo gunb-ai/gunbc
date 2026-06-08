@@ -516,6 +516,8 @@ jobs:
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
+    - name: affected-set node-frontier selection must-pass discriminating witnesses
+      run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
     needs: [affected, ci_floor, ci_floor_emit, v4_lens_ci, infra_isolation, doc_refs]
