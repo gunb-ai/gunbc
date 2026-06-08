@@ -97,7 +97,7 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
         eprintln!(
-            "gunbc-ci: BinaryShim dispatch stub (workflow={wf}); gate matrix execution not wired yet."
+            "gunbc-ci: BinaryShim dispatch stub (workflow={wf}); run-all (Phase A3) not wired yet."
         );
         let allow_stub = std::env::var("GUNBC_CI_ALLOW_DISPATCH_STUB")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -105,8 +105,17 @@ fn main() -> ExitCode {
         if allow_stub {
             return ExitCode::SUCCESS;
         }
+        // A3 run-all is blocked on two substrate gaps — see
+        // docs/planning/thin-shim-ci-a3-runall-blocker-report-2026-06-08.md.
+        // Both are Mgr-C/operator-gated (model edits + loader); not fabricated here.
         eprintln!(
-            "gunbc-ci: refusing success for unimplemented dispatch (exit 2). \
+            "gunbc-ci: refusing success for unimplemented dispatch (exit 2). Phase A3 run-all needs:\n\
+             \x20 (B1) a cross-module v4 runtime loader reachable by this runner — frozen-v3 \
+             single-source `compile_to_dag` cannot load `src/v4/workflow/ci.dag` + its 28-import \
+             closure (v4 load is the v2 `dag run` path, not linked here);\n\
+             \x20 (B2) per-job runnable command authority IN the model — `CiCommand` arms are \
+             abstract tags; the shell lives in ci.yml/ci-floor, and a Rust dispatch table would be \
+             a banned dual-authority. See the A3 blocker report.\n\
              Set GUNBC_CI_ALLOW_DISPATCH_STUB=1 to smoke this stub until dispatch lands."
         );
         return ExitCode::from(2);
