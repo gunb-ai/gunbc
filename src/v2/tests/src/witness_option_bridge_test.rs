@@ -32,11 +32,8 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 }
 
 fn run_v4_module(entry: &str, content: &str, witness_fn: &str) -> Value {
-    let sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
-        entry,
-        content,
-        &v4_source_roots(),
-    );
+    let sources: Vec<Rc<SourceFile>> =
+        resolve_imports_transitively_with_source_roots(entry, content, &v4_source_roots());
     let resolved = compile_to_resolved(Rc::new(sources));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
@@ -107,8 +104,6 @@ fn mark_excluded_no_longer_pattern_match_fails() {
     // Returns Bool (true or false) — the pre-fix crash was PatternMatchFailure on Holds.
     match run_v4_module(entry, &content, "excluded_propagation_proof_claim_holds") {
         Value::Bool(_) => {}
-        other => panic!(
-            "expected Bool witness from mark_excluded path, not crash; got {other:?}"
-        ),
+        other => panic!("expected Bool witness from mark_excluded path, not crash; got {other:?}"),
     }
 }
