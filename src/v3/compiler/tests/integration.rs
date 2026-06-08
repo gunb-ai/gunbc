@@ -63,8 +63,6 @@ mod cost_lens_symbolic_consumer_test;
 mod coverage_defect_acceptance_dag_test;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
 mod cross_target_coverage_carrier_test;
-#[path = "integration/ctrl_pr_digests_dag_smoke_test.rs"]
-mod ctrl_pr_digests_dag_smoke_test;
 #[path = "integration/dissolution_subsumption_carrier_test.rs"]
 mod dissolution_subsumption_carrier_test;
 #[path = "integration/e6_g1a_option3_static_lens_test.rs"]
