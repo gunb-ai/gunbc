@@ -114,6 +114,13 @@ fn canonical_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -
   }
 }
 
+fn is_declared_container_alias_spelling(name: String) -> Bool {
+  match container_template_algebra(name: name) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
 // =========================================================================
 // Type structure predicates (MM-2)
 // =========================================================================
@@ -713,7 +720,9 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
     }
     else if (((canonical_template_name(n: left, source_indices: source_indices) == canonical_template_name(n: right, source_indices: source_indices))
       && (authored_name_at(source_indices: source_indices, node: left) != authored_name_at(source_indices: source_indices, node: right)))
-      && (left.children |> count == 1)) && (right.children |> count == 1) {
+      && (left.children |> count == 1)) && (right.children |> count == 1)
+      && (is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: left))
+        || is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: right))) {
       // Aliased sequence spellings — e.g. List<T> (Container) vs FreeMonoid<T>
       // (Node), which collection.dag declares the SAME type (List = FreeMonoid).
       // They canonicalize to the same template but carry different surface

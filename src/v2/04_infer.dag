@@ -617,9 +617,21 @@ fn set_element_types_mismatch(recv_elem: Node, operand_elem: Node, source_indice
     && !node_type_compatible(left: recv_elem, right: operand_elem, source_indices: source_indices)
 }
 
-// Bounded direct-call arg check (A3 / E1): when formal and actual are both
-// concrete, reject via node_type_compatible — brand twins stay distinct,
-// declared structural aliases (List vs FreeMonoid) stay transparent.
+// Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
+// that share a structural carrier (UserId vs AccountId over Refined<String>)
+// without widening to every !node_type_compatible pair (e.g. fn vs Bool).
+fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+  let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+  !node_type_compatible(left: formal, right: actual, source_indices: source_indices)
+    && formal_name != ""
+    && actual_name != ""
+    && formal_name != actual_name
+    && canonical_template_name(n: formal, source_indices: source_indices) == canonical_template_name(n: actual, source_indices: source_indices)
+    && !is_declared_container_alias_spelling(name: formal_name)
+    && !is_declared_container_alias_spelling(name: actual_name)
+}
+
 fn direct_call_arg_mismatch_diags(
   value_params: List<Node>,
   typed_args: List<Node>,
@@ -635,7 +647,7 @@ fn direct_call_arg_mismatch_diags(
       match typed_args |> skip(pair.first) |> first {
         Some { value: ta } =>
           let actual = resolved_type(n: arg_value(n: ta))
-          if set_element_types_mismatch(recv_elem: formal, operand_elem: actual, source_indices: source_indices) {
+          if nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
               got: node_type_shape(n: actual, source_indices: source_indices),
