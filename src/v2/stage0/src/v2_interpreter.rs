@@ -3390,7 +3390,7 @@ fn eval_builtin(
         "atom_identity_hash" => match positional.as_slice() {
             [Value::Str(s)] => Ok(Some(Value::Str(v2_rt::atom_identity_hash(s.clone())))),
             _ => Err(InterpError::TypeError {
-                msg: "atom_identity_hash requires exactly one string argument".to_string(),
+                msg: format!("atom_identity_hash requires exactly one string argument; got: {:?}", positional),
             }),
         },
 
