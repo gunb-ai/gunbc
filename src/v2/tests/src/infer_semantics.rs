@@ -3,6 +3,7 @@ use std::rc::Rc;
 use v2_compiler::std_induction::SubValueRelation;
 use v2_compiler::std_types::container_param_name;
 use v2_compiler::v2_compiler_infer_access;
+use v2_compiler::v2_compiler_infer_env::lookup_type_by_name;
 use v2_compiler::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
@@ -177,6 +178,70 @@ fn assert_compiler_error(inferred: &Option<Rc<InferredNode>>, message_fragment: 
         }
         other => panic!("expected CompilerError return type, got {:?}", other),
     }
+}
+
+#[test]
+fn m1_brand_twins_over_refined_base_remain_distinct_in_infer_representation() {
+    let source = r#"
+module m1.brand_twins
+
+import v4.std.refinement { Refined }
+
+type UserId = Refined<String>
+type AccountId = Refined<String>
+"#;
+
+    let result = crate::helpers::compile_dag_resolved(source);
+    assert!(
+        result.diagnostics.is_empty(),
+        "brand-twin infer probe should compile without diagnostics, got: {:?}",
+        result
+            .diagnostics
+            .iter()
+            .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect::<Vec<_>>()
+    );
+    let graph = result.graph.as_ref().expect("resolved graph");
+    let module = graph
+        .modules
+        .iter()
+        .find(|m| {
+            v2_compiler::v2_std_core::authored_name_at(
+                result.source_indices.clone(),
+                m.module.clone(),
+            ) == "m1.brand_twins"
+        })
+        .expect("m1.brand_twins module");
+
+    let user_id = lookup_type_by_name(module.type_env.clone(), "UserId".to_string())
+        .expect("UserId type binding");
+    let account_id = lookup_type_by_name(module.type_env.clone(), "AccountId".to_string())
+        .expect("AccountId type binding");
+    let refined_string = lookup_type_by_name(module.type_env.clone(), "Refined".to_string())
+        .expect("Refined type binding");
+    let string = lookup_type_by_name(module.type_env.clone(), "String".to_string())
+        .expect("String type binding");
+
+    assert_ne!(
+        user_id, account_id,
+        "M1 brand twins must keep distinct declaration identities; collapse here means A3 needs brand-aware rework"
+    );
+    assert_ne!(
+        user_id, refined_string,
+        "UserId must not collapse to the shared Refined carrier"
+    );
+    assert_ne!(
+        account_id, refined_string,
+        "AccountId must not collapse to the shared Refined carrier"
+    );
+    assert_ne!(
+        user_id, string,
+        "UserId must not collapse to the shared base String"
+    );
+    assert_ne!(
+        account_id, string,
+        "AccountId must not collapse to the shared base String"
+    );
 }
 
 #[test]
