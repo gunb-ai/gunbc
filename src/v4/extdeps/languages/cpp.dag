@@ -1316,10 +1316,10 @@ data cpp_mvp1_target_profile: Node = Node {
 }
 
 fn cpp_mvp1_target_model() -> TargetModel {
-  cpp_mvp1_target_model(target_profile: cpp_mvp1_target_profile)
+  cpp_mvp1_target_model_for_profile(target_profile: cpp_mvp1_target_profile)
 }
 
-fn cpp_mvp1_target_model(target_profile: Node) -> TargetModel {
+fn cpp_mvp1_target_model_for_profile(target_profile: Node) -> TargetModel {
   TargetModel {
     bundle: cpp_mvp1_target_model_node(target_profile: target_profile),
     lex: cpp_wave1_lex(),
