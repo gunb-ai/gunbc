@@ -233,4 +233,3 @@ fn caller(s: String) -> Int {
     let result = crate::helpers::compile_dag(source);
     crate::helpers::assert_no_diagnostics(&result);
 }
-

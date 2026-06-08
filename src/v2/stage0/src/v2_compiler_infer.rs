@@ -1007,25 +1007,80 @@ pub fn nominal_call_arg_brand_mismatch(
     actual: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
+    let formal_name = authored_name_at(source_indices.clone(), formal.clone());
+    let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+    formal.connective.clone() != Connective::Arrow
+        && actual.connective.clone() != Connective::Arrow
+        && formal_name.as_str() != ""
+        && actual_name.as_str() != ""
+        && formal_name.as_str() != actual_name.as_str()
+        && structural_carrier_template_name(formal.clone(), source_indices.clone()).as_str()
+            == structural_carrier_template_name(actual.clone(), source_indices.clone()).as_str()
+        && !is_declared_container_alias_spelling(formal_name.clone())
+        && !is_declared_container_alias_spelling(actual_name.clone())
+}
+
+pub fn container_element_nominal_brand_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if ((node_is_element_collection(formal.clone(), source_indices.clone())
+        && node_is_element_collection(actual.clone(), source_indices.clone()))
+        && (authored_name_at(source_indices.clone(), formal.clone()).as_str()
+            == authored_name_at(source_indices.clone(), actual.clone()).as_str()))
     {
-        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
-        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-        ((((((((!node_type_compatible(
+        match formal.children.clone().first().cloned() {
+            Some(formal_ch) => match actual.children.clone().first().cloned() {
+                Some(actual_ch) => {
+                    let formal_el = peel_nominal_alias_identity(
+                        child_type_node(formal_ch.clone()),
+                        type_env.clone(),
+                        module_name.clone(),
+                    );
+                    let actual_el = peel_nominal_alias_identity(
+                        child_type_node(actual_ch.clone()),
+                        type_env.clone(),
+                        module_name.clone(),
+                    );
+                    nominal_call_arg_brand_mismatch(formal_el, actual_el, source_indices.clone())
+                }
+                None => false,
+            },
+            None => false,
+        }
+    } else {
+        false
+    }
+}
+
+pub fn direct_call_arg_type_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
+        || container_element_nominal_brand_mismatch(
             formal.clone(),
             actual.clone(),
+            type_env,
+            module_name,
             source_indices.clone(),
-        ) && (formal.connective.clone() != Connective::Arrow))
-            && (actual.connective.clone() != Connective::Arrow))
-            && (formal_name.clone().as_str() != "".to_string().as_str()))
-            && (actual_name.clone().as_str() != "".to_string().as_str()))
-            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
-            && (structural_carrier_template_name(formal.clone(), source_indices.clone())
-                .as_str()
-                == structural_carrier_template_name(actual.clone(), source_indices.clone())
-                    .as_str()))
-            && !is_declared_container_alias_spelling(formal_name.clone()))
-            && !is_declared_container_alias_spelling(actual_name.clone()))
-    }
+        )
+        || (set_element_types_mismatch(formal.clone(), actual.clone(), source_indices.clone())
+            && formal.connective.clone() != Connective::Arrow
+            && actual.connective.clone() != Connective::Arrow
+            && (is_declared_container_alias_spelling(authored_name_at(
+                source_indices.clone(),
+                formal.clone(),
+            )) || is_declared_container_alias_spelling(authored_name_at(
+                source_indices.clone(),
+                actual.clone(),
+            ))))
 }
 
 pub fn direct_call_arg_mismatch_diags(
@@ -1071,9 +1126,11 @@ pub fn direct_call_arg_mismatch_diags(
                                     type_env.clone(),
                                     module_name.clone(),
                                 );
-                                if nominal_call_arg_brand_mismatch(
+                                if direct_call_arg_type_mismatch(
                                     formal.clone(),
                                     actual.clone(),
+                                    type_env.clone(),
+                                    module_name.clone(),
                                     source_indices.clone(),
                                 ) {
                                     Rc::new(vec![type_mismatch_error(
