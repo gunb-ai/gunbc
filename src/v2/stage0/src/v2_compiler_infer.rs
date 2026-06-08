@@ -12429,11 +12429,8 @@ pub fn topo_resolve_types(
                         match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
                             Some(binding) => {
                                 let pre = binding.resolved.clone();
-                                let result = resolve_node(
-                                    pre.clone(),
-                                    env.clone(),
-                                    module_name.clone(),
-                                );
+                                let result =
+                                    resolve_node(pre.clone(), env.clone(), module_name.clone());
                                 let resolved = preserve_nominal_brand_on_resolve(
                                     pre,
                                     result.resolved.clone(),
@@ -12486,11 +12483,7 @@ pub fn topo_resolve_types(
                 match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
                     Some(binding) => {
                         let pre = binding.resolved.clone();
-                        let result = resolve_node(
-                            pre.clone(),
-                            env.clone(),
-                            module_name.clone(),
-                        );
+                        let result = resolve_node(pre.clone(), env.clone(), module_name.clone());
                         let resolved = preserve_nominal_brand_on_resolve(
                             pre,
                             result.resolved.clone(),

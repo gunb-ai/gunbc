@@ -113,9 +113,11 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                             .resolved
                             .clone()
                     }
-                    _ => resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
-                        .resolved
-                        .clone(),
+                    _ => {
+                        resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
+                            .resolved
+                            .clone()
+                    }
                 }
             } else {
                 resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
