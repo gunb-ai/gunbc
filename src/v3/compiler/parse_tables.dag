@@ -466,6 +466,10 @@ data primary_prefix_lbracket: PrimaryPrefixRow = {
   token_variant: "LBracket"
 }
 
+data primary_prefix_caret: PrimaryPrefixRow = {
+  token_variant: "Caret"
+}
+
 // --- SG-2c-7: `parse_primary` atomic tail (after prefix pass). The bump that
 // follows a non-prefix `peek` must be one of: integer literal, boolean
 // keyword literals, string, `Pipe` (single `|`, not `PipeArrow` / `|>`) for

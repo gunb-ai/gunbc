@@ -58,6 +58,7 @@ type TokenKind
   | Semicolon
   | Pipe
   | Question
+  | Caret
   | Eof
 
 // 🟢 TERMINAL. Source-range-carrying token record used by the tokenizer and any
@@ -122,6 +123,7 @@ type PunctTokenKind
   | Semicolon
   | Pipe
   | Question
+  | Caret
 
 // 🟢 TERMINAL. Tokenizer-local punctuation rows are shared lexical facts once
 // authored; moving them to `std/` dissolves the old compiler-only duplicate

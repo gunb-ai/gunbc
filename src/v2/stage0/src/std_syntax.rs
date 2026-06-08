@@ -42,6 +42,7 @@ pub enum LiteralValue {
     LitFloat { value: String },
     LitBool { value: bool },
     LitNull,
+    LitSymbol { value: String },
 }
 
 #[derive(

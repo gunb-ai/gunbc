@@ -30,8 +30,8 @@ env:
 # Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness + DAG parity) + ci_floor_emit (M1 rust+dag emit) + doc_refs (doc-authority reference gate)
 # Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness, DAG parity (ci_floor), M1 rust+dag emit (ci_floor_emit). doc_refs (touched-doc reference resolution) rolls into the `ci` aggregator.
 jobs:
-  # RUNNER-ISOLATION SECURITY FLOOR -- model authority: src/v4/workflow/ci.dag
-  # `ci_runner_isolation_policy`.
+  # RUNNER-ISOLATION SECURITY FLOOR -- authority: this workflow (.github/workflows/ci.yml) is the
+  # direct hand-edited CI authority; the prior src/v4/workflow/ci.dag runner-isolation model was deleted.
   # gunbc is PUBLIC on the private self-hosted fleet, so
   # fork-PR runs execute attacker-controlled code on srv1/srv2. The operator runner de-priv (jobs run
   # as unprivileged `ghrunner`: non-root, not in docker/sudo/lxd/wheel/root, no passwordless sudo, no
@@ -66,7 +66,7 @@ jobs:
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
-        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.
+        # sccache_local_facts) -- NOT this hand-wire.
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
@@ -85,7 +85,7 @@ jobs:
         # sick/unreachable server and degrades to a cold build (::warning) instead
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
-        # Fails SAFE at every stage; dissolve-on-arrival (real fix: ci.dag cache projection).
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -163,7 +163,7 @@ jobs:
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
-        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.
+        # sccache_local_facts) -- NOT this hand-wire.
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
@@ -182,7 +182,7 @@ jobs:
         # sick/unreachable server and degrades to a cold build (::warning) instead
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
-        # Fails SAFE at every stage; dissolve-on-arrival (real fix: ci.dag cache projection).
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -251,7 +251,7 @@ jobs:
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
-        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.
+        # sccache_local_facts) -- NOT this hand-wire.
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
@@ -270,7 +270,7 @@ jobs:
         # sick/unreachable server and degrades to a cold build (::warning) instead
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
-        # Fails SAFE at every stage; dissolve-on-arrival (real fix: ci.dag cache projection).
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -302,7 +302,7 @@ jobs:
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     # INTERIM transport repair (operator 2026-06-01, "stop the bleeding"). Authority for the
-    # right-way fix: src/v4/workflow/ci.dag cache-projection note + dsl/std/cache_interface.dag.
+    # right-way fix: the modeled cache_interface projection (dsl/std/cache_interface.dag).
     # The old key mixed in hashFiles('src/v3/compiler/src/**', …), which changes on nearly every
     # commit -- so the primary slot was NEVER reused: each run minted a brand-new ~200 MiB cache,
     # flooding the repo's 10 GB budget and LRU-evicting the warm caches (including the v2
@@ -311,7 +311,7 @@ jobs:
     # bought churn, not correctness. De-churned to Cargo.lock + toolchain -> one cache per
     # dependency set, restored via the broad restore-key, eviction pressure cut ~100×.
     # Does NOT speed up the M1 emit-probe / bootstrap steps -- those need content-addressed
-    # sccache via the modeled cache_interface projection (see ci.dag note). dissolve-on-arrival.
+    # sccache via the modeled cache_interface projection (see dsl/std/cache_interface.dag). dissolve-on-arrival.
     - name: Cache Cargo (ci floor)
       uses: actions/cache@v5
       with:
@@ -377,7 +377,7 @@ jobs:
         echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
-        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.
+        # sccache_local_facts) -- NOT this hand-wire.
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
@@ -396,7 +396,7 @@ jobs:
         # sick/unreachable server and degrades to a cold build (::warning) instead
         # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
         # a probe failure under `set -e` selects the cold branch, never aborts.
-        # Fails SAFE at every stage; dissolve-on-arrival (real fix: ci.dag cache projection).
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
              && sccache --start-server >/dev/null 2>&1 \
              && sccache --show-stats >/dev/null 2>&1; then
@@ -516,6 +516,8 @@ jobs:
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
+    - name: affected-set node-frontier selection must-pass discriminating witnesses
+      run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
     needs: [affected, ci_floor, ci_floor_emit, v4_lens_ci, infra_isolation, doc_refs]

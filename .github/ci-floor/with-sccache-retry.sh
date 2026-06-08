@@ -29,7 +29,7 @@
 # Usage: bash .github/ci-floor/with-sccache-retry.sh <cmd> [args...]
 #
 # Authority: companion to the ci.yml sccache gate health-probe; durable fix is
-# the modeled cache_interface projection (src/v4/workflow/ci.dag). dissolve-on-arrival.
+# the modeled cache_interface projection (dsl/std/cache_interface.dag). dissolve-on-arrival.
 
 set -uo pipefail
 

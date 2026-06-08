@@ -1,6 +1,6 @@
-// Host transport for `v4.workflow.ci` `ci_component_affected_from_git_diff_read` (T-24).
-// Replaces scripts/detect-affected-components.sh. Modeled authority is `src/v4/workflow/ci.dag`;
-// this bin executes the Rust mirror in `ci_affected_components` (parity-ratcheted to ci.dag).
+// Host transport for ci.yml affected-set gating (`detect-ci-affected-components` step).
+// Replaces scripts/detect-affected-components.sh. Authority is `.github/workflows/ci.yml`;
+// this bin executes the Rust mirror in `ci_affected_components`.
 // Crate lives outside v3-compiler so affected-set gating does not require compiling v3 first.
 #![allow(clippy::disallowed_macros)]
 

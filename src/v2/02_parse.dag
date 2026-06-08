@@ -20,7 +20,7 @@ import v2.std.core {
   make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node,
   MatchPattern, make_field_binding_node, field_binding_pattern,
   Bind, LitPattern, VariantPattern, Wildcard,
-  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
+  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
   ExprErrorKind, ParseRecoveryError,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
@@ -38,7 +38,7 @@ import v2.std.core {
   ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
   ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr,
   ShQuestion, ShNullCoalesce, ShPipe, ShPipeArrow,
-  ShLitStr, ShLitInt, ShLitFloat, ShIdent,
+  ShLitStr, ShLitInt, ShLitFloat, ShIdent, ShCaret,
   ShStrBegin, ShStrMid, ShStrEnd,
   ShNewline, ShEof, ShUnknown,
   SourceSpan, make_span,
@@ -465,6 +465,7 @@ fn shape_display_name(shape: TokenShape) -> String {
     ShOr => "Or"
     ShQuestion => "Question"
     ShNullCoalesce => "NullCoalesce"
+    ShCaret => "Caret"
     ShPipe => "Pipe"
     ShPipeArrow => "PipeArrow"
     ShLitStr => "LitStr"
@@ -3432,6 +3433,54 @@ fn parse_prefix(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
 }
 
 // =========================================================================
+// 16b. parse_caret_expr — `^IDENT` symbol literal | `^(Expr)` discriminant sugar
+// =========================================================================
+
+fn parse_caret_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
+  let dummy_expr = parse_recovery_placeholder()
+  let after_caret = tokens |> skip(1)
+  let next = after_caret |> first
+  let next_shape = match next { Some { value: t } => Some { value: t.shape }  None => none }
+  match next_shape {
+    Some { value: ShIdent } => {
+      let spelling = next.value.text
+      let end_span = token_span(tok: next)
+      let lit_span = make_span(start: span.start, end: end_span.end)
+      ExprResult {
+        expr: make_expr_node(expr_data: ExprLiteral { value: LitSymbol { value: spelling } }, children: [], inferred: none, span: lit_span),
+        tokens: after_caret |> skip(1),
+        ctx: ctx,
+        err: none
+      }
+    }
+    Some { value: ShLParen } => {
+      let r = parse_expr(tokens: after_caret |> skip(1), ctx: ctx)
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+      let tokens = skip_newlines(tokens: r.tokens)
+      let r2 = expect(tokens: tokens, expected: ExpectRParen)
+      if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+      let call_span = make_span(start: span.start, end: r2.token.span.end)
+      let callee = make_named_expr_node(name: "discriminant", expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: call_span, name_span: kernel_span(name: "discriminant"))
+      let call = make_call_expr(lhs: callee, args: [r.expr], span: call_span, source_indices: ctx.source_indices)
+      ExprResult { expr: call, tokens: r2.tokens, ctx: ctx, err: none }
+    }
+    _ => {
+      let found = match next_shape {
+        Some { value: shape } => shape_display_name(shape: shape)
+        None => "EOF"
+      }
+      ExprResult {
+        expr: parse_recovery_expr(span: span, message: "expected identifier or `(` after `^`, found {found}"),
+        tokens: after_caret,
+        ctx: ctx,
+        err: Some { value: parse_error(msg: "expected identifier or `(` after `^`, found {found}", span: span) }
+      }
+    }
+  }
+}
+
+// =========================================================================
 // 17. parse_primary
 // =========================================================================
 
@@ -3485,6 +3534,7 @@ fn parse_primary(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
       ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
     Some { value: ShStrBegin } => parse_string_interp(tokens: tokens, ctx: ctx)
+    Some { value: ShCaret } => parse_caret_expr(tokens: tokens, ctx: ctx)
     Some { value: ShIdent } => {
       let n = tok.value.text
       parse_ident_expr(tokens: tokens, ctx: ctx, name: n)

@@ -651,7 +651,7 @@ fn every_primary_prefix_row_token_variant_is_a_token_kind_variant() {
 #[test]
 fn primary_prefix_rows_cover_exactly_the_tokens_parse_primary_prefix_dispatches_on() {
     let expected: std::collections::BTreeSet<&'static str> =
-        ["KwIf", "KwMatch", "LBrace", "LBracket"]
+        ["KwIf", "KwMatch", "LBrace", "LBracket", "Caret"]
             .into_iter()
             .collect();
 

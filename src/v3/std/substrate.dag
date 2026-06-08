@@ -45,6 +45,8 @@ type LiteralBits
   = LitInt(String)
   | LitBool(Bool)
   | LitString(String)
+  // Opaque symbol literal: spelling from `^IDENT` surface syntax (no name resolution).
+  | LitSymbol(String)
 
 // Dissolution ledger — AtomPayload (substrate authority; was dag.rs hand-Rust).
 //

@@ -123,3 +123,4 @@ data local_punct_comma: LocalPunctSpec = { pattern: ",", kind: Comma }
 data local_punct_semicolon: LocalPunctSpec = { pattern: ";", kind: Semicolon }
 data local_punct_pipe: LocalPunctSpec = { pattern: "|", kind: Pipe }
 data local_punct_question: LocalPunctSpec = { pattern: "?", kind: Question }
+data local_punct_caret: LocalPunctSpec = { pattern: "^", kind: Caret }
