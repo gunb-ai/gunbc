@@ -817,6 +817,10 @@ pub fn emit_data_value_json(
                     v2_rt::concat("\"".to_string(), escape_json_string(s.clone())),
                     "\"".to_string(),
                 ),
+                LiteralValue::LitSymbol { value: s, .. } => v2_rt::concat(
+                    v2_rt::concat("\"".to_string(), escape_json_string(s.clone())),
+                    "\"".to_string(),
+                ),
                 LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
                 LiteralValue::LitFloat { value: f, .. } => f.clone(),
                 LiteralValue::LitBool { value: b, .. } => {
@@ -1107,6 +1111,9 @@ pub fn is_null_coalesce(op: BinOp) -> bool {
 pub fn rust_literal_for_pattern(value: Rc<LiteralValue>) -> String {
     match (*value).clone() {
         LiteralValue::LitStr { value: s, .. } => emit_string_literal(s.clone(), "".to_string()),
+        LiteralValue::LitSymbol { value: s, .. } => {
+            emit_string_literal(s.clone(), ".to_string()".to_string())
+        }
         LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
         LiteralValue::LitFloat { value: f, .. } => f.clone(),
         LiteralValue::LitBool { value: b, .. } => {
@@ -1146,6 +1153,19 @@ pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
             }
         }
         LiteralValue::LitNull => emit_keyword("null".to_string(), target.clone()),
+        LiteralValue::LitSymbol { value: s, .. } => {
+            let suffix = match literal_suffix(target.clone(), "Symbol".to_string()) {
+                Some(sfx) => sfx.clone(),
+                None => match literal_suffix(target.clone(), "String".to_string()) {
+                    Some(sfx) => sfx.clone(),
+                    None => emit_error_expr(
+                        "missing TypeCheckpoint for Symbol literal suffix".to_string(),
+                        target.clone(),
+                    ),
+                },
+            };
+            emit_string_literal(s.clone(), suffix)
+        }
     }
 }
 

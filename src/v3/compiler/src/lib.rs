@@ -1214,12 +1214,24 @@ pub mod evaluator {
                     (
                         Value::LiteralValue(LiteralBits::String(a)),
                         Value::LiteralValue(LiteralBits::String(b)),
+                    )
+                    | (
+                        Value::LiteralValue(LiteralBits::Symbol(a)),
+                        Value::LiteralValue(LiteralBits::Symbol(b)),
+                    )
+                    | (
+                        Value::LiteralValue(LiteralBits::String(a)),
+                        Value::LiteralValue(LiteralBits::Symbol(b)),
+                    )
+                    | (
+                        Value::LiteralValue(LiteralBits::Symbol(a)),
+                        Value::LiteralValue(LiteralBits::String(b)),
                     ) => match op {
                         ComparisonOp::Eq => a == b,
                         ComparisonOp::Ne => a != b,
                         _ => {
                             return Err(EvalError::BadTransformOperands {
-                                reason: "string comparison beyond Eq/Ne",
+                                reason: "string/symbol comparison beyond Eq/Ne",
                             });
                         }
                     },

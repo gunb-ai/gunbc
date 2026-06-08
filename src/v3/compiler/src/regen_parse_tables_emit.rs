@@ -655,9 +655,10 @@ fn primary_prefix_dispatch_label_from_token_variant(
     match token_variant {
         "LBrace" => "Record".to_string(),
         "LBracket" => "List".to_string(),
+        "Caret" => "Caret".to_string(),
         other => panic!(
             "`parse_tables.dag::{decl_name}`: token_variant `{other}` must be `Kw*` or \
-             `LBrace` / `LBracket` (primary prefix openers)"
+             `LBrace` / `LBracket` / `Caret` (primary prefix openers)"
         ),
     }
 }

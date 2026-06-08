@@ -1,11 +1,11 @@
-//! v4 `workflow/ci.dag` component affected-set — always-supported CI host transport.
+//! CI component affected-set — always-supported CI host transport.
 //!
-//! **Modeled authority:** `src/v4/workflow/ci.dag` (`ci_component_affected_from_git_diff` and
-//! `ci_changed_path_affects_*`). This crate is an interim Rust mirror of those predicates for
-//! the CI runner (not `.dag` eval yet); keep aligned via `tools/ci_workflow_ratchet`
-//! set-equality + behavioral fixture parity (not substring presence). Lives outside `v3-compiler`
-//! so the affected job can emit `v3=false` without compiling the frozen v3 package first
-//! (INVARIANTS P3 fail-closed boundary).
+//! **Authority:** `.github/workflows/ci.yml` (hand-edited CI source of truth; `ci_component_affected`
+//! path predicates and `ci_changed_path_affects_*` buckets). This crate is the Rust mirror those
+//! predicates execute in the affected job. The former `src/v4/workflow/ci.dag` ↔ mirror set-equality
+//! ratchet (`tools/ci_workflow_ratchet`) retired with #4543; keep aligned via behavioral fixture
+//! tests in this crate. Lives outside `v3-compiler` so the affected job can emit `v3=false` without
+//! compiling the frozen v3 package first (INVARIANTS P3 fail-closed boundary).
 
 pub mod git_diff_transport;
 pub mod receipt;
@@ -37,7 +37,7 @@ pub fn ci_component_affected_fail_closed() -> CiComponentAffected {
     }
 }
 
-/// Map `git diff --name-only` paths to component flags (same semantics as `ci.dag`).
+/// Map `git diff --name-only` paths to component flags (same semantics as ci.yml affected-set gating).
 pub fn ci_component_affected_from_changed_paths<'a, I>(changed: I) -> CiComponentAffected
 where
     I: IntoIterator<Item = &'a str>,
@@ -121,7 +121,6 @@ pub fn ci_changed_path_affects_v3(path: &str) -> bool {
 pub fn ci_changed_path_affects_v4(path: &str) -> bool {
     path == "src/v4/bin/main.dag"
         || path == "src/v4/workflow/bootstrap.dag"
-        || path == "src/v4/workflow/ci.dag"
         || path.starts_with("src/v4/compiler/")
         || path.starts_with("src/v4/std/")
         || path.starts_with("src/v4/extdeps/")
@@ -148,7 +147,6 @@ pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
 
 pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
     path.starts_with(".github/workflows/")
-        || path == "src/v4/workflow/ci.dag"
         || path.starts_with("src/v4/workflow/ci/")
         || path.starts_with("tools/ci_affected_components")
         || path.starts_with(".github/ci-floor/")
@@ -239,7 +237,7 @@ mod tests {
             "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag"
         ));
         assert!(ci_changed_path_affects_testclaim_corpus(
-            "src/v4/workflow/ci.dag"
+            "src/v4/std/grammar.dag"
         ));
         assert!(ci_changed_path_affects_testclaim_corpus(
             "scripts/v4-testclaim-corpus-eval.sh"
@@ -259,10 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_policy_includes_modeled_ci_authority() {
-        assert!(ci_changed_path_affects_workflow_policy(
-            "src/v4/workflow/ci.dag"
-        ));
+    fn workflow_policy_includes_ci_yml_authority() {
         assert!(ci_changed_path_affects_workflow_policy(
             ".github/workflows/ci.yml"
         ));
@@ -274,7 +269,7 @@ mod tests {
     #[test]
     fn aggregate_fixture_matches_modeled_buckets() {
         let flags = ci_component_affected_from_changed_paths([
-            "src/v4/workflow/ci.dag",
+            ".github/ci-floor/v4-m1-rust-emit-probe.sh",
             "docs/unrelated.md",
         ]);
         assert!(!flags.v2);
@@ -337,7 +332,7 @@ mod tests {
         ]));
         assert!(!ci_release_distribution_only_from_changed_paths([
             "src/v4/install/install.dag",
-            "src/v4/workflow/ci.dag",
+            ".github/workflows/ci.yml",
         ]));
         assert!(!ci_release_distribution_only_from_changed_paths([
             "docs/README.md"
@@ -357,7 +352,7 @@ mod tests {
             "src/v4/install/install.dag"
         ));
         assert!(!ci_changed_path_affects_release_distribution(
-            "src/v4/workflow/ci.dag"
+            ".github/workflows/ci.yml"
         ));
     }
 }

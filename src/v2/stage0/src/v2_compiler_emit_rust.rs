@@ -20302,6 +20302,7 @@ pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
                 emit_keyword("false".to_string(), RenderTarget::Rust)
             }),
             LiteralValue::LitNull => None,
+            LiteralValue::LitSymbol { value: s, .. } => Some(s.clone()),
         },
         _ => None,
     }

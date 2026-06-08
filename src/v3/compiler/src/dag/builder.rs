@@ -294,6 +294,11 @@ impl Dag {
             LiteralBits::String(_) => self
                 .string_shape()
                 .expect("push_value requires bootstrap String shape"),
+            LiteralBits::Symbol(_) => TypeShape::new(
+                self.declaration_by_name("Symbol")
+                    .expect("push_value requires bootstrap Symbol declaration")
+                    .id,
+            ),
         }
     }
 

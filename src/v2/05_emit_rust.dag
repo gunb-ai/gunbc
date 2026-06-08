@@ -7424,6 +7424,7 @@ fn cli_default_literal_value(expr: Node) -> String? {
       LitFloat { value: f } => Some { value: f }
       LitBool { value: b } => Some { value: if b { emit_keyword(key: "true", target: Rust) } else { emit_keyword(key: "false", target: Rust) } }
       LitNull => none
+      LitSymbol { value: s } => Some { value: s }
     }
     _ => none
   }

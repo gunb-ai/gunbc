@@ -117,6 +117,7 @@ pub enum SurfaceLiteral {
     Int(String),
     Bool(bool),
     String(String),
+    Symbol(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

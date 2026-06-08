@@ -1633,6 +1633,7 @@ impl<'a> Parser<'a> {
             Some(PrimaryPrefixDispatch::Match) => return self.parse_match(),
             Some(PrimaryPrefixDispatch::Record) => return self.parse_record_literal(),
             Some(PrimaryPrefixDispatch::List) => return self.parse_list_literal(),
+            Some(PrimaryPrefixDispatch::Caret) => return self.parse_caret(),
             None => {}
         }
         let token = self.bump().clone();
@@ -1671,6 +1672,42 @@ impl<'a> Parser<'a> {
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
                     "ParseError",
                 ),
+            }),
+        }
+    }
+
+    /// `^IDENT` → opaque `Symbol` literal (spelling only; no name resolution).
+    /// `^(Expr)` → `discriminant(Expr)` surface sugar (reify ctor name of value).
+    fn parse_caret(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let caret = self.expect_kind(TokenKind::Caret)?;
+        let start = caret.span.byte_start;
+        match &self.peek().kind {
+            TokenKind::Ident(_name) => {
+                let ident = self.bump().clone();
+                let TokenKind::Ident(spelling) = ident.kind else {
+                    unreachable!("peek matched Ident");
+                };
+                Ok(SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Symbol(spelling),
+                    span: SourceSpan::new(self.file, start, ident.span.byte_end),
+                })
+            }
+            TokenKind::LParen => {
+                self.bump();
+                let inner = self.parse_expr()?;
+                let close = self.expect_kind(TokenKind::RParen)?;
+                Ok(SurfaceExpr::Call {
+                    target: "discriminant".to_string(),
+                    args: vec![inner],
+                    span: SourceSpan::new(self.file, start, close.span.byte_end),
+                })
+            }
+            other => Err(Diagnostic::ParseError {
+                message: format!(
+                    "expected identifier or `(` after `^` (symbol literal or discriminant), got {other:?}"
+                ),
+                span: self.peek().span.clone(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
             }),
         }
     }
