@@ -17,6 +17,7 @@ import argparse
 import csv
 import importlib.util
 import shutil
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -76,24 +77,42 @@ def census_rows(root: Path) -> list[CensusRow]:
 
 
 def violations(rows: list[CensusRow]) -> list[str]:
+    return violations_against_baseline(rows, baseline_rows_from_static_ceiling())
+
+
+def baseline_rows_from_static_ceiling() -> dict[str, CensusRow]:
+    return {
+        path: CensusRow(
+            file=path,
+            bridge_fns=bridge_fns,
+            bridge_arms=bridge_arms,
+            shadow_symbol_tags=shadow_symbol_tags,
+        )
+        for path, (bridge_fns, bridge_arms, shadow_symbol_tags) in MAX_RESIDUALS.items()
+    }
+
+
+def violations_against_baseline(
+    rows: list[CensusRow],
+    baseline: dict[str, CensusRow],
+) -> list[str]:
     out: list[str] = []
     for row in rows:
-        allowed = MAX_RESIDUALS.get(row.file)
+        allowed = baseline.get(row.file)
         if allowed is None:
             out.append(f"{row.file}: new Symbol-tag shadow bridge file")
             continue
-        max_bridge_fns, max_bridge_arms, max_shadow_tags = allowed
-        if row.bridge_fns > max_bridge_fns:
+        if row.bridge_fns > allowed.bridge_fns:
             out.append(
-                f"{row.file}: bridge_fns {row.bridge_fns} exceeds baseline {max_bridge_fns}"
+                f"{row.file}: bridge_fns {row.bridge_fns} exceeds baseline {allowed.bridge_fns}"
             )
-        if row.bridge_arms > max_bridge_arms:
+        if row.bridge_arms > allowed.bridge_arms:
             out.append(
-                f"{row.file}: bridge_arms {row.bridge_arms} exceeds baseline {max_bridge_arms}"
+                f"{row.file}: bridge_arms {row.bridge_arms} exceeds baseline {allowed.bridge_arms}"
             )
-        if row.shadow_symbol_tags > max_shadow_tags:
+        if row.shadow_symbol_tags > allowed.shadow_symbol_tags:
             out.append(
-                f"{row.file}: shadow_symbol_tags {row.shadow_symbol_tags} exceeds baseline {max_shadow_tags}"
+                f"{row.file}: shadow_symbol_tags {row.shadow_symbol_tags} exceeds baseline {allowed.shadow_symbol_tags}"
             )
     return out
 
@@ -105,17 +124,49 @@ def print_rows(rows: list[CensusRow]) -> None:
         writer.writerow([row.file, row.bridge_fns, row.bridge_arms, row.shadow_symbol_tags])
 
 
-def run_check(root: Path) -> int:
+def rows_by_file(rows: list[CensusRow]) -> dict[str, CensusRow]:
+    return {row.file: row for row in rows}
+
+
+def export_ref_tree(ref: str) -> Path:
+    tmp_path = Path(tempfile.mkdtemp(prefix="symbol-tag-base-"))
+    try:
+        archive = subprocess.run(
+            ["git", "archive", "--format=tar", ref, "src/v4"],
+            cwd=ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+        )
+        subprocess.run(
+            ["tar", "-xf", "-"],
+            cwd=tmp_path,
+            check=True,
+            input=archive.stdout,
+        )
+    except Exception:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+        raise
+    return tmp_path / "src/v4"
+
+
+def run_check(root: Path, base_ref: str | None = None) -> int:
     rows = census_rows(root)
-    errs = violations(rows)
+    if base_ref is None:
+        baseline = baseline_rows_from_static_ceiling()
+        baseline_label = "static ceiling"
+    else:
+        base_root = export_ref_tree(base_ref)
+        baseline = rows_by_file(census_rows(base_root))
+        baseline_label = base_ref
+    errs = violations_against_baseline(rows, baseline)
     if errs:
         for err in errs:
             print(err, file=sys.stderr)
-        print("\nObserved census:", file=sys.stderr)
+        print(f"\nObserved census (baseline: {baseline_label}):", file=sys.stderr)
         print_rows(rows)
         return 1
     print_rows(rows)
-    print("OK: Symbol-tag shadow census is at or below the enforced baseline.")
+    print(f"OK: Symbol-tag shadow census is at or below baseline ({baseline_label}).")
     return 0
 
 
@@ -147,8 +198,8 @@ def plant_perturb(root: Path) -> None:
     )
 
 
-def run_perturb_check(root: Path) -> int:
-    if run_check(root) != 0:
+def run_perturb_check(root: Path, base_ref: str | None = None) -> int:
+    if run_check(root, base_ref) != 0:
         print("FAIL: clean tree must pass before perturb-check.", file=sys.stderr)
         return 1
 
@@ -157,7 +208,11 @@ def run_perturb_check(root: Path) -> int:
         shutil.copytree(root, tmp_root)
         plant_perturb(tmp_root.parent.parent)
         rows = census_rows(tmp_root)
-        errs = violations(rows)
+        if base_ref is None:
+            baseline = baseline_rows_from_static_ceiling()
+        else:
+            baseline = rows_by_file(census_rows(export_ref_tree(base_ref)))
+        errs = violations_against_baseline(rows, baseline)
         if not any("_perturb_symbol_tag_shadow_census.dag" in err for err in errs):
             print("FAIL: perturb-check did not catch planted Symbol-tag shadow bridge.", file=sys.stderr)
             print_rows(rows)
@@ -176,6 +231,11 @@ def main() -> int:
         help="v4 root to scan (default: src/v4)",
     )
     parser.add_argument(
+        "--base-ref",
+        default=None,
+        help="git ref whose census is the ratchet baseline; lower counts on main are preserved",
+    )
+    parser.add_argument(
         "--perturb-check",
         action="store_true",
         help="plant a bridge in a temp tree and require detection",
@@ -183,8 +243,8 @@ def main() -> int:
     args = parser.parse_args()
     root = args.root.resolve()
     if args.perturb_check:
-        return run_perturb_check(root)
-    return run_check(root)
+        return run_perturb_check(root, args.base_ref)
+    return run_check(root, args.base_ref)
 
 
 if __name__ == "__main__":

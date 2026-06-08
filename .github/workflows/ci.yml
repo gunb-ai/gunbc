@@ -173,11 +173,13 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
       with:
-        fetch-depth: 1
+        fetch-depth: 0
+    - name: Fetch main for ratchet baseline
+      run: git fetch --no-tags origin main:refs/remotes/origin/main
     - name: Symbol-tag shadow census at or below baseline
-      run: python3 scripts/check_symbol_tag_shadow_census.py
+      run: python3 scripts/check_symbol_tag_shadow_census.py --base-ref origin/main
     - name: Symbol-tag shadow census detects planted bridge
-      run: python3 scripts/check_symbol_tag_shadow_census.py --perturb-check
+      run: python3 scripts/check_symbol_tag_shadow_census.py --base-ref origin/main --perturb-check
   # Affected-set component host transport -- live fail-closed receipt.
   # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:

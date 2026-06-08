@@ -28,7 +28,7 @@ def run_checker(*args: str) -> str:
 
 def main() -> None:
     clean = run_checker()
-    if "OK: Symbol-tag shadow census is at or below the enforced baseline." not in clean:
+    if "OK: Symbol-tag shadow census is at or below baseline" not in clean:
         raise SystemExit("clean census check did not print the expected OK receipt")
 
     perturb = run_checker("--perturb-check")
