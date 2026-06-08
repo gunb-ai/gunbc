@@ -36,8 +36,8 @@ pub use crate::v2_std_core::{
     authored_name_at, bool_type, default_ident_span, error_type, find_child_named, float_type,
     has_inferred, int_type, is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span,
     make_error_node, make_expr_error_node, make_expr_node, make_param_node, make_span, no_span,
-    none_type, param_node_type_expr, string_type, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    none_type, param_node_type_expr, string_type, unit_type, with_ident_span,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -159,26 +159,7 @@ pub fn structural_carrier_template_name(
 ) -> String {
     if (n.name.clone().as_str() != "".to_string().as_str()) {
         canonical_template_name(
-            Rc::new(Node {
-                name: n.name.clone(),
-                span: n.span.clone(),
-                ident_span: Some(kernel_span(n.name.clone())),
-                children: n.children.clone(),
-                connective: n.connective.clone(),
-                params: n.params.clone(),
-                inferred: n.inferred.clone(),
-                return_cardinality: n.return_cardinality.clone(),
-                uses: n.uses.clone(),
-                body: n.body.clone(),
-                transport: n.transport.clone(),
-                properties: n.properties.clone(),
-                type_annotation: n.type_annotation.clone(),
-                is_self_recursive: n.is_self_recursive.clone(),
-                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                match_pattern: n.match_pattern.clone(),
-                expr_data: n.expr_data.clone(),
-                ident: None,
-            }),
+            with_ident_span(n.clone(), Some(kernel_span(n.name.clone()))),
             source_indices,
         )
     } else {

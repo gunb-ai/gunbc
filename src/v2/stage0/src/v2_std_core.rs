@@ -3588,3 +3588,26 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
         expr_data: n.expr_data.clone(),
     })
 }
+
+pub fn with_ident_span(base: Rc<Node>, ident_span: Option<Rc<SourceSpan>>) -> Rc<Node> {
+    Rc::new(Node {
+        name: base.name.clone(),
+        ident: base.ident.clone(),
+        span: base.span.clone(),
+        ident_span: ident_span,
+        children: base.children.clone(),
+        connective: base.connective.clone(),
+        params: base.params.clone(),
+        inferred: base.inferred.clone(),
+        return_cardinality: base.return_cardinality.clone(),
+        uses: base.uses.clone(),
+        body: base.body.clone(),
+        transport: base.transport.clone(),
+        properties: base.properties.clone(),
+        type_annotation: base.type_annotation.clone(),
+        is_self_recursive: base.is_self_recursive.clone(),
+        has_non_tail_self_call: base.has_non_tail_self_call.clone(),
+        match_pattern: base.match_pattern.clone(),
+        expr_data: base.expr_data.clone(),
+    })
+}

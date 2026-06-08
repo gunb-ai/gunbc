@@ -53,7 +53,7 @@ use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
 pub use crate::v2_compiler_infer_items::{
-    inferred_to_outputs, item_kind, variant_locals_from_items,
+    inferred_to_outputs, item_kind, pd3_direct_call_scope_excluded, variant_locals_from_items,
 };
 pub use crate::v2_compiler_infer_items::{
     ItemInfo, ItemKind, ResolvedGraph, TypedGraph, TypedModule,
@@ -1016,18 +1016,6 @@ pub fn direct_call_set_element_types_mismatch(
     } else {
         set_element_types_mismatch(formal.clone(), actual.clone(), source_indices)
     }
-}
-
-fn module_name_has_prefix(module_name: String, prefix: String) -> bool {
-    let prefix_len = v2_rt::string_length(&prefix);
-    (v2_rt::string_length(&module_name) >= prefix_len)
-        && (v2_rt::substring(&module_name, 0, prefix_len).as_str() == prefix.as_str())
-}
-
-pub fn pd3_direct_call_scope_excluded(module_name: String) -> bool {
-    module_name_has_prefix(module_name.clone(), "v4.".to_string())
-        || module_name_has_prefix(module_name.clone(), "v2.compiler.".to_string())
-        || module_name_has_prefix(module_name, "v2.std.".to_string())
 }
 
 pub fn nominal_call_arg_brand_mismatch(
