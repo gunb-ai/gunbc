@@ -70,7 +70,12 @@ fn collect_dag_files(dir: &std::path::Path, ws: &std::path::Path, out: &mut Vec<
         if path.is_dir() {
             collect_dag_files(&path, ws, out);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            out.push(path.strip_prefix(ws).unwrap_or(&path).to_string_lossy().to_string());
+            out.push(
+                path.strip_prefix(ws)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string(),
+            );
         }
     }
 }
@@ -112,8 +117,7 @@ fn discover_in_file(rel_path: &str, heads: &BTreeSet<&str>) -> Result<Vec<Discov
             // A data declaration has both a body (the constructor expression) and a type
             // annotation (`data x: T = ..`). Functions have a body but no annotation head
             // we want; type defs have no body.
-            let (Some(type_node), Some(_body)) =
-                (item.type_annotation.clone(), item.body.clone())
+            let (Some(type_node), Some(_body)) = (item.type_annotation.clone(), item.body.clone())
             else {
                 continue;
             };
@@ -138,12 +142,15 @@ struct RosterRow {
 }
 
 /// Extract the roster's run-witness rows (`entry` + `function` pairs) from
-/// `v4_roster_pilot.dag`. These are the 39 hand run-roster rows the brief asked to equate
-/// with discovered `TestClaimRun` decls. Rows appear as consecutive `entry:` / `function:`
-/// fields inside each `V4RosterPilotClaimRunRow { .. }` literal.
+/// `v4_roster_pilot.dag`. These are the hand run-roster rows the brief asked to equate with
+/// discovered `TestClaimRun` decls. Each (entry, function) pair appears TWICE in the file —
+/// once in a `V4RosterPilotClaimRunRow { .. }` data literal and once restated in the
+/// `v4_roster_pilot_row_matches(..)` composition guard — so we dedup to the distinct row
+/// set (38 as of the `v4_roster_pilot_claim_run_row_count` authority).
 fn roster_rows() -> Vec<RosterRow> {
     let content = std::fs::read_to_string(workspace_root().join(ROSTER_REL))
         .unwrap_or_else(|e| panic!("read {ROSTER_REL}: {e}"));
+    let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
     let mut rows = Vec::new();
     let mut pending_entry: Option<String> = None;
     for line in content.lines() {
@@ -158,10 +165,10 @@ fn roster_rows() -> Vec<RosterRow> {
                 // has no `entry: "..."` pairing, so a function with no pending entry is the
                 // schema field, not a row — skip it.
                 if let Some(entry) = pending_entry.take() {
-                    rows.push(RosterRow {
-                        entry,
-                        function: rest[..end].to_string(),
-                    });
+                    let function = rest[..end].to_string();
+                    if seen.insert((entry.clone(), function.clone())) {
+                        rows.push(RosterRow { entry, function });
+                    }
                 }
             }
         }
@@ -276,7 +283,7 @@ fn glob_discovery_testclaim_census_and_d2_contradiction() {
     );
     assert!(
         rows.len() >= 30,
-        "roster row extraction degenerate: found only {} (expected ~39)",
+        "roster row extraction degenerate: found only {} (expected 38)",
         rows.len()
     );
     assert_eq!(
