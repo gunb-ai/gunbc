@@ -290,17 +290,13 @@ type AccountId = Refined<String>
         })
         .expect("pd3.brand_relation module");
 
-    let user_id = lookup_type_by_name(module.type_env.clone(), "UserId".to_string())
-        .expect("UserId binding");
+    let user_id =
+        lookup_type_by_name(module.type_env.clone(), "UserId".to_string()).expect("UserId binding");
     let account_id = lookup_type_by_name(module.type_env.clone(), "AccountId".to_string())
         .expect("AccountId binding");
 
     assert!(
-        !node_type_compatible(
-            user_id.clone(),
-            account_id,
-            result.source_indices.clone()
-        ),
+        !node_type_compatible(user_id.clone(), account_id, result.source_indices.clone()),
         "PD-3: node_type_compatible must reject brand-twin UserId-for-AccountId"
     );
     assert!(
@@ -330,12 +326,10 @@ fn caller(uid: UserId) -> String {
 "#;
 
     let result = crate::helpers::compile_dag(source);
-    let has_type_mismatch = result.diagnostics.iter().any(|diag| {
-        matches!(
-            &*diag.diagnostic,
-            CompilerDiagnostic::TypeMismatch { .. }
-        )
-    });
+    let has_type_mismatch = result
+        .diagnostics
+        .iter()
+        .any(|diag| matches!(&*diag.diagnostic, CompilerDiagnostic::TypeMismatch { .. }));
     assert!(
         has_type_mismatch,
         "PD-3: direct call must reject UserId-for-AccountId, got: {:?}",
