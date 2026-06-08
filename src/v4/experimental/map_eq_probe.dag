@@ -1,0 +1,28 @@
+module v4.experimental.map_eq_probe
+
+import v4.std.logic { Bool }
+import v4.std.collection { Map, empty_map, map_insert }
+
+type SKey {
+  a: Int
+  b: Int
+}
+
+// structural-key map compared to ITSELF — should be true, bug makes it false
+fn struct_key_self_eq() -> Bool {
+  let m = map_insert(empty_map(), SKey { a: 1, b: 2 }, 7)
+  m == m
+}
+
+// string-key map compared to itself — native path, should be true
+fn string_key_self_eq() -> Bool {
+  let m = map_insert(empty_map(), "k", 7)
+  m == m
+}
+
+// two independently-built equal structural-key maps — should be true
+fn struct_key_equal_eq() -> Bool {
+  let m1 = map_insert(empty_map(), SKey { a: 1, b: 2 }, 7)
+  let m2 = map_insert(empty_map(), SKey { a: 1, b: 2 }, 7)
+  m1 == m2
+}
