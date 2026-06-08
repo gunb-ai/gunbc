@@ -111,6 +111,8 @@ flowchart TB
     P --> WF
     SEL --> P
     T38 --> P
+    UPS --> CACHE
+    UPS --> SEL
   end
 
   subgraph EMIT["Stage (b): Shape-B projection"]
