@@ -21,10 +21,13 @@ ROOT = sys.argv[1] if len(sys.argv) > 1 else "src/v4"
 TAG_RE = re.compile(r"^\s*data\s+(\w+)\s*:\s*Symbol\s*=\s*(\w+)\s*$", re.M)
 # bridge fn header: fn name(...) -> Symbol {
 BRIDGE_HDR_RE = re.compile(r"^\s*fn\s+(\w+)\s*\([^)]*\)\s*->\s*Symbol\s*\{", re.M)
-# a match arm mapping a Constructor (Capitalized, optional {..}/(..)) to a symbol-ident.
-# DOTALL on the payload so multi-line `{ ... }` arm patterns still match.
+# a match arm mapping a Constructor (Capitalized, optional {..}/(..)) to a bare symbol-ident.
+# DOTALL on the payload so multi-line `{ ... }` arm patterns still match. The RHS must be a
+# bare identifier: projections such as `projection.atom_form.surface` are ordinary payload reads,
+# not shadow tags.
 ARM_RE = re.compile(
-    r"\b([A-Z]\w*)\s*(?:\{[^{}]*\}|\([^()]*\))?\s*=>\s*([a-z]\w*)\b", re.S
+    r"\b([A-Z]\w*)\s*(\{[^{}]*\}|\([^()]*\))?\s*=>\s*([a-z]\w*)\b(?!\s*[.(])",
+    re.S,
 )
 # roster-pin test: fn ... -> Bool whose body calls *_discriminant( and compares == *_arm*/symbol
 DISC_CALL_RE = re.compile(r"\w*discriminant\s*\(")
@@ -44,6 +47,17 @@ def brace_body(text, open_idx):
     return text[open_idx:]
 
 
+def pattern_bindings(pattern):
+    """Best-effort variable bindings in a constructor arm pattern."""
+    if not pattern:
+        return set()
+    return {
+        token
+        for token in re.findall(r"\b[a-z]\w*\b", pattern)
+        if token != "_"
+    }
+
+
 def analyze(path, text):
     tags = {m.group(1) for m in TAG_RE.finditer(text) if m.group(1) == m.group(2)}
     bridges = []  # (fn_name, arm_count, symbols_referenced)
@@ -51,7 +65,11 @@ def analyze(path, text):
         body = brace_body(text, m.end() - 1)
         if "match" not in body:
             continue
-        arms = ARM_RE.findall(body)
+        arms = []
+        for ctor, pattern, rhs in ARM_RE.findall(body):
+            if rhs in pattern_bindings(pattern):
+                continue
+            arms.append((ctor, rhs))
         # broad: any arm mapping Constructor => lowercase-ident is a discriminant bridge,
         # whether the target symbol is declared in this file or imported from the probe module.
         if len(arms) >= 2:
