@@ -273,6 +273,12 @@ data python_binding_fn_add: Symbol = python_binding_fn_add
 data python_binding_param_x: Symbol = python_binding_param_x
 data python_binding_param_y: Symbol = python_binding_param_y
 data python_relation_rule_mvp1_fn_add: Symbol = python_relation_rule_mvp1_fn_add
+data python_inhabitant_field_mvp1_add_fn: Symbol = python_inhabitant_field_mvp1_add_fn
+data python_coercion_field_int_inhabitant_atom: Symbol = python_coercion_field_int_inhabitant_atom
+data python_coercion_field_int_facts: Symbol = python_coercion_field_int_facts
+data python_coercion_field_int_spelling: Symbol = python_coercion_field_int_spelling
+data python_coercion_field_int_encoding: Symbol = python_coercion_field_int_encoding
+data python_coercion_field_int_std_projection: Symbol = python_coercion_field_int_std_projection
 data python_mvp1_source_literal: Symbol = python_mvp1_source_literal
 data python_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data python_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
@@ -1027,6 +1033,51 @@ fn python_declared_inhabitants_root() -> Node {
   }
 }
 
+// Zip-fold support nodes derived from python_facts_int constructors — not parallel fixture data.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
+fn python_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
+  [
+    python_named_edge(
+      name: python_inhabitant_field_mvp1_add_fn,
+      target: python_mvp1_emitted_add_fn_node()
+    ),
+    python_named_edge(
+      name: python_coercion_field_int_inhabitant_atom,
+      target: python_inhabitant_atom(id: python_inhabitant_int)
+    ),
+    python_named_edge(
+      name: python_coercion_field_int_facts,
+      target: python_integer_facts_node(facts: python_facts_int)
+    ),
+    python_named_edge(
+      name: python_coercion_field_int_spelling,
+      target: python_inhabitant_atom(id: python_surface_spelling_int)
+    ),
+    python_named_edge(
+      name: python_coercion_field_int_encoding,
+      target: python_inhabitant_atom(id: python_repr_int_arbitrary_precision)
+    ),
+    python_named_edge(
+      name: python_coercion_field_int_std_projection,
+      target: python_inhabitant_atom(id: python_std_projection_int)
+    )
+  ]
+}
+
+fn python_mvp1_coercion_candidate_edges() -> List<Edge> {
+  list_append(
+    left: python_declared_inhabitants_root().children,
+    right: python_mvp1_int_zip_fold_closure_edges()
+  )
+}
+
+fn python_mvp1_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: python_mvp1_coercion_candidate_edges()
+  }
+}
+
 fn python_mvp1_selection_policy_node() -> Node {
   python_int_inhabitant_node()
 }
@@ -1277,7 +1328,7 @@ fn python_mvp1_target_model_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(name: target_model_edge_selection_policy, target: python_mvp1_selection_policy_node()),
-      python_named_edge(name: target_model_edge_declared_inhabitants, target: python_declared_inhabitants_root()),
+      python_named_edge(name: target_model_edge_declared_inhabitants, target: python_mvp1_declared_inhabitants_root()),
       python_named_edge(name: target_model_edge_translation_rules, target: python_mvp1_translation_rules_node()),
       python_named_edge(name: target_model_edge_serialize_source, target: python_mvp1_serialize_source_node())
     ]
