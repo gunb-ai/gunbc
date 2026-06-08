@@ -216,6 +216,8 @@ type AccountId = Refined<String>
 
     let user_id = lookup_type_by_name(module.type_env.clone(), "UserId".to_string())
         .expect("UserId type binding");
+    let same_user_id = lookup_type_by_name(module.type_env.clone(), "UserId".to_string())
+        .expect("second UserId type binding");
     let account_id = lookup_type_by_name(module.type_env.clone(), "AccountId".to_string())
         .expect("AccountId type binding");
     let refined_string = lookup_type_by_name(module.type_env.clone(), "Refined".to_string())
@@ -223,6 +225,10 @@ type AccountId = Refined<String>
     let string = lookup_type_by_name(module.type_env.clone(), "String".to_string())
         .expect("String type binding");
 
+    assert_eq!(
+        user_id, same_user_id,
+        "M1 positive control: two references to the same brand declaration must compare equal"
+    );
     assert_ne!(
         user_id, account_id,
         "M1 brand twins must keep distinct declaration identities; collapse here means A3 needs brand-aware rework"
