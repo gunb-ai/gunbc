@@ -80,7 +80,7 @@ data manual_corpus_eval_host_run_specs: List<CorpusEvalHostRunSpec> = [
   CorpusEvalHostRunSpec {
     claim_id: claim_idempotency_write_effect_run_test_claim_receipt,
     entry_relpath: "src/v4/test/claim/lens_idempotency/write_effect.dag",
-    run_fn: run_idempotency_write_effect_receipt_sym
+    run_fn: ^run_idempotency_write_effect_receipt_sym
   },
   CorpusEvalHostRunSpec {
     claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
@@ -115,8 +115,8 @@ data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
   CorpusEvalExpectedPin {
     claim_id: claim_idempotency_write_effect_run_test_claim_receipt,
     observation: ExecutedPass,
-    primary_reason: corpus_eval_verdict_pass_reason,
-    dissolution_target: dissolution_target_transform_eval
+    primary_reason: ^corpus_eval_verdict_pass_reason,
+    dissolution_target: ^dissolution_target_transform_eval
   },
   CorpusEvalExpectedPin {
     claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
