@@ -264,6 +264,17 @@ data v4_roster_pilot_row_map_lookup_miss_witness_violates: V4RosterPilotClaimRun
   function: "map_lookup_miss_violates_and_hit_holds"
 }
 
+// Structural-key Map== is extensional set equality (decidable): a non-String-key map
+// equals itself and equals an independently-built map with the same key→latest-value
+// mapping, while distinct keys / values stay unequal. Carries the closure-form
+// Map==-always-false bug fix (native maps keyed by the Value-equality authority);
+// reverting it turns the struct_key_self_eq arm red.
+data v4_roster_pilot_row_map_structural_key_equality: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "structural-key Map== is extensional set equality",
+  entry: "src/v4/test/claim/manual/map_structural_key_equality.dag",
+  function: "map_structural_key_equality_holds"
+}
+
 // Wave-A W2: lens smoke→witness fold-delete (application, idempotency, identical_variant,
 // affected_set IRT-1 remainder, registry). Discriminating claim-run witnesses carry the
 // behavioral content of retired parse-only smokes; B declaration-shape receipts remain
@@ -381,11 +392,12 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_lens_registry_required_ids_resolve,
   v4_roster_pilot_row_lens_registry_singleton_row_counts,
   v4_roster_pilot_row_impossible_bug_release_demos,
-  v4_roster_pilot_row_map_lookup_miss_witness_violates
+  v4_roster_pilot_row_map_lookup_miss_witness_violates,
+  v4_roster_pilot_row_map_structural_key_equality
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "46"
+data v4_roster_pilot_claim_run_row_count: String = "47"
 
 
 fn v4_roster_pilot_row_matches(
@@ -455,12 +467,13 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_singleton_row_counts)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_impossible_bug_release_demos)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_map_lookup_miss_witness_violates)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_map_structural_key_equality)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 46)
-    && (v4_roster_pilot_claim_run_row_count == "46")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 47)
+    && (v4_roster_pilot_claim_run_row_count == "47")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -692,5 +705,9 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       entry: "src/v4/test/claim/manual/map_lookup_miss_witness_violates.dag",
       function: "map_lookup_miss_violates_and_hit_holds"
     )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_map_structural_key_equality,
+      entry: "src/v4/test/claim/manual/map_structural_key_equality.dag",
+      function: "map_structural_key_equality_holds"
+    )
 }
-
