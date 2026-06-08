@@ -311,7 +311,6 @@ data go_binding_param_x: Symbol = go_binding_param_x
 data go_binding_param_y: Symbol = go_binding_param_y
 data go_relation_rule_mvp1_fn_add: Symbol = go_relation_rule_mvp1_fn_add
 data go_inhabitant_field_mvp1_add_fn: Symbol = go_inhabitant_field_mvp1_add_fn
-data go_coercion_field_fn_item_atom: Symbol = go_coercion_field_fn_item_atom
 data go_coercion_field_int_inhabitant_atom: Symbol = go_coercion_field_int_inhabitant_atom
 data go_coercion_field_int_facts: Symbol = go_coercion_field_int_facts
 data go_coercion_field_int_spelling: Symbol = go_coercion_field_int_spelling
@@ -1594,10 +1593,6 @@ fn go_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
       target: go_mvp1_emitted_add_fn_node()
     ),
     go_named_edge(
-      name: go_coercion_field_fn_item_atom,
-      target: go_inhabitant_atom(id: go_surface_fn_item)
-    ),
-    go_named_edge(
       name: go_coercion_field_int_inhabitant_atom,
       target: go_inhabitant_atom(id: go_inhabitant_int)
     ),
@@ -1654,7 +1649,6 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      go_named_edge(name: go_surface_fn_item, target: go_inhabitant_atom(id: go_surface_fn_item)),
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() }
@@ -1823,7 +1817,7 @@ fn go_mvp1_target_model_bundle_core() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
-      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_declared_inhabitants_root()),
+      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
       go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
       go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node())
     ]
@@ -1891,7 +1885,7 @@ fn go_mvp1_target_model_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
-      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_declared_inhabitants_root()),
+      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
       go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
       go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node()),
       go_named_edge(

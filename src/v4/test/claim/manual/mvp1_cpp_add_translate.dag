@@ -367,6 +367,16 @@ fn anchor_mvp1_cpp_compile_inferred_accepts() -> Outcome<CompileOutput> {
 data mvp1_cpp_emit_receipt: Outcome<TargetSource> = anchor_mvp1_cpp_emit_accepts()
 
 
+// R2 keystone execution witness — emit(add) must produce the canonical cpp_mvp1 add-fn source.
+fn mvp1_cpp_emit_add_fn_accepts_holds() -> Bool {
+  match mvp1_cpp_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      (source == cpp_mvp1_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
 data mvp1_cpp_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_cpp_compile_inferred_accepts()
 
 
