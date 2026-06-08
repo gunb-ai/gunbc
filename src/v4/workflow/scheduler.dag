@@ -10,6 +10,8 @@ import v4.std.algebra {
   contains,
   filter,
   for_all,
+  is_empty,
+  list_append,
   list_snoc_item,
   non_empty
 }
@@ -30,16 +32,33 @@ type SchedulerBlockedEvidence
   = SchedulerNoRunnableFrontier { unscheduled: List<Node> }
 
 type SchedulerPlan
-  = SchedulerPlanProduced {
+  = SchedulerPlanComplete {
+      layers: List<ReadinessLayer>,
+      scheduled: List<Node>
+    }
+  | SchedulerPlanRunnable {
+      frontier: RunnableFrontier,
+      scheduled: List<Node>,
+      remaining: List<Node>,
       layers: List<ReadinessLayer>
     }
   | SchedulerPlanBlocked {
-      evidence: SchedulerBlockedEvidence
+      evidence: SchedulerBlockedEvidence,
+      scheduled: List<Node>,
+      remaining: List<Node>,
+      layers: List<ReadinessLayer>
     }
 
 type SchedulerFirstReadinessLayer
   = SchedulerFirstReadinessLayerMissing
   | SchedulerFirstReadinessLayerFound { layer: ReadinessLayer }
+
+type SchedulerRunState {
+  scheduled: List<Node>
+  remaining: List<Node>
+  layers: List<ReadinessLayer>
+  frontier: RunnableFrontier
+}
 
 // 🟡 coproduct dissolution — feature:scheduler-execution-kind-policy — consumer:scheduler_execution_dependencies
 // dissolve-on-arrival: substrate projects execution-ordering dependencies from the dependency fact carrier.
@@ -145,15 +164,130 @@ fn runnable_frontier_from_dependencies(
   }
 }
 
-fn scheduler_blocked_evidence(nodes: List<Node>, scheduled: List<Node>) -> SchedulerBlockedEvidence {
-  SchedulerNoRunnableFrontier {
-    unscheduled: filter(
-      xs: nodes,
-      predicate: fn(candidate) {
-        scheduler_node_unscheduled(scheduled: scheduled, candidate: candidate)
-      }
+fn scheduler_remaining_nodes(nodes: List<Node>, scheduled: List<Node>) -> List<Node> {
+  filter(
+    xs: nodes,
+    predicate: fn(candidate) {
+      scheduler_node_unscheduled(scheduled: scheduled, candidate: candidate)
+    }
+  )
+}
+
+fn scheduler_blocked_evidence(remaining: List<Node>) -> SchedulerBlockedEvidence {
+  SchedulerNoRunnableFrontier { unscheduled: remaining }
+}
+
+fn scheduler_schedule_frontier(scheduled: List<Node>, frontier: RunnableFrontier) -> List<Node> {
+  fold(frontier.ready, init: scheduled, f: fn(acc, node) {
+    scheduler_append_node_once(nodes: acc, node: node)
+  })
+}
+
+fn scheduler_append_frontier_layer(layers: List<ReadinessLayer>, frontier: RunnableFrontier) -> List<ReadinessLayer> {
+  if non_empty(xs: frontier.ready) {
+    list_snoc_item(
+      xs: layers,
+      item: ReadinessLayer { ready: frontier.ready }
     )
+  } else {
+    layers
   }
+}
+
+fn scheduler_run_init(nodes: List<Node>, scheduled: List<Node>) -> SchedulerRunState {
+  SchedulerRunState {
+    scheduled: scheduled,
+    remaining: scheduler_remaining_nodes(nodes: nodes, scheduled: scheduled),
+    layers: [],
+    frontier: RunnableFrontier { ready: [] }
+  }
+}
+
+fn scheduler_step_state_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  state: SchedulerRunState
+) -> SchedulerRunState {
+  if is_empty(xs: state.remaining) {
+    state
+  } else {
+    let frontier = runnable_frontier_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      scheduled: state.scheduled
+    )
+    if non_empty(xs: frontier.ready) {
+      let scheduled = scheduler_schedule_frontier(scheduled: state.scheduled, frontier: frontier)
+      SchedulerRunState {
+        scheduled: scheduled,
+        remaining: scheduler_remaining_nodes(nodes: nodes, scheduled: scheduled),
+        layers: scheduler_append_frontier_layer(layers: state.layers, frontier: frontier),
+        frontier: frontier
+      }
+    } else {
+      SchedulerRunState {
+        scheduled: state.scheduled,
+        remaining: state.remaining,
+        layers: state.layers,
+        frontier: frontier
+      }
+    }
+  }
+}
+
+fn scheduler_plan_from_state(state: SchedulerRunState) -> SchedulerPlan {
+  if is_empty(xs: state.remaining) {
+    SchedulerPlanComplete {
+      layers: state.layers,
+      scheduled: state.scheduled
+    }
+  } else {
+    if non_empty(xs: state.frontier.ready) {
+      SchedulerPlanRunnable {
+        frontier: state.frontier,
+        scheduled: state.scheduled,
+        remaining: state.remaining,
+        layers: state.layers
+      }
+    } else {
+      SchedulerPlanBlocked {
+        evidence: scheduler_blocked_evidence(remaining: state.remaining),
+        scheduled: state.scheduled,
+        remaining: state.remaining,
+        layers: state.layers
+      }
+    }
+  }
+}
+
+fn scheduler_step_plan_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> SchedulerPlan {
+  scheduler_plan_from_state(
+    state: scheduler_step_state_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      state: scheduler_run_init(nodes: nodes, scheduled: scheduled)
+    )
+  )
+}
+
+// Bounded fixed point: each non-empty frontier schedules at least one remaining node,
+// so `length(nodes)` scheduler steps are enough to complete or expose blocked evidence.
+fn scheduler_run_to_fixed_point(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> SchedulerRunState {
+  fold(nodes, init: scheduler_run_init(nodes: nodes, scheduled: scheduled), f: fn(state, _) {
+    scheduler_step_state_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      state: state
+    )
+  })
 }
 
 fn scheduler_plan_from_dependencies(
@@ -161,7 +295,68 @@ fn scheduler_plan_from_dependencies(
   dependencies: List<DependencyView>,
   scheduled: List<Node>
 ) -> SchedulerPlan {
-  let runnable = runnable_frontier_from_dependencies(
+  scheduler_plan_from_state(
+    state: scheduler_run_to_fixed_point(
+      nodes: nodes,
+      dependencies: dependencies,
+      scheduled: scheduled
+    )
+  )
+}
+
+fn scheduler_nodes_from_layers(layers: List<ReadinessLayer>) -> List<Node> {
+  fold(layers, init: [], f: fn(nodes, layer) {
+    list_append(left: nodes, right: layer.ready)
+  })
+}
+
+fn scheduler_plan_for_layers(layers: List<ReadinessLayer>, blocked: List<Node>) -> SchedulerPlan {
+  let runnable = runnable_frontier_from_layers(layers: layers)
+  if non_empty(xs: runnable.ready) {
+    SchedulerPlanComplete {
+      layers: layers,
+      scheduled: scheduler_nodes_from_layers(layers: layers)
+    }
+  } else {
+    SchedulerPlanBlocked {
+      evidence: scheduler_blocked_evidence(remaining: blocked),
+      scheduled: [],
+      remaining: blocked,
+      layers: layers
+    }
+  }
+}
+
+fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> SchedulerFirstReadinessLayer {
+  fold(layers, init: SchedulerFirstReadinessLayerMissing, f: fn(acc, layer) {
+    match acc {
+      SchedulerFirstReadinessLayerFound { layer: _ } => acc
+      SchedulerFirstReadinessLayerMissing => SchedulerFirstReadinessLayerFound { layer: layer }
+    }
+  })
+}
+
+fn runnable_frontier_from_layers(layers: List<ReadinessLayer>) -> RunnableFrontier {
+  match scheduler_first_readiness_layer(layers: layers) {
+    SchedulerFirstReadinessLayerFound { layer: layer } => RunnableFrontier { ready: layer.ready }
+    SchedulerFirstReadinessLayerMissing => RunnableFrontier { ready: [] }
+  }
+}
+
+fn runnable_frontier(graph_node: Node) -> RunnableFrontier {
+  runnable_frontier_from_layers(layers: scheduler_layers(graph_node: graph_node))
+}
+
+fn scheduler_layers(graph_node: Node) -> List<ReadinessLayer> {
+  topological_layers(graph_node: graph_node)
+}
+
+fn scheduler_plan(graph_node: Node) -> SchedulerPlan {
+  scheduler_plan_for_layers(
+    layers: scheduler_layers(graph_node: graph_node),
+    blocked: [graph_node]
+  )
+}
     nodes: nodes,
     dependencies: dependencies,
     scheduled: scheduled
