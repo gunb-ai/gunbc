@@ -88,8 +88,8 @@ pub use crate::v2_compiler_infer_sigs::resolve_func_sigs;
 pub use crate::v2_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::KernelTypeBuild;
 pub use crate::v2_compiler_infer_types::{
-    bare_map_node, bare_set_node, callable_inferred, canonical_template_name, child_type_node,
-    emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
+    bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
+    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
     make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
@@ -1007,18 +1007,25 @@ pub fn nominal_call_arg_brand_mismatch(
     actual: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let formal_name = authored_name_at(source_indices.clone(), formal.clone());
-    let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-    !node_type_compatible(formal.clone(), actual.clone(), source_indices.clone())
-        && formal.connective.clone() != Connective::Arrow
-        && actual.connective.clone() != Connective::Arrow
-        && formal_name.as_str() != ""
-        && actual_name.as_str() != ""
-        && formal_name.as_str() != actual_name.as_str()
-        && structural_carrier_template_name(formal.clone(), source_indices.clone()).as_str()
-            == structural_carrier_template_name(actual.clone(), source_indices.clone()).as_str()
-        && !is_declared_container_alias_spelling(formal_name.clone())
-        && !is_declared_container_alias_spelling(actual_name.clone())
+    {
+        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
+        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+        ((((((((!node_type_compatible(
+            formal.clone(),
+            actual.clone(),
+            source_indices.clone(),
+        ) && (formal.connective.clone() != Connective::Arrow))
+            && (actual.connective.clone() != Connective::Arrow))
+            && (formal_name.clone().as_str() != "".to_string().as_str()))
+            && (actual_name.clone().as_str() != "".to_string().as_str()))
+            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
+            && (structural_carrier_template_name(formal.clone(), source_indices.clone())
+                .as_str()
+                == structural_carrier_template_name(actual.clone(), source_indices.clone())
+                    .as_str()))
+            && !is_declared_container_alias_spelling(formal_name.clone()))
+            && !is_declared_container_alias_spelling(actual_name.clone()))
+    }
 }
 
 pub fn direct_call_arg_mismatch_diags(
@@ -1028,65 +1035,67 @@ pub fn direct_call_arg_mismatch_diags(
     type_env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    let source_indices = type_env.clone().source_indices.clone();
-    Rc::new({
-        let mut __result = Vec::new();
-        for pair in Rc::new(
-            value_params
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, v)| (i as i64, v))
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        {
-            __result.extend(
-                (*{
-                    let formal_raw = param_node_type_expr(pair.1.clone());
-                    let formal_subst = substitute_generics(
-                        formal_raw.clone(),
-                        call_subst.clone(),
-                        source_indices.clone(),
-                    );
-                    let formal = peel_nominal_alias_identity(
-                        formal_subst.clone(),
-                        type_env.clone(),
-                        module_name.clone(),
-                    );
-                    match typed_args.clone().get(pair.0.clone() as usize).cloned() {
-                        Some(ta) => {
-                            let actual_raw = resolved_type(arg_value(ta.clone()));
-                            let actual = peel_nominal_alias_identity(
-                                actual_raw.clone(),
-                                type_env.clone(),
-                                module_name.clone(),
-                            );
-                            if nominal_call_arg_brand_mismatch(
-                                formal.clone(),
-                                actual.clone(),
-                                source_indices.clone(),
-                            ) {
-                                Rc::new(vec![type_mismatch_error(
-                                    node_type_shape(formal.clone(), source_indices.clone()),
-                                    node_type_shape(actual.clone(), source_indices.clone()),
-                                    arg_value(ta.clone()).span.clone(),
+    {
+        let source_indices = type_env.source_indices.clone();
+        Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                value_params
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*{
+                        let formal_raw = param_node_type_expr(pair.1.clone());
+                        let formal_subst = substitute_generics(
+                            formal_raw.clone(),
+                            call_subst.clone(),
+                            source_indices.clone(),
+                        );
+                        let formal = peel_nominal_alias_identity(
+                            formal_subst.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                        );
+                        match typed_args.clone().get(pair.0.clone() as usize).cloned() {
+                            Some(ta) => {
+                                let actual_raw = resolved_type(arg_value(ta.clone()));
+                                let actual = peel_nominal_alias_identity(
+                                    actual_raw.clone(),
+                                    type_env.clone(),
                                     module_name.clone(),
-                                )])
-                            } else {
-                                Rc::new(vec![])
+                                );
+                                if nominal_call_arg_brand_mismatch(
+                                    formal.clone(),
+                                    actual.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    Rc::new(vec![type_mismatch_error(
+                                        node_type_shape(formal.clone(), source_indices.clone()),
+                                        node_type_shape(actual.clone(), source_indices.clone()),
+                                        arg_value(ta.clone()).span.clone(),
+                                        module_name.clone(),
+                                    )])
+                                } else {
+                                    Rc::new(vec![])
+                                }
                             }
+                            None => Rc::new(vec![]),
                         }
-                        None => Rc::new(vec![]),
-                    }
-                })
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
