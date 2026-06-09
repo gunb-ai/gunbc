@@ -190,6 +190,11 @@ Current PD-3 tests and adversarial suite are **single-module** (`pd3.brand_relat
   Leaves `Node.ident` on the spelling-key path for any subsequent `lookup_type_for`.
 - Does **not** claim cross-module same-spelling disambiguation is solved (that requires binding
   map key migration off spelling intern id — tracked as phase-2 escalation).
+- **`decl_id_by_spelling` is honest but phase-1-limited:** it maps spelling intern id →
+  `binding_id` for type declarations registered in the merged env. Because `bindings` remains
+  spelling-keyed (`intern(authored_name)`), two modules both declaring `type UserId` still
+  collapse to one spelling slot under `merge_envs` — phase-1 does **not** assert cross-module
+  same-spelling identity soundness. Phase-2 escalates before any cross-module brand-twin compare.
 
 Workers must **not** implement `intern(type_name).id` at parse as declaration identity.
 
@@ -351,18 +356,22 @@ sides stamped; fall back to `source_name_at` string equality. Container kind com
 
 ## 7. Migration / dissolution sequence
 
+**Implementation atomicity (re-ratification condition):** deleting the `with_authored_identity`
+ident_span graft and landing `with_preserved_binding_id` + `Node.binding_id` stamping **must
+occur in the same implementation PR**. There must be no window where peel/resolution carries
+neither ident_span brand nor `binding_id` — identity would silently drop and PD-3 would false-accept.
+
 Ordered for minimal blast radius; each step has a consumer test.
 
 | Step | Change | Consumer |
 |------|--------|----------|
 | 1 | Add `BindingId`, `TypeDeclBinding`, `BindingIdAllocator`; extend `Node.binding_id`; `decl_registry` on `TypeEnv`; helpers in `00_core.dag` + `04_env.dag` | unit tests in `infer_semantics.rs` |
 | 2 | `build_type_env`: graph-global alloc; register `TypeDeclBinding` per type decl; stamp `Node.binding_id` on decl resolved nodes | `m1_brand_twins_over_refined_base_remain_distinct` |
-| 3 | Infer/resolve: stamp `binding_id` after lookup; `with_preserved_binding_id`; delete ident_span graft | same + parse span tests still green |
+| 3 | Infer/resolve: stamp `binding_id` after lookup; `with_preserved_binding_id`; **atomically** delete `with_authored_identity` ident_span graft (same PR — see atomicity note above) | same + parse span tests still green |
 | 4 | PD-3 fns compare `binding_id` | `pd3_*`, `pd3_adversarial.rs` |
 | 5 | Remove `authored_name_at` from compare path (use `binding_id` / `source_name_at` fallback) | grep audit |
-| 6 | Delete `with_authored_identity` | — |
-| 7 | Remove `module_skips_direct_call_arg_check` when substrate compiles clean | ROADMAP `PD-3-DOGFOOD` row |
-| 8 | *(Phase 2, escalate)* Migrate `bindings` map key off spelling intern id for cross-module disambiguation | new tests for same-spelled types in different modules |
+| 6 | Remove `module_skips_direct_call_arg_check` when substrate compiles clean | ROADMAP `PD-3-DOGFOOD` row |
+| 7 | *(Phase 2, escalate)* Migrate `bindings` map key off spelling intern id for cross-module same-spelling disambiguation | new tests for same-spelled types in different modules |
 
 **Regression anchors (must stay green throughout):**
 
