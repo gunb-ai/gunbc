@@ -19,10 +19,7 @@ type Report {
 }
 
 fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
-  match reason {
-    SynthesisGapDecisionTree => discriminant(v: SynthesisGapDecisionTree)
-    SynthesisGapInformationTheoretic => discriminant(v: SynthesisGapInformationTheoretic)
-  }
+  discriminant(v: reason)
 }
 
 type ReportSuggestion {
