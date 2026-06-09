@@ -5,7 +5,9 @@
 module v4.std.artifact
 
 import v4.std.diagnostic { Accepted, Locus, Outcome, Rejected }
-import v4.std.node { Node, Symbol }
+import v4.std.algebra { fold_list, list_append, list_snoc_item }
+import v4.std.collection { Absent, List, Optional, Present }
+import v4.std.node { Edge, Named, Node, NodeKind, Symbol }
 import v4.std.refinement { Refined, Validation, refine }
 import v4.std.text { String }
 
@@ -97,4 +99,72 @@ type GeneratorProvenance {
 type NodeArtifactProvenance {
   node: Node
   artifact: Artifact
+}
+
+type SourceTreeEdge {
+  label: Symbol
+  target: SourceTreeNode
+}
+
+type SourceTreeNode {
+  kind: NodeKind
+  artifact: Optional<Artifact>
+  children: List<SourceTreeEdge>
+}
+
+fn source_tree_edge_to_node_edge(edge: SourceTreeEdge) -> Edge {
+  Edge {
+    label: Named { name: edge.label },
+    target: source_tree_to_node_graph(tree: edge.target)
+  }
+}
+
+fn source_tree_edges_to_node_edges(edges: List<SourceTreeEdge>) -> List<Edge> {
+  fold_list(
+    xs: edges,
+    empty: [],
+    cons: fn(acc, edge) {
+      list_snoc_item(xs: acc, item: source_tree_edge_to_node_edge(edge: edge))
+    }
+  )
+}
+
+fn source_tree_to_node_graph(tree: SourceTreeNode) -> Node {
+  Node {
+    kind: tree.kind,
+    children: source_tree_edges_to_node_edges(edges: tree.children)
+  }
+}
+
+fn source_tree_own_artifact_provenance(tree: SourceTreeNode) -> List<NodeArtifactProvenance> {
+  match tree.artifact {
+    Present { value: artifact } =>
+      [
+        NodeArtifactProvenance {
+          node: source_tree_to_node_graph(tree: tree),
+          artifact: artifact
+        }
+      ]
+    Absent => []
+  }
+}
+
+fn source_tree_children_artifact_provenance(edges: List<SourceTreeEdge>) -> List<NodeArtifactProvenance> {
+  fold_list(
+    xs: edges,
+    empty: [],
+    cons: fn(acc, edge) {
+      list_append(
+        left: acc,
+        right: source_tree_node_artifact_provenance(tree: edge.target)
+      )
+    }
+  )
+}
+
+fn source_tree_node_artifact_provenance(tree: SourceTreeNode) -> List<NodeArtifactProvenance> {
+  list_append(
+    left: source_tree_own_artifact_provenance(tree: tree),
+    right: source_tree_children_artifact_provenance(edges: tree.children)
+  )
 }
