@@ -14,6 +14,16 @@ ctrl-build -- scripts/v4-lens-ci-gate.sh --perturb-check
 ctrl-build -- scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
 ```
 
+The affected-set/testgen command has two modeled row authorities in the same
+host gate:
+
+- `src/v4/test/claim/workflow/affected_set_ci_runner.dag`
+  (`ci_runner_node_frontier_claim_run_rows`,
+  `ci_runner_node_frontier_claim_run_row_count = "9"`)
+- `src/v4/test/claim/workflow/affected_testgen_ci_runner.dag`
+  (`affected_testgen_claim_run_rows`,
+  `affected_testgen_claim_run_row_count = "6"`)
+
 Raw local logs were captured at:
 
 - `/tmp/bright-pike-883-v4-compile.log`
@@ -63,6 +73,7 @@ copies `src/v4` to a temporary source root and rewrites each witness function bo
 The lens-CI foundation that affected-set and affected-testgen rest on is green by execution:
 `scripts/v4-lens-ci-gate.sh --perturb-check` reported 4 discriminating lens witnesses passed,
 and every lens row failed under forced-false perturbation. The downstream
-`scripts/v4-affected-set-node-frontier-gate.sh --perturb-check` also passed by execution:
-9 affected-set node-frontier witnesses and 6 affected-testgen witnesses passed, with their
-corresponding perturb reds observed.
+`scripts/v4-affected-set-node-frontier-gate.sh --perturb-check` also passed by execution
+against both of its modeled rosters: 9 affected-set node-frontier witnesses projected from
+`affected_set_ci_runner.dag`, and 6 affected-testgen witnesses projected from
+`affected_testgen_ci_runner.dag`, with their corresponding perturb reds observed.
