@@ -27,6 +27,17 @@ import v4.std.find_witness {
 import v4.std.integer {
   int16_interval_spec,
   int32_interval_spec,
+  int8_interval_spec,
+  int_platform_interval_spec,
+  integer_concrete_zero,
+  integer_interval_bound_compare,
+  integer_interval_spec_contains,
+  integer_pointer_width_bound,
+  IntegerRangeInclusiveMax,
+  IntegerRangeInclusiveMin,
+  Signed,
+  Unsigned,
+  uint_platform_interval_spec,
   uint8_interval_spec,
   integer_interval_spec_node
 }
@@ -355,3 +366,30 @@ fn integer_value_set_reverse_is_strict_coarsening_control() -> Bool {
 data witness_integer_value_set_reverse_is_strict_coarsening: Bool = integer_value_set_reverse_is_strict_coarsening_control()
 
 data witness_integer_value_set_refuses_incompatible_unknown: Bool = !integer_value_set_contains(container: task_id_api_inhabitant_node(), contained: i32_value_set())
+
+data integer_interval_bound_compare_orders_pointer_width_bounds: Symbol = integer_interval_bound_compare_orders_pointer_width_bounds
+
+data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = match integer_interval_bound_compare(
+    left: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMin),
+    right: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin)
+  ) {
+    Less => true
+    Equal => false
+    Greater => false
+  }
+    && integer_interval_bound_compare(
+      left: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMin),
+      right: integer_concrete_zero()
+    ) == Less
+    && integer_interval_bound_compare(
+      left: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin),
+      right: integer_concrete_zero()
+    ) == Equal
+    && integer_interval_spec_contains(
+      container: uint_platform_interval_spec(),
+      contained: uint8_interval_spec()
+    )
+    && integer_interval_spec_contains(
+      container: int_platform_interval_spec(),
+      contained: int8_interval_spec()
+    )
