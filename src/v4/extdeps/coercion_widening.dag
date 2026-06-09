@@ -15,21 +15,79 @@ import v4.std.coercion {
   coercion_fold_refinement_widening
 }
 import v4.std.constraints { CanonicalGrounding }
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.find_witness {
   PreservationPredicate,
   TargetDeclaredPriority,
   preservation_rule_refinement_widening
 }
-import v4.std.node { Node }
-import v4.std.refinement_widening_predicate { refinement_widening_predicate_algebra }
+import v4.std.integer_value_set {
+  integer_interval_value_set_node,
+  integer_unbounded_value_set_node
+}
+import v4.std.node { Atom, Node, TypeNode }
+import v4.std.node_query { find_named_child }
+import v4.std.refinement_widening_predicate { refinement_widening_predicate_algebra_for_value_sets }
+
+fn coercion_widening_unknown_value_set_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^coercion_widening_unknown_value_set } },
+    children: []
+  }
+}
+
+fn coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: Node) -> Node {
+  match find_named_child(root: inhabitant, name: ^rust_inhabitant_field_facts) {
+    Accepted { value: facts, diagnostics: None } =>
+      match find_named_child(root: facts, name: ^rust_facts_field_range) {
+        Accepted { value: range, diagnostics: None } =>
+          integer_interval_value_set_node(interval: range)
+        Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+      }
+    Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+  }
+}
+
+fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) -> Node {
+  match find_named_child(root: inhabitant, name: ^python_inhabitant_field_facts) {
+    Accepted { value: facts, diagnostics: None } =>
+      match find_named_child(root: facts, name: ^python_facts_field_encoding) {
+        Accepted { value: encoding, diagnostics: None } =>
+          if encoding == Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [] } {
+            integer_unbounded_value_set_node()
+          } else {
+            coercion_widening_unknown_value_set_node()
+          }
+        Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+      }
+    Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+  }
+}
 
 
 fn mvp_rust_i32_python_int_refinement_widening_predicate() -> PreservationPredicate {
+  let source = rust_inhabitant_i32_node()
+  let candidate = python_int_inhabitant_node()
   PreservationPredicate {
-    algebra: refinement_widening_predicate_algebra(
-      source: rust_inhabitant_i32_node(),
-      candidate: python_int_inhabitant_node()
+    algebra: refinement_widening_predicate_algebra_for_value_sets(
+      source: source,
+      candidate: candidate,
+      source_value_set: coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: source),
+      candidate_value_set: coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: candidate)
+    ),
+    preservation_rule: preservation_rule_refinement_widening
+  }
+}
+
+fn mvp_python_int_rust_i32_refinement_narrowing_predicate() -> PreservationPredicate {
+  let source = python_int_inhabitant_node()
+  let candidate = rust_inhabitant_i32_node()
+  PreservationPredicate {
+    algebra: refinement_widening_predicate_algebra_for_value_sets(
+      source: source,
+      candidate: candidate,
+      source_value_set: coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: source),
+      candidate_value_set: coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: candidate)
     ),
     preservation_rule: preservation_rule_refinement_widening
   }
@@ -46,5 +104,18 @@ fn coercion_fold_mvp_rust_i32_to_python_int_widening(
     candidates: candidates,
     policy: TargetDeclaredPriority { priority: priority },
     predicate: mvp_rust_i32_python_int_refinement_widening_predicate()
+  )
+}
+
+fn coercion_fold_mvp_python_int_to_rust_i32_narrowing(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  priority: Node,
+) -> Outcome<CoercionResult> {
+  coercion_fold_refinement_widening(
+    source: source,
+    candidates: candidates,
+    policy: TargetDeclaredPriority { priority: priority },
+    predicate: mvp_python_int_rust_i32_refinement_narrowing_predicate()
   )
 }
