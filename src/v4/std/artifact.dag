@@ -112,40 +112,80 @@ type SourceTreeNode {
   children: List<SourceTreeEdge>
 }
 
+type SourceTreeProjection {
+  node: Node
+  provenance: List<NodeArtifactProvenance>
+}
+
+type SourceTreeChildrenProjection {
+  edges: List<Edge>
+  provenance: List<NodeArtifactProvenance>
+}
+
 fn source_tree_edge_target(edge: SourceTreeEdge) -> SourceTreeNode {
   edge.target
 }
 
-fn source_tree_edge_to_node_edge(edge: SourceTreeEdge) -> Edge {
+fn source_tree_projection_node(projection: SourceTreeProjection) -> Node {
+  projection.node
+}
+
+fn source_tree_projection_provenance(projection: SourceTreeProjection) -> List<NodeArtifactProvenance> {
+  projection.provenance
+}
+
+fn source_tree_children_projection_edges(projection: SourceTreeChildrenProjection) -> List<Edge> {
+  projection.edges
+}
+
+fn source_tree_children_projection_provenance(projection: SourceTreeChildrenProjection) -> List<NodeArtifactProvenance> {
+  projection.provenance
+}
+
+fn source_tree_edge_projection(edge: SourceTreeEdge) -> SourceTreeProjection {
+  source_tree_project(tree: source_tree_edge_target(edge: edge))
+}
+
+fn source_tree_edge_to_node_edge(edge: SourceTreeEdge, target: Node) -> Edge {
   Edge {
     label: Named { name: edge.label },
-    target: source_tree_to_node_graph(tree: source_tree_edge_target(edge: edge))
+    target: target
   }
 }
 
-fn source_tree_edges_to_node_edges(edges: List<SourceTreeEdge>) -> List<Edge> {
+fn source_tree_children_projection(edges: List<SourceTreeEdge>) -> SourceTreeChildrenProjection {
   fold_list(
     xs: edges,
-    empty: Empty,
+    empty: SourceTreeChildrenProjection { edges: Empty, provenance: Empty },
     cons: fn(acc, edge) {
-      list_snoc_item(xs: acc, item: source_tree_edge_to_node_edge(edge: edge))
+      let projected = source_tree_edge_projection(edge: edge)
+      SourceTreeChildrenProjection {
+        edges: list_snoc_item(
+          xs: source_tree_children_projection_edges(projection: acc),
+          item: source_tree_edge_to_node_edge(
+            edge: edge,
+            target: source_tree_projection_node(projection: projected)
+          )
+        ),
+        provenance: list_append(
+          left: source_tree_children_projection_provenance(projection: acc),
+          right: source_tree_projection_provenance(projection: projected)
+        )
+      }
     }
   )
 }
 
 fn source_tree_to_node_graph(tree: SourceTreeNode) -> Node {
-  Node {
-    kind: tree.kind,
-    children: source_tree_edges_to_node_edges(edges: tree.children)
-  }
+  source_tree_projection_node(projection: source_tree_project(tree: tree))
 }
 
-fn source_tree_own_artifact_provenance(tree: SourceTreeNode) -> List<NodeArtifactProvenance> {
+fn source_tree_own_artifact_provenance(tree: SourceTreeNode, node: Node) -> List<NodeArtifactProvenance> {
   match tree.artifact {
     Present { value: artifact } =>
       [
         NodeArtifactProvenance {
-          node: source_tree_to_node_graph(tree: tree),
+          node: node,
           artifact: artifact
         }
       ]
@@ -153,22 +193,21 @@ fn source_tree_own_artifact_provenance(tree: SourceTreeNode) -> List<NodeArtifac
   }
 }
 
-fn source_tree_children_artifact_provenance(edges: List<SourceTreeEdge>) -> List<NodeArtifactProvenance> {
-  fold_list(
-    xs: edges,
-    empty: Empty,
-    cons: fn(acc, edge) {
-      list_append(
-        left: acc,
-        right: source_tree_node_artifact_provenance(tree: source_tree_edge_target(edge: edge))
-      )
-    }
-  )
+fn source_tree_project(tree: SourceTreeNode) -> SourceTreeProjection {
+  let children = source_tree_children_projection(edges: tree.children)
+  let node = Node {
+    kind: tree.kind,
+    children: source_tree_children_projection_edges(projection: children)
+  }
+  SourceTreeProjection {
+    node: node,
+    provenance: list_append(
+      left: source_tree_own_artifact_provenance(tree: tree, node: node),
+      right: source_tree_children_projection_provenance(projection: children)
+    )
+  }
 }
 
 fn source_tree_node_artifact_provenance(tree: SourceTreeNode) -> List<NodeArtifactProvenance> {
-  list_append(
-    left: source_tree_own_artifact_provenance(tree: tree),
-    right: source_tree_children_artifact_provenance(edges: tree.children)
-  )
+  source_tree_projection_provenance(projection: source_tree_project(tree: tree))
 }
