@@ -192,7 +192,9 @@ should land as a **rider on #4581**, not a separate lane. One producer then serv
 existing consumers at once: the dependency classifier (its own dissolution marker), the
 `structural_resolution` lens (currently fixture-fed), and this checker's call graph. Call
 edges specifically arrive when function bodies land as `ComputationNode` trees carrying
-def-references on the same channel — until then, the §7 slice is **gated on the producer**,
+def-references on the same channel — sized separately as **COMPREP**
+(`design-computation-representation.md`; the checker's call graph queues behind its wave 1)
+— until then, the §7 slice is **gated on the producer**,
 and the only interim alternative (extracting the cluster's call graph v2-side, where the v2
 complexity analyzer already models caller/callee `ProofEdge`s) is explicitly second-choice:
 it builds the slice's input on the frozen tree instead of the substrate the checker is for.
