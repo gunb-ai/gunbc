@@ -23,7 +23,7 @@ import v4.std.node {
   edges_conform,
   well_formed
 }
-import v4.std.target_model {
+import v4.std.type_expr_projection_row_schema {
   target_type_expr_discipline_labeled,
   target_type_expr_discipline_no_edges,
   target_type_expr_discipline_positional,

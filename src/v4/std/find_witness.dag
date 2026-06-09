@@ -26,6 +26,9 @@ import v4.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold_preservation_holds
 }
 import v4.std.refinement_widening_predicate { refinement_widening_preservation_holds }
+import v4.std.type_expr_projection_discipline_zip_fold_predicate {
+  type_expr_projection_discipline_zip_fold_preservation_holds
+}
 import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
