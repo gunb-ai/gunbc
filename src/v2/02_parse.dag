@@ -43,7 +43,7 @@ import v2.std.core {
   ShNewline, ShEof, ShUnknown,
   SourceSpan, make_span,
   ErrorNode, make_error_node, ParseError,
-  with_required_cardinality,
+  with_required_cardinality, with_optional_cardinality,
   error_type, is_compiler_error,
   node_name_span, no_span,
   NewlineIndex, authored_name_at, kernel_span,
@@ -1662,8 +1662,7 @@ fn collect_type_args(tokens: List<Token>, ctx: ParseContext, args: List<Node>) -
 fn maybe_optional(tokens: List<Token>, ctx: ParseContext, te: Node, start_span: SourceSpan) -> TypeResult {
   match eat(tokens: tokens, expected: ExpectQuestion) {
   EatConsumed { token: _, tokens: __ec } =>
-    let ote = Node { name: te.name, span: te.span, ident_span: te.ident_span, children: te.children, connective: te.connective, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, expr_data: te.expr_data }
-    TypeResult { type_expr: ote, tokens: __ec, ctx: ctx, err: none }
+    TypeResult { type_expr: with_optional_cardinality(n: te), tokens: __ec, ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     TypeResult { type_expr: te, tokens: tokens, ctx: ctx, err: none }
   }
@@ -1987,7 +1986,7 @@ fn parse_uses_entry(tokens: List<Token>, ctx: ParseContext) -> ResUseResult {
     if has_err(err: ar.err) { return ResUseResult { resource_use: dummy, tokens: ar.tokens, ctx: ar.ctx, err: ar.err } }
     let r4 = expect(tokens: ar.tokens, expected: ExpectRParen)
     if has_err(err: r4.err) { return ResUseResult { resource_use: dummy, tokens: r4.tokens, ctx: ar.ctx, err: r4.err } }
-    let res_node = Node { name: r3.type_expr.name, span: r3.type_expr.span, ident_span: r3.type_expr.ident_span, children: r3.type_expr.children,
+    let res_node = Node { name: r3.type_expr.name, ident: r3.type_expr.ident, span: r3.type_expr.span, ident_span: r3.type_expr.ident_span, children: r3.type_expr.children,
       params: r3.type_expr.params, inferred: r3.type_expr.inferred, return_cardinality: r3.type_expr.return_cardinality,
       uses: r3.type_expr.uses, body: r3.type_expr.body,       connective: r3.type_expr.connective, transport: r3.type_expr.transport,
       properties: ar.fields, type_annotation: r3.type_expr.type_annotation,

@@ -590,6 +590,21 @@ fn declaration_id_equal(left: Node, right: Node) -> Bool {
   }
 }
 
+// Canonical rebuild: carry declaration identity from source unless rebuilt already stamped.
+fn with_declaration_identity_from(source: Node, node: Node) -> Node {
+  Node {
+    name: node.name,
+    ident: match source.ident { Some { value: id } => Some { value: id }  None => node.ident },
+    span: node.span, ident_span: node.ident_span,
+    children: node.children, connective: node.connective, params: node.params,
+    inferred: node.inferred, return_cardinality: node.return_cardinality,
+    uses: node.uses, body: node.body, transport: node.transport,
+    properties: node.properties, type_annotation: node.type_annotation,
+    is_self_recursive: node.is_self_recursive, has_non_tail_self_call: node.has_non_tail_self_call,
+    match_pattern: node.match_pattern, expr_data: node.expr_data
+  }
+}
+
 // BRIDGE DEBT (M4 Lane 2): child lookup by authored string name.
 // Deletion point: when Node.name is removed, replace all call sites
 // with positional access (children[i]) or structural field identity.
