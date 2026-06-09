@@ -9,12 +9,19 @@ import v4.std.algebra { count_equal, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.text { String }
+import v4.std.verification { BoolWitness }
 
 
 type V4RosterPilotClaimRunRow {
   label: String
   entry: String
   function: String
+}
+
+
+// Mechanical registry projection — consolidation #4553 Phase 1 (not a hand-maintained parallel list).
+fn bool_witness_from_roster_row(row: V4RosterPilotClaimRunRow) -> BoolWitness {
+  BoolWitness { entry: row.entry, function: row.function }
 }
 
 

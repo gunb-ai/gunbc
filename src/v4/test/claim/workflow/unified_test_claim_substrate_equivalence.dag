@@ -1,0 +1,83 @@
+// src/v4/test/claim/workflow/unified_test_claim_substrate_equivalence.dag
+// Scope: Consolidation #4553 Phase 1 substrate equivalence tranche (design §6.3).
+// Status: compile-time law — C3 modality discrimination + roster mechanical projection (E5 prep).
+// No runner / `--claim-run` execution in this tranche (E1 lands Phase 2).
+
+module v4.test.claim.workflow.unified_test_claim_substrate_equivalence
+
+
+import v4.std.logic { Bool }
+import v4.std.verification {
+  EvalOnly,
+  NodeCorpus,
+  UnifiedBoolWitnessModality,
+  UnifiedNodeCorpusModality,
+  UnifiedTestClaim,
+  bool_witness_descriptor,
+  bool_witness_matches_entry_function,
+  unified_test_claim_bool_witness_entry,
+  unified_test_claim_bool_witness_function,
+  unified_test_claim_modality
+}
+import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.workflow.v4_roster_pilot {
+  bool_witness_from_roster_row,
+  v4_roster_pilot_row_edit_locus_narrow
+}
+
+
+fn substrate_equivalence_sample_bool_unified_claim() -> UnifiedTestClaim {
+  bool_witness_descriptor(
+    w: bool_witness_from_roster_row(row: v4_roster_pilot_row_edit_locus_narrow)
+  )
+}
+
+
+fn substrate_equivalence_sample_node_corpus_claim() -> UnifiedTestClaim {
+  NodeCorpus {
+    claim: claim_eval_mvp2_test_claim_route,
+    transport: EvalOnly
+  }
+}
+
+
+fn substrate_equivalence_roster_projection_preserves_entry_function() -> Bool {
+  let w = bool_witness_from_roster_row(row: v4_roster_pilot_row_edit_locus_narrow)
+  bool_witness_matches_entry_function(
+    w: w,
+    entry: v4_roster_pilot_row_edit_locus_narrow.entry,
+    function: v4_roster_pilot_row_edit_locus_narrow.function
+  )
+}
+
+
+fn substrate_equivalence_bool_modality_discriminates() -> Bool {
+  unified_test_claim_modality(c: substrate_equivalence_sample_bool_unified_claim())
+    == UnifiedBoolWitnessModality
+}
+
+
+fn substrate_equivalence_node_corpus_modality_discriminates() -> Bool {
+  unified_test_claim_modality(c: substrate_equivalence_sample_node_corpus_claim())
+    == UnifiedNodeCorpusModality
+}
+
+
+fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
+  let c = substrate_equivalence_sample_bool_unified_claim()
+  unified_test_claim_bool_witness_entry(c: c)
+    == v4_roster_pilot_row_edit_locus_narrow.entry
+    && unified_test_claim_bool_witness_function(c: c)
+      == v4_roster_pilot_row_edit_locus_narrow.function
+}
+
+
+fn substrate_equivalence_holds() -> Bool {
+  substrate_equivalence_roster_projection_preserves_entry_function()
+    && substrate_equivalence_bool_modality_discriminates()
+    && substrate_equivalence_node_corpus_modality_discriminates()
+    && substrate_equivalence_unified_claim_preserves_bool_fields()
+}
+
+
+data witness_substrate_equivalence: Bool = substrate_equivalence_holds()
