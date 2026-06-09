@@ -147,14 +147,15 @@ fn preservation_predicate_holds(
       candidate: candidate,
       algebra: predicate.algebra
     )
-<<<<<<< HEAD
+  } else if predicate.preservation_rule == preservation_rule_project_to_core {
+    project_to_core_preservation_holds(
+      source_facts: source_facts,
+      candidate: candidate,
+      algebra: predicate.algebra
+    )
   } else if predicate.preservation_rule
     == preservation_rule_type_expr_projection_discipline_zip_fold {
     type_expr_projection_discipline_zip_fold_preservation_holds(
-=======
-  } else if predicate.preservation_rule == preservation_rule_project_to_core {
-    project_to_core_preservation_holds(
->>>>>>> origin/main
       source_facts: source_facts,
       candidate: candidate,
       algebra: predicate.algebra
