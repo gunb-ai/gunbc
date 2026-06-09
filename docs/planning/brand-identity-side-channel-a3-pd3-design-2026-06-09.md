@@ -346,8 +346,22 @@ Update call sites:
 - **Guard:** only graft when `identity.binding_id != none` and binding names differ from
   structural template spelling.
 
-`topo_resolve_types` (`04_infer.dag:5743+`) passes pre-resolve nodes that already carry binding id
-from binding registration.
+**`topo_resolve_types` preservation edge (load-bearing — must not be missed):**
+`topo_resolve_types` (`04_infer.dag:5714`) rebuilds `TypeEnv.bindings` by calling
+`resolve_node` on each pre-resolve binding and then constructing a fresh `TypeBinding {
+resolved: … }` entry.  This path goes through `preserve_nominal_brand_on_resolve(identity:
+pre, structural: result.resolved, …)` where `pre = binding.resolved` is the pre-resolve node
+(which carries `binding_id` from registration).  Because `with_preserved_binding_id` copies
+`identity.binding_id` onto the structural result, the rebuilt `TypeBinding.resolved` retains
+the stamp.
+
+**Implementation obligation:** `preserve_nominal_brand_on_resolve` MUST be updated to call
+`with_preserved_binding_id` (not `with_authored_identity`) before `topo_resolve_types` runs.
+If `with_authored_identity` is still in place when `topo_resolve_types` executes, the freshly
+constructed `TypeBinding.resolved` will have `binding_id = none` even though registration
+stamped it — identity silently drops, and `lookup_type_for` consumers see an unstamped node.
+This is why the atomicity constraint in §7 step 3 requires deleting `with_authored_identity`
+and landing `with_preserved_binding_id` in the same PR as the new `Node.binding_id` field.
 
 ### 5.3 Compare — PD-3 and relation refinement
 
@@ -387,7 +401,8 @@ spelling key.
 | `build_type_env` — type-decl registration | `alloc_binding_id(alloc)` — graph-global allocator, returns fresh `BindingId` | No | **AUTHORITY** |
 | `with_preserved_binding_id` — peel/resolve graft | `identity.binding_id` — read from the pre-peel Node that was stamped at registration | No (propagates already-stamped value) | **SAFE** |
 | `peel_nominal_alias_identity` — alias peel | reads `binding_id` from the looked-up `TypeBinding.resolved` node (stamped at registration) | No | **SAFE** |
-| `TypeBinding.resolved.binding_id` — returned by `lookup_type_for` | set at `build_type_env` registration, not at lookup | No | **SAFE** |
+| `topo_resolve_types` / `preserve_nominal_brand_on_resolve` rebuild | `identity.binding_id` copied via `with_preserved_binding_id` from `pre = binding.resolved` (stamped at registration); `pre` is the identity arg | No — copies from a node already authority-stamped | **SAFE** (requires `with_authored_identity` replaced before this path runs — see §5.2 atomicity note) |
+| `TypeBinding.resolved.binding_id` — returned by `lookup_type_for` after topo-resolve | set at `build_type_env` registration and preserved through `topo_resolve_types` via `with_preserved_binding_id` | No | **SAFE** |
 | `nominal_ref_node` — parse-time ref construction | `binding_id: none` — no value set | N/A | **SAFE (none)** |
 | Inference scope locals / param `TypeBinding` | not touched (no `binding_id` on `TypeBinding` struct, no `decl_registry` entry) | N/A | **SAFE (absent)** |
 | `decl_id_by_spelling` lookup → stamp | **ELIMINATED** — this field does not exist in phase 1 | Would have been spelling-keyed | **REMOVED** |
