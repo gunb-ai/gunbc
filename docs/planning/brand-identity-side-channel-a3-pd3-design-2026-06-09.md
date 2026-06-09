@@ -193,15 +193,16 @@ unique at allocation time.  No `decl_id_by_spelling` merge: the field does not e
 phase 1.
 
 **Carrier on `Node`:** add `binding_id: BindingId?` on `Node` (`00_core.dag` substrate extension).
-Stamped from `TypeDeclBinding` after type-decl lookup / peel — **not** from scope `TypeBinding`.
+Stamped at **declaration-registration time** by `build_type_env` — **not** after lookup or
+peel.  Infer/resolve only reads and propagates an already-present stamp; it never originates one.
 
 | Field | Domain | Consumer |
 |-------|--------|----------|
 | `Node.ident` | Spelling intern id (or module IR id) | `lookup_type_for` → `bindings` — **unchanged** |
-| `Node.binding_id` | `BindingId` | PD-3 compare, `with_preserved_binding_id` peel graft |
+| `Node.binding_id` | `BindingId` (set at registration, propagated through peel) | PD-3 compare, `with_preserved_binding_id` peel graft |
 
-After lookup stamps `binding_id`, later `lookup_type_for` calls still resolve via spelling —
-never via `binding_id`. `brand_name_at(binding_id, env)` reads `decl_registry`, not `bindings`.
+Later `lookup_type_for` calls still resolve via spelling — never via `binding_id`.
+`brand_name_at(binding_id, env)` reads `decl_registry`, not `bindings`.
 
 ### 3.3 Phase-1 scope bound (PD-3 dogfood)
 
@@ -251,7 +252,8 @@ Workers must **not** implement `intern(type_name).id` at parse as declaration id
 
 **Compatibility rule during migration:** when `binding_id == none` (kernel types, synthetic nodes,
 pre-migration graphs), PD-3 falls back to `source_name_at` string compare (today's behavior).
-Stamping is a post-`build_type_env` / post-lookup obligation, not a parse-time intern.
+Stamping is a **`build_type_env`-registration obligation**, not a parse-time intern and not a
+post-lookup obligation — infer/resolve reads and propagates, never originates.
 
 ---
 
@@ -311,7 +313,7 @@ flowchart LR
 **Do not** assign `binding_id` from `intern(type_name)` — spelling and identity diverge by design.
 **Do not** use per-module counters — imported env merge requires graph-global allocation.
 
-### 5.2 Infer / resolve — stamp `binding_id` after lookup, replace ident_span graft
+### 5.2 Infer / resolve — read and propagate `binding_id`; replace ident_span graft
 
 After `lookup_type_for` resolves a type reference, read `binding_id` directly from the
 **resolved `Node`** returned by the lookup: `resolved.binding_id`.  The stamp is already on
@@ -422,7 +424,7 @@ Ordered for minimal blast radius; each step has a consumer test.
 |------|--------|----------|
 | 1 | Add `BindingId`, `TypeDeclBinding`, `BindingIdAllocator`; extend `Node.binding_id`; `decl_registry` on `TypeEnv`; helpers in `00_core.dag` + `04_env.dag` | unit tests in `infer_semantics.rs` |
 | 2 | `build_type_env`: graph-global alloc; register `TypeDeclBinding` per type decl; stamp `Node.binding_id` on decl resolved nodes | `m1_brand_twins_over_refined_base_remain_distinct` |
-| 3 | Infer/resolve: stamp `binding_id` after lookup; `with_preserved_binding_id`; **atomically** delete `with_authored_identity` ident_span graft (same PR — see atomicity note above) | same + parse span tests still green |
+| 3 | Infer/resolve: read `resolved.binding_id` (already stamped at step 2); `with_preserved_binding_id` propagates it through peel; **atomically** delete `with_authored_identity` ident_span graft (same PR — see atomicity note above) | same + parse span tests still green |
 | 4 | PD-3 fns compare `binding_id` | `pd3_*`, `pd3_adversarial.rs` |
 | 5 | Remove `authored_name_at` from compare path (use `binding_id` / `source_name_at` fallback) | grep audit |
 | 6 | Remove `module_skips_direct_call_arg_check` when substrate compiles clean | ROADMAP `PD-3-DOGFOOD` row |
