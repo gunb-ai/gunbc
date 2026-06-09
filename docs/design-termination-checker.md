@@ -162,6 +162,41 @@ Pipeline, all pieces named:
    contains a descending edge ⇒ no infinite descent on a well-founded lexicographic order ⇒
    termination. Polynomial: one lexicographic scan per edge + one SCC pass.
 
+**Prerequisite — call-graph producer (AUDITED 2026-06-09: does not exist; must be built).**
+The extraction step above was audited against the live tree and is **not readable today** —
+three layers deep, in increasing severity:
+
+1. **No production `BindsTo` facts.** The classifier only recognizes edges literally labeled
+   `^dependency_binds_to_edge` (`dependency.dag:126`), and the only writers of that edge in
+   the entire tree are **four `lens_structural_resolution` test fixtures** — zero pipeline
+   writers. This is exactly `dependency.dag`'s own staged-classifier marker ("dissolve-on:
+   T-9 resolve writes BindsTo substrate facts inline"), confirmed unbuilt.
+2. **Resolution materializes spelling, not reference.** `resolve_atom`
+   (`03_resolve.dag:280`) rewrites a use-site atom to a *canonicalized-spelling* atom; the
+   use→def relation survives only as "two atoms share a Symbol." Recovering call edges by
+   re-joining atoms to declarations on symbol equality would rebuild the
+   **spelling-as-identity** channel that the BRAND lane (#4579/#4581 `binding_id`) exists to
+   dissolve — a workaround this design refuses.
+3. **Call sites are not in the v4 representation at all.** No stage produces
+   `ComputationNode` trees (`02_parse` builds none; `03_normalize`/`05_eval` only match
+   them), and THESIS's "Transform holds a FunctionRef to an Arrow declaration" has **no
+   landed `FunctionRef` carrier** in `std/node.dag`. The serialize cluster's `.dag` functions
+   are executed by the v2 interpreter from source; their call structure has no v4 substrate
+   representation today.
+
+**The fix (and it should be built — the operator concurs):** one write at one site. When
+resolve binds a use to a def, materialize the relation as a substrate fact **on the
+`binding_id` channel that #4581 is building right now** — T-9's "resolve writes BindsTo
+inline" and BRAND's authority-direct stamping are the *same write at the same seam*, so T-9
+should land as a **rider on #4581**, not a separate lane. One producer then serves three
+existing consumers at once: the dependency classifier (its own dissolution marker), the
+`structural_resolution` lens (currently fixture-fed), and this checker's call graph. Call
+edges specifically arrive when function bodies land as `ComputationNode` trees carrying
+def-references on the same channel — until then, the §7 slice is **gated on the producer**,
+and the only interim alternative (extracting the cluster's call graph v2-side, where the v2
+complexity analyzer already models caller/callee `ProofEdge`s) is explicitly second-choice:
+it builds the slice's input on the frozen tree instead of the substrate the checker is for.
+
 **Worked target — the serialize cluster.** Proof: `dimensions = [TreeSize(node)]`. Every
 edge in the cluster passes a structural child of its input (`generic_apply` recurses on
 `split.head`/argument nodes; `args_go`/`separated_go`/`record_fields_go` recurse on
@@ -240,7 +275,9 @@ The fuel triads are the scaffold; the checker landing is the dissolution trigger
   of `Witness<TerminationProof>`; it starts consuming *checked SCC* witnesses instead of
   node-shape-only witnesses. Second consumer: the first dissolved triad (its deletion breaks
   if the checker is wrong — the strongest consumer form).
-- **Minimal slice** (exercises the committed shape's risk — SCC + lexicographic — not a toy):
+- **Minimal slice** (exercises the committed shape's risk — SCC + lexicographic — not a toy;
+  **step 2 is gated on the call-graph producer per the §4.3 audit** — the T-9-rider-on-#4581
+  write must land first, or the slice's input doesn't exist):
   1. carrier upgrades (§4.1) + `is_valid_proof`/Kosaraju port onto `v4.std.dependency`;
   2. extract the real `serialize_type_expr_*` call graph; author its candidate proof;
   3. two `TestClaim`s under `src/v4/test/claim/termination/`:
