@@ -14,6 +14,7 @@ import v4.std.algebra {
   Cons,
   Empty,
   fold_list_node,
+  FreeMonoid,
   Group,
   length,
   Magma,
@@ -145,7 +146,7 @@ fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> Ordering {
   int_compare(a: decimal_digit_value(d: left), b: decimal_digit_value(d: right))
 }
 
-fn decimal_digit_list_compare(left: List<DecimalDigit>, right: List<DecimalDigit>) -> Ordering {
+fn decimal_digit_list_compare(left: FreeMonoid<DecimalDigit>, right: FreeMonoid<DecimalDigit>) -> Ordering {
   match left {
     Empty => match right {
       Empty => Equal

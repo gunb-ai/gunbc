@@ -23,14 +23,19 @@ import v4.std.find_witness {
   preservation_rule_exact_structural_equality_zip_fold,
   preservation_rule_refinement_widening
 }
-import v4.std.integer { int32_interval_spec, integer_interval_spec_node }
+import v4.std.integer {
+  int16_interval_spec,
+  int32_interval_spec,
+  integer_interval_spec_node
+}
 import v4.std.integer_value_set {
   integer_interval_value_set_node,
   integer_unbounded_value_set_node,
   integer_value_set_contains,
   integer_value_set_strictly_contains
 }
-import v4.std.node { Node, Symbol }
+import v4.std.model_core { ModelCoreFactAxisSurfaceSpelling }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.diagnostic { Accepted, Rejected }
 
 fn control_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
@@ -98,8 +103,34 @@ data witness_project_to_core_real_dispatch_rejects_wrong_core: Bool = match find
   Rejected { diagnostics: _ } => true
 }
 
+fn surface_only_node(surface: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [] }
+      }
+    ]
+  }
+}
+
+data witness_project_to_core_rejects_surface_only_empty_core: Bool = match find_witness_derives(
+  source_facts: surface_only_node(surface: ^surface_only_source),
+  candidates: control_candidate_set(candidates: [surface_only_node(surface: ^surface_only_candidate)], closedness_evidence: surface_only_node(surface: ^surface_only_candidate)),
+  derivation_algebra: surface_only_node(surface: ^surface_only_source),
+  multiplicity_policy: UniqueOnly
+) {
+  Accepted { value: _, diagnostics: _ } => false
+  Rejected { diagnostics: _ } => true
+}
+
 fn i32_value_set() -> Node {
   integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int32_interval_spec()))
+}
+
+fn i16_value_set() -> Node {
+  integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int16_interval_spec()))
 }
 
 fn python_int_value_set() -> Node {
@@ -107,6 +138,8 @@ fn python_int_value_set() -> Node {
 }
 
 data witness_integer_value_set_accepts_i32_subset_python_int: Bool = integer_value_set_contains(container: python_int_value_set(), contained: i32_value_set())
+
+data witness_integer_value_set_accepts_i16_subset_i32: Bool = integer_value_set_contains(container: i32_value_set(), contained: i16_value_set())
 
 fn integer_value_set_reverse_is_strict_coarsening_control() -> Bool {
   let strict = integer_value_set_strictly_contains(container: python_int_value_set(), contained: i32_value_set())
