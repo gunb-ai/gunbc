@@ -33,6 +33,7 @@ type RunnableFrontier {
 // dissolve-on-arrival: blocked scheduler diagnostics classify missing prerequisite/cycle evidence directly.
 type SchedulerBlockedEvidence
   = SchedulerNoRunnableFrontier {}
+  | SchedulerMissingDependencyEndpoint {}
 
 // 🟡 coproduct dissolution — feature:scheduler-plan-outcome — consumer:scheduler_plan_from_dependencies
 // dissolve-on-arrival: workflow execution state projects complete/runnable/blocked directly from dependency facts.
@@ -111,6 +112,18 @@ fn scheduler_dependency_nodes(dependencies: List<DependencyView>) -> List<Node> 
   })
 }
 
+fn scheduler_missing_dependency_endpoints(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>
+) -> List<Node> {
+  filter(
+    xs: scheduler_dependency_nodes(dependencies: scheduler_execution_dependencies(dependencies: dependencies)),
+    predicate: fn(endpoint) {
+      contains(xs: nodes, item: endpoint, eq: fn(left, right) { left == right }) == false
+    }
+  )
+}
+
 fn scheduler_dependency_unblocked(
   dependency: DependencyView,
   scheduled: List<Node>,
@@ -176,6 +189,10 @@ fn scheduler_remaining_nodes(nodes: List<Node>, scheduled: List<Node>) -> List<N
 
 fn scheduler_blocked_evidence() -> SchedulerBlockedEvidence {
   SchedulerNoRunnableFrontier {}
+}
+
+fn scheduler_missing_dependency_endpoint_evidence() -> SchedulerBlockedEvidence {
+  SchedulerMissingDependencyEndpoint {}
 }
 
 fn scheduler_schedule_frontier(scheduled: List<Node>, frontier: RunnableFrontier) -> List<Node> {
@@ -266,13 +283,23 @@ fn scheduler_step_plan_from_dependencies(
   dependencies: List<DependencyView>,
   scheduled: List<Node>
 ) -> SchedulerPlan {
-  scheduler_plan_from_state(
-    state: scheduler_step_state_from_dependencies(
-      nodes: nodes,
-      dependencies: dependencies,
-      state: scheduler_run_init(nodes: nodes, scheduled: scheduled)
+  let missing_endpoints = scheduler_missing_dependency_endpoints(nodes: nodes, dependencies: dependencies)
+  if non_empty(xs: missing_endpoints) {
+    SchedulerPlanBlocked {
+      evidence: scheduler_missing_dependency_endpoint_evidence(),
+      scheduled: scheduled,
+      remaining: missing_endpoints,
+      layers: []
+    }
+  } else {
+    scheduler_plan_from_state(
+      state: scheduler_step_state_from_dependencies(
+        nodes: nodes,
+        dependencies: dependencies,
+        state: scheduler_run_init(nodes: nodes, scheduled: scheduled)
+      )
     )
-  )
+  }
 }
 
 // Bounded fixed point: each non-empty frontier schedules at least one remaining node,
@@ -296,13 +323,23 @@ fn scheduler_plan_from_dependencies(
   dependencies: List<DependencyView>,
   scheduled: List<Node>
 ) -> SchedulerPlan {
-  scheduler_plan_from_state(
-    state: scheduler_run_to_fixed_point(
-      nodes: nodes,
-      dependencies: dependencies,
-      scheduled: scheduled
+  let missing_endpoints = scheduler_missing_dependency_endpoints(nodes: nodes, dependencies: dependencies)
+  if non_empty(xs: missing_endpoints) {
+    SchedulerPlanBlocked {
+      evidence: scheduler_missing_dependency_endpoint_evidence(),
+      scheduled: scheduled,
+      remaining: missing_endpoints,
+      layers: []
+    }
+  } else {
+    scheduler_plan_from_state(
+      state: scheduler_run_to_fixed_point(
+        nodes: nodes,
+        dependencies: dependencies,
+        scheduled: scheduled
+      )
     )
-  )
+  }
 }
 
 fn scheduler_nodes_from_layers(layers: List<ReadinessLayer>) -> List<Node> {
