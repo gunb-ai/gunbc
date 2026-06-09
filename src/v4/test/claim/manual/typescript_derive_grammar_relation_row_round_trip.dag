@@ -22,7 +22,6 @@ import v4.std.grammar {
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
-  grammar_relation_emitted_not_conj,
   grammar_relation_row_to_node,
   grammar_relation_tokens_node
 }
@@ -97,7 +96,7 @@ fn ts_wave2a_lhs_exact_arrow_emitted_rejects() -> Bool {
     lhs: ^ts_production_wave2a_type_alias_decl,
     child: ts_mvp1_emitted_add_fn_node()
   ) {
-    Violates { diagnostic: d } => d.reason == grammar_relation_emitted_not_conj
+    Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
     Holds { value: _ } => false
   }
 }
