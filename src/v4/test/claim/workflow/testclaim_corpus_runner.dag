@@ -59,13 +59,8 @@ type BoolWitnessRun
     }
 
 
-type UnifiedClaimRun
-  = NodeCorpusRun { run: TestClaimRun<Node, RuntimeValue> }
-  | BoolWitnessRunReceipt { run: BoolWitnessRun }
-
-
 type CorpusEvalEntry {
-  run: UnifiedClaimRun
+  run: TestClaimRun<Node, RuntimeValue>
 }
 
 
@@ -101,25 +96,13 @@ data testclaim_subject_roster_unsupported_rows: List<TestClaimSubjectRosterUnsup
 
 
 fn corpus_entry_label(e: CorpusEvalEntry) -> String {
-  match e.run {
-    NodeCorpusRun { run: node_run } =>
-      test_claim_label(c: test_claim_run_claim(run: node_run))
-    BoolWitnessRunReceipt { run: bool_run } => match bool_run {
-      BoolWitnessRuntimeVerdict { witness: witness, result: _ } => witness.entry
-      BoolWitnessQueuedForHostTransport { witness: witness } => witness.entry
-    }
-  }
+  test_claim_label(c: test_claim_run_claim(run: e.run))
 }
 
 
 fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
-    match e.run {
-      NodeCorpusRun { run: node_run } =>
-        verdict_tally_add(t: acc, v: test_claim_run_verdict(run: node_run))
-      BoolWitnessRunReceipt { run: _ } =>
-        acc
-    }
+    verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
   })
 }
 
@@ -147,7 +130,7 @@ fn corpus_report_total(r: CorpusEvalReport) -> Nat {
 fn corpus_entry_from_node_runtime_value_run(
   run: TestClaimRun<Node, RuntimeValue>
 ) -> CorpusEvalEntry {
-  CorpusEvalEntry { run: NodeCorpusRun { run: run } }
+  CorpusEvalEntry { run: run }
 }
 
 
@@ -190,21 +173,6 @@ fn v4_roster_pilot_bool_witness_unified_claims() -> List<UnifiedTestClaim> {
 
 fn queued_bool_witness_run(witness: BoolWitness) -> BoolWitnessRun {
   BoolWitnessQueuedForHostTransport { witness: witness }
-}
-
-
-fn corpus_entry_from_queued_bool_witness(witness: BoolWitness) -> CorpusEvalEntry {
-  CorpusEvalEntry {
-    run: BoolWitnessRunReceipt { run: queued_bool_witness_run(witness: witness) }
-  }
-}
-
-
-fn v4_roster_pilot_queued_bool_witness_entries() -> List<CorpusEvalEntry> {
-  map(
-    v4_roster_pilot_claim_run_rows,
-    fn(row) { corpus_entry_from_queued_bool_witness(witness: bool_witness_from_roster_row(row: row)) }
-  )
 }
 
 
