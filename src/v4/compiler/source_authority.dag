@@ -16,6 +16,7 @@ import v4.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_wave1_modeled
 }
+import v4.std.artifact { Artifact, NodeArtifactProvenance }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -48,6 +49,11 @@ type NormalizedDagSourceAst {
 
 type DagSemanticIr {
   tree: ResolvedTree
+}
+
+type DagSourceArtifact {
+  source: DagSource
+  artifact: Artifact
 }
 
 type SourceAstEqual {
@@ -142,6 +148,49 @@ fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: DagLanguageModel) -> O
         }
       )
     }
+  )
+}
+
+
+fn semantic_ir_from_source_with_model(source: DagSource, lm: DagLanguageModel) -> Outcome<DagSemanticIr> {
+  bind_outcome(
+    o: parse_dag_source_ast_with_model(source: source, lm: lm),
+    f: fn(ast) {
+      semantic_ir_from_ast_with_model(ast: ast, lm: lm)
+    }
+  )
+}
+
+
+fn semantic_ir_from_source(source: DagSource) -> Outcome<DagSemanticIr> {
+  semantic_ir_from_source_with_model(source: source, lm: dag_language_model_wave1_modeled())
+}
+
+
+fn source_ir_node_artifact_provenance_from_model(
+  source_artifact: DagSourceArtifact,
+  lm: DagLanguageModel
+) -> Outcome<NodeArtifactProvenance> {
+  bind_outcome(
+    o: semantic_ir_from_source_with_model(source: source_artifact.source, lm: lm),
+    f: fn(ir) {
+      outcome_accepted(
+        value: NodeArtifactProvenance {
+          node: ir.tree,
+          artifact: source_artifact.artifact
+        }
+      )
+    }
+  )
+}
+
+
+fn source_ir_node_artifact_provenance(
+  source_artifact: DagSourceArtifact
+) -> Outcome<NodeArtifactProvenance> {
+  source_ir_node_artifact_provenance_from_model(
+    source_artifact: source_artifact,
+    lm: dag_language_model_wave1_modeled()
   )
 }
 

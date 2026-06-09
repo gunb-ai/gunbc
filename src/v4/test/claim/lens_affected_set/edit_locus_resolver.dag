@@ -11,8 +11,16 @@ import v4.lens.edit_locus {
   PathRegex,
   RepoPath,
   affected_set_reading_from_git_diff,
+  affected_set_reading_from_git_diff_provenance,
   resolve_edit_locus
 }
+import v4.compiler.source_authority {
+  DagSource,
+  DagSourceArtifact,
+  source_ir_node_artifact_provenance
+}
+import v4.std.artifact { Artifact, SourceFile }
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty, length }
 import v4.std.node { Symbol }
@@ -26,8 +34,25 @@ import v4.test.claim.lens_affected_set.node_precision {
 }
 
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.dag"
+data edit_locus_path_source_producer_fixture: RepoPath = "src/v4/test/claim/lens_affected_set/source_producer_fixture.dag"
 data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
+data edit_locus_source_producer_fixture_source: DagSource = "type SourceProducerFixture = Bool"
+
+data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^edit_locus_source_producer_fixture_artifact,
+  file_path: edit_locus_path_source_producer_fixture
+}
+
+data edit_locus_source_producer_fixture_source_artifact: DagSourceArtifact = DagSourceArtifact {
+  source: edit_locus_source_producer_fixture_source,
+  artifact: edit_locus_source_producer_fixture_artifact
+}
+
+data edit_locus_source_producer_git_diff: GitDiffNameOnly = GitDiffNameOnly {
+  changed_paths: [edit_locus_path_source_producer_fixture]
+}
 
 fn edit_locus_fixture_path_regex_matches(changed: RepoPath, pattern: PathRegex) -> Bool {
   match pattern {
@@ -102,7 +127,38 @@ fn edit_locus_affected_set_wire_fail_closed_holds() -> Bool {
   }
 }
 
+fn edit_locus_source_provenance_producer_holds() -> Bool {
+  match source_ir_node_artifact_provenance(
+    source_artifact: edit_locus_source_producer_fixture_source_artifact
+  ) {
+    Accepted { value: provenance, diagnostics: _ } =>
+      provenance.artifact.file_path == edit_locus_path_source_producer_fixture
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
+  match source_ir_node_artifact_provenance(
+    source_artifact: edit_locus_source_producer_fixture_source_artifact
+  ) {
+    Accepted { value: provenance, diagnostics: _ } =>
+      match affected_set_reading_from_git_diff_provenance(
+        graph: affected_set_claim_tree(),
+        git_diff: edit_locus_source_producer_git_diff,
+        provenance: [provenance]
+      ) {
+        Holds { value: reading } =>
+          (reading.edit_locus == provenance.node)
+            && (length(xs: reading.affected) == 1)
+        Violates { diagnostic: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 data edit_locus_narrow_resolution_claim_passes: Bool = edit_locus_narrow_resolution_holds()
 data edit_locus_fail_closed_claim_passes: Bool = edit_locus_fail_closed_holds()
 data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_wire_holds()
 data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
+data edit_locus_source_provenance_producer_claim_passes: Bool = edit_locus_source_provenance_producer_holds()
+data edit_locus_source_provenance_affected_set_wire_claim_passes: Bool = edit_locus_source_provenance_affected_set_wire_holds()
