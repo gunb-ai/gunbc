@@ -43,6 +43,18 @@ type ModelCorePrimitiveFactAxis
   | ModelCoreFactAxisSurfaceSpelling {}
   | ModelCoreFactAxisOverflowDisposition {}
 
+fn model_core_primitive_fact_axis_is_surface(axis: Symbol) -> Bool {
+  axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {})
+}
+
+fn model_core_primitive_fact_axis_is_core(axis: Symbol) -> Bool {
+  (axis == discriminant(v: ModelCoreFactAxisEncoding {}))
+    || (axis == discriminant(v: ModelCoreFactAxisWidth {}))
+    || (axis == discriminant(v: ModelCoreFactAxisSignedness {}))
+    || (axis == discriminant(v: ModelCoreFactAxisRange {}))
+    || (axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}))
+}
+
 
 type PrimitiveFactBundle {
   substrate_carrier: Node

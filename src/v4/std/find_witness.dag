@@ -287,6 +287,38 @@ fn derivation_predicate_for_rule(
     }
   }
 }
+
+fn find_witness_rejection_priority(reason: Symbol) -> Int {
+  if reason == find_witness_reason_invalid_witness {
+    3
+  } else if reason == find_witness_reason_ambiguous_candidate {
+    2
+  } else if reason == find_witness_reason_not_realized {
+    1
+  } else {
+    0
+  }
+}
+
+fn find_witness_derivation_rejection_better(
+  current: Outcome<FindWitnessResult>,
+  candidate: Outcome<FindWitnessResult>
+) -> Outcome<FindWitnessResult> {
+  match current {
+    Accepted { value: _, diagnostics: _ } => current
+    Rejected { diagnostics: current_diagnostics } =>
+      match candidate {
+        Accepted { value: _, diagnostics: _ } => candidate
+        Rejected { diagnostics: candidate_diagnostics } =>
+          if find_witness_rejection_priority(reason: candidate_diagnostics.head.reason) > find_witness_rejection_priority(reason: current_diagnostics.head.reason) {
+            candidate
+          } else {
+            current
+          }
+      }
+  }
+}
+
 fn find_witness_derives(
   source_facts: Node,
   candidates: CandidateSet,
@@ -297,24 +329,28 @@ fn find_witness_derives(
     realized_preservation_rules(),
     init: outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts)),
     f: fn(acc, rule) {
-      match acc {
-        Accepted { value: _, diagnostics: _ } => acc
-        Rejected { diagnostics: _ } =>
-          match find_witness(
-            source_facts: source_facts,
-            candidates: candidates,
+	      match acc {
+	        Accepted { value: _, diagnostics: _ } => acc
+	        Rejected { diagnostics: _ } =>
+	          match find_witness(
+	            source_facts: source_facts,
+	            candidates: candidates,
             predicate: derivation_predicate_for_rule(
               source_facts: source_facts,
               derivation_algebra: derivation_algebra,
               rule: rule
             ),
-            multiplicity_policy: multiplicity_policy
-          ) {
-            Accepted { value: fw, diagnostics: d } => Accepted { value: fw, diagnostics: d }
-            Rejected { diagnostics: _ } => acc
-          }
-      }
-    }
+	            multiplicity_policy: multiplicity_policy
+	          ) {
+	            Accepted { value: fw, diagnostics: d } => Accepted { value: fw, diagnostics: d }
+	            Rejected { diagnostics: r } =>
+	              find_witness_derivation_rejection_better(
+	                current: acc,
+	                candidate: Rejected { diagnostics: r }
+	              )
+	          }
+	      }
+	    }
   )
 }
 fn find_witness_realized(

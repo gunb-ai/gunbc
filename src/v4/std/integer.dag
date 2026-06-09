@@ -235,37 +235,55 @@ fn integer_interval_spec_strictly_contains(container: IntegerIntervalSpec, conta
     && !integer_interval_spec_contains(container: contained, contained: container)
 }
 
+fn integer_interval_spec_contains_decoded_node(container: IntegerIntervalSpec, contained: Node) -> Bool {
+  if contained == integer_interval_spec_node(spec: int128_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: int128_interval_spec())
+  } else if contained == integer_interval_spec_node(spec: int64_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: int64_interval_spec())
+  } else if contained == integer_interval_spec_node(spec: int32_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: int32_interval_spec())
+  } else if contained == integer_interval_spec_node(spec: int16_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: int16_interval_spec())
+  } else if contained == integer_interval_spec_node(spec: int8_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: int8_interval_spec())
+  } else if contained == integer_interval_spec_node(spec: uint128_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: uint128_interval_spec())
+  } else if contained == integer_interval_spec_node(spec: uint64_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: uint64_interval_spec())
+  } else if contained == integer_interval_spec_node(spec: uint32_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: uint32_interval_spec())
+  } else if contained == integer_interval_spec_node(spec: uint16_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: uint16_interval_spec())
+  } else if contained == integer_interval_spec_node(spec: uint8_interval_spec()) {
+    integer_interval_spec_contains(container: container, contained: uint8_interval_spec())
+  } else {
+    false
+  }
+}
+
 fn integer_interval_spec_node_contains(container: Node, contained: Node) -> Bool {
-  if container == contained {
-    true
+  if container == integer_interval_spec_node(spec: int128_interval_spec()) {
+    integer_interval_spec_contains_decoded_node(container: int128_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: int128_interval_spec()) {
-    (contained == integer_interval_spec_node(spec: int64_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: int32_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: int16_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: int8_interval_spec()))
+    integer_interval_spec_contains_decoded_node(container: int128_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: int64_interval_spec()) {
-    (contained == integer_interval_spec_node(spec: int32_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: int16_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: int8_interval_spec()))
+    integer_interval_spec_contains_decoded_node(container: int64_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: int32_interval_spec()) {
-    (contained == integer_interval_spec_node(spec: int16_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: int8_interval_spec()))
+    integer_interval_spec_contains_decoded_node(container: int32_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: int16_interval_spec()) {
-    contained == integer_interval_spec_node(spec: int8_interval_spec())
+    integer_interval_spec_contains_decoded_node(container: int16_interval_spec(), contained: contained)
+  } else if container == integer_interval_spec_node(spec: int8_interval_spec()) {
+    integer_interval_spec_contains_decoded_node(container: int8_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: uint128_interval_spec()) {
-    (contained == integer_interval_spec_node(spec: uint64_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: uint32_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: uint16_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: uint8_interval_spec()))
+    integer_interval_spec_contains_decoded_node(container: uint128_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: uint64_interval_spec()) {
-    (contained == integer_interval_spec_node(spec: uint32_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: uint16_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: uint8_interval_spec()))
+    integer_interval_spec_contains_decoded_node(container: uint64_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: uint32_interval_spec()) {
-    (contained == integer_interval_spec_node(spec: uint16_interval_spec()))
-      || (contained == integer_interval_spec_node(spec: uint8_interval_spec()))
+    integer_interval_spec_contains_decoded_node(container: uint32_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: uint16_interval_spec()) {
-    contained == integer_interval_spec_node(spec: uint8_interval_spec())
+    integer_interval_spec_contains_decoded_node(container: uint16_interval_spec(), contained: contained)
+  } else if container == integer_interval_spec_node(spec: uint8_interval_spec()) {
+    integer_interval_spec_contains_decoded_node(container: uint8_interval_spec(), contained: contained)
   } else {
     false
   }

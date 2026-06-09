@@ -8,25 +8,17 @@ module v4.std.project_to_core_predicate
 import v4.std.algebra { list_snoc_item }
 import v4.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v4.std.model_core {
-  ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisOverflowDisposition,
-  ModelCoreFactAxisRange,
-  ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisSurfaceSpelling,
-  ModelCoreFactAxisWidth
+  model_core_primitive_fact_axis_is_core,
+  model_core_primitive_fact_axis_is_surface
 }
 import v4.std.node { Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, well_formed }
 
 fn project_to_core_axis_is_core(name: Symbol) -> Bool {
-  (name == discriminant(v: ModelCoreFactAxisEncoding {}))
-    || (name == discriminant(v: ModelCoreFactAxisWidth {}))
-    || (name == discriminant(v: ModelCoreFactAxisSignedness {}))
-    || (name == discriminant(v: ModelCoreFactAxisRange {}))
-    || (name == discriminant(v: ModelCoreFactAxisOverflowDisposition {}))
+  model_core_primitive_fact_axis_is_core(axis: name)
 }
 
 fn project_to_core_axis_is_surface(name: Symbol) -> Bool {
-  name == discriminant(v: ModelCoreFactAxisSurfaceSpelling {})
+  model_core_primitive_fact_axis_is_surface(axis: name)
 }
 
 fn project_to_core_init(_: Node) -> Node {
