@@ -3678,26 +3678,23 @@ fn type_expr_projection_candidate_for_connective(
 }
 
 // SG-2 fold — anchored substrate TypeNode with projected positional children (checkpoint 3).
+// Labeled Conj/Disj substrates keep node.children; positional connectives pass projected list.
 fn type_expr_projection_substrate_facts(
   node: Node,
   projected_positional: List<Node>
 ) -> Node {
   Node {
     kind: node.kind,
-    children: if is_empty(xs: projected_positional) {
-      node.children
-    } else {
-      fold_list_right(
-        xs: projected_positional,
-        empty: Empty,
-        snoc: fn(acc, child) {
-          list_snoc_item(
-            xs: acc,
-            item: Edge { label: Positional, target: child }
-          )
-        }
-      )
-    }
+    children: fold_list_right(
+      xs: projected_positional,
+      empty: Empty,
+      snoc: fn(acc, child) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: child }
+        )
+      }
+    )
   }
 }
 
