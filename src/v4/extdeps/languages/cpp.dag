@@ -1451,6 +1451,7 @@ fn cpp_sg2_type_expr_lex_rules() -> LexRuleSet {
         cpp_lex_rule(token_class: ^cpp_token_lt, text: "<"),
         cpp_lex_rule(token_class: ^cpp_token_gt, text: ">"),
         cpp_lex_rule(token_class: ^cpp_token_pipe, text: " | "),
+        cpp_lex_rule(token_class: ^cpp_token_rparen_tight, text: ")"),
         cpp_lex_rule(token_class: ^cpp_token_arrow, text: " -> "),
         cpp_lex_rule(token_class: ^cpp_token_colon, text: ": ")
       ]

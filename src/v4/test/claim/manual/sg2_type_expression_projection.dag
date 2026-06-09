@@ -34,15 +34,16 @@ import v4.extdeps.languages.rust {
   rust_sg2_rc_foobar_xy_emitted,
   rust_sg2_type_expr_projection_probe_target_model,
   rust_sg2_type_expr_target_model,
-  rust_type_expression_projection
+  rust_type_expression_projection,
+  rust_type_expression_projection_bundle_node
 }
 import v4.std.target_model {
   TargetFunctionTypeShape,
   TargetModel,
   TargetTypeExpressionProjection,
   target_type_expr_emitted_wire_decode,
-  type_expr_projection_row_witness_gate,
-  type_expr_projection_shape_for_connective
+  type_expr_projection_bundle_shape_for_connective,
+  type_expr_projection_row_witness_gate
 }
 import v4.std.node { Arrow }
 import v4.test.claim.manual.mvp1_rust_add_translate {
@@ -457,8 +458,8 @@ fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
 }
 
 fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
-  match type_expr_projection_shape_for_connective(
-    projection: rust_type_expression_projection(),
+  match type_expr_projection_bundle_shape_for_connective(
+    bundle: rust_type_expression_projection_bundle_node(),
     connective: Arrow
   ) {
     Accepted { value: good_shape, diagnostics: _ } =>
