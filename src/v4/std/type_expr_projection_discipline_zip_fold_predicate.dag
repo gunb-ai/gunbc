@@ -6,7 +6,7 @@
 
 module v4.std.type_expr_projection_discipline_zip_fold_predicate
 
-import v4.std.algebra { Cons, Empty, length }
+import v4.std.algebra { Cons, Empty, length, list_snoc_item }
 import v4.std.collection { List, Optional, Absent, Present }
 import v4.std.node {
   Atom,
@@ -83,12 +83,63 @@ fn type_expr_projection_child_slots_well_formed_if_present(node: Node) -> Bool {
   }
 }
 
+fn type_expr_projection_edge_is_child_slots_coordinate(e: Edge) -> Bool {
+  match e.label {
+    Named { name: n } => n == target_type_expr_field_child_slots
+    Positional => false
+  }
+}
+
+fn type_expr_projection_peel_child_slots_envelope_go(
+  xs: List<Edge>,
+  acc: List<Edge>,
+  saw_child_slots: Bool
+) -> Optional<List<Edge>> {
+  match xs {
+    Empty => Present { value: acc }
+    Cons { head: h, tail: t } =>
+      if type_expr_projection_edge_is_child_slots_coordinate(e: h) {
+        if saw_child_slots {
+          Absent
+        } else {
+          type_expr_projection_peel_child_slots_envelope_go(
+            xs: t,
+            acc: acc,
+            saw_child_slots: true
+          )
+        }
+      } else {
+        type_expr_projection_peel_child_slots_envelope_go(
+          xs: t,
+          acc: list_snoc_item(xs: acc, item: h),
+          saw_child_slots: saw_child_slots
+        )
+      }
+  }
+}
+
+fn type_expr_projection_peel_child_slots_envelope(children: List<Edge>) -> Optional<List<Edge>> {
+  type_expr_projection_peel_child_slots_envelope_go(
+    xs: children,
+    acc: Empty,
+    saw_child_slots: false
+  )
+}
+
 fn type_expr_projection_edge_equal(left: Edge, right: Edge) -> Bool {
   (left.label == right.label)
     && exact_structural_equality_zip_fold(
       source_facts: left.target,
       candidate: right.target
     )
+}
+
+fn type_expr_projection_edges_exact_equal(
+  left: List<Edge>,
+  right: List<Edge>
+) -> Bool {
+  (length(xs: left) == length(xs: right))
+    && type_expr_projection_edges_prefix_equal(prefix: left, full: right)
 }
 
 fn type_expr_projection_edges_prefix_equal(
@@ -107,6 +158,20 @@ fn type_expr_projection_edges_prefix_equal(
   }
 }
 
+fn type_expr_projection_row_envelope_exact_equal(
+  candidate: Node,
+  source_facts: Node
+) -> Bool {
+  match type_expr_projection_peel_child_slots_envelope(children: source_facts.children) {
+    Present { value: envelope } =>
+      type_expr_projection_edges_exact_equal(
+        left: candidate.children,
+        right: envelope
+      )
+    Absent => false
+  }
+}
+
 fn type_expr_projection_discipline_zip_fold_preservation_holds(
   source_facts: Node,
   candidate: Node,
@@ -120,9 +185,9 @@ fn type_expr_projection_discipline_zip_fold_preservation_holds(
         && well_formed(n: algebra)
         && type_expr_projection_child_slots_well_formed_if_present(node: source_facts)
         && (algebra == source_facts)
-        && type_expr_projection_edges_prefix_equal(
-          prefix: candidate.children,
-          full: source_facts.children
+        && type_expr_projection_row_envelope_exact_equal(
+          candidate: candidate,
+          source_facts: source_facts
         )
         && edges_conform(children: child_slots, d: discipline)
     Absent => false
