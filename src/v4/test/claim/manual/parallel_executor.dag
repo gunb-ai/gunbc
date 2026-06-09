@@ -16,7 +16,6 @@ import v4.workflow.executor {
   executor_batch_contains_node,
   executor_batches_preserve_frontiers,
   executor_job_for_node,
-  executor_receipts_cover_batches,
   parallel_executor_plan_from_dependencies,
   parallel_executor_plan_from_layers
 }
@@ -57,25 +56,24 @@ fn parallel_executor_groups_independent_jobs() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
-    ExecutorRunComplete { batches: batches, receipts: _, completed: _ } => batches == parallel_executor_expected_batches
-    ExecutorRunBlocked { evidence: _, batches: _, receipts: _, completed: _, remaining: _ } => false
+    ExecutorRunComplete { batches: batches, scheduled: _ } => batches == parallel_executor_expected_batches
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
 
-fn parallel_executor_records_receipts_per_batch() -> Bool {
+fn parallel_executor_projects_scheduler_scheduled_nodes() -> Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
-    ExecutorRunComplete { batches: batches, receipts: receipts, completed: completed } =>
-      executor_receipts_cover_batches(receipts: receipts, batches: batches)
-        && completed == [
-          executor_job_for_node(node: scheduler_build_node),
-          executor_job_for_node(node: scheduler_test_node),
-          executor_job_for_node(node: scheduler_emit_node)
-        ]
-    ExecutorRunBlocked { evidence: _, batches: _, receipts: _, completed: _, remaining: _ } => false
+    ExecutorRunComplete { batches: _, scheduled: scheduled } =>
+      scheduled == [
+        scheduler_build_node,
+        scheduler_test_node,
+        scheduler_emit_node
+      ]
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
 
@@ -85,10 +83,10 @@ fn parallel_executor_keeps_dependent_job_out_of_first_batch() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
-    ExecutorRunComplete { batches: batches, receipts: _, completed: _ } =>
+    ExecutorRunComplete { batches: batches, scheduled: _ } =>
       executor_batch_contains_node(batch: parallel_executor_expected_first_batch, node: scheduler_emit_node) == false
         && batches == parallel_executor_expected_batches
-    ExecutorRunBlocked { evidence: _, batches: _, receipts: _, completed: _, remaining: _ } => false
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
 
@@ -98,8 +96,8 @@ fn parallel_executor_contains_edges_do_not_serialize() -> Bool {
     dependencies: scheduler_fixture_dependencies_with_contains_noise,
     scheduled: []
   ) {
-    ExecutorRunComplete { batches: batches, receipts: _, completed: _ } => batches == parallel_executor_expected_batches
-    ExecutorRunBlocked { evidence: _, batches: _, receipts: _, completed: _, remaining: _ } => false
+    ExecutorRunComplete { batches: batches, scheduled: _ } => batches == parallel_executor_expected_batches
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
 
@@ -109,15 +107,14 @@ fn parallel_executor_blocks_on_missing_prerequisite() -> Bool {
     dependencies: scheduler_missing_prerequisite_dependencies,
     scheduled: []
   ) {
-    ExecutorRunComplete { batches: _, receipts: _, completed: _ } => false
+    ExecutorRunComplete { batches: _, scheduled: _ } => false
     ExecutorRunBlocked {
       evidence: ExecutorSchedulerBlocked { evidence: SchedulerNoRunnableFrontier {} },
       batches: batches,
-      receipts: receipts,
-      completed: completed,
+      scheduled: scheduled,
       remaining: remaining
-    } => batches == [] && receipts == [] && completed == [] && remaining == [scheduler_build_node]
-    ExecutorRunBlocked { evidence: ExecutorEmptyFrontier {}, batches: _, receipts: _, completed: _, remaining: _ } => false
+    } => batches == [] && scheduled == [] && remaining == [scheduler_build_node]
+    ExecutorRunBlocked { evidence: ExecutorEmptyFrontier {}, batches: _, scheduled: _, remaining: _ } => false
   }
 }
 
@@ -127,16 +124,20 @@ fn parallel_executor_layers_reuse_readiness_frontiers() -> Bool {
     ReadinessLayer { ready: [scheduler_emit_node] }
   ]
   match parallel_executor_plan_from_layers(layers: layers) {
-    ExecutorRunComplete { batches: batches, receipts: receipts, completed: _ } =>
+    ExecutorRunComplete { batches: batches, scheduled: scheduled } =>
       executor_batches_preserve_frontiers(batches: batches, layers: layers)
-        && executor_receipts_cover_batches(receipts: receipts, batches: batches)
-    ExecutorRunBlocked { evidence: _, batches: _, receipts: _, completed: _, remaining: _ } => false
+        && scheduled == [
+          scheduler_build_node,
+          scheduler_test_node,
+          scheduler_emit_node
+        ]
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
 
 data parallel_executor_batches_independent_jobs: Bool = parallel_executor_groups_independent_jobs()
 
-data parallel_executor_receipts_match_batches: Bool = parallel_executor_records_receipts_per_batch()
+data parallel_executor_scheduled_nodes_match_scheduler: Bool = parallel_executor_projects_scheduler_scheduled_nodes()
 
 data parallel_executor_dependent_waits_for_prior_batch: Bool = parallel_executor_keeps_dependent_job_out_of_first_batch()
 
@@ -148,7 +149,7 @@ data parallel_executor_layer_projection_reuses_frontiers: Bool = parallel_execut
 
 fn parallel_executor_claims_hold() -> Bool {
   parallel_executor_batches_independent_jobs
-    && parallel_executor_receipts_match_batches
+    && parallel_executor_scheduled_nodes_match_scheduler
     && parallel_executor_dependent_waits_for_prior_batch
     && parallel_executor_contains_noise_non_blocking
     && parallel_executor_missing_prerequisite_blocks
