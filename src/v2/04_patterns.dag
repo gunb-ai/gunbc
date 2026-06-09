@@ -127,6 +127,16 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   )
 }
 
+fn optional_match_variant_canonical_name(variant_name: String) -> String {
+  if variant_name == "Some" || variant_name == "Present" {
+    "Present"
+  } else if variant_name == "None" || variant_name == "Absent" {
+    "Absent"
+  } else {
+    variant_name
+  }
+}
+
 fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
@@ -145,9 +155,10 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         let record_destructure = field_binding_count > 0
           && scrut_node.connective == Conj
           && authored_name_at(source_indices: source_indices, node: scrut_node) == variant_name
-        let fallback = if scrut_opt && variant_name == "Some" {
+        let optional_variant_name = optional_match_variant_canonical_name(variant_name: variant_name)
+        let fallback = if scrut_opt && optional_variant_name == "Present" {
           node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
-        } else if scrut_opt && variant_name == "None" {
+        } else if scrut_opt && optional_variant_name == "Absent" {
           node_lookup_resolved(node: none_type)
         } else if record_destructure {
           node_lookup_resolved(node: scrut_node)
@@ -204,7 +215,7 @@ fn check_match_exhaustiveness(
   let resolved_is_optional = resolved.return_cardinality == CardOptional
   if is_coproduct || resolved_is_optional {
     let variant_names = if resolved_is_optional {
-      ["Some", "None"]
+      ["Present", "Absent"]
     } else {
       resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c))
     }
@@ -220,7 +231,8 @@ fn check_match_exhaustiveness(
     } else {
       let covered_set = arms |> fold(init: empty_map(), f: (acc, arm) =>
         match arm_pattern(n: arm) {
-          VariantPattern { name: n, parent_enum: _, field_bindings: _ } => map_insert(acc, n, true)
+          VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
+            map_insert(acc, if resolved_is_optional { optional_match_variant_canonical_name(variant_name: n) } else { n }, true)
           LitPattern { value: v } => match v {
             LitBool { value: b } => if b { map_insert(acc, "True", true) } else { map_insert(acc, "False", true) }
             _ => acc

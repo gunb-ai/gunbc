@@ -962,7 +962,8 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let inferred_parent = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
-          if resolved_scrut_node.return_cardinality == CardOptional && (variant_name == "Some" || variant_name == "None") {
+          let optional_variant_name = optional_match_variant_canonical_name(variant_name: variant_name)
+          if resolved_scrut_node.return_cardinality == CardOptional && (optional_variant_name == "Present" || optional_variant_name == "Absent") {
             Some { value: "Optional" }
           } else {
             let is_coproduct = resolved_scrut_node.connective == Disj
