@@ -137,6 +137,43 @@ data witness_project_to_core_rejects_surface_only_empty_core: Bool = match find_
   Rejected { diagnostics: _ } => true
 }
 
+fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+              target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [] }
+            },
+            Edge {
+              label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+              target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [] }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
+data witness_project_to_core_rejects_core_only_under_surface: Bool = match find_witness_derives(
+  source_facts: surface_wrapped_core_node(core: ^hidden_source_core, surface: ^hidden_source_surface),
+  candidates: control_candidate_set(
+    candidates: [surface_wrapped_core_node(core: ^hidden_candidate_core, surface: ^hidden_candidate_surface)],
+    closedness_evidence: surface_wrapped_core_node(core: ^hidden_candidate_core, surface: ^hidden_candidate_surface)
+  ),
+  derivation_algebra: surface_wrapped_core_node(core: ^hidden_source_core, surface: ^hidden_source_surface),
+  multiplicity_policy: UniqueOnly
+) {
+  Accepted { value: _, diagnostics: _ } => false
+  Rejected { diagnostics: _ } => true
+}
+
 fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -224,6 +261,9 @@ fn integer_value_set_rejects_malformed_interval_payload_control() -> Bool {
 }
 
 data witness_integer_value_set_rejects_malformed_interval_payload: Bool = integer_value_set_rejects_malformed_interval_payload_control()
+
+data witness_integer_value_set_interval_containment_rejects_malformed_payload: Bool =
+  !integer_value_set_contains(container: i32_value_set(), contained: malformed_interval_value_set())
 
 fn integer_value_set_reverse_is_strict_coarsening_control() -> Bool {
   let strict = integer_value_set_strictly_contains(container: python_int_value_set(), contained: i32_value_set())

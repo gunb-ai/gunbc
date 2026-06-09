@@ -65,7 +65,12 @@ fn project_to_core_has_core_fact_init(_: Node) -> Bool {
 
 fn project_to_core_has_core_fact_step(acc: Bool, edge: Edge, child: Bool) -> Bool {
   match edge.label {
-    Named { name: edge_name } => acc || child || project_to_core_axis_is_core(name: edge_name)
+    Named { name: edge_name } =>
+      if project_to_core_axis_is_surface(name: edge_name) {
+        acc
+      } else {
+        acc || child || project_to_core_axis_is_core(name: edge_name)
+      }
     Positional => acc || child
   }
 }

@@ -503,6 +503,12 @@ data v4_roster_pilot_row_project_to_core_rejects_empty_core: V4RosterPilotClaimR
   function: "witness_project_to_core_rejects_surface_only_empty_core"
 }
 
+data v4_roster_pilot_row_project_to_core_rejects_surface_wrapped_core: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core rejects core hidden under surface",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_rejects_core_only_under_surface"
+}
+
 data v4_roster_pilot_row_project_to_core_preserves_ambiguity: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "find_witness project_to_core dispatch preserves ambiguity diagnostic",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
@@ -543,6 +549,12 @@ data v4_roster_pilot_row_integer_value_set_rejects_malformed_interval: V4RosterP
   label: "integer value-set containment rejects malformed interval payload",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_rejects_malformed_interval_payload"
+}
+
+data v4_roster_pilot_row_integer_value_set_interval_rejects_malformed_interval: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer interval containment rejects malformed interval payload",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_interval_containment_rejects_malformed_payload"
 }
 
 data v4_roster_pilot_row_integer_value_set_reverse_strict: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
@@ -730,6 +742,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_project_to_core_accepts_sibling,
   v4_roster_pilot_row_project_to_core_rejects_wrong_core,
   v4_roster_pilot_row_project_to_core_rejects_empty_core,
+  v4_roster_pilot_row_project_to_core_rejects_surface_wrapped_core,
   v4_roster_pilot_row_project_to_core_preserves_ambiguity,
   v4_roster_pilot_row_project_to_core_drops_nested_surface,
   v4_roster_pilot_row_project_to_core_rejects_nested_core_difference,
@@ -737,6 +750,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_integer_value_set_accepts_proper_subrange,
   v4_roster_pilot_row_integer_value_set_accepts_cross_signed_subrange,
   v4_roster_pilot_row_integer_value_set_rejects_malformed_interval,
+  v4_roster_pilot_row_integer_value_set_interval_rejects_malformed_interval,
   v4_roster_pilot_row_integer_value_set_reverse_strict,
   v4_roster_pilot_row_integer_value_set_refuses_incompatible,
   v4_roster_pilot_row_cross_target_rust_i32_python_int_widens,
@@ -756,7 +770,7 @@ fn v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds() -> Bool {
 
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "68"
+data v4_roster_pilot_claim_run_row_count: String = "70"
 
 
 fn v4_roster_pilot_row_matches(
@@ -837,6 +851,7 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_accepts_sibling)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_wrong_core)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_empty_core)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_surface_wrapped_core)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_preserves_ambiguity)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_drops_nested_surface)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_nested_core_difference)
@@ -844,6 +859,7 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_accepts_proper_subrange)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_accepts_cross_signed_subrange)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_rejects_malformed_interval)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_interval_rejects_malformed_interval)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_reverse_strict)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_refuses_incompatible)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_cross_target_rust_i32_python_int_widens)
@@ -852,8 +868,8 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 68)
-    && (v4_roster_pilot_claim_run_row_count == "68")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 70)
+    && (v4_roster_pilot_claim_run_row_count == "70")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds()
     && v4_roster_pilot_row_matches(
@@ -1142,6 +1158,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "witness_project_to_core_rejects_surface_only_empty_core"
     )
     && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_rejects_surface_wrapped_core,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_rejects_core_only_under_surface"
+    )
+    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_project_to_core_preserves_ambiguity,
       entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
       function: "witness_project_to_core_derives_preserves_ambiguity"
@@ -1175,6 +1196,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_integer_value_set_rejects_malformed_interval,
       entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
       function: "witness_integer_value_set_rejects_malformed_interval_payload"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_interval_rejects_malformed_interval,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_interval_containment_rejects_malformed_payload"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_integer_value_set_reverse_strict,
