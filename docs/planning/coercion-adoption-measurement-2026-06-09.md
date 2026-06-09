@@ -22,7 +22,7 @@ or tree-traversal logic.
 ### 06_translate.dag (4490L) — ADOPTED ✅
 
 **find_witness:** used (imports `CandidateSet`; delegates via `coercion_fold_with_declared_priority`)  
-**fold_node:** 6 call sites  
+**fold_node:** 4 call sites (L272, L4255, L4407, L4420 — excludes 1 import line, 1 comment)  
 **Hand-rolled coercion:** none — `coerce_grounded_node` routes through `std/coercion.dag` which
 lifts `FindWitnessResult → CoercionResult`. The 49 hits of `coerce*` in this file are call-sites
 of `coerce_grounded_node` and `translate_coerced_*`, not bypass logic.  
@@ -35,7 +35,7 @@ lands (Ratified Q4 gate in std/diagnostic.dag).
 ### 04_infer.dag (566L) — PARTIAL 🟡
 
 **find_witness:** 0 call sites  
-**fold_node:** 4 call sites (imported, two active folds)  
+**fold_node:** 2 call sites (L267, L537 — excludes 1 import line, 1 comment)  
 **Hand-rolled coercion:** none — infer does not perform coercion; it _produces_ `CanonicalGrounding`
 (the source facts) that translate's `coerce_grounded_node` later consumes.  
 **Gap:** By design. `04_infer` is the grounding authority, not a coercion consumer. The
@@ -49,7 +49,7 @@ remaining adoption gap. Currently blocked on enforcement AIM operator GO.
 ### 03_resolve.dag (590L) — PARTIAL 🟡
 
 **find_witness:** 0 call sites  
-**fold_node:** 2 call sites (imported; used in `harvest_direct_atom_binding` and one other fold)  
+**fold_node:** 1 call site (L145 — `harvest_direct_atom_binding`; excludes 1 import line)  
 **Hand-rolled coercion:** none — resolve is name-resolution, not coercion  
 **Match-on-node-kind:** 55 hits  
 **Gap:** No coercion gap; fold_node adoption is partial. The 55 node-kind matches are in
@@ -111,9 +111,9 @@ seed, get-off-v3 goal).
 
 | Stage | find_witness | fold_node | Coercion gap | fold gap |
 |---|---|---|---|---|
-| 06_translate | ✅ via coercion.dag | ✅ 6 sites | none | partial (Q4 gate) |
-| 04_infer | ⬜ N/A (grounding producer) | 🟡 4 sites | enforcement AIM (op-GO gated) | none |
-| 03_resolve | ⬜ N/A (name resolution) | 🟡 2 sites | none | partial (Q4 gate) |
+| 06_translate | ✅ via coercion.dag | ✅ 4 sites | none | partial (Q4 gate) |
+| 04_infer | ⬜ N/A (grounding producer) | 🟡 2 sites | enforcement AIM (op-GO gated) | none |
+| 03_resolve | ⬜ N/A (name resolution) | 🟡 1 site | none | partial (Q4 gate) |
 | 03_normalize | ⬜ N/A (sugar dissolution) | ⬜ 0 sites | none | partial (Q4 gate) |
 | 02_parse | ⬜ N/A | ⬜ 0 sites | none | none |
 | 05_emit | ⬜ N/A | ⬜ 0 sites | none | none |
@@ -142,6 +142,8 @@ seed, get-off-v3 goal).
 ## Next Adoption Site
 
 When the enforcement AIM operator GO arrives, the `04_infer` ExprCall arm should call
-`coercion_fold` (from `std/coercion.dag`) to check call-arg compatibility — this is the
-planned T-next consumer identified in `docs/planning/enforcement-callarg-check-design-*.md`.
-That PR will be the second genuine `find_witness` adoption site in the compiler pipeline.
+`coercion_fold` (from `std/coercion.dag`) to check call-arg compatibility — wiring
+`node_type_compatible` into the direct-call arm (~L1349–1368 of v2/04_infer.dag per the
+AIM design, with brand-twin reject + alias-accept gate). That PR will be the second genuine
+`find_witness` adoption site in the compiler pipeline. The design lives in project memory
+(session calm-badger-881); no planning doc has been committed for it yet.
