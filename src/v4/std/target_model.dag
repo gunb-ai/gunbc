@@ -3657,6 +3657,8 @@ fn type_expr_projection_substrate_facts(
   }
 }
 
+// 🟡 gated — checkpoint 3b graft-wire HOLD (fold-leak pending parent encoding ruling) —
+// dissolve-on: 06_translate wires encode_substrate_in_row_slot + row_witness_gate at fold spine.
 // SG-2 fold checkpoint 3b — graft row slot metadata onto substrate facts (facts.kind authority).
 fn type_expr_projection_encode_substrate_in_row_slot(
   projection: TargetTypeExpressionProjection,
