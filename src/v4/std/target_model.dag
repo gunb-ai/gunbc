@@ -3760,10 +3760,8 @@ fn type_expr_projection_substrate_facts(
   }
 }
 
-// 🟡 gated — checkpoint 3b graft-wire HOLD (fold-leak pending parent encoding ruling) —
-// dissolve-on: 06_translate wires encode_substrate_in_row_slot + row_witness_gate at fold spine.
-// SG-2 fold checkpoint 3b — graft row slot metadata onto substrate facts (facts.kind authority).
-fn type_expr_projection_encode_substrate_in_row_slot(
+// SG-2 fold — graft substrate child slots into row envelope (discipline + delimiter metadata).
+fn type_expr_projection_graft_substrate_in_row_slot(
   projection: TargetTypeExpressionProjection,
   connective: Connective,
   node: Node,
@@ -3778,21 +3776,18 @@ fn type_expr_projection_encode_substrate_in_row_slot(
       projection: projection,
       connective: connective
     ),
-    f: fn(slot_shape) {
+    f: fn(envelope) {
       outcome_accepted(
-        Node {
-          kind: facts.kind,
-          children: list_append(
-            left: slot_shape.children,
-            right: facts.children
-          )
-        }
+        type_expr_projection_append_child_slot_edges(
+          envelope: envelope,
+          child_edges: facts.children
+        )
       )
     }
   )
 }
 
-// SG-2 fold — zip-fold row witness gate (checkpoint 3 entry; source_facts authority).
+// SG-2 fold — discipline-aware zip-fold row witness gate (substrate graft authority).
 fn type_expr_projection_row_witness_gate(
   source_facts: Node,
   projection: TargetTypeExpressionProjection,
@@ -3809,7 +3804,7 @@ fn type_expr_projection_row_witness_gate(
         candidates: candidates,
         predicate: PreservationPredicate {
           algebra: source_facts,
-          preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+          preservation_rule: preservation_rule_type_expr_projection_discipline_zip_fold
         },
         multiplicity_policy: UniqueOnly
       ) {
