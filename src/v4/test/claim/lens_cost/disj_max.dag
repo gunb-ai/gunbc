@@ -48,13 +48,12 @@ data disj_max_expensive_body: Node = Node {
             label: Positional,
             target: Node {
               kind: TypeNode { connective: Atom { identity: ^disj_max_expensive_body_atom } },
-              children: []
+              children: [],
+              span: Unanchored
             }
           }
         ],
         span: Unanchored
-} }
-        ]
       }
     }
   ],

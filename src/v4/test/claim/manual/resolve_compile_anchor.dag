@@ -58,7 +58,7 @@ fn service_atom_conj_tree() -> Node {
           },
           children: [],
           span: Unanchored
-}
+        }
       }
     ],
     span: Unanchored
@@ -92,7 +92,7 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
             },
             children: [],
             span: Unanchored
-}
+          }
         },
         Edge {
           label: Named { name: ^anchor_decl_second },
@@ -102,7 +102,7 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
             },
             children: [],
             span: Unanchored
-}
+          }
         }
       ],
       span: Unanchored
@@ -127,7 +127,8 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
                   kind: TypeNode {
                     connective: Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
-                  children: []
+                  children: [],
+                  span: Unanchored
                 }
               },
               Edge {
@@ -136,7 +137,8 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
                   kind: TypeNode {
                     connective: Atom { identity: ^dag_c3_surface_sugar_service }
                   },
-                  children: []
+                  children: [],
+                  span: Unanchored
                 }
               },
               Edge {
@@ -145,15 +147,12 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
                   kind: TypeNode {
                     connective: Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
-                  children: []
+                  children: [],
+                  span: Unanchored
                 }
               }
             ],
             span: Unanchored
-}span: Unanchored
-}
-              }
-            ]
           }
         }
       ],
@@ -212,7 +211,7 @@ fn resolve_imported_module_root() -> Node {
           },
           children: [],
           span: Unanchored
-}
+        }
       }
     ],
     span: Unanchored
