@@ -527,6 +527,12 @@ data v4_roster_pilot_row_project_to_core_rejects_nested_core_difference: V4Roste
   function: "witness_project_to_core_rejects_nested_core_difference"
 }
 
+data v4_roster_pilot_row_project_to_core_rejects_different_connective_same_core_children: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core rejects different connective same core children",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_rejects_different_connective_same_core_children"
+}
+
 data v4_roster_pilot_row_integer_value_set_accepts_subset: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer value-set containment accepts i32 subset python-int",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
@@ -567,6 +573,12 @@ data v4_roster_pilot_row_integer_value_set_refuses_incompatible: V4RosterPilotCl
   label: "integer value-set containment refuses incompatible unknown core",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_refuses_incompatible_unknown"
+}
+
+data v4_roster_pilot_row_integer_value_set_rejects_unbounded_with_extra_field: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer value-set containment rejects unbounded with extra field",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_rejects_unbounded_with_extra_field"
 }
 
 data v4_roster_pilot_row_cross_target_rust_i32_python_int_widens: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
@@ -1178,6 +1190,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "witness_project_to_core_rejects_nested_core_difference"
     )
     && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_rejects_different_connective_same_core_children,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_rejects_different_connective_same_core_children"
+    )
+    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_integer_value_set_accepts_subset,
       entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
       function: "witness_integer_value_set_accepts_i32_subset_python_int"
@@ -1211,6 +1228,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_integer_value_set_refuses_incompatible,
       entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
       function: "witness_integer_value_set_refuses_incompatible_unknown"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_rejects_unbounded_with_extra_field,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_rejects_unbounded_with_extra_field"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_cross_target_rust_i32_python_int_widens,
