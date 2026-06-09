@@ -171,7 +171,7 @@ import v4.std.target_model {
   target_type_expr_sum_emitted,
   type_expr_projection_graft_substrate_in_row_slot,
   type_expr_projection_row_closedness_from_target,
-  type_expr_projection_row_witness_gate
+  type_expr_projection_graft_witness_gate
 }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -2434,7 +2434,7 @@ fn project_type_expression_connective_bounded(
                     ),
                     f: fn(grafted) {
                       bind_outcome(
-                        o: type_expr_projection_row_witness_gate(
+                        o: type_expr_projection_graft_witness_gate(
                           source_facts: grafted,
                           projection: projection,
                           connective: Arrow

@@ -20,7 +20,14 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.algebra { Cons, Empty, list_snoc_item }
-import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.collection {
+  List,
+  Optional,
+  Absent,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v4.std.type_expr_projection_row_schema {
   target_type_expr_field_child_slots
 }

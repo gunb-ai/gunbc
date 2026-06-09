@@ -43,7 +43,7 @@ import v4.std.target_model {
   TargetTypeExpressionProjection,
   target_type_expr_emitted_wire_decode,
   type_expr_projection_bundle_shape_for_connective,
-  type_expr_projection_row_witness_gate
+  type_expr_projection_row_shape_witness_gate
 }
 import v4.std.node { Arrow }
 import v4.test.claim.manual.mvp1_rust_add_translate {
@@ -471,7 +471,7 @@ fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
     connective: Arrow
   ) {
     Accepted { value: good_shape, diagnostics: _ } =>
-      match type_expr_projection_row_witness_gate(
+      match type_expr_projection_row_shape_witness_gate(
         source_facts: good_shape,
         projection: sg2_wrong_arrow_projection(),
         connective: Arrow
