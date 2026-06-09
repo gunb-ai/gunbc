@@ -18,10 +18,13 @@ data task_id_nickname_api: Symbol = task_id_nickname_api
 data task_id_nickname_db: Symbol = task_id_nickname_db
 data task_id_nickname_wire: Symbol = task_id_nickname_wire
 
-// Shared semantic core — opaque Symbol identity carrier.
+// Shared semantic core — Encoding carries the coercion-relevant (representation, carrier) core.
+// Follow-up: carrier deserves its own declared ModelCore core axis; until then this demo keeps
+// representation+carrier together inside the existing Encoding fact value.
 data task_id_encoding_opaque_symbol: Symbol = task_id_encoding_opaque_symbol
 data task_id_carrier_symbol_identity: Symbol = task_id_carrier_symbol_identity
-data task_id_field_carrier: Symbol = task_id_field_carrier
+data task_id_encoding_core_field_representation: Symbol = task_id_encoding_core_field_representation
+data task_id_encoding_core_field_carrier: Symbol = task_id_encoding_core_field_carrier
 
 // Wrong-concept discriminator — numeric encoding (AccountId-style hollow int alias).
 data account_id_encoding_numeric: Symbol = account_id_encoding_numeric
@@ -43,11 +46,26 @@ fn task_id_semantic_core_node() -> Node {
     children: [
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: task_id_inhabitant_atom(id: task_id_encoding_opaque_symbol)
+        target: task_id_encoding_core_node(
+          representation: task_id_encoding_opaque_symbol,
+          carrier: task_id_carrier_symbol_identity
+        )
+      }
+    ]
+  }
+}
+
+fn task_id_encoding_core_node(representation: Symbol, carrier: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: task_id_encoding_core_field_representation },
+        target: task_id_inhabitant_atom(id: representation)
       },
       Edge {
-        label: Named { name: task_id_field_carrier },
-        target: task_id_inhabitant_atom(id: task_id_carrier_symbol_identity)
+        label: Named { name: task_id_encoding_core_field_carrier },
+        target: task_id_inhabitant_atom(id: carrier)
       }
     ]
   }
@@ -59,11 +77,10 @@ fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
     children: [
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: task_id_inhabitant_atom(id: task_id_encoding_opaque_symbol)
-      },
-      Edge {
-        label: Named { name: task_id_field_carrier },
-        target: task_id_inhabitant_atom(id: task_id_carrier_symbol_identity)
+        target: task_id_encoding_core_node(
+          representation: task_id_encoding_opaque_symbol,
+          carrier: task_id_carrier_symbol_identity
+        )
       },
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
@@ -94,11 +111,10 @@ fn account_id_wrong_inhabitant_node() -> Node {
     children: [
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: task_id_inhabitant_atom(id: account_id_encoding_numeric)
-      },
-      Edge {
-        label: Named { name: task_id_field_carrier },
-        target: task_id_inhabitant_atom(id: account_id_carrier_machine_int)
+        target: task_id_encoding_core_node(
+          representation: account_id_encoding_numeric,
+          carrier: account_id_carrier_machine_int
+        )
       },
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },

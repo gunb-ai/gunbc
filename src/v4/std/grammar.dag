@@ -211,32 +211,32 @@ type GrammarSymbolFoldState {
 }
 
 
-data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
-data grammar_nonterminal_production_node_projection: Symbol = grammar_nonterminal_production_node_projection
-data grammar_sequence_left_node_projection: Symbol = grammar_sequence_left_node_projection
-data grammar_sequence_right_node_projection: Symbol = grammar_sequence_right_node_projection
-data grammar_choice_left_node_projection: Symbol = grammar_choice_left_node_projection
-data grammar_choice_right_node_projection: Symbol = grammar_choice_right_node_projection
-data grammar_optional_element_node_projection: Symbol = grammar_optional_element_node_projection
-data grammar_repeat_element_node_projection: Symbol = grammar_repeat_element_node_projection
-data grammar_production_name_node_projection: Symbol = grammar_production_name_node_projection
-data grammar_production_expression_node_projection: Symbol = grammar_production_expression_node_projection
-data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
-data grammar_relation_production_not_found: Symbol = grammar_relation_production_not_found
-data grammar_relation_emitted_conj_slot_missing: Symbol = grammar_relation_emitted_conj_slot_missing
-data grammar_relation_emitted_conj_slot_surplus: Symbol = grammar_relation_emitted_conj_slot_surplus
-data grammar_relation_emitted_not_conj: Symbol = grammar_relation_emitted_not_conj
-data grammar_relation_row_tokens_not_conj: Symbol = grammar_relation_row_tokens_not_conj
-data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
-data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
-data grammar_root_sync_tokens_node_projection: Symbol = grammar_root_sync_tokens_node_projection
-data formal_terminal_identity_node_projection: Symbol = formal_terminal_identity_node_projection
-data formal_terminal_occurrence_binding_node_projection: Symbol = formal_terminal_occurrence_binding_node_projection
-data formal_nonterminal_identity_node_projection: Symbol = formal_nonterminal_identity_node_projection
-data formal_symbol_terminal_node_projection: Symbol = formal_symbol_terminal_node_projection
-data formal_symbol_nonterminal_node_projection: Symbol = formal_symbol_nonterminal_node_projection
-data formal_production_lhs_node_projection: Symbol = formal_production_lhs_node_projection
-data formal_production_rhs_node_projection: Symbol = formal_production_rhs_node_projection
+data grammar_terminal_token_class_node_projection: Symbol = ^grammar_terminal_token_class_node_projection
+data grammar_nonterminal_production_node_projection: Symbol = ^grammar_nonterminal_production_node_projection
+data grammar_sequence_left_node_projection: Symbol = ^grammar_sequence_left_node_projection
+data grammar_sequence_right_node_projection: Symbol = ^grammar_sequence_right_node_projection
+data grammar_choice_left_node_projection: Symbol = ^grammar_choice_left_node_projection
+data grammar_choice_right_node_projection: Symbol = ^grammar_choice_right_node_projection
+data grammar_optional_element_node_projection: Symbol = ^grammar_optional_element_node_projection
+data grammar_repeat_element_node_projection: Symbol = ^grammar_repeat_element_node_projection
+data grammar_production_name_node_projection: Symbol = ^grammar_production_name_node_projection
+data grammar_production_expression_node_projection: Symbol = ^grammar_production_expression_node_projection
+data grammar_production_emitted_node_projection: Symbol = ^grammar_production_emitted_node_projection
+data grammar_relation_production_not_found: Symbol = ^grammar_relation_production_not_found
+data grammar_relation_emitted_conj_slot_missing: Symbol = ^grammar_relation_emitted_conj_slot_missing
+data grammar_relation_emitted_conj_slot_surplus: Symbol = ^grammar_relation_emitted_conj_slot_surplus
+data grammar_relation_emitted_not_conj: Symbol = ^grammar_relation_emitted_not_conj
+data grammar_relation_row_tokens_not_conj: Symbol = ^grammar_relation_row_tokens_not_conj
+data grammar_root_start_production_node_projection: Symbol = ^grammar_root_start_production_node_projection
+data grammar_root_productions_node_projection: Symbol = ^grammar_root_productions_node_projection
+data grammar_root_sync_tokens_node_projection: Symbol = ^grammar_root_sync_tokens_node_projection
+data formal_terminal_identity_node_projection: Symbol = ^formal_terminal_identity_node_projection
+data formal_terminal_occurrence_binding_node_projection: Symbol = ^formal_terminal_occurrence_binding_node_projection
+data formal_nonterminal_identity_node_projection: Symbol = ^formal_nonterminal_identity_node_projection
+data formal_symbol_terminal_node_projection: Symbol = ^formal_symbol_terminal_node_projection
+data formal_symbol_nonterminal_node_projection: Symbol = ^formal_symbol_nonterminal_node_projection
+data formal_production_lhs_node_projection: Symbol = ^formal_production_lhs_node_projection
+data formal_production_rhs_node_projection: Symbol = ^formal_production_rhs_node_projection
 
 
 fn grammar_atom(identity: Symbol) -> Node {
@@ -314,7 +314,7 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
       connective: Conj
     },
     children: [
-      grammar_named_edge(name: formal_terminal_identity_node_projection, target: grammar_atom(identity: terminal.identity))
+      grammar_named_edge(name: ^formal_terminal_identity_node_projection, target: grammar_atom(identity: terminal.identity))
     ]
   }
 }
@@ -329,11 +329,11 @@ fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optiona
         },
         children: [
           grammar_named_edge(
-            name: formal_terminal_identity_node_projection,
+            name: ^formal_terminal_identity_node_projection,
             target: grammar_atom(identity: terminal.identity)
           ),
           grammar_named_edge(
-            name: formal_terminal_occurrence_binding_node_projection,
+            name: ^formal_terminal_occurrence_binding_node_projection,
             target: grammar_atom(identity: binding)
           )
         ]
@@ -349,7 +349,7 @@ fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
       connective: Conj
     },
     children: [
-      grammar_named_edge(name: formal_nonterminal_identity_node_projection, target: grammar_atom(identity: nonterminal.identity))
+      grammar_named_edge(name: ^formal_nonterminal_identity_node_projection, target: grammar_atom(identity: nonterminal.identity))
     ]
   }
 }
@@ -364,7 +364,7 @@ fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
         },
         children: [
           grammar_named_edge(
-            name: formal_symbol_terminal_node_projection,
+            name: ^formal_symbol_terminal_node_projection,
             target: formal_terminal_occurrence_to_node(terminal: terminal, binding: binding)
           )
         ]
@@ -375,7 +375,7 @@ fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
           connective: Conj
         },
         children: [
-          grammar_named_edge(name: formal_symbol_nonterminal_node_projection, target: formal_nonterminal_to_node(nonterminal: nonterminal))
+          grammar_named_edge(name: ^formal_symbol_nonterminal_node_projection, target: formal_nonterminal_to_node(nonterminal: nonterminal))
         ]
       }
   }
@@ -402,9 +402,9 @@ fn formal_production_to_node(production: FormalProduction) -> Node {
       connective: Conj
     },
     children: [
-      grammar_named_edge(name: formal_production_lhs_node_projection, target: formal_nonterminal_to_node(nonterminal: production.lhs)),
+      grammar_named_edge(name: ^formal_production_lhs_node_projection, target: formal_nonterminal_to_node(nonterminal: production.lhs)),
       grammar_named_edge(
-        name: formal_production_rhs_node_projection,
+        name: ^formal_production_rhs_node_projection,
         target: Node {
           kind: TypeNode {
             connective: Conj
@@ -682,7 +682,7 @@ fn formal_production_rhs_matches_emitted_conj_step(
                 xs: children,
                 wanted: index,
                 absent: Diagnostic {
-                  reason: grammar_relation_emitted_conj_slot_missing,
+                  reason: ^grammar_relation_emitted_conj_slot_missing,
                   at: node_locus(node: emitted),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 }
@@ -707,7 +707,7 @@ fn formal_production_rhs_matches_emitted_conj_step(
             xs: children,
             wanted: index,
             absent: Diagnostic {
-              reason: grammar_relation_emitted_conj_slot_missing,
+              reason: ^grammar_relation_emitted_conj_slot_missing,
               at: node_locus(node: emitted),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
@@ -827,7 +827,7 @@ fn formal_production_for_lhs_exact(
   } else {
     Violates {
       diagnostic: Diagnostic {
-        reason: grammar_relation_emitted_not_conj,
+        reason: ^grammar_relation_emitted_not_conj,
         at: node_locus(node: child),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
@@ -870,7 +870,7 @@ fn formal_production_for_lhs_exact_supported(
     Absent =>
       Violates {
         diagnostic: Diagnostic {
-          reason: grammar_relation_production_not_found,
+          reason: ^grammar_relation_production_not_found,
           at: node_locus(node: child),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
@@ -937,7 +937,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
             xs: conj_children,
             wanted: conj_index,
             absent: Diagnostic {
-              reason: grammar_relation_emitted_conj_slot_missing,
+              reason: ^grammar_relation_emitted_conj_slot_missing,
               at: node_locus(node: emitted),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
@@ -1003,7 +1003,7 @@ fn derive_grammar_relation_token_edges_recursive(
       } else {
         Violates {
           diagnostic: Diagnostic {
-            reason: grammar_relation_emitted_conj_slot_surplus,
+            reason: ^grammar_relation_emitted_conj_slot_surplus,
             at: node_locus(node: emitted),
             correction: Unavailable { reason: ExternalContractUnknown }
           }
@@ -1047,7 +1047,7 @@ fn derive_grammar_relation_row_node(
     _ =>
       Violates {
         diagnostic: Diagnostic {
-          reason: grammar_relation_emitted_not_conj,
+          reason: ^grammar_relation_emitted_not_conj,
           at: node_locus(node: emitted),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
@@ -1065,7 +1065,7 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
           connective: Conj
         },
         children: [
-          grammar_named_edge(name: grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
+          grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
         ]
       }
     Nonterminal { production: production } =>
@@ -1074,7 +1074,7 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
           connective: Conj
         },
         children: [
-          grammar_named_edge(name: grammar_nonterminal_production_node_projection, target: grammar_atom(identity: production))
+          grammar_named_edge(name: ^grammar_nonterminal_production_node_projection, target: grammar_atom(identity: production))
         ]
       }
     Sequence { left: left, right: right } =>
@@ -1083,8 +1083,8 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
           connective: Conj
         },
         children: [
-          grammar_named_edge(name: grammar_sequence_left_node_projection, target: grammar_expr_to_node(expr: left)),
-          grammar_named_edge(name: grammar_sequence_right_node_projection, target: grammar_expr_to_node(expr: right))
+          grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: grammar_expr_to_node(expr: left)),
+          grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: grammar_expr_to_node(expr: right))
         ]
       }
     Choice { left: left, right: right } =>
@@ -1093,8 +1093,8 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
           connective: Conj
         },
         children: [
-          grammar_named_edge(name: grammar_choice_left_node_projection, target: grammar_expr_to_node(expr: left)),
-          grammar_named_edge(name: grammar_choice_right_node_projection, target: grammar_expr_to_node(expr: right))
+          grammar_named_edge(name: ^grammar_choice_left_node_projection, target: grammar_expr_to_node(expr: left)),
+          grammar_named_edge(name: ^grammar_choice_right_node_projection, target: grammar_expr_to_node(expr: right))
         ]
       }
     Optional { element: element } =>
@@ -1103,7 +1103,7 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
           connective: Conj
         },
         children: [
-          grammar_named_edge(name: grammar_optional_element_node_projection, target: grammar_expr_to_node(expr: element))
+          grammar_named_edge(name: ^grammar_optional_element_node_projection, target: grammar_expr_to_node(expr: element))
         ]
       }
     Repeat { element: element } =>
@@ -1112,7 +1112,7 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
           connective: Conj
         },
         children: [
-          grammar_named_edge(name: grammar_repeat_element_node_projection, target: grammar_expr_to_node(expr: element))
+          grammar_named_edge(name: ^grammar_repeat_element_node_projection, target: grammar_expr_to_node(expr: element))
         ]
       }
   }
@@ -1125,9 +1125,9 @@ fn grammar_production_to_node(production: GrammarProduction) -> Node {
       connective: Conj
     },
     children: [
-      grammar_named_edge(name: grammar_production_name_node_projection, target: grammar_atom(identity: production.name)),
-      grammar_named_edge(name: grammar_production_expression_node_projection, target: grammar_expr_to_node(expr: production.expression)),
-      grammar_named_edge(name: grammar_production_emitted_node_projection, target: production.emitted)
+      grammar_named_edge(name: ^grammar_production_name_node_projection, target: grammar_atom(identity: production.name)),
+      grammar_named_edge(name: ^grammar_production_expression_node_projection, target: grammar_expr_to_node(expr: production.expression)),
+      grammar_named_edge(name: ^grammar_production_emitted_node_projection, target: production.emitted)
     ]
   }
 }
@@ -1163,7 +1163,7 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 // 🟡 gated T-8 — P2-boundary interim — feature: grammar-root-node-projection-completeness —
 // bind TASKS.md T-8 — GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure
 // { member: fn(Symbol) -> Bool }; the Node substrate has no edge kind for function values, so
-// sync_tokens cannot be materialized as a Node child here. grammar_root_sync_tokens_node_projection
+// sync_tokens cannot be materialized as a Node child here. ^grammar_root_sync_tokens_node_projection
 // names the intended edge. Dissolve-on: T-8, when Set<Symbol> is reified as an explicit membership
 // list type (or substrate gains literal-value edge support), enabling the edge to be emitted.
 fn grammar_root_to_node(root: GrammarRoot) -> Node {
@@ -1172,8 +1172,8 @@ fn grammar_root_to_node(root: GrammarRoot) -> Node {
       connective: Conj
     },
     children: [
-      grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_atom(identity: root.start)),
-      grammar_named_edge(name: grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
+      grammar_named_edge(name: ^grammar_root_start_production_node_projection, target: grammar_atom(identity: root.start)),
+      grammar_named_edge(name: ^grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
     ]
   }
 }
