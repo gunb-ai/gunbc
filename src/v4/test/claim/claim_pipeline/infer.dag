@@ -22,17 +22,10 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
-
-
-data spine_infer_module: Symbol = spine_infer_module
 data spine_infer_module_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: spine_infer_module } },
+  kind: TypeNode { connective: Atom { identity: ^spine_infer_module } },
   children: []
 }
-data spine_infer_pass: Symbol = spine_infer_pass
-data spine_infer_fail: Symbol = spine_infer_fail
-
-
 // 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 / G.3.5 spine harness —
 // dissolve-on: T-22 claim runner evaluates infer Outcome<InferredTree> directly without Bool projection.
 fn spine_infer_accepts_mvp_resolved_tree() -> Bool {
@@ -47,12 +40,12 @@ fn spine_infer_bool_atom(b: Bool) -> Node {
   match b {
     true =>
       Node {
-        kind: TypeNode { connective: Atom { identity: spine_infer_pass } },
+        kind: TypeNode { connective: Atom { identity: ^spine_infer_pass } },
         children: []
       }
     false =>
       Node {
-        kind: TypeNode { connective: Atom { identity: spine_infer_fail } },
+        kind: TypeNode { connective: Atom { identity: ^spine_infer_fail } },
         children: []
       }
   }

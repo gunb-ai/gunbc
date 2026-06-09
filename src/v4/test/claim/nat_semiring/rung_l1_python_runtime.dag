@@ -29,13 +29,9 @@ import v4.test.claim.algebra_laws.nat_semiring {
   nat_mul_associativity_input,
   nat_mul_left_identity_input
 }
-
-
-data phase1_nat_semiring_l1_python_runtime_fixture_symbol: Symbol = phase1_nat_semiring_l1_python_runtime_fixture_symbol
-
 data phase1_nat_semiring_l1_python_runtime_fixture_subject: Node = Node {
   kind: TypeNode {
-    connective: Atom { identity: phase1_nat_semiring_l1_python_runtime_fixture_symbol }
+    connective: Atom { identity: ^phase1_nat_semiring_l1_python_runtime_fixture_symbol }
   },
   children: []
 }

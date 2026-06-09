@@ -26,17 +26,9 @@ import v4.test.claim.lens_ownership.resource_dependency {
   ownership_claim_tree,
   ownership_resource_dependency_claim_passes
 }
-
-
-data lens_ownership_resource_dependency_pin: Symbol = lens_ownership_resource_dependency_pin
-data claim_lens_ownership_resource_dependency_id: Symbol = claim_lens_ownership_resource_dependency
-data lens_ownership_claim_pass_symbol: Symbol = lens_ownership_claim_pass_symbol
-data lens_ownership_claim_fail_symbol: Symbol = lens_ownership_claim_fail_symbol
-
-
 fn ownership_claim_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: lens_ownership_claim_pass_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_pass_symbol } },
     children: []
   }
 }
@@ -44,7 +36,7 @@ fn ownership_claim_pass_node() -> Node {
 
 fn ownership_claim_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: lens_ownership_claim_fail_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_fail_symbol } },
     children: []
   }
 }
@@ -72,7 +64,7 @@ data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = ev
   claim: claim_lens_ownership_resource_dependency,
   context: eval_context_v4_evaluator_wave1(),
   tree: ownership_claim_tree(),
-  evaluator_pin: lens_ownership_resource_dependency_pin
+  evaluator_pin: ^lens_ownership_resource_dependency_pin
 )
 
 
@@ -82,7 +74,7 @@ data lens_ownership_subject_rows: List<TestClaimEvalSubject<Node>> = [
 
 
 data lens_ownership_family_claim_ids: List<Symbol> = [
-  claim_lens_ownership_resource_dependency_id
+  ^claim_lens_ownership_resource_dependency
 ]
 
 

@@ -10,7 +10,7 @@ import v4.compiler.compile {
   fact_density_lens
 }
 import v4.compiler.infer { InferredTree }
-import v4.lens.fact_density { fact_density_hollow_alias_locus }
+
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
@@ -28,27 +28,20 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-
-data hollow_alias_cl_symbol: Symbol = hollow_alias_cl_symbol
-data hollow_alias_cl_subject: Symbol = hollow_alias_cl_subject
-data hollow_alias_cl_type_sym: Symbol = hollow_alias_cl_type_sym
-data hollow_alias_cl_algebra_sym: Symbol = hollow_alias_cl_algebra_sym
-data hollow_alias_cl_descent_sym: Symbol = hollow_alias_cl_descent_sym
-
 data hollow_alias_cl_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: hollow_alias_cl_subject } },
+  kind: TypeNode { connective: Atom { identity: ^hollow_alias_cl_subject } },
   children: []
 }
 
-data hollow_alias_cl_authority: Node = claim_atom_node(s: hollow_alias_cl_symbol)
+data hollow_alias_cl_authority: Node = claim_atom_node(s: ^hollow_alias_cl_symbol)
 
 fn hollow_alias_cl_tree() -> InferredTree {
   claim_inferred_tree(
     root: hollow_alias_cl_root,
     facts: claim_inferred_facts(
-      type_symbol: hollow_alias_cl_type_sym,
-      algebra_symbol: hollow_alias_cl_algebra_sym,
-      descent_symbol: hollow_alias_cl_descent_sym
+      type_symbol: ^hollow_alias_cl_type_sym,
+      algebra_symbol: ^hollow_alias_cl_algebra_sym,
+      descent_symbol: ^hollow_alias_cl_descent_sym
     )
   )
 }
@@ -59,7 +52,7 @@ fn hollow_alias_compile_lens_rejects_holds() -> Bool {
     inferred: hollow_alias_cl_tree(),
     mode: CompileLensEnforce
   ) {
-    Rejected { diagnostics: r } => r.head.reason == fact_density_hollow_alias_locus
+    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
   }
 }

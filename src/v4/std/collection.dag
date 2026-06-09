@@ -40,12 +40,10 @@ fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Op
     Absent => right
   }
 }
-data optional_absent_unwrap: Symbol = optional_absent_unwrap
-data optional_present_witness_port: Symbol = optional_present_witness_port
 fn optional_absent_unwrap_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: optional_absent_unwrap,
-    at: port_locus(port: optional_present_witness_port),
+    reason: ^optional_absent_unwrap,
+    at: port_locus(port: ^optional_present_witness_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -80,12 +78,10 @@ type IndexedLookup<T> {
 type ListAtLookup<T>
   = ListAtMissing { remaining: Int }
   | ListAtFound { value: T }
-data map_key_absent: Symbol = map_key_absent
-data map_lookup_port: Symbol = map_lookup_port
 fn map_absent_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: map_key_absent,
-    at: port_locus(port: map_lookup_port),
+    reason: ^map_key_absent,
+    at: port_locus(port: ^map_lookup_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -112,7 +108,7 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // dissolve-on: bootstrap Witness<V> dispatch at Map.lookup (substrate Witness above); forbidden:
 // ad hoc map_get outside v4.std.collection.
 // Bootstrap (v2 M1 emit): lookup projects as Option — Some→Present, None→Absent. Substrate intent
-// (map_key_absent Violates→Absent, other Violates→Rejected) lands when emit matches Witness.
+// (^map_key_absent Violates→Absent, other Violates→Rejected) lands when emit matches Witness.
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   match m.lookup(key) {
     Some { value: v } => outcome_accepted(value: Present { value: v })

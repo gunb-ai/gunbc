@@ -6,15 +6,9 @@
 
 module v4.compiler.normalize
 
-
 import v4.std.algebra { list_snoc_item }
 import v4.std.grammar { ParseTree }
-import v4.extdeps.languages.dag {
-  dag_c3_surface_sugar_fn,
-  dag_c3_surface_sugar_operation,
-  dag_c3_surface_sugar_service,
-  dag_c3_surface_sugar_type
-}
+
 import v4.std.diagnostic {
   Diagnostic,
   node_locus,
@@ -37,13 +31,10 @@ import v4.std.node {
   well_formed
 }
 
-
 type NormalizedTree = Node
-
 
 data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
 data normalize_reason_post_normalize_not_well_formed: Symbol = normalize_reason_post_normalize_not_well_formed
-
 
 // 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind TASKS.md T-8 / LanguageModel — dissolve-on: surface-to-kernel sugar mapping owned by language-model substrate facts, not compiler-local Atom identity comparison in classify_sugar; forbidden: persistent local SurfaceSugarKind taxonomy without structural LanguageModel carrier.
 type SurfaceSugarKind
@@ -52,31 +43,28 @@ type SurfaceSugarKind
   | TypeSugar
   | OperationSugar
 
-
 fn some_surface_sugar_kind(kind: SurfaceSugarKind) -> SurfaceSugarKind? {
   Some { value: kind }
 }
-
 
 fn no_surface_sugar_kind() -> SurfaceSugarKind? {
   None
 }
 
-
 // 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind TASKS.md T-8 — dissolve-on: classify_sugar reads modeled LanguageModel sugar facts; forbidden: Atom identity string/symbol comparison as permanent authority.
 fn classify_sugar(n: Node) -> SurfaceSugarKind? {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == dag_c3_surface_sugar_service {
+      if id == ^dag_c3_surface_sugar_service {
         some_surface_sugar_kind(kind: ServiceSugar)
       } else {
-        if id == dag_c3_surface_sugar_fn {
+        if id == ^dag_c3_surface_sugar_fn {
           some_surface_sugar_kind(kind: FnSugar)
         } else {
-          if id == dag_c3_surface_sugar_type {
+          if id == ^dag_c3_surface_sugar_type {
             some_surface_sugar_kind(kind: TypeSugar)
           } else {
-            if id == dag_c3_surface_sugar_operation {
+            if id == ^dag_c3_surface_sugar_operation {
               some_surface_sugar_kind(kind: OperationSugar)
             } else {
               no_surface_sugar_kind()
@@ -89,7 +77,6 @@ fn classify_sugar(n: Node) -> SurfaceSugarKind? {
   }
 }
 
-
 fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_malformed_sugar,
@@ -97,7 +84,6 @@ fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -107,11 +93,9 @@ fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-
 fn exactly_one_child(children: List<Edge>) -> Bool {
   count(children) == 1
 }
-
 
 fn normalize_edge(e: Edge) -> Outcome<Edge> {
   match normalize_node(n: e.target) {
@@ -124,11 +108,9 @@ fn normalize_edge(e: Edge) -> Outcome<Edge> {
   }
 }
 
-
 fn empty_normalized_children() -> Outcome<List<Edge>> {
   Accepted { value: Empty, diagnostics: None }
 }
-
 
 fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
   fold(children, init: empty_normalized_children(), f: fn(acc, e) {
@@ -151,14 +133,12 @@ fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
   })
 }
 
-
 fn type_node(connective: Connective, children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: connective },
     children: children
   }
 }
-
 
 fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Outcome<Node> {
   match kind {
@@ -198,7 +178,6 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
   }
 }
 
-
 fn normalize_node(n: Node) -> Outcome<Node> {
   match normalize_children(children: n.children) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -224,7 +203,6 @@ fn normalize_node(n: Node) -> Outcome<Node> {
       }
   }
 }
-
 
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {

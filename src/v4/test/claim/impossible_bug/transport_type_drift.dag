@@ -35,17 +35,6 @@ import v4.std.verification {
   impossible_bug_reason_transport_drift,
   manual_claim_anchor
 }
-
-
-data shared_wire_contract_symbol: Symbol = shared_wire_contract_symbol
-data client_field_int_symbol: Symbol = client_field_int_symbol
-data server_field_string_symbol: Symbol = server_field_string_symbol
-data target_field_bool_symbol: Symbol = target_field_bool_symbol
-data client_field: Symbol = client_field
-data server_field: Symbol = server_field
-data target_field: Symbol = target_field
-
-
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
@@ -54,8 +43,8 @@ fn atom_node(s: Symbol) -> Node {
 data shared_wire_contract_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: client_field }, target: atom_node(s: shared_wire_contract_symbol) },
-    Edge { label: Named { name: server_field }, target: atom_node(s: shared_wire_contract_symbol) },
+    Edge { label: Named { name: ^client_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
+    Edge { label: Named { name: ^server_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
   ]
 }
 
@@ -63,8 +52,8 @@ data shared_wire_contract_input: Node = Node {
 data falsification_wire_contract_drift: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: client_field }, target: atom_node(s: client_field_int_symbol) },
-    Edge { label: Named { name: server_field }, target: atom_node(s: server_field_string_symbol) },
+    Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
+    Edge { label: Named { name: ^server_field }, target: atom_node(s: ^server_field_string_symbol) },
   ]
 }
 
@@ -72,8 +61,8 @@ data falsification_wire_contract_drift: Node = Node {
 data falsification_target_contract_drift: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: client_field }, target: atom_node(s: client_field_int_symbol) },
-    Edge { label: Named { name: target_field }, target: atom_node(s: target_field_bool_symbol) },
+    Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
+    Edge { label: Named { name: ^target_field }, target: atom_node(s: ^target_field_bool_symbol) },
   ]
 }
 

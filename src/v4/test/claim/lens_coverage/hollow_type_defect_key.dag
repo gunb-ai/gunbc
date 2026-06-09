@@ -21,11 +21,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data hollow_type_authority_symbol: Symbol = hollow_type_authority_symbol
-
 data hollow_type_authority_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: hollow_type_authority_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^hollow_type_authority_symbol } },
   children: []
 }
 
