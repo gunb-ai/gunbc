@@ -17,6 +17,17 @@ for `BindingId` while `lookup_type_for` (`04_env.dag:62`) treats `node.ident` as
 into `TypeEnv.bindings`. One field cannot carry both key domains. The design now adds an explicit
 `Node.binding_id` side-channel; `Node.ident` keeps its lookup semantics unchanged.
 
+**Amendment 3 (2026-06-09, inline + codex review on #4579 @ 99340b4):**
+
+1. **`TypeBinding` is shared** between `TypeEnv.bindings` (type declarations) and inference
+   `scope.locals` (params, let bindings, lambda slots — `04_infer.dag:996+`). Adding mandatory
+   `binding_id` to `TypeBinding` would force fabricated declaration ids on value bindings (P2
+   violation). **Fix:** introduce `TypeDeclBinding` for type-declaration registry only; leave
+   `TypeBinding` unchanged for locals/params.
+2. **Per-module `next_binding_id`** collides when `merge_envs` (`04_env.dag:128`) folds imported
+   module envs — two modules can assign the same ids. **Fix:** graph-global `BindingId` allocator
+   on the compilation unit; `decl_registry` keyed by globally unique ids.
+
 ---
 
 ## 1. Problem
@@ -93,34 +104,80 @@ would only record spelling — two modules both declaring `type UserId = …` sh
 id and the later `map_insert` wins (`04_infer.dag:5254` `merge_envs`). PD-3 would then compare
 spellings while claiming declaration identity (P1/P2 violation; codex #4579 finding).
 
-### 3.2 BindingId — the actual declaration-identity authority
+### 3.2 BindingId — declaration-identity authority (not on `TypeBinding`)
 
-Introduce `BindingId` as a monotonic `Int` assigned when `build_type_env` registers each type
-declaration item (one fresh id per `map_insert` into `local_bindings`, independent of spelling).
+`TypeBinding` (`04_env.dag:20`) is reused for **two roles** today:
+
+| Role | Site | Examples |
+|------|------|----------|
+| Type-env lookup carrier | `TypeEnv.bindings` | kernel types, imported types, local `type` items |
+| Value / scope carrier | `InferScope.locals`, `scope_locals` | fn params, let bindings, lambda slots (`04_infer.dag:996+`) |
+
+Declaration identity belongs **only** on type declarations. Do **not** add `binding_id` to
+`TypeBinding` — that would require fabricated ids for params and let bindings.
+
+Introduce a separate registry entry:
 
 ```dag
+type BindingId = Int   // opaque; assigned only by graph-global allocator
+
+type TypeDeclBinding {
+  binding_id: BindingId   // graph-global unique
+  name: String
+  resolved: Node
+  provenance: SubValueRelation
+}
+
+// TypeBinding — UNCHANGED (no binding_id field)
 type TypeBinding {
   name: String
   resolved: Node
   provenance: SubValueRelation
-  binding_id: BindingId   // NEW — declaration identity; assigned at registration
 }
 ```
 
+**TypeEnv extension** (`04_env.dag`):
+
+```dag
+type TypeEnv {
+  bindings: Map<Int, TypeBinding>              // spelling-keyed lookup — unchanged role
+  decl_registry: Map<BindingId, TypeDeclBinding>  // declaration identity authority
+  decl_id_by_spelling: Map<Int, BindingId>     // intern_id → binding_id for type decls only
+  // … recursive_types, intern_table, etc. unchanged …
+}
+```
+
+- `build_type_env` still inserts `TypeBinding` into `bindings` for `lookup_type_for`.
+- In parallel, for each **type declaration item**, insert `TypeDeclBinding` into `decl_registry`
+  and record `decl_id_by_spelling[item_ident] = binding_id`.
+- Inference locals continue constructing plain `TypeBinding { … }` with **no** registry entry.
+
+**Graph-global id namespace:** `BindingId` is allocated from a single counter on the
+compilation graph (`FrontendResult` / reconcile pass), passed into each `build_type_env` call.
+**Not** per-module `next_binding_id` — `merge_envs` (`04_env.dag:128`) concatenates envs from
+kernel + imports + local module; per-invocation counters would collide on the same integers.
+
+```dag
+type BindingIdAllocator {
+  next_id: Int
+}
+
+fn alloc_binding_id(alloc: BindingIdAllocator) -> (BindingId, BindingIdAllocator) { … }
+```
+
+`merge_envs` merges `decl_registry` and `decl_id_by_spelling` with `map_merge` — safe because
+ids are globally unique at allocation time.
+
 **Carrier on `Node`:** add `binding_id: BindingId?` on `Node` (`00_core.dag` substrate extension).
-This is the declaration-identity side-channel. It is **not** `Node.ident`:
+Stamped from `TypeDeclBinding` after type-decl lookup / peel — **not** from scope `TypeBinding`.
 
 | Field | Domain | Consumer |
 |-------|--------|----------|
-| `Node.ident` | Spelling intern id (or module IR id) | `lookup_type_for` → `bindings` map key (`04_env.dag:62`) — **unchanged** |
+| `Node.ident` | Spelling intern id (or module IR id) | `lookup_type_for` → `bindings` — **unchanged** |
 | `Node.binding_id` | `BindingId` | PD-3 compare, `with_preserved_binding_id` peel graft |
 
-After lookup stamps `binding_id`, later `lookup_type_for` calls still resolve via spelling
-(`node.ident` if set, else `authored_name` / `source_name_at`) — never via `binding_id`.
-
-**TypeEnv secondary index:** add `bindings_by_id: Map<BindingId, TypeBinding>` populated
-alongside spelling-keyed `bindings` at registration. `brand_name_at(binding_id, env)` reads
-through this map; no overloading of the spelling-key path.
+After lookup stamps `binding_id`, later `lookup_type_for` calls still resolve via spelling —
+never via `binding_id`. `brand_name_at(binding_id, env)` reads `decl_registry`, not `bindings`.
 
 ### 3.3 Phase-1 scope bound (PD-3 dogfood)
 
@@ -156,8 +213,8 @@ Workers must **not** implement `intern(type_name).id` at parse as declaration id
 |------|-----------|----------|
 | Source token text / diagnostic span | `ident_span` | `source_name_at(node, source_indices)` — rename intent of current `authored_name_at` for display/diagnostics |
 | Spelling / lookup key | `InternTable` | `intern_find(table, name)` — **lookup only**, not PD-3 compare |
-| Declaration identity (brand) | `TypeBinding.binding_id` → `Node.binding_id` | `binding_id_at(node) -> BindingId?` |
-| Declaration name string | `TypeBinding.name` via `bindings_by_id` | `brand_name_at(binding_id, env) -> String` |
+| Declaration identity (brand) | `TypeDeclBinding.binding_id` → `Node.binding_id` | `binding_id_at(node) -> BindingId?` |
+| Declaration name string | `TypeDeclBinding.name` via `decl_registry` | `brand_name_at(binding_id, env) -> String` |
 | Spelling lookup into env | `Node.ident` or name | `lookup_type_for` (unchanged) |
 | Structural template head | `name` (post-resolve) | `structural_carrier_template_name` (unchanged) |
 
@@ -171,14 +228,20 @@ Stamping is a post-`build_type_env` / post-lookup obligation, not a parse-time i
 
 ```mermaid
 flowchart LR
+  subgraph graph [Compilation graph]
+    ALLOC[BindingIdAllocator global]
+  end
+
   subgraph env_bind [build_type_env]
-    DECL[type declaration item] --> ASSIGN["binding_id = next_binding_id()"]
-    ASSIGN --> TB["TypeBinding { binding_id, … }"]
+    DECL[type declaration item] --> ASSIGN["binding_id = alloc_binding_id()"]
+    ASSIGN --> TDB["TypeDeclBinding → decl_registry"]
+    DECL --> TB["TypeBinding → bindings spelling map"]
   end
 
   subgraph infer_resolve [Infer / Resolve]
-    REF[type reference node] --> LOOKUP[lookup_type_for → binding]
-    LOOKUP --> STAMP["Node.binding_id = Some(binding.binding_id)"]
+    REF[type reference node] --> LOOKUP[lookup_type_for → TypeBinding]
+    LOOKUP --> REG[decl_id_by_spelling → TypeDeclBinding]
+    REG --> STAMP["Node.binding_id = Some(decl.binding_id)"]
     STAMP --> PEEL[peel alias to structural]
     PEEL --> PRESERVE["copy binding_id → structural.binding_id"]
   end
@@ -193,28 +256,33 @@ flowchart LR
   end
 ```
 
-### 5.1 `build_type_env` — assign `binding_id` per declaration
+### 5.1 `build_type_env` — register `TypeDeclBinding` per type declaration
 
-**Sites to update** (`04_infer.dag` `build_type_env`, ~5192+):
+**Sites to update** (`04_infer.dag` `build_type_env`, ~5192+; `04_env.dag`):
 
-- Maintain `next_binding_id: Int` counter per `build_type_env` invocation (or per compilation
-  graph — pick one authority; per-graph is simpler for cross-module phase-2).
-- On each `map_insert` into `local_bindings`, assign a fresh `binding_id` on the `TypeBinding`.
-- Set `TypeBinding.resolved.binding_id = Some(binding_id)` on the registered node so env
-  round-trips carry identity.
-- Insert into `bindings_by_id` keyed by `binding_id`.
-- **Keep** `item_ident = intern(authored_name).id` as the `bindings` map **lookup key** for
-  `lookup_type_for` (spelling-keyed; known cross-module limitation in phase 1).
-- **Do not** write `binding_id` into `Node.ident` — spelling lookup and declaration identity
-  remain on separate fields.
+- Thread `BindingIdAllocator` from the compilation graph into every `build_type_env` call; bump
+  once per **type declaration item** via `alloc_binding_id` (graph-global namespace).
+- On each type-decl `map_insert` into `local_bindings`:
+  1. Insert plain `TypeBinding` into `bindings` (spelling key unchanged) for `lookup_type_for`.
+  2. Insert `TypeDeclBinding { binding_id, name, resolved, provenance }` into `decl_registry`.
+  3. Record `decl_id_by_spelling[item_ident] = binding_id`.
+  4. Set `TypeBinding.resolved.binding_id = Some(binding_id)` on the **declaration's resolved
+     node** only (optional field on `Node`, not on `TypeBinding` struct).
+- **Do not** touch inference `scope.locals` / param `TypeBinding` construction — no `binding_id`,
+  no `decl_registry` entry.
+- `merge_envs` merges `decl_registry` + `decl_id_by_spelling` alongside `bindings`; global ids
+  prevent collision across imported modules.
 
 **Do not** assign `binding_id` from `intern(type_name)` — spelling and identity diverge by design.
+**Do not** use per-module counters — imported env merge requires graph-global allocation.
 
 ### 5.2 Infer / resolve — stamp `binding_id` after lookup, replace ident_span graft
 
-After `lookup_type_for` resolves a type reference to a `TypeBinding`, stamp
-`node.binding_id = Some(binding.binding_id)`. Leave `node.ident` unchanged (spelling key for any
-later lookup).
+After `lookup_type_for` resolves a type reference, resolve declaration identity via
+`decl_id_by_spelling` → `decl_registry` (not from scope `TypeBinding`). Stamp
+`node.binding_id = Some(decl.binding_id)`. Leave `node.ident` unchanged (spelling key for any
+later lookup). If the binding is not a type declaration (kernel synthetic, type param slot), leave
+`binding_id` unset.
 
 Replace `with_authored_identity` with `with_preserved_binding_id`:
 
@@ -274,9 +342,9 @@ sides stamped; fall back to `source_name_at` string equality. Container kind com
 
 | Principle | How this design satisfies it |
 |-----------|-------------------------------|
-| **P2 Boundary Discipline** | Four facts, four carriers: `ident_span` (source location), `Node.ident` (spelling lookup key), `Node.binding_id` (declaration identity), `bindings_by_id` (env index). No field carries two key domains. |
-| **P1 Modeling Faithfulness** | `binding_id` is assigned at the authoritative registration site (`build_type_env`), not re-derived from spelling or source-text re-parse. |
-| **P5 Progress Is Dissolution** | One new `Node` field + `TypeBinding.binding_id` + env secondary index; deletes ident_span brand graft. |
+| **P2 Boundary Discipline** | `TypeBinding` (value/scope) vs `TypeDeclBinding` (declaration registry) vs `Node.binding_id` (stamped compare carrier) vs `Node.ident` (spelling lookup). No struct serves two roles. |
+| **P1 Modeling Faithfulness** | `binding_id` allocated at type-decl registration with graph-global authority; not re-derived from spelling or fabricated on params/lets. |
+| **P5 Progress Is Dissolution** | `TypeDeclBinding` + `decl_registry` + `Node.binding_id`; `TypeBinding` unchanged; deletes ident_span brand graft. |
 | **E-6 target identity** | `BindingId` is the v2 staging form of v3 `DeclarationId`; convergence path is rename + substrate migration, not a second identity scheme. |
 
 ---
@@ -328,17 +396,20 @@ Ordered for minimal blast radius; each step has a consumer test.
 
 ## 9. Verdict
 
-**Recommended path:** introduce `TypeBinding.binding_id` + `Node.binding_id` assigned at
-`build_type_env`; carry through infer/resolve peel; keep `Node.ident` for spelling lookup only;
-replace `with_authored_identity` ident_span graft with `binding_id` graft; PD-3 compares
-`Node.binding_id`.
+**Recommended path:** introduce `TypeDeclBinding` + graph-global `BindingIdAllocator` +
+`TypeEnv.decl_registry`; stamp `Node.binding_id` from decl registry after lookup/peel; keep
+`TypeBinding` unchanged for locals/params; keep `Node.ident` for spelling lookup only; replace
+`with_authored_identity` ident_span graft with `binding_id` graft; PD-3 compares `Node.binding_id`.
 
 **Implementation estimate:** one focused PR on `00_core.dag`, `04_env.dag`, `04_infer.dag`,
-`04_resolve.dag`, `04_types.dag` (+ generated stage0 regen). New fields: `Node.binding_id`,
-`TypeBinding.binding_id`, `TypeEnv.bindings_by_id`.
+`04_resolve.dag`, `04_types.dag`, `compile.dag` (+ generated stage0 regen). New types/fields:
+`TypeDeclBinding`, `BindingIdAllocator`, `Node.binding_id`, `TypeEnv.decl_registry`,
+`TypeEnv.decl_id_by_spelling`. **`TypeBinding` struct unchanged.**
 
 **Explicit non-implementation:**
 
+- Do **not** add `binding_id` to `TypeBinding` (params/lets must not carry declaration identity).
+- Do **not** use per-module `next_binding_id` (collides under `merge_envs`).
 - Do **not** stamp `intern(type_name).id` at parse as declaration identity.
 - Do **not** store `BindingId` in `Node.ident` — `lookup_type_for` must keep spelling-key semantics.
 
