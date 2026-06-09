@@ -123,7 +123,7 @@ seed, get-off-v3 goal).
 | Stage | find_witness | fold_node | Coercion gap | fold gap |
 |---|---|---|---|---|
 | 06_translate | ✅ via coercion.dag | ✅ 4 sites | none | partial (Q4 gate) |
-| 04_infer | ⬜ N/A (grounding producer) | 🟡 2 sites | enforcement AIM (op-GO gated) | none |
+| 04_infer | ⬜ N/A (grounding producer) | 🟡 2 sites | PD-3-DOGFOOD (ROADMAP.md) | none |
 | 03_resolve | ⬜ N/A (name resolution) | 🟡 1 site | none | partial (Q4 gate) |
 | 03_normalize | ⬜ N/A (sugar dissolution) | ⬜ 0 sites | none | partial (Q4 gate) |
 | 02_parse | ⬜ N/A | ⬜ 0 sites | none | none |
