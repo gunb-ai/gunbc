@@ -94,7 +94,10 @@ import v4.std.verification {
   Tier1,
   Unit,
   CompilesClaim,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
@@ -602,4 +605,13 @@ data run_mvp1_serialize_rejects_missing_translation_rules: TestClaimRun<Node, No
     actual: mvp1_serialize_reject_claim_outcome(),
     at: mvp1_rust_emitted_root
   )
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `mvp1_rust_emit_add_fn_accepts_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_mvp1_rust_emit_add_fn: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
+    function: mvp1_rust_emit_add_fn_accepts_holds
+  }
 }

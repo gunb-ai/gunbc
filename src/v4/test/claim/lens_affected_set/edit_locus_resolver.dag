@@ -25,6 +25,12 @@ import v4.test.claim.lens_affected_set.node_precision {
   affected_set_root_to_mid_frontier_dependency
 }
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.dag"
 data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
@@ -106,3 +112,21 @@ data edit_locus_narrow_resolution_claim_passes: Bool = edit_locus_narrow_resolut
 data edit_locus_fail_closed_claim_passes: Bool = edit_locus_fail_closed_holds()
 data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_wire_holds()
 data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `edit_locus_narrow_resolution_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    function: edit_locus_narrow_resolution_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `edit_locus_fail_closed_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_edit_locus_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    function: edit_locus_fail_closed_holds
+  }
+}
