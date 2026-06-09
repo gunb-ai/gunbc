@@ -197,14 +197,14 @@ fn source_ir_node_artifact_provenance(
 }
 
 
-fn source_ir_node_artifact_provenance_from_authority(
+fn source_ir_node_artifact_provenance_from_law(
   source_artifact: DagSourceArtifact,
-  authority: TargetModel
+  law: SourceAuthorityRoundTripLaw
 ) -> Outcome<NodeArtifactProvenance> {
-  if source_artifact.source == authority.authority_source_text {
+  if source_artifact.source == law.canonical_source {
     outcome_accepted(
       value: NodeArtifactProvenance {
-        node: authority.bundle,
+        node: law.semantic_law.original.tree,
         artifact: source_artifact.artifact
       }
     )
