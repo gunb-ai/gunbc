@@ -17,6 +17,26 @@ for `BindingId` while `lookup_type_for` (`04_env.dag:62`) treats `node.ident` as
 into `TypeEnv.bindings`. One field cannot carry both key domains. The design now adds an explicit
 `Node.binding_id` side-channel; `Node.ident` keeps its lookup semantics unchanged.
 
+**Amendment 4 (2026-06-09, follow-up #4579 codex sweep — this PR):**
+
+1. **`decl_id_by_spelling` is removed from the stamp path entirely.** Deriving `binding_id`
+   through a spelling key is a P1/P3 violation: `intern(name)` ids collapse same-spelled
+   declarations from different modules to one key, so a spelling-keyed lookup cannot be the
+   authority for declaration identity. Any `Map<Int, BindingId>` constructed by folding a
+   spelling-keyed index inherits the same ambiguity silently (last insert wins = fabricated
+   plausible output, not fail-closed).
+2. **Stamp path is authority-direct.** `binding_id` is read from the `TypeDeclBinding.resolved`
+   node that `build_type_env` constructs and stores in `TypeEnv.decl_registry`. That resolved
+   node is the SAME `Node` value placed in `TypeBinding.resolved` (shared reference). After
+   `lookup_type_for` returns `TypeBinding.resolved`, `binding_id` is already present on that
+   node — no side-map lookup required.
+3. **`decl_id_by_spelling` deferred to phase 2.** If a spelling→BindingId index is eventually
+   needed for cross-module lookup optimisation, it must (a) be constructed fail-closed (collision
+   = ambiguous/absent, never silent winner-pick), (b) never be a stamp source, and (c) only be
+   introduced with cross-module collision tests. Phase 1 ships without it.
+4. **Class sweep:** every path that feeds `binding_id` onto a `Node` was audited (§5.5 below);
+   none goes through a spelling key.
+
 **Amendment 3 (2026-06-09, inline + codex review on #4579 @ 99340b4):**
 
 1. **`TypeBinding` is shared** between `TypeEnv.bindings` (type declarations) and inference
@@ -142,14 +162,17 @@ type TypeBinding {
 type TypeEnv {
   bindings: Map<Int, TypeBinding>              // spelling-keyed lookup — unchanged role
   decl_registry: Map<BindingId, TypeDeclBinding>  // declaration identity authority
-  decl_id_by_spelling: Map<Int, BindingId>     // intern_id → binding_id for type decls only
+  // NOTE: decl_id_by_spelling absent — deferred to phase 2 (Amendment 4).
+  // Stamp path is authority-direct: resolved Node already carries binding_id at registration.
   // … recursive_types, intern_table, etc. unchanged …
 }
 ```
 
 - `build_type_env` still inserts `TypeBinding` into `bindings` for `lookup_type_for`.
-- In parallel, for each **type declaration item**, insert `TypeDeclBinding` into `decl_registry`
-  and record `decl_id_by_spelling[item_ident] = binding_id`.
+- For each **type declaration item**, insert `TypeDeclBinding` into `decl_registry` **and**
+  stamp `binding_id = Some(binding_id)` directly onto the resolved `Node` that is shared
+  between `TypeDeclBinding.resolved` and `TypeBinding.resolved`.  The stamp travels on the
+  `Node` value — no spelling-keyed side map needed.
 - Inference locals continue constructing plain `TypeBinding { … }` with **no** registry entry.
 
 **Graph-global id namespace:** `BindingId` is allocated from a single counter on the
@@ -165,19 +188,21 @@ type BindingIdAllocator {
 fn alloc_binding_id(alloc: BindingIdAllocator) -> (BindingId, BindingIdAllocator) { … }
 ```
 
-`merge_envs` merges `decl_registry` and `decl_id_by_spelling` with `map_merge` — safe because
-ids are globally unique at allocation time.
+`merge_envs` merges `decl_registry` alongside `bindings` — safe because ids are globally
+unique at allocation time.  No `decl_id_by_spelling` merge: the field does not exist in
+phase 1.
 
 **Carrier on `Node`:** add `binding_id: BindingId?` on `Node` (`00_core.dag` substrate extension).
-Stamped from `TypeDeclBinding` after type-decl lookup / peel — **not** from scope `TypeBinding`.
+Stamped at **declaration-registration time** by `build_type_env` — **not** after lookup or
+peel.  Infer/resolve only reads and propagates an already-present stamp; it never originates one.
 
 | Field | Domain | Consumer |
 |-------|--------|----------|
 | `Node.ident` | Spelling intern id (or module IR id) | `lookup_type_for` → `bindings` — **unchanged** |
-| `Node.binding_id` | `BindingId` | PD-3 compare, `with_preserved_binding_id` peel graft |
+| `Node.binding_id` | `BindingId` (set at registration, propagated through peel) | PD-3 compare, `with_preserved_binding_id` peel graft |
 
-After lookup stamps `binding_id`, later `lookup_type_for` calls still resolve via spelling —
-never via `binding_id`. `brand_name_at(binding_id, env)` reads `decl_registry`, not `bindings`.
+Later `lookup_type_for` calls still resolve via spelling — never via `binding_id`.
+`brand_name_at(binding_id, env)` reads `decl_registry`, not `bindings`.
 
 ### 3.3 Phase-1 scope bound (PD-3 dogfood)
 
@@ -186,15 +211,15 @@ Current PD-3 tests and adversarial suite are **single-module** (`pd3.brand_relat
 
 - Assigns distinct `binding_id` per declaration within a module (`UserId` ≠ `AccountId` even when
   both alias to `Refined<String>`).
-- Stamps `Node.binding_id = Some(binding_id)` after env lookup / alias peel — **not at parse**.
-  Leaves `Node.ident` on the spelling-key path for any subsequent `lookup_type_for`.
+- Stamps `Node.binding_id = Some(binding_id)` at **registration time** in `build_type_env`
+  (onto the resolved `Node` shared by `TypeDeclBinding` and `TypeBinding`) — **not** after
+  lookup, **not** via spelling key.  Leaves `Node.ident` on the spelling-key path for any
+  subsequent `lookup_type_for`.
 - Does **not** claim cross-module same-spelling disambiguation is solved (that requires binding
   map key migration off spelling intern id — tracked as phase-2 escalation).
-- **`decl_id_by_spelling` is honest but phase-1-limited:** it maps spelling intern id →
-  `binding_id` for type declarations registered in the merged env. Because `bindings` remains
-  spelling-keyed (`intern(authored_name)`), two modules both declaring `type UserId` still
-  collapse to one spelling slot under `merge_envs` — phase-1 does **not** assert cross-module
-  same-spelling identity soundness. Phase-2 escalates before any cross-module brand-twin compare.
+- **`decl_id_by_spelling` is deferred entirely (Amendment 4):** the spelling→BindingId side map
+  is absent in phase 1.  Any future phase-2 spelling index must be fail-closed on collision
+  (ambiguous/absent, never silent winner-pick) and must never be a stamp source.
 
 Workers must **not** implement `intern(type_name).id` at parse as declaration identity.
 
@@ -205,6 +230,8 @@ Workers must **not** implement `intern(type_name).id` at parse as declaration id
 | Continue `ident_span` graft | **Reject** — carrier conflict is the bug being fixed. |
 | `intern(type_name).id` at parse (v1 design) | **Reject** — spelling id, not declaration identity (codex finding). |
 | Reuse `Node.ident` for `BindingId` | **Reject** — `lookup_type_for` already consumes `ident` as spelling-key; dual domain violates P2 (codex amendment 2). |
+| `decl_id_by_spelling` as stamp source | **Reject** — spelling-keyed map lookup is a P1/P3 violation: same-spelled declarations in different modules collapse to one key (Amendment 4). |
+| `decl_id_by_spelling` as lookup-only phase-1 index | **Defer** — latent collision risk not worth shipping in single-module phase-1 where authority-direct stamp (resolved `Node.binding_id`) already covers the need. |
 | New `Node.binding_id` field | **Accept** — explicit side-channel; one field, one authority. |
 | `properties` entry `BrandIdentity` | **Reject** — properties are predicate/refinement carriers; identity would not propagate through resolve rebuild sites. |
 | Compare via `TypeEnv` lookup only | **Reject** — call-site actual args after peel must carry identity locally. |
@@ -225,7 +252,8 @@ Workers must **not** implement `intern(type_name).id` at parse as declaration id
 
 **Compatibility rule during migration:** when `binding_id == none` (kernel types, synthetic nodes,
 pre-migration graphs), PD-3 falls back to `source_name_at` string compare (today's behavior).
-Stamping is a post-`build_type_env` / post-lookup obligation, not a parse-time intern.
+Stamping is a **`build_type_env`-registration obligation**, not a parse-time intern and not a
+post-lookup obligation — infer/resolve reads and propagates, never originates.
 
 ---
 
@@ -240,14 +268,14 @@ flowchart LR
   subgraph env_bind [build_type_env]
     DECL[type declaration item] --> ASSIGN["binding_id = alloc_binding_id()"]
     ASSIGN --> TDB["TypeDeclBinding → decl_registry"]
-    DECL --> TB["TypeBinding → bindings spelling map"]
+    ASSIGN --> STAMP["resolved Node.binding_id = Some(binding_id)  ← STAMP AT REGISTRATION"]
+    STAMP --> TB["TypeBinding { resolved: stamped_node } → bindings spelling map"]
   end
 
   subgraph infer_resolve [Infer / Resolve]
-    REF[type reference node] --> LOOKUP[lookup_type_for → TypeBinding]
-    LOOKUP --> REG[decl_id_by_spelling → TypeDeclBinding]
-    REG --> STAMP["Node.binding_id = Some(decl.binding_id)"]
-    STAMP --> PEEL[peel alias to structural]
+    REF[type reference node] --> LOOKUP["lookup_type_for → TypeBinding.resolved (already stamped)"]
+    LOOKUP --> READ["read resolved.binding_id  ← authority-direct, no spelling key"]
+    READ --> PEEL[peel alias to structural]
     PEEL --> PRESERVE["copy binding_id → structural.binding_id"]
   end
 
@@ -268,26 +296,33 @@ flowchart LR
 - Thread `BindingIdAllocator` from the compilation graph into every `build_type_env` call; bump
   once per **type declaration item** via `alloc_binding_id` (graph-global namespace).
 - On each type-decl `map_insert` into `local_bindings`:
-  1. Insert plain `TypeBinding` into `bindings` (spelling key unchanged) for `lookup_type_for`.
-  2. Insert `TypeDeclBinding { binding_id, name, resolved, provenance }` into `decl_registry`.
-  3. Record `decl_id_by_spelling[item_ident] = binding_id`.
-  4. Set `TypeBinding.resolved.binding_id = Some(binding_id)` on the **declaration's resolved
-     node** only (optional field on `Node`, not on `TypeBinding` struct).
+  1. Allocate `binding_id = alloc_binding_id(alloc)`.
+  2. Construct the resolved `Node` with `binding_id = Some(binding_id)` stamped — this is the
+     **authority stamp**; it must come from `alloc_binding_id`, not from any spelling key.
+  3. Insert `TypeDeclBinding { binding_id, name, resolved: stamped_node, provenance }` into
+     `decl_registry` (keyed by `binding_id`; globally unique).
+  4. Insert plain `TypeBinding { resolved: stamped_node, … }` into `bindings` (spelling key
+     unchanged) for `lookup_type_for`.  `TypeBinding` struct is **unchanged** (no `binding_id`
+     field on it); the stamp lives on `Node.binding_id`.
+  5. **Do NOT** record `decl_id_by_spelling` — that side map is absent in phase 1.
 - **Do not** touch inference `scope.locals` / param `TypeBinding` construction — no `binding_id`,
   no `decl_registry` entry.
-- `merge_envs` merges `decl_registry` + `decl_id_by_spelling` alongside `bindings`; global ids
-  prevent collision across imported modules.
+- `merge_envs` merges `decl_registry` alongside `bindings`; global ids prevent collision.
+  No `decl_id_by_spelling` merge.
 
 **Do not** assign `binding_id` from `intern(type_name)` — spelling and identity diverge by design.
 **Do not** use per-module counters — imported env merge requires graph-global allocation.
 
-### 5.2 Infer / resolve — stamp `binding_id` after lookup, replace ident_span graft
+### 5.2 Infer / resolve — read and propagate `binding_id`; replace ident_span graft
 
-After `lookup_type_for` resolves a type reference, resolve declaration identity via
-`decl_id_by_spelling` → `decl_registry` (not from scope `TypeBinding`). Stamp
-`node.binding_id = Some(decl.binding_id)`. Leave `node.ident` unchanged (spelling key for any
-later lookup). If the binding is not a type declaration (kernel synthetic, type param slot), leave
-`binding_id` unset.
+After `lookup_type_for` resolves a type reference, read `binding_id` directly from the
+**resolved `Node`** returned by the lookup: `resolved.binding_id`.  The stamp is already on
+the node — `build_type_env` placed it at declaration-registration time (see §5.1).  There is
+no secondary lookup through a spelling key.
+
+If the resolved node has `binding_id = none` (kernel synthetic, type-param slot, pre-migration
+graph), the binding is not a type declaration; `binding_id` stays unset on the reference node.
+Leave `node.ident` unchanged (spelling key for any later `lookup_type_for`).
 
 Replace `with_authored_identity` with `with_preserved_binding_id`:
 
@@ -311,8 +346,22 @@ Update call sites:
 - **Guard:** only graft when `identity.binding_id != none` and binding names differ from
   structural template spelling.
 
-`topo_resolve_types` (`04_infer.dag:5743+`) passes pre-resolve nodes that already carry binding id
-from binding registration.
+**`topo_resolve_types` preservation edge (load-bearing — must not be missed):**
+`topo_resolve_types` (`04_infer.dag:5714`) rebuilds `TypeEnv.bindings` by calling
+`resolve_node` on each pre-resolve binding and then constructing a fresh `TypeBinding {
+resolved: … }` entry.  This path goes through `preserve_nominal_brand_on_resolve(identity:
+pre, structural: result.resolved, …)` where `pre = binding.resolved` is the pre-resolve node
+(which carries `binding_id` from registration).  Because `with_preserved_binding_id` copies
+`identity.binding_id` onto the structural result, the rebuilt `TypeBinding.resolved` retains
+the stamp.
+
+**Implementation obligation:** `preserve_nominal_brand_on_resolve` MUST be updated to call
+`with_preserved_binding_id` (not `with_authored_identity`) before `topo_resolve_types` runs.
+If `with_authored_identity` is still in place when `topo_resolve_types` executes, the freshly
+constructed `TypeBinding.resolved` will have `binding_id = none` even though registration
+stamped it — identity silently drops, and `lookup_type_for` consumers see an unstamped node.
+This is why the atomicity constraint in §7 step 3 requires deleting `with_authored_identity`
+and landing `with_preserved_binding_id` in the same PR as the new `Node.binding_id` field.
 
 ### 5.3 Compare — PD-3 and relation refinement
 
@@ -339,7 +388,31 @@ sides stamped; fall back to `source_name_at` string equality. Container kind com
 ### 5.4 Reference nodes
 
 `nominal_ref_node` should accept optional `binding_id: BindingId?`. Parse-time refs start with
-`binding_id: none`; infer stamps after env bind. Spelling `ident` (if any) remains independent.
+`binding_id: none`; infer/resolve propagates `resolved.binding_id` after lookup — it never
+originates a stamp. Spelling `ident` (if any) remains independent.
+
+### 5.5 Class sweep — all `binding_id` feed paths (Amendment 4)
+
+The following enumeration confirms every path that writes `Node.binding_id` derives from
+the declaration authority (the registered `BindingId` from `alloc_binding_id`), not from a
+spelling key.
+
+| Feed site | Source of `binding_id` | Spelling-keyed? | Verdict |
+|-----------|------------------------|-----------------|---------|
+| `build_type_env` — type-decl registration | `alloc_binding_id(alloc)` — graph-global allocator, returns fresh `BindingId` | No | **AUTHORITY** |
+| `with_preserved_binding_id` — peel/resolve graft | `identity.binding_id` — read from the pre-peel Node that was stamped at registration | No (propagates already-stamped value) | **SAFE** |
+| `peel_nominal_alias_identity` — alias peel | reads `binding_id` from the looked-up `TypeBinding.resolved` node (stamped at registration) | No | **SAFE** |
+| `topo_resolve_types` / `preserve_nominal_brand_on_resolve` rebuild | `identity.binding_id` copied via `with_preserved_binding_id` from `pre = binding.resolved` (stamped at registration); `pre` is the identity arg | No — copies from a node already authority-stamped | **SAFE** (requires `with_authored_identity` replaced before this path runs — see §5.2 atomicity note) |
+| `TypeBinding.resolved.binding_id` — returned by `lookup_type_for` after topo-resolve | set at `build_type_env` registration and preserved through `topo_resolve_types` via `with_preserved_binding_id` | No | **SAFE** |
+| `nominal_ref_node` — parse-time ref construction | `binding_id: none` — no value set | N/A | **SAFE (none)** |
+| Inference scope locals / param `TypeBinding` | not touched (no `binding_id` on `TypeBinding` struct, no `decl_registry` entry) | N/A | **SAFE (absent)** |
+| `decl_id_by_spelling` lookup → stamp | **ELIMINATED** — this field does not exist in phase 1 | Would have been spelling-keyed | **REMOVED** |
+
+**Rule that cannot be relaxed:** `Node.binding_id` must be set **only** from a value produced
+by `alloc_binding_id` (direct) or copied from a node that was already stamped by
+`alloc_binding_id` (transitive graft).  Any code that derives `binding_id` from
+`intern(name).id`, from a spelling map lookup, or from any key that encodes the type's name
+is in violation of this rule and P1/P3.
 
 ---
 
@@ -367,7 +440,7 @@ Ordered for minimal blast radius; each step has a consumer test.
 |------|--------|----------|
 | 1 | Add `BindingId`, `TypeDeclBinding`, `BindingIdAllocator`; extend `Node.binding_id`; `decl_registry` on `TypeEnv`; helpers in `00_core.dag` + `04_env.dag` | unit tests in `infer_semantics.rs` |
 | 2 | `build_type_env`: graph-global alloc; register `TypeDeclBinding` per type decl; stamp `Node.binding_id` on decl resolved nodes | `m1_brand_twins_over_refined_base_remain_distinct` |
-| 3 | Infer/resolve: stamp `binding_id` after lookup; `with_preserved_binding_id`; **atomically** delete `with_authored_identity` ident_span graft (same PR — see atomicity note above) | same + parse span tests still green |
+| 3 | Infer/resolve: read `resolved.binding_id` (already stamped at step 2); `with_preserved_binding_id` propagates it through peel; **atomically** delete `with_authored_identity` ident_span graft (same PR — see atomicity note above) | same + parse span tests still green |
 | 4 | PD-3 fns compare `binding_id` | `pd3_*`, `pd3_adversarial.rs` |
 | 5 | Remove `authored_name_at` from compare path (use `binding_id` / `source_name_at` fallback) | grep audit |
 | 6 | Remove `module_skips_direct_call_arg_check` when substrate compiles clean | ROADMAP `PD-3-DOGFOOD` row |
@@ -405,15 +478,17 @@ Ordered for minimal blast radius; each step has a consumer test.
 
 ## 9. Verdict
 
-**Recommended path:** introduce `TypeDeclBinding` + graph-global `BindingIdAllocator` +
-`TypeEnv.decl_registry`; stamp `Node.binding_id` from decl registry after lookup/peel; keep
-`TypeBinding` unchanged for locals/params; keep `Node.ident` for spelling lookup only; replace
-`with_authored_identity` ident_span graft with `binding_id` graft; PD-3 compares `Node.binding_id`.
+**Recommended path (amended):** introduce `TypeDeclBinding` + graph-global `BindingIdAllocator` +
+`TypeEnv.decl_registry`; stamp `Node.binding_id` at **declaration-registration time** in
+`build_type_env` (onto the resolved `Node` shared by `TypeDeclBinding` and `TypeBinding`) —
+**not** via a post-lookup spelling index; keep `TypeBinding` unchanged for locals/params;
+keep `Node.ident` for spelling lookup only; replace `with_authored_identity` ident_span graft
+with authority-direct `binding_id` graft; PD-3 compares `Node.binding_id`.
 
 **Implementation estimate:** one focused PR on `00_core.dag`, `04_env.dag`, `04_infer.dag`,
 `04_resolve.dag`, `04_types.dag`, `compile.dag` (+ generated stage0 regen). New types/fields:
-`TypeDeclBinding`, `BindingIdAllocator`, `Node.binding_id`, `TypeEnv.decl_registry`,
-`TypeEnv.decl_id_by_spelling`. **`TypeBinding` struct unchanged.**
+`TypeDeclBinding`, `BindingIdAllocator`, `Node.binding_id`, `TypeEnv.decl_registry`.
+**`TypeBinding` struct unchanged. `decl_id_by_spelling` not introduced (deferred to phase 2).**
 
 **Explicit non-implementation:**
 
@@ -421,6 +496,9 @@ Ordered for minimal blast radius; each step has a consumer test.
 - Do **not** use per-module `next_binding_id` (collides under `merge_envs`).
 - Do **not** stamp `intern(type_name).id` at parse as declaration identity.
 - Do **not** store `BindingId` in `Node.ident` — `lookup_type_for` must keep spelling-key semantics.
+- Do **not** introduce `TypeEnv.decl_id_by_spelling` in phase 1 — any spelling→BindingId
+  index is deferred to phase 2 with cross-module collision handling.  If ever introduced it
+  must be fail-closed on collision and must never be a stamp source.
 
 **This lane delivers:** design report only. Implementation is a follow-on worker item under the
 same parent lane.
