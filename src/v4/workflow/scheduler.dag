@@ -15,6 +15,7 @@ import v4.std.algebra {
   list_snoc_item,
   non_empty
 }
+import v4.std.change { DependencyDependent, DependencyEndpoint, DependencySource }
 import v4.std.dependency {
   DependencyKindClassifier,
   DependencyView,
@@ -29,19 +30,15 @@ type RunnableFrontier {
   ready: List<Node>
 }
 
-type SchedulerDependencyEndpointSide
-  = SchedulerDependencySourceEndpoint {}
-  | SchedulerDependencyDependentEndpoint {}
-
 type SchedulerMissingDependencyEndpointRecord {
   dependency: DependencyView
-  side: SchedulerDependencyEndpointSide
+  side: DependencyEndpoint
 }
 
 fn scheduler_missing_dependency_endpoint_node(record: SchedulerMissingDependencyEndpointRecord) -> Node {
   match record.side {
-    SchedulerDependencySourceEndpoint {} => record.dependency.source
-    SchedulerDependencyDependentEndpoint {} => record.dependency.dependent
+    DependencySource => record.dependency.source
+    DependencyDependent => record.dependency.dependent
   }
 }
 
@@ -131,7 +128,7 @@ fn scheduler_append_missing_dependency_source(
       xs: endpoints,
       item: SchedulerMissingDependencyEndpointRecord {
         dependency: dependency,
-        side: SchedulerDependencySourceEndpoint {}
+        side: DependencySource
       }
     )
   }
@@ -149,7 +146,7 @@ fn scheduler_append_missing_dependency_dependent(
       xs: endpoints,
       item: SchedulerMissingDependencyEndpointRecord {
         dependency: dependency,
-        side: SchedulerDependencyDependentEndpoint {}
+        side: DependencyDependent
       }
     )
   }

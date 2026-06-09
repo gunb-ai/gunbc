@@ -5,6 +5,7 @@
 module v4.test.claim.manual.scheduler_runnable_frontier
 
 import v4.std.collection { List }
+import v4.std.change { DependencyDependent, DependencySource }
 import v4.std.dependency {
   Contains,
   DataDependsOn,
@@ -16,8 +17,6 @@ import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.workflow.scheduler {
   RunnableFrontier,
-  SchedulerDependencyDependentEndpoint,
-  SchedulerDependencySourceEndpoint,
   SchedulerMissingDependencyEndpoint,
   SchedulerMissingDependencyEndpointRecord,
   SchedulerNoRunnableFrontier,
@@ -155,12 +154,12 @@ data scheduler_missing_source_endpoint_record: SchedulerMissingDependencyEndpoin
     kind: DataDependsOn,
     usage_site: scheduler_build_node
   },
-  side: SchedulerDependencySourceEndpoint {}
+  side: DependencySource
 }
 
 data scheduler_missing_dependent_endpoint_record: SchedulerMissingDependencyEndpointRecord = SchedulerMissingDependencyEndpointRecord {
   dependency: scheduler_build_to_emit_dependency,
-  side: SchedulerDependencyDependentEndpoint {}
+  side: DependencyDependent
 }
 
 fn scheduler_initial_frontier() -> RunnableFrontier {
