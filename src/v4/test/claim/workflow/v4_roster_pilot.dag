@@ -499,6 +499,12 @@ data v4_roster_pilot_row_lens_application_synthesis_gap: V4RosterPilotClaimRunRo
   function_symbol: lens_application_synthesis_gap_polynomial_holds
 }
 
+data v4_roster_pilot_row_lens_application_synthesis_gap_enforce: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens application synthesis gap enforce rejection",
+  entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+  function: "lens_application_synthesis_gap_enforce_rejection_holds"
+}
+
 data v4_roster_pilot_row_lens_idempotency_write_effect: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens idempotency write-effect witness",
   entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
@@ -615,6 +621,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_parse_table_token_position_indices,
   v4_roster_pilot_row_lens_application_introspect_advisory,
   v4_roster_pilot_row_lens_application_synthesis_gap,
+  v4_roster_pilot_row_lens_application_synthesis_gap_enforce,
   v4_roster_pilot_row_lens_idempotency_write_effect,
   v4_roster_pilot_row_lens_idempotency_family_gate,
   v4_roster_pilot_row_lens_parallelism_family_gate,
@@ -707,6 +714,7 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_parse_table_token_position_indices)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_introspect_advisory)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_synthesis_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_synthesis_gap_enforce)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_idempotency_write_effect)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_idempotency_family_gate)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_parallelism_family_gate)
@@ -915,6 +923,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_lens_application_synthesis_gap,
       entry: "src/v4/test/claim/lens_application/sg_claims.dag",
       function: "lens_application_synthesis_gap_polynomial_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_application_synthesis_gap_enforce,
+      entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+      function: "lens_application_synthesis_gap_enforce_rejection_holds"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_lens_idempotency_write_effect,
