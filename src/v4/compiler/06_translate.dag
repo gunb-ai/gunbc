@@ -2413,43 +2413,14 @@ fn project_type_expression_connective_bounded(
             ),
             f: fn(original_split) {
               bind_outcome(
-                o: translate_project_arrow_split_types(
+                o: project_type_expression_arrow_emitted_from_original_split(
                   original_split: original_split,
+                  anchor: node,
                   target: target,
-                  projection: projection,
-                  anchor: node
+                  projection: projection
                 ),
-                f: fn(split) {
-                  bind_outcome(
-                    o: type_expr_projection_graft_substrate_in_row_slot(
-                      projection: projection,
-                      connective: Arrow,
-                      node: node,
-                      projected_positional: list_append(
-                        left: split.inputs,
-                        right: Cons { head: split.output, tail: Empty }
-                      )
-                    ),
-                    f: fn(grafted) {
-                      bind_outcome(
-                        o: type_expr_projection_graft_witness_gate(
-                          source_facts: grafted,
-                          projection: projection,
-                          connective: Arrow
-                        ),
-                        f: fn(_) {
-                          Accepted {
-                            value: target_type_expr_arrow_emitted(
-                              form: projection.arrow_form,
-                              inputs: split.inputs,
-                              output: split.output
-                            ),
-                            diagnostics: None
-                          }
-                        }
-                      )
-                    }
-                  )
+                f: fn(emitted) {
+                  Accepted { value: emitted, diagnostics: None }
                 }
               )
             }
