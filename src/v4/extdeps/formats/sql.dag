@@ -153,82 +153,58 @@ type SqlNonNumericPrimitiveFacts {
 
 
 // ISO/IEC 9075 surface spellings.
-data sql_surface_spelling_boolean: Symbol = sql_surface_spelling_boolean
-data sql_surface_spelling_smallint: Symbol = sql_surface_spelling_smallint
-data sql_surface_spelling_integer: Symbol = sql_surface_spelling_integer
-data sql_surface_spelling_bigint: Symbol = sql_surface_spelling_bigint
-data sql_surface_spelling_real: Symbol = sql_surface_spelling_real
-data sql_surface_spelling_double_precision: Symbol = sql_surface_spelling_double_precision
-data sql_surface_spelling_character_large_object: Symbol = sql_surface_spelling_character_large_object
-data sql_surface_spelling_date: Symbol = sql_surface_spelling_date
-data sql_surface_spelling_time: Symbol = sql_surface_spelling_time
-data sql_surface_spelling_timestamp: Symbol = sql_surface_spelling_timestamp
-data sql_surface_spelling_timestamp_with_time_zone: Symbol = sql_surface_spelling_timestamp_with_time_zone
-
-
 // Representation identities — ISO/IEC 9075 §4 semantics (boolean three-valued,
 // datetime, character large object). Approximate-numeric and exact-numeric
 // representations are NOT bound (implementation-defined per ISO §6).
-data sql_repr_boolean_three_valued: Symbol = sql_repr_boolean_three_valued
-data sql_repr_character_large_object: Symbol = sql_repr_character_large_object
-data sql_repr_date_calendar: Symbol = sql_repr_date_calendar
-data sql_repr_time_of_day: Symbol = sql_repr_time_of_day
-data sql_repr_timestamp: Symbol = sql_repr_timestamp
-data sql_repr_timestamp_with_time_zone: Symbol = sql_repr_timestamp_with_time_zone
-
-
 // Signedness — ISO/IEC 9075 §6 specifies SMALLINT/INTEGER/BIGINT as signed.
-data sql_tag_signed: Symbol = sql_tag_signed
-
-
 data sql_facts_smallint: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_smallint,
+  surface_spelling: ^sql_surface_spelling_smallint,
 }
 
 data sql_facts_integer: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_integer,
+  surface_spelling: ^sql_surface_spelling_integer,
 }
 
 data sql_facts_bigint: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_bigint,
+  surface_spelling: ^sql_surface_spelling_bigint,
 }
 
 data sql_facts_real: SqlFloatPrimitiveFacts = SqlFloatPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_real,
+  surface_spelling: ^sql_surface_spelling_real,
 }
 
 data sql_facts_double_precision: SqlFloatPrimitiveFacts = SqlFloatPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_double_precision,
+  surface_spelling: ^sql_surface_spelling_double_precision,
 }
 
 data sql_facts_boolean: SqlNonNumericPrimitiveFacts = SqlNonNumericPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_boolean,
-  representation: sql_repr_boolean_three_valued,
+  surface_spelling: ^sql_surface_spelling_boolean,
+  representation: ^sql_repr_boolean_three_valued,
 }
 
 data sql_facts_character_large_object: SqlNonNumericPrimitiveFacts = SqlNonNumericPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_character_large_object,
-  representation: sql_repr_character_large_object,
+  surface_spelling: ^sql_surface_spelling_character_large_object,
+  representation: ^sql_repr_character_large_object,
 }
 
 data sql_facts_date: SqlNonNumericPrimitiveFacts = SqlNonNumericPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_date,
-  representation: sql_repr_date_calendar,
+  surface_spelling: ^sql_surface_spelling_date,
+  representation: ^sql_repr_date_calendar,
 }
 
 data sql_facts_time: SqlNonNumericPrimitiveFacts = SqlNonNumericPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_time,
-  representation: sql_repr_time_of_day,
+  surface_spelling: ^sql_surface_spelling_time,
+  representation: ^sql_repr_time_of_day,
 }
 
 data sql_facts_timestamp: SqlNonNumericPrimitiveFacts = SqlNonNumericPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_timestamp,
-  representation: sql_repr_timestamp,
+  surface_spelling: ^sql_surface_spelling_timestamp,
+  representation: ^sql_repr_timestamp,
 }
 
 data sql_facts_timestamp_with_time_zone: SqlNonNumericPrimitiveFacts = SqlNonNumericPrimitiveFacts {
-  surface_spelling: sql_surface_spelling_timestamp_with_time_zone,
-  representation: sql_repr_timestamp_with_time_zone,
+  surface_spelling: ^sql_surface_spelling_timestamp_with_time_zone,
+  representation: ^sql_repr_timestamp_with_time_zone,
 }
 
 
@@ -311,7 +287,7 @@ fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> 
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Holds { value: sql_inhabitant_atom(id: sql_tag_signed) }
+          Holds { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
       } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)

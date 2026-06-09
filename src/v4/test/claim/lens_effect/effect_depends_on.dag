@@ -62,29 +62,12 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-
-data effect_root_symbol: Symbol = effect_root_symbol
-data effect_child_symbol: Symbol = effect_child_symbol
-data effect_edge_symbol: Symbol = effect_edge_symbol
-data effect_type_symbol: Symbol = effect_type_symbol
-data effect_algebra_symbol: Symbol = effect_algebra_symbol
-data effect_descent_symbol: Symbol = effect_descent_symbol
-data effect_claim_pass_symbol: Symbol = effect_claim_pass_symbol
-data effect_claim_fail_symbol: Symbol = effect_claim_fail_symbol
-data effect_runtime_rejected: Symbol = effect_runtime_rejected
-data effect_interpretation_pin: Symbol = effect_interpretation_pin
-data effect_evaluator_pin: Symbol = effect_evaluator_pin
-data effect_allocate_literal_sym: Symbol = effect_allocate_literal_sym
-data effect_call_primitive_sym: Symbol = effect_call_primitive_sym
-data effect_choose_branch_sym: Symbol = effect_choose_branch_sym
-data effect_step_loop_sym: Symbol = effect_step_loop_sym
-data effect_bind_value_sym: Symbol = effect_bind_value_sym
-data effect_child: Node = claim_atom_node(s: effect_child_symbol)
+data effect_child: Node = claim_atom_node(s: ^effect_child_symbol)
 
 data effect_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: effect_root_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^effect_root_symbol } },
   children: [
-    Edge { label: Named { name: effect_edge_symbol }, target: effect_child }
+    Edge { label: Named { name: ^effect_edge_symbol }, target: effect_child }
   ]
 }
 
@@ -97,9 +80,9 @@ data effect_dependency: DependencyView = DependencyView {
 
 fn effect_claim_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: effect_type_symbol,
-    algebra_symbol: effect_algebra_symbol,
-    descent_symbol: effect_descent_symbol,
+    type_symbol: ^effect_type_symbol,
+    algebra_symbol: ^effect_algebra_symbol,
+    descent_symbol: ^effect_descent_symbol,
   )
 }
 
@@ -156,14 +139,14 @@ fn lens_effect_marker_node(marker: Symbol) -> Node {
 
 fn effect_depends_on_claim_expected_node() -> Node {
   if effect_depends_on_claim_holds() {
-    lens_effect_marker_node(marker: effect_claim_pass_symbol)
+    lens_effect_marker_node(marker: ^effect_claim_pass_symbol)
   } else {
-    lens_effect_marker_node(marker: effect_claim_fail_symbol)
+    lens_effect_marker_node(marker: ^effect_claim_fail_symbol)
   }
 }
 
 fn effect_runtime_type_node() -> Node {
-  claim_atom_node(s: effect_type_symbol)
+  claim_atom_node(s: ^effect_type_symbol)
 }
 
 fn effect_runtime_unit(node: Node) -> RuntimeValue {
@@ -179,7 +162,7 @@ fn effect_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<R
 fn effect_reject_runtime(node: Node) -> Outcome<RuntimeValue> {
   Rejected {
     diagnostics: diagnostics_singleton(
-      d: eval_diagnostic(reason: effect_runtime_rejected, node: node)
+      d: eval_diagnostic(reason: ^effect_runtime_rejected, node: node)
     )
   }
 }
@@ -199,7 +182,7 @@ fn effect_choose_branch(
 ) -> Outcome<Node> {
   Rejected {
     diagnostics: diagnostics_singleton(
-      d: eval_diagnostic(reason: effect_runtime_rejected, node: node)
+      d: eval_diagnostic(reason: ^effect_runtime_rejected, node: node)
     )
   }
 }
@@ -228,17 +211,17 @@ fn effect_interpretation() -> InterpretationAlgebra {
 
 fn effect_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: effect_allocate_literal_sym,
-    call_primitive: effect_call_primitive_sym,
-    choose_branch: effect_choose_branch_sym,
-    step_loop: effect_step_loop_sym,
-    bind_value: effect_bind_value_sym
+    allocate_literal: ^effect_allocate_literal_sym,
+    call_primitive: ^effect_call_primitive_sym,
+    choose_branch: ^effect_choose_branch_sym,
+    step_loop: ^effect_step_loop_sym,
+    bind_value: ^effect_bind_value_sym
   }
 }
 
 fn effect_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: effect_interpretation_pin,
+    runtime_identity: ^effect_interpretation_pin,
     interpretation: effect_interpretation(),
     structure_witness: effect_interpretation_structure_witness()
   )
@@ -247,7 +230,7 @@ fn effect_context() -> EvalContext {
 data claim_lens_effect_depends_on_runtime_verdict: TestClaim = EqualsClaim {
   label: "lens_effect/effect_depends_on routes through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: lens_effect_marker_node(marker: effect_claim_pass_symbol),
+  lhs: lens_effect_marker_node(marker: ^effect_claim_pass_symbol),
   rhs: effect_depends_on_claim_expected_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -256,7 +239,7 @@ data subject_lens_effect_depends_on_runtime_verdict: TestClaimEvalSubject<Node> 
   claim: claim_lens_effect_depends_on_runtime_verdict,
   context: effect_context(),
   tree: effect_claim_tree(),
-  evaluator_pin: effect_evaluator_pin
+  evaluator_pin: ^effect_evaluator_pin
 )
 
 data run_lens_effect_depends_on_runtime_verdict: TestClaimRun<Node, RuntimeValue> = run_test_claim(

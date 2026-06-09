@@ -30,10 +30,6 @@ import v4.std.diagnostic {
 import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.std.witness { Holds, Violates, Witness }
-
-data effect_reason_unresolved_projection: Symbol = effect_reason_unresolved_projection
-data effect_projection_virtual_file: Symbol = effect_projection_virtual_file
-
 // 🟡 signature-deferred slot. B3: the type signature is the effect
 // authority. The row carries `EffectClassification` as an empty
 // signature-deferred marker; the actual effect kind is read at use-sites
@@ -92,8 +88,8 @@ fn effect_signature_deferred_unresolved(fact: EffectFact) -> Bool {
 
 fn effect_witness_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: effect_reason_unresolved_projection,
-    at: Textual { file: effect_projection_virtual_file, extent: WholeFile },
+    reason: ^effect_reason_unresolved_projection,
+    at: Textual { file: ^effect_projection_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

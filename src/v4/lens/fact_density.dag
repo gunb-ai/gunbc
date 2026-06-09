@@ -34,23 +34,13 @@ import v4.std.node {
 import v4.std.nat { Nat, Zero, Succ }
 import v4.std.cardinality { NonZeroNat }
 import v4.std.witness { Holds, Witness }
-
-
-data fact_density_kernel_ambient_string: Symbol = fact_density_kernel_ambient_string
-data fact_density_kernel_ambient_int: Symbol = fact_density_kernel_ambient_int
-data fact_density_kernel_ambient_bool: Symbol = fact_density_kernel_ambient_bool
-data fact_density_kernel_ambient_char: Symbol = fact_density_kernel_ambient_char
-data fact_density_kernel_ambient_list: Symbol = fact_density_kernel_ambient_list
-data fact_density_kernel_ambient_map: Symbol = fact_density_kernel_ambient_map
-
-
 fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
-  s == fact_density_kernel_ambient_string ||
-    s == fact_density_kernel_ambient_int ||
-    s == fact_density_kernel_ambient_bool ||
-    s == fact_density_kernel_ambient_char ||
-    s == fact_density_kernel_ambient_list ||
-    s == fact_density_kernel_ambient_map
+  s == ^fact_density_kernel_ambient_string ||
+    s == ^fact_density_kernel_ambient_int ||
+    s == ^fact_density_kernel_ambient_bool ||
+    s == ^fact_density_kernel_ambient_char ||
+    s == ^fact_density_kernel_ambient_list ||
+    s == ^fact_density_kernel_ambient_map
 }
 
 
@@ -104,18 +94,13 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
       connective_spec_fact(c: c, named_facts: named_fact_count(children: carrier.children))
   }
 }
-
-
-data fact_density_hollow_alias_locus: Symbol = fact_density_hollow_alias_locus
-
-
 fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
   match carrier_spec_fact(carrier: node) {
     NoFact =>
       outcome_rejected(
         Diagnostic {
-          reason: fact_density_hollow_alias_locus,
-          at: port_locus(port: fact_density_hollow_alias_locus),
+          reason: ^fact_density_hollow_alias_locus,
+          at: port_locus(port: ^fact_density_hollow_alias_locus),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       )

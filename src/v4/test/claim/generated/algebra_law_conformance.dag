@@ -29,22 +29,7 @@ import v4.std.verification {
   Unit
 }
 import v4.std.diagnostic { Outcome }
-
-
-data algebra_law_generated_operation_field: Symbol = algebra_law_generated_operation_field
-data algebra_law_generated_left_field: Symbol = algebra_law_generated_left_field
-data algebra_law_generated_right_field: Symbol = algebra_law_generated_right_field
-data algebra_law_generated_result_field: Symbol = algebra_law_generated_result_field
-data algebra_law_generated_nat_prev_field: Symbol = algebra_law_generated_nat_prev_field
-
-
 // 🟡 gated — feature:t19-nat-expression-node-encoding — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: replace these local expression-shape tags with a canonical Nat-expression Node encoder that reflects function application identity directly; forbidden: exporting per-operation/per-value mirror symbols from v4.std.nat.
-data algebra_law_generated_nat_zero_constructor: Symbol = algebra_law_generated_nat_zero_constructor
-data algebra_law_generated_nat_succ_constructor: Symbol = algebra_law_generated_nat_succ_constructor
-data algebra_law_generated_nat_add_application: Symbol = algebra_law_generated_nat_add_application
-data algebra_law_generated_nat_mul_application: Symbol = algebra_law_generated_nat_mul_application
-
-
 fn algebra_law_generated_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
@@ -52,13 +37,13 @@ fn algebra_law_generated_atom(s: Symbol) -> Node {
 
 fn algebra_law_generated_nat_value(value: Nat) -> Node {
   match value {
-    Zero => algebra_law_generated_atom(s: algebra_law_generated_nat_zero_constructor)
+    Zero => algebra_law_generated_atom(s: ^algebra_law_generated_nat_zero_constructor)
     Succ { prev: p } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: algebra_law_generated_nat_succ_constructor) },
-          Edge { label: Named { name: algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
+          Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
+          Edge { label: Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
         ]
       }
   }
@@ -69,10 +54,10 @@ fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, resu
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
-      Edge { label: Named { name: algebra_law_generated_left_field }, target: left },
-      Edge { label: Named { name: algebra_law_generated_right_field }, target: right },
-      Edge { label: Named { name: algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
+      Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
+      Edge { label: Named { name: ^algebra_law_generated_left_field }, target: left },
+      Edge { label: Named { name: ^algebra_law_generated_right_field }, target: right },
+      Edge { label: Named { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
     ]
   }
 }
@@ -119,12 +104,12 @@ fn t19_generated_nat_three() -> Node {
 
 
 fn t19_generated_nat_add(left: Node, right: Node, result: Nat) -> Node {
-  algebra_law_generated_binary(operation: algebra_law_generated_nat_add_application, left: left, right: right, result: result)
+  algebra_law_generated_binary(operation: ^algebra_law_generated_nat_add_application, left: left, right: right, result: result)
 }
 
 
 fn t19_generated_nat_mul(left: Node, right: Node, result: Nat) -> Node {
-  algebra_law_generated_binary(operation: algebra_law_generated_nat_mul_application, left: left, right: right, result: result)
+  algebra_law_generated_binary(operation: ^algebra_law_generated_nat_mul_application, left: left, right: right, result: result)
 }
 
 

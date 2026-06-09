@@ -53,24 +53,21 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { StructuralPropertyWitness }
-data distinct_zip_source_atom: Symbol = distinct_zip_source_atom
-data distinct_zip_wrong_atom: Symbol = distinct_zip_wrong_atom
-data distinct_zip_closed_candidates: Symbol = distinct_zip_closed_candidates
 fn distinct_source_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: distinct_zip_source_atom } },
+    kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
     children: []
   }
 }
 fn distinct_target_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: distinct_zip_source_atom } },
+    kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
     children: []
   }
 }
 fn distinct_wrong_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: distinct_zip_wrong_atom } },
+    kind: TypeNode { connective: Atom { identity: ^distinct_zip_wrong_atom } },
     children: []
   }
 }
@@ -139,7 +136,7 @@ fn distinct_fail_node() -> Node {
 }
 fn distinct_closedness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: distinct_zip_closed_candidates,
+    property: ^distinct_zip_closed_candidates,
     evidence: distinct_target_add_node()
   }
 }

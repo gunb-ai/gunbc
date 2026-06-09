@@ -44,21 +44,10 @@ import v4.std.verification {
   EqualsClaim,
   manual_claim_anchor
 }
-
-
-data validation_tok_class: Symbol = validation_tok_class
-data validation_start: Symbol = validation_start
-data validation_other: Symbol = validation_other
-data validation_rec_start: Symbol = validation_rec_start
-data validation_file: Symbol = validation_file
-data validation_bool_true: Symbol = validation_bool_true
-data validation_bool_false: Symbol = validation_bool_false
-
-
 fn validation_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: validation_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: validation_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_false } }, children: [] }
   }
 }
 
@@ -74,23 +63,23 @@ fn validation_outcome_accepted(out: Outcome<ParseTree>) -> Bool {
 fn validation_terminal_production(name: Symbol) -> GrammarProduction {
   GrammarProduction {
     name: name,
-    expression: Terminal { token_class: validation_tok_class },
+    expression: Terminal { token_class: ^validation_tok_class },
     emitted: grammar_atom(identity: name)
   }
 }
 
 
 fn validation_token(class: Symbol) -> Token {
-  Token { class: class, lexeme: Empty, file: validation_file, start: 0, end: 0 }
+  Token { class: class, lexeme: Empty, file: ^validation_file, start: 0, end: 0 }
 }
 
 
 // GrammarRoot with two productions that share the same name.
 data validation_dup_root: GrammarRoot = GrammarRoot {
-  start: validation_start,
+  start: ^validation_start,
   productions: Cons {
-    head: validation_terminal_production(name: validation_start),
-    tail: Cons { head: validation_terminal_production(name: validation_start), tail: Empty }
+    head: validation_terminal_production(name: ^validation_start),
+    tail: Cons { head: validation_terminal_production(name: ^validation_start), tail: Empty }
   },
   sync_tokens: grammar_empty_sync_tokens()
 }
@@ -98,22 +87,22 @@ data validation_dup_root: GrammarRoot = GrammarRoot {
 
 // GrammarRoot whose start production is absent from the productions list.
 data validation_missing_start_root: GrammarRoot = GrammarRoot {
-  start: validation_start,
-  productions: Cons { head: validation_terminal_production(name: validation_other), tail: Empty },
+  start: ^validation_start,
+  productions: Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty },
   sync_tokens: grammar_empty_sync_tokens()
 }
 
 
-// GrammarRoot where start is present but its expression references validation_other,
+// GrammarRoot where start is present but its expression references ^validation_other,
 // which is absent from productions. Exercises the expr_has_undefined_nonterminal fold path
 // (not the grammar_lookup_production(root.start) short-circuit).
 data validation_dangling_ref_root: GrammarRoot = GrammarRoot {
-  start: validation_start,
+  start: ^validation_start,
   productions: Cons {
     head: GrammarProduction {
-      name: validation_start,
-      expression: Nonterminal { production: validation_other },
-      emitted: grammar_atom(identity: validation_start)
+      name: ^validation_start,
+      expression: Nonterminal { production: ^validation_other },
+      emitted: grammar_atom(identity: ^validation_start)
     },
     tail: Empty
   },
@@ -123,15 +112,15 @@ data validation_dangling_ref_root: GrammarRoot = GrammarRoot {
 
 // Left-recursive grammar: A = A "x" — grammar_has_left_recursion should detect this.
 data validation_left_recursive_root: GrammarRoot = GrammarRoot {
-  start: validation_rec_start,
+  start: ^validation_rec_start,
   productions: Cons {
     head: GrammarProduction {
-      name: validation_rec_start,
+      name: ^validation_rec_start,
       expression: Sequence {
-        left: Nonterminal { production: validation_rec_start },
-        right: Terminal { token_class: validation_tok_class }
+        left: Nonterminal { production: ^validation_rec_start },
+        right: Terminal { token_class: ^validation_tok_class }
       },
-      emitted: grammar_atom(identity: validation_rec_start)
+      emitted: grammar_atom(identity: ^validation_rec_start)
     },
     tail: Empty
   },
@@ -143,15 +132,15 @@ data validation_left_recursive_root: GrammarRoot = GrammarRoot {
 // This exercises the validator boundary: right-recursive grammars are accepted and parse_expr
 // handles them via memoized ParseTable (position × production) built by structurally bounded fold.
 data validation_right_recursive_root: GrammarRoot = GrammarRoot {
-  start: validation_rec_start,
+  start: ^validation_rec_start,
   productions: Cons {
     head: GrammarProduction {
-      name: validation_rec_start,
+      name: ^validation_rec_start,
       expression: Sequence {
-        left: Terminal { token_class: validation_tok_class },
-        right: Optional { element: Nonterminal { production: validation_rec_start } }
+        left: Terminal { token_class: ^validation_tok_class },
+        right: Optional { element: Nonterminal { production: ^validation_rec_start } }
       },
-      emitted: grammar_atom(identity: validation_rec_start)
+      emitted: grammar_atom(identity: ^validation_rec_start)
     },
     tail: Empty
   },
@@ -160,12 +149,12 @@ data validation_right_recursive_root: GrammarRoot = GrammarRoot {
 
 
 // Non-empty token list for the sync-recovery claim.
-data validation_one_token_list: List<Token> = Cons { head: validation_token(class: validation_tok_class), tail: Empty }
+data validation_one_token_list: List<Token> = Cons { head: validation_token(class: ^validation_tok_class), tail: Empty }
 
 // Two matching tokens for parse-table receipt: A = "x" A? must memo-hit A at position 1 after the first terminal.
 data validation_two_token_list: List<Token> = Cons {
-  head: validation_token(class: validation_tok_class),
-  tail: Cons { head: validation_token(class: validation_tok_class), tail: Empty }
+  head: validation_token(class: ^validation_tok_class),
+  tail: Cons { head: validation_token(class: ^validation_tok_class), tail: Empty }
 }
 
 
@@ -177,7 +166,7 @@ fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
       parse_production(
         tokens: validation_two_token_list,
         validated: validated,
-        production_name: validation_rec_start
+        production_name: ^validation_rec_start
       )
   }
 }
