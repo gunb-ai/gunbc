@@ -78,7 +78,7 @@ is the orientation:
 
 The integer chain in `dsl/std/{bit,integer,algebra}.dag` illustrates what a fully-grounded composition looks like. Every level points at an external consensus framework; no level invents an internal category:
 
-- **`Bit` = `Classical`** (from `std.logic`) — a single classical truth value. Grounds in two-valued propositional logic (pre-computing mathematical consensus).
+- **`Bit` = `Classical`** (`Bit` declared in `dsl/std/bit.dag`; `Classical` from `dsl/std/logic.dag`) — a single classical truth value. Grounds in two-valued propositional logic (pre-computing mathematical consensus).
 - **`Byte` = `{ bits: List<Bit> }`**, **`Word64` = `{ bytes: List<Byte> }`** — records with declared cardinality intent. Grounds in byte-addressable machine-word standards (IEEE / ISO).
 - **`OrderedRing<T>`** (from `std.algebra`) — algebra structure carrying `add`, `negate`, `mul`, and a total order. Grounds in ring theory (centuries of mathematical consensus).
 - **`Semiring<T>`** — OrderedRing minus `negate`. Grounds in semiring theory (same lineage, explicit weakening).
