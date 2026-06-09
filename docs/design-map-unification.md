@@ -88,15 +88,19 @@ type Map<K, V> {
 }
 ```
 
-- `empty_map` = empty entries. `map_insert` = replace-or-append by key equality — **data
-  operations, no closures**. `map_get` keeps its exact public signature
+- **Entries are maintained in canonical key order — the canonical form IS the
+  representation** (ruling, operator 2026-06-09: simplest correct deterministic form). There
+  is no separate "insertion order" concept and no order-independence machinery: `map_insert`
+  is replace-or-ordered-insert at the key's canonical position; two equal maps are
+  *structurally identical* entry lists, so whole-map `==` is plain structural equality —
+  exactly what #4564's extensional semantics mean, with the order question dissolved rather
+  than parameterized. Iteration and serialization inherit the same single order, so DB-8
+  (deterministic emission) and the fixed-point artifact comparison are satisfied by
+  construction.
+- `empty_map` = empty entries. `map_get` keeps its exact public signature
   (`Outcome<Optional<V>>`); its body becomes a fold over entries; `Absent` means absent,
   and the `Rejected` arm is *unreachable by construction* for the data form — B-LOOKUP-1's
   "None vs Violates" question dissolves rather than being answered.
-- **Equality is derived, not special-cased:** order-independent extensional equality (two
-  maps are equal iff their entry *sets* are equal) — exactly what #4564 implemented natively
-  with `Value::eq` as the single authority. Whole-map `==` in `.dag` and in the runtime now
-  mean the same thing because they are the same thing.
 - **Key validity:** a key must be decidably equatable (the runtime already rejects
   closure/fn/NaN keys via reflexivity-under-`Value::eq`, fail-closed). The model states the
   obligation on `K` (equality-bearing carrier); until the language has first-class

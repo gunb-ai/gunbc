@@ -204,11 +204,19 @@ inverse-aware; this section is the spec for that directive):
 
 ## 8. Open questions — escalate, don't improvise
 
-- **Q-B1 — grammar class.** Determinism-both-ways needs a committed class. Recommended:
-  declared-lookahead LL(k) with the disjoint-frontier obligation (symmetric, statically
-  checkable). PEG-style ordered choice is **rejected** as the steady-state: order-resolved
-  ambiguity has no backward analogue, so it silently breaks obligation 3's symmetry. If a
-  target genuinely needs more, that's a substrate conversation, not a quiet backtracker.
+- **Q-B1 — grammar class. RESOLVED (operator 2026-06-09): the commitment is the four
+  obligations, not a formalism.** Grammar formalisms are themselves modeled data — a PEG (or
+  any other formalism) may be modeled independently as its own carrier, and nothing here
+  forbids it. What this design commits is narrower: the **bidirectional verdict** is earned
+  only by grammars passing obligations 1–4 (§4.3), and "declared-lookahead LL(k)" is simply
+  the name for what passes obligation 2 — a consequence, not an allegiance. PEG-style
+  ordered choice cannot pass as authored, because priority-resolved ambiguity has no
+  backward analogue (the render direction selects by node shape, blind to forward priority,
+  so round-trip identity can silently break); a PEG whose priorities are vacuous is already
+  the disjoint form. A PEG model therefore lives as a **parse-only** formalism (no
+  bidirectional verdict, derived ingest refuses with the failing obligation located) unless
+  someone proves a new obligation set for it — its own decidability argument, added with a
+  consumer, per "fewer variants for now."
 - **Q-B2 — where the quotient is declared.** Recommended: a `TargetModel` field (per-target
   fact, single authority) rather than per-claim labels; claims then *cite* it. Operator call
   on the field shape.

@@ -257,10 +257,17 @@ The fuel triads are the scaffold; the checker landing is the dissolution trigger
   reading structural facts) on compiler-internal clusters. A user-facing annotation surface
   ("here is my ranking") is real but separately gated — it adds a language surface and
   belongs with the audience-duality opt-in depth story, not here.
-- **Q-T2 — where the checker runs.** Recommended: inside infer (it already owns
-  `InferredFacts.descent`). Alternative — a standalone lens — rejected for now: termination
-  is admission-gating (P4), not an opt-in analysis; lenses read facts, they don't gate
-  compilation.
+- **Q-T2 — where the checker runs. RESOLVED (operator 2026-06-09), with a sharpening the
+  ruling exposed.** Confirmed: the gate lives in infer. But the operator's challenge —
+  "if it's expensive to relocate, that's a design issue" — is correct under cost-of-change,
+  so the design makes relocation cheap **by construction**: the checker itself is a pure
+  substrate function (carriers + `is_valid_proof` port in `v4.std.{cardinality,dependency}`,
+  per §4.1/§4.3) with no infer dependency; what lives in infer is only the **gating wire** —
+  the call that routes the checker's `Witness<TerminationProof>` into
+  `InferredFacts.descent` and lets `Violates` block admission. Relocating the gate (or
+  adding a lens-shaped second reader) is rewiring one consumer of a substrate function,
+  not moving the checker. Placement of *computation*: substrate. Placement of *gating
+  decision*: infer, confirmed.
 - **Q-T3 — single proof per SCC vs per function.** Per-SCC (the v2 model's choice; matches
   Lee-Jones-Ben-Amram). A per-function view falls out by projection.
 - **Q-T4 — checker self-application.** The ported checker's own recursion (DFS, work-list)

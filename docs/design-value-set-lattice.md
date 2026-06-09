@@ -217,9 +217,11 @@ One sentence each, to prevent dual-authority drift (P2):
 - **Q-V1 — float carrier class.** Needs the float fact-bundle to fix total-order semantics
   (NaN, -0.0) first; until then float-anchored descriptions are inexpressible (refuse). Do
   not improvise an IEEE order inside the lattice.
-- **Q-V2 — "inexpressible" as a located mismatch.** Reusing existing refusals loses the "why"
-  at the boundary; adding a `CoercionMismatchKind` variant touches a closed load-bearing
-  taxonomy. Operator call.
+- **Q-V2 — "inexpressible" as a located mismatch. RESOLVED (operator 2026-06-09: prefer
+  fewer variants for now).** No new `CoercionMismatchKind` variant; inexpressible
+  descriptions surface through the existing refusal reasons. Revisit only when a consumer
+  demonstrably needs the located "why" at the boundary — with that need as the receipt, not
+  preemptively.
 - **Q-V3 — canonical forms.** Should descriptions normalize (e.g. enumeration sorted, single
   member intervals collapse to enumerations) so syntactic equality approximates semantic
   equality? Recommended **no** for wave 1: semantic operations only, normalization is an

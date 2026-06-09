@@ -171,12 +171,18 @@ Each stage names what it consumes and refuses to reach past it:
   stage B rows compare *emitted artifacts per module* (meaningful immediately), and "stage1
   as a runnable binary" only becomes a concept at stage C — do not invent an intermediate
   "interpreted stage1 binary" notion; it has no consumer.
-- **Q-S2 — artifact-set scope.** Emitted `.rs` only, or also generated claims/runners?
-  Recommended: start with `.rs` (smallest honest set), widen the declared
-  `FixedPointArtifactSet` row as emission of other artifact classes lands. Operator call at
-  each widening (it changes what "bit-identical" certifies).
-- **Q-S3 — pin rotation authority and cadence.** Recommended: operator-GO per rotation,
-  recorded as the `BootstrapHashPin` update commit; no auto-promotion ever. Confirm.
+- **Q-S2 — artifact-set scope. RESOLVED wave-1 (operator 2026-06-09):** emitted `.rs` —
+  with the operator noting the committed-`.rs` era itself is ending soon. That transition
+  (stop committing emitted Rust; the N=0 runtime-boundary options in
+  `design-pure-bootstrap-zero.md` — shipped binary / runtime crate) is **its own lane**,
+  and it interacts with this design only through the declared `FixedPointArtifactSet` row:
+  when `.rs` stops being committed, the compare set re-declares against wherever the
+  emitted artifacts then live (build output vs tree), and "bit-identical" certifies the
+  same relation over the new location. Each widening/relocation of the set remains an
+  operator call.
+- **Q-S3 — pin rotation authority. RESOLVED (operator 2026-06-09): confirmed** —
+  operator-GO per rotation, recorded as the `BootstrapHashPin` update commit; no
+  auto-promotion ever.
 - **Q-S4 — prose authority location.** `src/v3/SELF_HOSTING.md` governs but lives in the
   frozen tree and is cited (incorrectly) as `src/v4/SELF_HOSTING.md` in planning material.
   Either move it to `docs/` or fix the citations; one authority, one path (P2).
