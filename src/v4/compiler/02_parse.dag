@@ -34,8 +34,6 @@ import v4.std.grammar {
   VoidGrammar,
   grammar_empty_node,
   grammar_named_edge,
-  grammar_sequence_left_node_projection,
-  grammar_sequence_right_node_projection,
   grammar_to_node
 }
 
@@ -573,7 +571,7 @@ fn parse_repeat_captured_node(acc_nodes: List<Node>) -> Node {
         list_snoc_item(
           xs: acc,
           item: Edge {
-            label: Named { name: grammar_repeat_element_node_projection },
+            label: Named { name: ^grammar_repeat_element_node_projection },
             target: n
           }
         )
@@ -669,8 +667,8 @@ fn parse_expr(
                 captured: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
-                    grammar_named_edge(name: grammar_sequence_left_node_projection, target: cap1),
-                    grammar_named_edge(name: grammar_sequence_right_node_projection, target: cap2)
+                    grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
+                    grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
                   ]
                 },
                 diagnostics: list_append(left: diags1, right: diags2)
