@@ -169,9 +169,7 @@ import v4.std.target_model {
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
-  type_expr_projection_encode_substrate_in_row_slot,
-  type_expr_projection_row_closedness_from_target,
-  type_expr_projection_row_witness_gate
+  type_expr_projection_row_closedness_from_target
 }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -2299,28 +2297,6 @@ fn project_type_expression_disj_variants(
     }
   )
 }
-fn project_type_expression_substrate_graft_gate(
-  node: Node,
-  connective: Connective,
-  projection: TargetTypeExpressionProjection,
-  projected_positional: List<Node>
-) -> Outcome<Node> {
-  bind_outcome(
-    o: type_expr_projection_encode_substrate_in_row_slot(
-      projection: projection,
-      connective: connective,
-      node: node,
-      projected_positional: projected_positional
-    ),
-    f: fn(grafted) {
-      type_expr_projection_row_witness_gate(
-        source_facts: grafted,
-        projection: projection,
-        connective: connective
-      )
-    }
-  )
-}
 fn project_type_expression_connective_bounded(
   remaining: Int,
   node: Node,
@@ -2337,20 +2313,10 @@ fn project_type_expression_connective_bounded(
     f: fn(_) {
       match connective {
         Atom { identity: id } =>
-          bind_outcome(
-            o: project_type_expression_substrate_graft_gate(
-              node: node,
-              connective: connective,
-              projection: projection,
-              projected_positional: Empty
-            ),
-            f: fn(_) {
-              Accepted {
-                value: target_type_expr_atom_emitted(form: projection.atom_form, identity: id),
-                diagnostics: None
-              }
-            }
-          )
+          Accepted {
+            value: target_type_expr_atom_emitted(form: projection.atom_form, identity: id),
+            diagnostics: None
+          }
         Instantiation =>
           if target_collection_type_node_is_free_monoid_carrier(node: node) {
             project_free_monoid_collection_type_node(node: node, target: target, projection: projection)
@@ -2365,26 +2331,16 @@ fn project_type_expression_connective_bounded(
               ),
               f: fn(projected) {
                 bind_outcome(
-                  o: project_type_expression_substrate_graft_gate(
-                    node: node,
-                    connective: connective,
-                    projection: projection,
-                    projected_positional: projected
-                  ),
-                  f: fn(_) {
-                    bind_outcome(
-                      o: list_head_and_tail(xs: projected, node: node),
-                      f: fn(split) {
-                        Accepted {
-                          value: target_type_expr_instantiation_emitted(
-                            form: projection.instantiation_form,
-                            head: split.head,
-                            args: split.tail
-                          ),
-                          diagnostics: None
-                        }
-                      }
-                    )
+                  o: list_head_and_tail(xs: projected, node: node),
+                  f: fn(split) {
+                    Accepted {
+                      value: target_type_expr_instantiation_emitted(
+                        form: projection.instantiation_form,
+                        head: split.head,
+                        args: split.tail
+                      ),
+                      diagnostics: None
+                    }
                   }
                 )
               }
@@ -2404,26 +2360,16 @@ fn project_type_expression_connective_bounded(
               ),
               f: fn(projected) {
                 bind_outcome(
-                  o: project_type_expression_substrate_graft_gate(
-                    node: node,
-                    connective: connective,
-                    projection: projection,
-                    projected_positional: projected
-                  ),
-                  f: fn(_) {
-                    bind_outcome(
-                      o: list_head_and_tail(xs: projected, node: node),
-                      f: fn(split) {
-                        Accepted {
-                          value: target_type_expr_cardinality_emitted(
-                            form: projection.cardinality_form,
-                            head: split.head,
-                            args: split.tail
-                          ),
-                          diagnostics: None
-                        }
-                      }
-                    )
+                  o: list_head_and_tail(xs: projected, node: node),
+                  f: fn(split) {
+                    Accepted {
+                      value: target_type_expr_cardinality_emitted(
+                        form: projection.cardinality_form,
+                        head: split.head,
+                        args: split.tail
+                      ),
+                      diagnostics: None
+                    }
                   }
                 )
               }
@@ -2431,52 +2377,32 @@ fn project_type_expression_connective_bounded(
           }
         Conj =>
           bind_outcome(
-            o: project_type_expression_substrate_graft_gate(
+            o: project_type_expression_conj_fields(
+              remaining: remaining - 1,
               node: node,
-              connective: connective,
-              projection: projection,
-              projected_positional: Empty
+              target: target,
+              projection: projection
             ),
-            f: fn(_) {
-              bind_outcome(
-                o: project_type_expression_conj_fields(
-                  remaining: remaining - 1,
-                  node: node,
-                  target: target,
-                  projection: projection
-                ),
-                f: fn(fields) {
-                  Accepted {
-                    value: target_type_expr_record_emitted(form: projection.conj_form, fields: fields),
-                    diagnostics: None
-                  }
-                }
-              )
+            f: fn(fields) {
+              Accepted {
+                value: target_type_expr_record_emitted(form: projection.conj_form, fields: fields),
+                diagnostics: None
+              }
             }
           )
         Disj =>
           bind_outcome(
-            o: project_type_expression_substrate_graft_gate(
+            o: project_type_expression_disj_variants(
+              remaining: remaining - 1,
               node: node,
-              connective: connective,
-              projection: projection,
-              projected_positional: Empty
+              target: target,
+              projection: projection
             ),
-            f: fn(_) {
-              bind_outcome(
-                o: project_type_expression_disj_variants(
-                  remaining: remaining - 1,
-                  node: node,
-                  target: target,
-                  projection: projection
-                ),
-                f: fn(variants) {
-                  Accepted {
-                    value: target_type_expr_sum_emitted(form: projection.disj_form, variants: variants),
-                    diagnostics: None
-                  }
-                }
-              )
+            f: fn(variants) {
+              Accepted {
+                value: target_type_expr_sum_emitted(form: projection.disj_form, variants: variants),
+                diagnostics: None
+              }
             }
           )
         Arrow =>
@@ -2487,33 +2413,14 @@ fn project_type_expression_connective_bounded(
             ),
             f: fn(original_split) {
               bind_outcome(
-                o: translate_project_arrow_split_types(
+                o: project_type_expression_arrow_emitted_from_original_split(
                   original_split: original_split,
+                  anchor: node,
                   target: target,
-                  projection: projection,
-                  anchor: node
+                  projection: projection
                 ),
-                f: fn(wrapped_split) {
-                  bind_outcome(
-                    o: project_type_expression_substrate_graft_gate(
-                      node: node,
-                      connective: connective,
-                      projection: projection,
-                      projected_positional: list_append(
-                        left: wrapped_split.inputs,
-                        right: Cons { head: wrapped_split.output, tail: Empty }
-                      )
-                    ),
-                    f: fn(_) {
-                      outcome_accepted(
-                        target_type_expr_arrow_emitted(
-                          form: projection.arrow_form,
-                          inputs: wrapped_split.inputs,
-                          output: wrapped_split.output
-                        )
-                      )
-                    }
-                  )
+                f: fn(emitted) {
+                  Accepted { value: emitted, diagnostics: None }
                 }
               )
             }
