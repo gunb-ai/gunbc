@@ -1,0 +1,310 @@
+// src/v4/workflow/executor.dag
+// Scope: dependency-frontier executor plan over v4.workflow.scheduler.
+// Status: EXEC arc slice — modeled batches only; host process transport lands downstream.
+
+module v4.workflow.executor
+
+import v4.std.algebra {
+  contains,
+  filter,
+  for_all,
+  is_empty,
+  list_append,
+  list_snoc_item,
+  non_empty
+}
+import v4.std.collection { List }
+import v4.std.dependency { DependencyView, ReadinessLayer }
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.workflow.scheduler {
+  RunnableFrontier,
+  SchedulerBlockedEvidence,
+  SchedulerNoRunnableFrontier,
+  SchedulerPlan,
+  SchedulerPlanBlocked,
+  SchedulerPlanComplete,
+  SchedulerPlanRunnable,
+  runnable_frontier_from_dependencies,
+  scheduler_plan_from_dependencies
+}
+
+type ExecutorJob {
+  node: Node
+}
+
+type ExecutorBatch {
+  jobs: List<ExecutorJob>
+}
+
+type ExecutorReceipt {
+  completed: List<ExecutorJob>
+}
+
+// 🟡 coproduct dissolution — feature:executor-host-transport-status — consumer:parallel_executor_plan
+// dissolve-on-arrival: host transport returns per-job execution verdicts instead of modeled success receipts.
+type ExecutorBlockedEvidence
+  = ExecutorSchedulerBlocked { evidence: SchedulerBlockedEvidence }
+  | ExecutorEmptyFrontier {}
+
+type ExecutorRunPlan
+  = ExecutorRunComplete {
+      batches: List<ExecutorBatch>,
+      receipts: List<ExecutorReceipt>,
+      completed: List<ExecutorJob>
+    }
+  | ExecutorRunBlocked {
+      evidence: ExecutorBlockedEvidence,
+      batches: List<ExecutorBatch>,
+      receipts: List<ExecutorReceipt>,
+      completed: List<ExecutorJob>,
+      remaining: List<Node>
+    }
+
+type ExecutorRunState {
+  scheduled: List<Node>
+  batches: List<ExecutorBatch>
+  receipts: List<ExecutorReceipt>
+  completed: List<ExecutorJob>
+  remaining: List<Node>
+  blocked: List<ExecutorBlockedEvidence>
+}
+
+fn executor_job_for_node(node: Node) -> ExecutorJob {
+  ExecutorJob { node: node }
+}
+
+fn executor_jobs_for_frontier(frontier: RunnableFrontier) -> List<ExecutorJob> {
+  fold(frontier.ready, init: [], f: fn(jobs, node) {
+    list_snoc_item(xs: jobs, item: executor_job_for_node(node: node))
+  })
+}
+
+fn executor_batch_for_frontier(frontier: RunnableFrontier) -> ExecutorBatch {
+  ExecutorBatch {
+    jobs: executor_jobs_for_frontier(frontier: frontier)
+  }
+}
+
+fn executor_receipt_for_batch(batch: ExecutorBatch) -> ExecutorReceipt {
+  ExecutorReceipt {
+    completed: batch.jobs
+  }
+}
+
+fn executor_job_nodes(jobs: List<ExecutorJob>) -> List<Node> {
+  fold(jobs, init: [], f: fn(nodes, job) {
+    list_snoc_item(xs: nodes, item: job.node)
+  })
+}
+
+fn executor_append_batch(batches: List<ExecutorBatch>, batch: ExecutorBatch) -> List<ExecutorBatch> {
+  if non_empty(xs: batch.jobs) {
+    list_snoc_item(xs: batches, item: batch)
+  } else {
+    batches
+  }
+}
+
+fn executor_append_receipt(receipts: List<ExecutorReceipt>, receipt: ExecutorReceipt) -> List<ExecutorReceipt> {
+  if non_empty(xs: receipt.completed) {
+    list_snoc_item(xs: receipts, item: receipt)
+  } else {
+    receipts
+  }
+}
+
+fn executor_append_completed(completed: List<ExecutorJob>, jobs: List<ExecutorJob>) -> List<ExecutorJob> {
+  list_append(left: completed, right: jobs)
+}
+
+fn executor_run_init(nodes: List<Node>, scheduled: List<Node>) -> ExecutorRunState {
+  ExecutorRunState {
+    scheduled: scheduled,
+    batches: [],
+    receipts: [],
+    completed: [],
+    remaining: filter(
+      xs: nodes,
+      predicate: fn(node) {
+        contains(xs: scheduled, item: node, eq: fn(left, right) { left == right }) == false
+      }
+    ),
+    blocked: []
+  }
+}
+
+fn executor_step_state_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  state: ExecutorRunState
+) -> ExecutorRunState {
+  if is_empty(xs: state.remaining) {
+    state
+  } else {
+    let frontier = runnable_frontier_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      scheduled: state.scheduled
+    )
+    if non_empty(xs: frontier.ready) {
+      let batch = executor_batch_for_frontier(frontier: frontier)
+      let receipt = executor_receipt_for_batch(batch: batch)
+      let scheduled = list_append(left: state.scheduled, right: executor_job_nodes(jobs: receipt.completed))
+      ExecutorRunState {
+        scheduled: scheduled,
+        batches: executor_append_batch(batches: state.batches, batch: batch),
+        receipts: executor_append_receipt(receipts: state.receipts, receipt: receipt),
+        completed: executor_append_completed(completed: state.completed, jobs: receipt.completed),
+        remaining: filter(
+          xs: nodes,
+          predicate: fn(node) {
+            contains(xs: scheduled, item: node, eq: fn(left, right) { left == right }) == false
+          }
+        ),
+        blocked: []
+      }
+    } else {
+      ExecutorRunState {
+        scheduled: state.scheduled,
+        batches: state.batches,
+        receipts: state.receipts,
+        completed: state.completed,
+        remaining: state.remaining,
+        blocked: [ExecutorEmptyFrontier {}]
+      }
+    }
+  }
+}
+
+fn executor_run_to_fixed_point(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> ExecutorRunState {
+  fold(nodes, init: executor_run_init(nodes: nodes, scheduled: scheduled), f: fn(state, _) {
+    if non_empty(xs: state.blocked) {
+      state
+    } else {
+      executor_step_state_from_dependencies(
+        nodes: nodes,
+        dependencies: dependencies,
+        state: state
+      )
+    }
+  })
+}
+
+fn executor_scheduler_blocked_evidence(plan: SchedulerPlan) -> ExecutorBlockedEvidence {
+  match plan {
+    SchedulerPlanComplete { layers: _, scheduled: _ } => ExecutorEmptyFrontier {}
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => ExecutorEmptyFrontier {}
+    SchedulerPlanBlocked { evidence: evidence, scheduled: _, remaining: _, layers: _ } => ExecutorSchedulerBlocked { evidence: evidence }
+  }
+}
+
+fn executor_plan_from_state(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  initial_scheduled: List<Node>,
+  state: ExecutorRunState
+) -> ExecutorRunPlan {
+  if is_empty(xs: state.remaining) {
+    ExecutorRunComplete {
+      batches: state.batches,
+      receipts: state.receipts,
+      completed: state.completed
+    }
+  } else {
+    let scheduler_plan = scheduler_plan_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      scheduled: initial_scheduled
+    )
+    ExecutorRunBlocked {
+      evidence: executor_scheduler_blocked_evidence(plan: scheduler_plan),
+      batches: state.batches,
+      receipts: state.receipts,
+      completed: state.completed,
+      remaining: state.remaining
+    }
+  }
+}
+
+fn parallel_executor_plan_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> ExecutorRunPlan {
+  executor_plan_from_state(
+    nodes: nodes,
+    dependencies: dependencies,
+    initial_scheduled: scheduled,
+    state: executor_run_to_fixed_point(
+      nodes: nodes,
+      dependencies: dependencies,
+      scheduled: scheduled
+    )
+  )
+}
+
+fn executor_batches_for_layers(layers: List<ReadinessLayer>) -> List<ExecutorBatch> {
+  fold(layers, init: [], f: fn(acc, layer) {
+    executor_append_batch(
+      batches: acc,
+      batch: executor_batch_for_frontier(frontier: RunnableFrontier { ready: layer.ready })
+    )
+  })
+}
+
+fn executor_receipts_for_batches(batches: List<ExecutorBatch>) -> List<ExecutorReceipt> {
+  fold(batches, init: [], f: fn(acc, batch) {
+    executor_append_receipt(
+      receipts: acc,
+      receipt: executor_receipt_for_batch(batch: batch)
+    )
+  })
+}
+
+fn executor_completed_from_receipts(receipts: List<ExecutorReceipt>) -> List<ExecutorJob> {
+  fold(receipts, init: [], f: fn(acc, receipt) {
+    executor_append_completed(completed: acc, jobs: receipt.completed)
+  })
+}
+
+fn parallel_executor_plan_from_layers(layers: List<ReadinessLayer>) -> ExecutorRunPlan {
+  let batches = executor_batches_for_layers(layers: layers)
+  let receipts = executor_receipts_for_batches(batches: batches)
+  ExecutorRunComplete {
+    batches: batches,
+    receipts: receipts,
+    completed: executor_completed_from_receipts(receipts: receipts)
+  }
+}
+
+fn executor_batch_contains_node(batch: ExecutorBatch, node: Node) -> Bool {
+  contains(xs: executor_job_nodes(jobs: batch.jobs), item: node, eq: fn(left, right) { left == right })
+}
+
+fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: List<ReadinessLayer>) -> Bool {
+  fold(layers, init: true, f: fn(ok, layer) {
+    ok && contains(
+      xs: batches,
+      item: executor_batch_for_frontier(frontier: RunnableFrontier { ready: layer.ready }),
+      eq: fn(left, right) { left == right }
+    )
+  })
+}
+
+fn executor_receipts_cover_batches(receipts: List<ExecutorReceipt>, batches: List<ExecutorBatch>) -> Bool {
+  for_all(
+    xs: batches,
+    predicate: fn(batch) {
+      contains(
+        xs: receipts,
+        item: executor_receipt_for_batch(batch: batch),
+        eq: fn(left, right) { left == right }
+      )
+    }
+  )
+}
