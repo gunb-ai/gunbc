@@ -47,7 +47,7 @@ import v4.std.node {
 import v4.std.node_query {
   find_named_child
 }
-import v4.std.report { Report }
+import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
 // 🟡 gated — feature:section-ref-identity-evidence — bind: T-23/T-10 projection bridge —
 // dissolve-on-arrival: replace Path-backed handles with typed declaration identity and
@@ -176,7 +176,7 @@ fn lens_enforcement_violation_input<Projected, Budget>(
 
 fn advisory_report_diagnostic(report: Report) -> Diagnostic {
   Diagnostic {
-    reason: discriminant(v: report.reason),
+    reason: report_reason_to_diagnostic_reason(reason: report.reason),
     at: report.at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
