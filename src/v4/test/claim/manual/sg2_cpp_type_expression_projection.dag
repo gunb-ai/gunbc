@@ -14,10 +14,6 @@ import v4.extdeps.languages.cpp {
   cpp_sg2_arrow_source_type_node,
   cpp_sg2_arrow_xy_emitted,
   cpp_sg2_type_expr_projection_probe_target_model,
-  cpp_token_arrow,
-  cpp_token_comma,
-  cpp_token_gt,
-  cpp_token_lt,
   cpp_type_expression_projection
 }
 import v4.std.target_model { TargetModel }
@@ -90,9 +86,9 @@ fn cpp_sg2_serialized_text(emitted: Node) -> String {
 
 fn cpp_sg2_instantiation_delimiters_bidirectional() -> Bool {
   let row = cpp_type_expression_projection()
-  row.instantiation_form.open == cpp_token_lt &&
-    row.instantiation_form.separator == cpp_token_comma &&
-    row.instantiation_form.close == cpp_token_gt
+  row.instantiation_form.open == ^cpp_token_lt &&
+    row.instantiation_form.separator == ^cpp_token_comma &&
+    row.instantiation_form.close == ^cpp_token_gt
 }
 
 fn witness_cpp_sg2_arrow_holds() -> Bool {
@@ -102,7 +98,7 @@ fn witness_cpp_sg2_arrow_holds() -> Bool {
 
 fn witness_cpp_sg2_projection_row_delimiters_holds() -> Bool {
   cpp_sg2_instantiation_delimiters_bidirectional()
-    && cpp_type_expression_projection().arrow_form.arrow == cpp_token_arrow
+    && cpp_type_expression_projection().arrow_form.arrow == ^cpp_token_arrow
 }
 
 data claim_cpp_sg2_projection_row_delimiters: TestClaim = CompilesClaim {
