@@ -32,7 +32,7 @@ type RunnableFrontier {
 // 🟡 coproduct dissolution — feature:scheduler-blocked-evidence-kind — consumer:scheduler_plan_from_state
 // dissolve-on-arrival: blocked scheduler diagnostics classify missing prerequisite/cycle evidence directly.
 type SchedulerBlockedEvidence
-  = SchedulerNoRunnableFrontier { unscheduled: List<Node> }
+  = SchedulerNoRunnableFrontier {}
 
 // 🟡 coproduct dissolution — feature:scheduler-plan-outcome — consumer:scheduler_plan_from_dependencies
 // dissolve-on-arrival: workflow execution state projects complete/runnable/blocked directly from dependency facts.
@@ -174,8 +174,8 @@ fn scheduler_remaining_nodes(nodes: List<Node>, scheduled: List<Node>) -> List<N
   )
 }
 
-fn scheduler_blocked_evidence(remaining: List<Node>) -> SchedulerBlockedEvidence {
-  SchedulerNoRunnableFrontier { unscheduled: remaining }
+fn scheduler_blocked_evidence() -> SchedulerBlockedEvidence {
+  SchedulerNoRunnableFrontier {}
 }
 
 fn scheduler_schedule_frontier(scheduled: List<Node>, frontier: RunnableFrontier) -> List<Node> {
@@ -252,7 +252,7 @@ fn scheduler_plan_from_state(state: SchedulerRunState) -> SchedulerPlan {
       }
     } else {
       SchedulerPlanBlocked {
-        evidence: scheduler_blocked_evidence(remaining: state.remaining),
+        evidence: scheduler_blocked_evidence(),
         scheduled: state.scheduled,
         remaining: state.remaining,
         layers: state.layers
@@ -322,7 +322,7 @@ fn scheduler_plan_for_layers(layers: List<ReadinessLayer>, blocked: List<Node>) 
     }
   } else {
     SchedulerPlanBlocked {
-      evidence: scheduler_blocked_evidence(remaining: blocked),
+      evidence: scheduler_blocked_evidence(),
       scheduled: [],
       remaining: blocked,
       layers: layers

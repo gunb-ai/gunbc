@@ -201,7 +201,7 @@ fn scheduler_missing_prerequisite_blocks_with_evidence() -> Bool {
   ) {
     SchedulerPlanComplete { layers: _, scheduled: _ } => false
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier { unscheduled: unscheduled }, scheduled: scheduled, remaining: remaining, layers: layers } => unscheduled == [scheduler_build_node] && scheduled == [] && remaining == [scheduler_build_node] && layers == []
+    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && remaining == [scheduler_build_node] && layers == []
   }
 }
 
@@ -249,7 +249,7 @@ fn scheduler_mixed_runnable_then_blocked_reports_remaining() -> Bool {
   ) {
     SchedulerPlanComplete { layers: _, scheduled: _ } => false
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier { unscheduled: unscheduled }, scheduled: scheduled, remaining: remaining, layers: layers } => unscheduled == [scheduler_test_node] && scheduled == [scheduler_build_node, scheduler_emit_node] && remaining == [scheduler_test_node] && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
+    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [scheduler_build_node, scheduler_emit_node] && remaining == [scheduler_test_node] && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
   }
 }
 
