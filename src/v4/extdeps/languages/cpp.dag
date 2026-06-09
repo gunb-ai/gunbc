@@ -105,8 +105,14 @@ import v4.std.target_model {
   TargetSumTypeShape,
   TargetTypeExpressionProjection,
   type_expr_projection_step_algebra,
+  TargetTypeExprFieldSlot,
+  TargetTypeExprVariantSlot,
   target_type_expr_arrow_emitted,
-  target_type_expr_atom_emitted
+  target_type_expr_atom_emitted,
+  target_type_expr_cardinality_emitted,
+  target_type_expr_instantiation_emitted,
+  target_type_expr_record_emitted,
+  target_type_expr_sum_emitted
 }
 import v4.extdeps.cpp_abi { CppTargetProfile }
 import v4.std.text { String }
