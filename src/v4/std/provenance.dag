@@ -5,8 +5,34 @@
 module v4.std.provenance
 
 import v4.std.artifact { Artifact, NodeArtifactProvenance }
-import v4.std.diagnostic { ByteRange, Locus, Textual, node_locus }
-import v4.std.node { Anchored, Node, NodeSpan, Unanchored }
+import v4.std.diagnostic {
+  ByteRange,
+  Diagnostic,
+  Locus,
+  Outcome,
+  Textual,
+  UserInputBoundary,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.node {
+  Anchored,
+  Edge,
+  Node,
+  NodeFold,
+  NodeSpan,
+  SourceSpan,
+  Unanchored,
+  fold_node,
+  merge_node_span_same_file,
+  node_span_has_byte_extent,
+  node_span_is_anchored,
+  node_span_same_file
+}
+
+data provenance_span_file_mismatch: Symbol = provenance_span_file_mismatch
 
 fn locus_from_node_span(node: Node) -> Locus {
   match node.span {
@@ -20,10 +46,7 @@ fn locus_from_node_span(node: Node) -> Locus {
 }
 
 fn node_has_anchored_span(node: Node) -> Bool {
-  match node.span {
-    Unanchored => false
-    Anchored { span: _ } => true
-  }
+  node_span_is_anchored(span: node.span)
 }
 
 fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
@@ -31,8 +54,52 @@ fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProve
 }
 
 fn node_span_byte_extent(span: NodeSpan) -> Bool {
-  match span {
-    Unanchored => false
-    Anchored { span: s } => s.start < s.end
+  node_span_has_byte_extent(span: span)
+}
+
+fn provenance_span_file_mismatch_diagnostic(span: SourceSpan) -> Diagnostic {
+  Diagnostic {
+    reason: provenance_span_file_mismatch,
+    at: Textual {
+      file: span.file,
+      extent: ByteRange { start: span.start, end: span.end }
+    },
+    correction: Unavailable { reason: UserInputBoundary }
   }
+}
+
+fn merge_node_spans(left: NodeSpan, right: NodeSpan) -> Outcome<NodeSpan> {
+  if node_span_same_file(left: left, right: right) {
+    outcome_accepted(value: merge_node_span_same_file(left: left, right: right))
+  } else {
+    match left {
+      Anchored { span: ls } =>
+        outcome_rejected(d: provenance_span_file_mismatch_diagnostic(span: ls))
+      Unanchored =>
+        match right {
+          Anchored { span: rs } =>
+            outcome_rejected(d: provenance_span_file_mismatch_diagnostic(span: rs))
+          Unanchored => outcome_accepted(value: Unanchored)
+        }
+    }
+  }
+}
+
+fn fold_node_tree_span_init(n: Node) -> NodeSpan {
+  n.span
+}
+
+fn fold_node_tree_span_step(acc: NodeSpan, _: Edge, child: NodeSpan) -> NodeSpan {
+  merge_node_span_same_file(left: acc, right: child)
+}
+
+fn fold_node_tree_span_algebra() -> NodeFold<NodeSpan> {
+  NodeFold {
+    init: fold_node_tree_span_init,
+    step: fold_node_tree_span_step
+  }
+}
+
+fn fold_node_tree_span(n: Node) -> NodeSpan {
+  fold_node(n: n, algebra: fold_node_tree_span_algebra())
 }

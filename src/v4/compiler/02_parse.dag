@@ -263,12 +263,12 @@ fn parse_merge_captured_spans(left: Node, right: Node) -> NodeSpan {
   merge_node_span(left: left.span, right: right.span)
 }
 
+fn parse_fold_node_span_step(current: NodeSpan, n: Node) -> NodeSpan {
+  merge_node_span(left: current, right: n.span)
+}
+
 fn parse_fold_node_spans(nodes: List<Node>, acc: NodeSpan) -> NodeSpan {
-  match nodes {
-    [] => acc
-    Cons { head: n, tail: rest } =>
-      parse_fold_node_spans(nodes: rest, acc: merge_node_span(left: acc, right: n.span))
-  }
+  fold_list(xs: nodes, empty: acc, cons: parse_fold_node_span_step)
 }
 
 fn parse_wrap_production_captured(production: GrammarProduction, captured: Node) -> Node {

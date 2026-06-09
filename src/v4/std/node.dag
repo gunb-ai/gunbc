@@ -88,6 +88,8 @@ data arrow_body_edge: Symbol = ^arrow_body_edge
 
 // T-8 source-text anchor — byte extent within one compilation unit (R3 gate #31 discipline:
 // file + start/end only; no parallel file authority on lens-produced surfaces).
+// 🟢 coproduct dissolution — T-8 TERMINAL (feature:T-8-source-provenance): single-file byte
+// extent carrier; file authority is Symbol only (R3 gate #31); no parallel path surface.
 type SourceSpan {
   file: Symbol
   start: Int
@@ -95,6 +97,9 @@ type SourceSpan {
 }
 
 // Closed optional carrier for Node.span — avoids node↔collection import cycle.
+// 🟢 coproduct dissolution — T-8 TERMINAL (feature:T-8-source-provenance): Unanchored =
+// no parse-time anchor (synthetic / pre-parse substrate); Anchored = SourceSpan witness.
+// Fail-closed cross-file merge: v4.std.provenance.merge_node_spans (Outcome + diagnostic).
 type NodeSpan
   = Unanchored
   | Anchored { span: SourceSpan }
@@ -107,26 +112,83 @@ fn node_span_anchored(span: SourceSpan) -> NodeSpan {
   Anchored { span: span }
 }
 
-fn merge_node_span(left: NodeSpan, right: NodeSpan) -> NodeSpan {
+fn node_span_same_file(left: NodeSpan, right: NodeSpan) -> Bool {
+  match left {
+    Unanchored => true
+    Anchored { span: ls } =>
+      match right {
+        Unanchored => true
+        Anchored { span: rs } => ls.file == rs.file
+      }
+  }
+}
+
+// Precondition: node_span_same_file(left, right); cross-file callers must use v4.std.provenance.merge_node_spans.
+fn merge_node_span_same_file(left: NodeSpan, right: NodeSpan) -> NodeSpan {
   match left {
     Unanchored => right
     Anchored { span: ls } =>
       match right {
         Unanchored => left
         Anchored { span: rs } =>
-          if ls.file == rs.file {
-            Anchored {
-              span: SourceSpan {
-                file: ls.file,
-                start: if ls.start < rs.start { ls.start } else { rs.start },
-                end: if ls.end > rs.end { ls.end } else { rs.end }
-              }
+          Anchored {
+            span: SourceSpan {
+              file: ls.file,
+              start: if ls.start < rs.start { ls.start } else { rs.start },
+              end: if ls.end > rs.end { ls.end } else { rs.end }
             }
-          } else {
-            left
           }
       }
   }
+}
+
+fn merge_node_span(left: NodeSpan, right: NodeSpan) -> NodeSpan {
+  if node_span_same_file(left: left, right: right) {
+    merge_node_span_same_file(left: left, right: right)
+  } else {
+    Unanchored
+  }
+}
+
+type NodeSpanFold<R> {
+  on_unanchored: fn() -> R
+  on_anchored: fn(SourceSpan) -> R
+}
+
+fn fold_node_span_coproduct<R>(span: NodeSpan, algebra: NodeSpanFold<R>) -> R {
+  match span {
+    Unanchored => algebra.on_unanchored()
+    Anchored { span: s } => algebra.on_anchored(s)
+  }
+}
+
+// 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): canonical NodeSpan coproduct query surface.
+fn node_span_is_anchored(span: NodeSpan) -> Bool {
+  fold_node_span_coproduct(
+    span: span,
+    algebra: NodeSpanFold {
+      on_unanchored: fn() {
+        false
+      },
+      on_anchored: fn(_) {
+        true
+      }
+    }
+  )
+}
+
+fn node_span_has_byte_extent(span: NodeSpan) -> Bool {
+  fold_node_span_coproduct(
+    span: span,
+    algebra: NodeSpanFold {
+      on_unanchored: fn() {
+        false
+      },
+      on_anchored: fn(s) {
+        s.start < s.end
+      }
+    }
+  )
 }
 
 fn node_span_from_node(n: Node) -> NodeSpan {
