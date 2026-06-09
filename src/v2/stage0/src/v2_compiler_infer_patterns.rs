@@ -241,13 +241,15 @@ pub fn lookup_variant_in_type(
                         && (scrut_node.connective.clone() == Connective::Conj))
                         && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
                             == variant_name.clone().as_str()));
+                    let optional_variant_name =
+                        optional_match_variant_canonical_name(variant_name.clone());
                     let fallback = if (scrut_opt.clone()
-                        && (variant_name.clone().as_str() == "Some".to_string().as_str()))
+                        && (optional_variant_name.as_str() == "Present".to_string().as_str()))
                     {
                         node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
                     } else {
                         if (scrut_opt.clone()
-                            && (variant_name.clone().as_str() == "None".to_string().as_str()))
+                            && (optional_variant_name.as_str() == "Absent".to_string().as_str()))
                         {
                             node_lookup_resolved(none_type())
                         } else {
@@ -270,6 +272,16 @@ pub fn lookup_variant_in_type(
                 }
             }
         }
+    }
+}
+
+pub fn optional_match_variant_canonical_name(variant_name: String) -> String {
+    if (variant_name.as_str() == "Some") || (variant_name.as_str() == "Present") {
+        "Present".to_string()
+    } else if (variant_name.as_str() == "None") || (variant_name.as_str() == "Absent") {
+        "Absent".to_string()
+    } else {
+        variant_name
     }
 }
 
@@ -347,7 +359,7 @@ pub fn check_match_exhaustiveness(
         if (is_coproduct || resolved_is_optional.clone()) {
             {
                 let variant_names = if resolved_is_optional.clone() {
-                    Rc::new(vec!["Some".to_string(), "None".to_string()])
+                    Rc::new(vec!["Present".to_string(), "Absent".to_string()])
                 } else {
                     Rc::new({
                         let mut __result = Vec::new();
@@ -383,7 +395,15 @@ pub fn check_match_exhaustiveness(
                             .clone()
                             {
                                 MatchPattern::VariantPattern { name: n, .. } => {
-                                    v2_rt::rc_map_insert(acc.clone(), n.clone(), true)
+                                    v2_rt::rc_map_insert(
+                                        acc.clone(),
+                                        if resolved_is_optional.clone() {
+                                            optional_match_variant_canonical_name(n.clone())
+                                        } else {
+                                            n.clone()
+                                        },
+                                        true,
+                                    )
                                 }
                                 MatchPattern::LitPattern { value: v, .. } => {
                                     match (*v.clone()).clone() {

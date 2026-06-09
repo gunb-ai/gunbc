@@ -70,8 +70,8 @@ pub use crate::v2_compiler_infer_method::{
 use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_patterns::{
     check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
-    lookup_variant_in_type, pattern_binding_type, pattern_subject_from_inferred,
-    pattern_subject_from_node,
+    lookup_variant_in_type, optional_match_variant_canonical_name, pattern_binding_type,
+    pattern_subject_from_inferred, pattern_subject_from_node,
 };
 pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v2_compiler_infer_resolve::{
@@ -1691,10 +1691,13 @@ pub fn annotate_pattern_parent_enums(
                         node: resolved_scrut_node,
                         ..
                     } => {
+                        let optional_variant_name =
+                            optional_match_variant_canonical_name(variant_name.clone());
                         if ((resolved_scrut_node.return_cardinality.clone()
                             == Cardinality::CardOptional)
-                            && ((variant_name.clone().as_str() == "Some".to_string().as_str())
-                                || (variant_name.clone().as_str() == "None".to_string().as_str())))
+                            && ((optional_variant_name.as_str() == "Present".to_string().as_str())
+                                || (optional_variant_name.as_str()
+                                    == "Absent".to_string().as_str())))
                         {
                             Some("Optional".to_string())
                         } else {

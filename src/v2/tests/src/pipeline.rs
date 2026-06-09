@@ -2210,8 +2210,8 @@ fn optional_match_requires_none_arm() {
     let msgs = diagnostic_messages(&result);
     assert!(
         msgs.iter()
-            .any(|msg| msg.contains("non-exhaustive") && msg.contains("None")),
-        "missing None arm should produce a non-exhaustive Optional match diagnostic, got {:?}",
+            .any(|msg| msg.contains("non-exhaustive") && msg.contains("Absent")),
+        "missing Absent arm should produce a non-exhaustive Optional match diagnostic, got {:?}",
         msgs
     );
 }
@@ -2219,6 +2219,13 @@ fn optional_match_requires_none_arm() {
 #[test]
 fn optional_match_with_some_and_none_typechecks() {
     let source = "module test\nfn unwrap(x: String?) -> String {\n  match x {\n    Some { value: value } => value,\n    None => \"\"\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn optional_match_with_present_and_absent_typechecks() {
+    let source = "module test\nfn unwrap(x: String?) -> String {\n  match x {\n    Present { value: value } => value,\n    Absent => \"\"\n  }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
