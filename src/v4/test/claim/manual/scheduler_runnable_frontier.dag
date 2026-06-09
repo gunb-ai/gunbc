@@ -16,6 +16,7 @@ import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.workflow.scheduler {
   RunnableFrontier,
+  SchedulerMissingDependencyEndpoint,
   SchedulerNoRunnableFrontier,
   SchedulerPlanBlocked,
   SchedulerPlanComplete,
@@ -126,11 +127,21 @@ data scheduler_missing_prerequisite_dependencies: List<DependencyView> = [
 
 data scheduler_mixed_runnable_blocked_dependencies: List<DependencyView> = [
   DependencyView {
-    source: scheduler_missing_source_node,
+    source: scheduler_test_node,
+    dependent: scheduler_emit_node,
+    kind: DataDependsOn,
+    usage_site: scheduler_emit_node
+  },
+  DependencyView {
+    source: scheduler_emit_node,
     dependent: scheduler_test_node,
     kind: DataDependsOn,
     usage_site: scheduler_test_node
   }
+]
+
+data scheduler_missing_dependent_dependencies: List<DependencyView> = [
+  scheduler_build_to_emit_dependency
 ]
 
 fn scheduler_initial_frontier() -> RunnableFrontier {
@@ -201,7 +212,19 @@ fn scheduler_missing_prerequisite_blocks_with_evidence() -> Bool {
   ) {
     SchedulerPlanComplete { layers: _, scheduled: _ } => false
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && remaining == [scheduler_build_node] && layers == []
+    SchedulerPlanBlocked { evidence: SchedulerMissingDependencyEndpoint {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && remaining == [scheduler_emit_node] && layers == []
+  }
+}
+
+fn scheduler_missing_dependent_endpoint_blocks_instead_of_completing() -> Bool {
+  match scheduler_plan_from_dependencies(
+    nodes: [scheduler_build_node],
+    dependencies: scheduler_missing_dependent_dependencies,
+    scheduled: []
+  ) {
+    SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: SchedulerMissingDependencyEndpoint {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && remaining == [scheduler_emit_node] && layers == []
   }
 }
 
@@ -249,7 +272,7 @@ fn scheduler_mixed_runnable_then_blocked_reports_remaining() -> Bool {
   ) {
     SchedulerPlanComplete { layers: _, scheduled: _ } => false
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [scheduler_build_node, scheduler_emit_node] && remaining == [scheduler_test_node] && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
+    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [scheduler_build_node] && remaining == [scheduler_test_node, scheduler_emit_node] && layers == [ReadinessLayer { ready: [scheduler_build_node] }]
   }
 }
 
@@ -267,6 +290,8 @@ data scheduler_runnable_frontier_ignores_contains_edges: Bool = scheduler_contai
 
 data scheduler_runnable_frontier_blocks_missing_prerequisite: Bool = scheduler_missing_prerequisite_blocks_with_evidence()
 
+data scheduler_runnable_frontier_blocks_missing_dependent_endpoint: Bool = scheduler_missing_dependent_endpoint_blocks_instead_of_completing()
+
 data scheduler_runnable_frontier_step_plan_is_runnable: Bool = scheduler_step_plan_exposes_runnable_state()
 
 data scheduler_runnable_frontier_full_plan_completes: Bool = scheduler_full_plan_completes_all_work()
@@ -276,5 +301,5 @@ data scheduler_runnable_frontier_all_scheduled_completes: Bool = scheduler_all_s
 data scheduler_runnable_frontier_mixed_plan_blocks: Bool = scheduler_mixed_runnable_then_blocked_reports_remaining()
 
 fn scheduler_runnable_frontier_claims_hold() -> Bool {
-  scheduler_runnable_frontier_reuses_dependency_fold && scheduler_runnable_frontier_projects_canonical_first_layer && scheduler_runnable_frontier_dependency_ready_set && scheduler_runnable_frontier_next_layer_receipt && scheduler_runnable_frontier_discriminates_dependency_order && scheduler_runnable_frontier_ignores_contains_edges && scheduler_runnable_frontier_blocks_missing_prerequisite && scheduler_runnable_frontier_step_plan_is_runnable && scheduler_runnable_frontier_full_plan_completes && scheduler_runnable_frontier_all_scheduled_completes && scheduler_runnable_frontier_mixed_plan_blocks
+  scheduler_runnable_frontier_reuses_dependency_fold && scheduler_runnable_frontier_projects_canonical_first_layer && scheduler_runnable_frontier_dependency_ready_set && scheduler_runnable_frontier_next_layer_receipt && scheduler_runnable_frontier_discriminates_dependency_order && scheduler_runnable_frontier_ignores_contains_edges && scheduler_runnable_frontier_blocks_missing_prerequisite && scheduler_runnable_frontier_blocks_missing_dependent_endpoint && scheduler_runnable_frontier_step_plan_is_runnable && scheduler_runnable_frontier_full_plan_completes && scheduler_runnable_frontier_all_scheduled_completes && scheduler_runnable_frontier_mixed_plan_blocks
 }
