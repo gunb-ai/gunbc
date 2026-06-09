@@ -29,11 +29,21 @@ type RunnableFrontier {
   ready: List<Node>
 }
 
+type SchedulerDependencyEndpointSide
+  = SchedulerDependencySourceEndpoint {}
+  | SchedulerDependencyDependentEndpoint {}
+
+type SchedulerMissingDependencyEndpointRecord {
+  dependency: DependencyView
+  endpoint: Node
+  side: SchedulerDependencyEndpointSide
+}
+
 // 🟡 coproduct dissolution — feature:scheduler-blocked-evidence-kind — consumer:scheduler_plan_from_state
 // dissolve-on-arrival: blocked scheduler diagnostics classify missing prerequisite/cycle evidence directly.
 type SchedulerBlockedEvidence
   = SchedulerNoRunnableFrontier {}
-  | SchedulerMissingDependencyEndpoint {}
+  | SchedulerMissingDependencyEndpoint { endpoints: List<SchedulerMissingDependencyEndpointRecord> }
 
 // 🟡 coproduct dissolution — feature:scheduler-plan-outcome — consumer:scheduler_plan_from_dependencies
 // dissolve-on-arrival: workflow execution state projects complete/runnable/blocked directly from dependency facts.
@@ -103,23 +113,61 @@ fn scheduler_append_node_once(nodes: List<Node>, node: Node) -> List<Node> {
   }
 }
 
-fn scheduler_dependency_nodes(dependencies: List<DependencyView>) -> List<Node> {
-  fold(dependencies, init: [], f: fn(nodes, dependency) {
-    scheduler_append_node_once(
-      nodes: scheduler_append_node_once(nodes: nodes, node: dependency.source),
-      node: dependency.dependent
+fn scheduler_append_missing_dependency_source(
+  endpoints: List<SchedulerMissingDependencyEndpointRecord>,
+  nodes: List<Node>,
+  dependency: DependencyView
+) -> List<SchedulerMissingDependencyEndpointRecord> {
+  if contains(xs: nodes, item: dependency.source, eq: fn(left, right) { left == right }) {
+    endpoints
+  } else {
+    list_snoc_item(
+      xs: endpoints,
+      item: SchedulerMissingDependencyEndpointRecord {
+        dependency: dependency,
+        endpoint: dependency.source,
+        side: SchedulerDependencySourceEndpoint {}
+      }
     )
-  })
+  }
+}
+
+fn scheduler_append_missing_dependency_dependent(
+  endpoints: List<SchedulerMissingDependencyEndpointRecord>,
+  nodes: List<Node>,
+  dependency: DependencyView
+) -> List<SchedulerMissingDependencyEndpointRecord> {
+  if contains(xs: nodes, item: dependency.dependent, eq: fn(left, right) { left == right }) {
+    endpoints
+  } else {
+    list_snoc_item(
+      xs: endpoints,
+      item: SchedulerMissingDependencyEndpointRecord {
+        dependency: dependency,
+        endpoint: dependency.dependent,
+        side: SchedulerDependencyDependentEndpoint {}
+      }
+    )
+  }
 }
 
 fn scheduler_missing_dependency_endpoints(
   nodes: List<Node>,
   dependencies: List<DependencyView>
-) -> List<Node> {
-  filter(
-    xs: scheduler_dependency_nodes(dependencies: scheduler_execution_dependencies(dependencies: dependencies)),
-    predicate: fn(endpoint) {
-      contains(xs: nodes, item: endpoint, eq: fn(left, right) { left == right }) == false
+) -> List<SchedulerMissingDependencyEndpointRecord> {
+  fold(
+    scheduler_execution_dependencies(dependencies: dependencies),
+    init: [],
+    f: fn(endpoints, dependency) {
+      scheduler_append_missing_dependency_dependent(
+        endpoints: scheduler_append_missing_dependency_source(
+          endpoints: endpoints,
+          nodes: nodes,
+          dependency: dependency
+        ),
+        nodes: nodes,
+        dependency: dependency
+      )
     }
   )
 }
@@ -191,8 +239,10 @@ fn scheduler_blocked_evidence() -> SchedulerBlockedEvidence {
   SchedulerNoRunnableFrontier {}
 }
 
-fn scheduler_missing_dependency_endpoint_evidence() -> SchedulerBlockedEvidence {
-  SchedulerMissingDependencyEndpoint {}
+fn scheduler_missing_dependency_endpoint_evidence(
+  endpoints: List<SchedulerMissingDependencyEndpointRecord>
+) -> SchedulerBlockedEvidence {
+  SchedulerMissingDependencyEndpoint { endpoints: endpoints }
 }
 
 fn scheduler_schedule_frontier(scheduled: List<Node>, frontier: RunnableFrontier) -> List<Node> {
@@ -286,9 +336,9 @@ fn scheduler_step_plan_from_dependencies(
   let missing_endpoints = scheduler_missing_dependency_endpoints(nodes: nodes, dependencies: dependencies)
   if non_empty(xs: missing_endpoints) {
     SchedulerPlanBlocked {
-      evidence: scheduler_missing_dependency_endpoint_evidence(),
+      evidence: scheduler_missing_dependency_endpoint_evidence(endpoints: missing_endpoints),
       scheduled: scheduled,
-      remaining: missing_endpoints,
+      remaining: scheduler_remaining_nodes(nodes: nodes, scheduled: scheduled),
       layers: []
     }
   } else {
@@ -326,9 +376,9 @@ fn scheduler_plan_from_dependencies(
   let missing_endpoints = scheduler_missing_dependency_endpoints(nodes: nodes, dependencies: dependencies)
   if non_empty(xs: missing_endpoints) {
     SchedulerPlanBlocked {
-      evidence: scheduler_missing_dependency_endpoint_evidence(),
+      evidence: scheduler_missing_dependency_endpoint_evidence(endpoints: missing_endpoints),
       scheduled: scheduled,
-      remaining: missing_endpoints,
+      remaining: scheduler_remaining_nodes(nodes: nodes, scheduled: scheduled),
       layers: []
     }
   } else {
