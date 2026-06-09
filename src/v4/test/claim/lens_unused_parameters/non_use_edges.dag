@@ -32,19 +32,12 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-
-data unused_parameters_non_use_root_symbol: Symbol = unused_parameters_non_use_root_symbol
-data unused_parameters_non_use_child_symbol: Symbol = unused_parameters_non_use_child_symbol
-data unused_parameters_non_use_edge_symbol: Symbol = unused_parameters_non_use_edge_symbol
-data unused_parameters_non_use_type_symbol: Symbol = unused_parameters_non_use_type_symbol
-data unused_parameters_non_use_algebra_symbol: Symbol = unused_parameters_non_use_algebra_symbol
-data unused_parameters_non_use_descent_symbol: Symbol = unused_parameters_non_use_descent_symbol
-data unused_parameters_non_use_child: Node = claim_atom_node(s: unused_parameters_non_use_child_symbol)
+data unused_parameters_non_use_child: Node = claim_atom_node(s: ^unused_parameters_non_use_child_symbol)
 
 data unused_parameters_non_use_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: unused_parameters_non_use_root_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^unused_parameters_non_use_root_symbol } },
   children: [
-    Edge { label: Named { name: unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
+    Edge { label: Named { name: ^unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
   ]
 }
 
@@ -71,9 +64,9 @@ data unused_parameters_generated_from_dependency: DependencyView = DependencyVie
 
 fn unused_parameters_non_use_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: unused_parameters_non_use_type_symbol,
-    algebra_symbol: unused_parameters_non_use_algebra_symbol,
-    descent_symbol: unused_parameters_non_use_descent_symbol,
+    type_symbol: ^unused_parameters_non_use_type_symbol,
+    algebra_symbol: ^unused_parameters_non_use_algebra_symbol,
+    descent_symbol: ^unused_parameters_non_use_descent_symbol,
   )
 }
 

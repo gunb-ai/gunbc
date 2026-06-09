@@ -19,23 +19,13 @@ import v4.test.claim.lens_structural_resolution.claim_carrier {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
-import v4.std.constraints {
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
+
 import v4.std.dependency {
   BindsTo,
-  DependencyView,
-  dependency_binds_to_edge
+  DependencyView
 }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds }
-
-data sr_use_symbol: Symbol = sr_use_symbol
-data sr_decl_symbol: Symbol = sr_decl_symbol
-data sr_type_symbol: Symbol = sr_type_symbol
-data sr_algebra_symbol: Symbol = sr_algebra_symbol
-data sr_descent_symbol: Symbol = sr_descent_symbol
 data sr_claim_hash: Hash = sr_claim_hash
 
 fn sr_claim_atom(s: Symbol) -> Node {
@@ -46,12 +36,12 @@ fn sr_claim_atom(s: Symbol) -> Node {
 }
 
 // Atom reference (NoEdges); declaration container carries the BindsTo edge (P6 / node discipline).
-data sr_use: Node = sr_claim_atom(s: sr_use_symbol)
+data sr_use: Node = sr_claim_atom(s: ^sr_use_symbol)
 
 data sr_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_use }
+    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_use }
   ]
 }
 
@@ -64,12 +54,11 @@ data sr_dependency: DependencyView = DependencyView {
 
 fn sr_claim_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: sr_type_symbol,
-    algebra_symbol: sr_algebra_symbol,
-    descent_symbol: sr_descent_symbol,
+    type_symbol: ^sr_type_symbol,
+    algebra_symbol: ^sr_algebra_symbol,
+    descent_symbol: ^sr_descent_symbol,
   )
 }
-
 
 fn sr_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
   Map {

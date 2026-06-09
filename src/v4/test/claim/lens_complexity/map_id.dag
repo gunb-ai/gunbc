@@ -25,21 +25,14 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.witness { Witness }
-
-data map_id_claim_file: Symbol = map_id_claim_file
-data map_id_claim_reason: Symbol = map_id_claim_reason
-
 type LensComplexityClaim {
   input: Node
   expected_cost: SymbolicCost
   expected_complexity: ComplexityBound
   falsification: Diagnostic
 }
-
-data map_id_body_atom: Symbol = map_id_body_atom
-
 data map_id_body_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: map_id_body_atom } },
+  kind: TypeNode { connective: Atom { identity: ^map_id_body_atom } },
   children: []
 }
 
@@ -62,8 +55,8 @@ data map_id_claim: LensComplexityClaim = LensComplexityClaim {
   expected_cost: LinearCost { variable: SizeVariable { source: map_id_input } },
   expected_complexity: linear_complexity(size_var: SizeVariable { source: map_id_input }),
   falsification: Diagnostic {
-    reason: map_id_claim_reason,
-    at: Textual { file: map_id_claim_file, extent: WholeFile },
+    reason: ^map_id_claim_reason,
+    at: Textual { file: ^map_id_claim_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

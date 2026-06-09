@@ -34,9 +34,6 @@ import v4.extdeps.languages.rust {
   rust_sg2_rc_foobar_xy_emitted,
   rust_sg2_type_expr_projection_probe_target_model,
   rust_sg2_type_expr_target_model,
-  rust_token_comma,
-  rust_token_gt,
-  rust_token_lt,
   rust_type_expression_projection
 }
 import v4.std.target_model { target_type_expr_emitted_wire_decode }
@@ -58,9 +55,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data sg2_pass_sym: Symbol = sg2_pass_sym
-data sg2_fail_sym: Symbol = sg2_fail_sym
 data sg2_fail_text: String = ""
 data sg2_expected_type_text: String = "Rc<FooBar<X, Y>>"
 data sg2_expected_arrow_text: String = "(X) -> Y"
@@ -68,14 +62,14 @@ data sg2_expected_conj_text: String = " { X: X, Y: Y }"
 
 fn sg2_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg2_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg2_pass_sym } },
     children: []
   }
 }
 
 fn sg2_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg2_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg2_fail_sym } },
     children: []
   }
 }
@@ -209,9 +203,9 @@ fn sg2_mvp1_translate_fallback_accepts() -> Bool {
 // §10.6 bidirectional readability: ingest/emission share the same delimiter token-class row.
 fn sg2_instantiation_delimiters_bidirectional() -> Bool {
   let row = rust_type_expression_projection()
-  row.instantiation_form.open == rust_token_lt &&
-    row.instantiation_form.separator == rust_token_comma &&
-    row.instantiation_form.close == rust_token_gt
+  row.instantiation_form.open == ^rust_token_lt &&
+    row.instantiation_form.separator == ^rust_token_comma &&
+    row.instantiation_form.close == ^rust_token_gt
 }
 
 data claim_sg2_projection_structural: TestClaim = EqualsClaim {

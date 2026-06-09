@@ -2,7 +2,6 @@
 // Scope: T-13 worked claim — EffectDependsOn classifies as RequiresAlgebraWitness; witness envelope is Violates (fail-closed slot) while projection fact matches expected.
 // Status: T-38B — subject roster + run_test_claim + family receipt over eval_mvp2 runtime wedge.
 
-
 module v4.test.claim.lens_idempotency.write_effect
 
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -48,24 +47,14 @@ import v4.test.claim.lens_common.infer_fixture {
 import v4.test.claim.manual.eval_runtime_mvp {
   eval_mvp2_add_subgraph,
   eval_mvp2_context,
-  eval_mvp2_evaluator_pin,
   eval_mvp2_inferred_tree
 }
-
-data idempotency_root_symbol: Symbol = idempotency_root_symbol
-data idempotency_child_symbol: Symbol = idempotency_child_symbol
-data idempotency_edge_symbol: Symbol = idempotency_edge_symbol
-data idempotency_type_symbol: Symbol = idempotency_type_symbol
-data idempotency_algebra_symbol: Symbol = idempotency_algebra_symbol
-data idempotency_descent_symbol: Symbol = idempotency_descent_symbol
-data idempotency_claim_pass_symbol: Symbol = idempotency_claim_pass_symbol
-data idempotency_claim_fail_symbol: Symbol = idempotency_claim_fail_symbol
-data idempotency_child: Node = claim_atom_node(s: idempotency_child_symbol)
+data idempotency_child: Node = claim_atom_node(s: ^idempotency_child_symbol)
 
 data idempotency_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: idempotency_root_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^idempotency_root_symbol } },
   children: [
-    Edge { label: Named { name: idempotency_edge_symbol }, target: idempotency_child }
+    Edge { label: Named { name: ^idempotency_edge_symbol }, target: idempotency_child }
   ]
 }
 
@@ -78,9 +67,9 @@ data idempotency_dependency: DependencyView = DependencyView {
 
 fn idempotency_claim_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: idempotency_type_symbol,
-    algebra_symbol: idempotency_algebra_symbol,
-    descent_symbol: idempotency_descent_symbol,
+    type_symbol: ^idempotency_type_symbol,
+    algebra_symbol: ^idempotency_algebra_symbol,
+    descent_symbol: ^idempotency_descent_symbol,
   )
 }
 
@@ -125,14 +114,14 @@ data idempotency_write_effect_claim_passes: Bool = idempotency_write_effect_clai
 
 fn idempotency_claim_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: idempotency_claim_pass_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^idempotency_claim_pass_symbol } },
     children: []
   }
 }
 
 fn idempotency_claim_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: idempotency_claim_fail_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^idempotency_claim_fail_symbol } },
     children: []
   }
 }
@@ -182,7 +171,7 @@ data subject_idempotency_write_effect_receipt: TestClaimEvalSubject<Node> = eval
   claim: claim_idempotency_write_effect_run_test_claim_receipt,
   context: eval_mvp2_context(),
   tree: eval_mvp2_inferred_tree(),
-  evaluator_pin: eval_mvp2_evaluator_pin
+  evaluator_pin: ^eval_mvp2_evaluator_pin
 )
 
 data run_idempotency_write_effect_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(

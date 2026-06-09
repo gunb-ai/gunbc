@@ -35,12 +35,6 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-
-data algebra_receipts_file: Symbol = algebra_receipts_file
-data algebra_receipts_reason: Symbol = algebra_receipts_reason
-data algebra_receipts_x_symbol: Symbol = algebra_receipts_x_symbol
-data algebra_receipts_y_symbol: Symbol = algebra_receipts_y_symbol
-
 type ComplexityProjectionClaim {
   input_cost: SymbolicCost
   expected_complexity: ComplexityBound
@@ -55,12 +49,12 @@ type ComplexityDominanceClaim {
 }
 
 data algebra_receipts_x: Node = Node {
-  kind: TypeNode { connective: Atom { identity: algebra_receipts_x_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^algebra_receipts_x_symbol } },
   children: []
 }
 
 data algebra_receipts_y: Node = Node {
-  kind: TypeNode { connective: Atom { identity: algebra_receipts_y_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^algebra_receipts_y_symbol } },
   children: []
 }
 
@@ -73,8 +67,8 @@ data polynomial_degree_four_receipt: PolynomialDegree = PolynomialDegree {
 }
 
 data algebra_receipts_diagnostic: Diagnostic = Diagnostic {
-  reason: algebra_receipts_reason,
-  at: Textual { file: algebra_receipts_file, extent: WholeFile },
+  reason: ^algebra_receipts_reason,
+  at: Textual { file: ^algebra_receipts_file, extent: WholeFile },
   correction: Unavailable { reason: AmbiguousIntent }
 }
 
@@ -114,5 +108,5 @@ fn variable_sensitive_dominance_actual() -> Bool {
   complexity_bound_dominates(
     a: variable_sensitive_dominance_claim.lhs,
     b: variable_sensitive_dominance_claim.rhs
-  )
+  ) == variable_sensitive_dominance_claim.expected_dominates
 }

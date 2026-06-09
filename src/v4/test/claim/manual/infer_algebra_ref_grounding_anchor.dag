@@ -3,9 +3,7 @@
 // Status: compile-only anchor; execution deferred to T-22 runner bridge.
 // Anchor: TASKS.md T-4 Wave 2b — dissolves when constraint solver reads ModelCore.inhabitance.
 
-
 module v4.test.claim.manual.infer_algebra_ref_grounding_anchor
-
 
 import v4.compiler.infer {
   InferredFacts,
@@ -16,28 +14,17 @@ import v4.compiler.infer {
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.constraints {
   CanonicalGrounding,
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
+  CanonicalGroundingWitness
 }
 import v4.std.diagnostic { Outcome, Rejected }
 import v4.std.node { Atom, Conj, ComputationNode, Node, Symbol, TypeNode, Value }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
-
-
-data anchor_algebra_ungrounded_sym: Symbol = anchor_algebra_ungrounded_sym
-data anchor_algebra_grounded_sym: Symbol = anchor_algebra_grounded_sym
-data anchor_resolved_type_sym: Symbol = anchor_resolved_type_sym
-data anchor_descent_dim_sym: Symbol = anchor_descent_dim_sym
-
-
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: []
   }
 }
-
 
 fn anchor_conj_node() -> Node {
   Node {
@@ -46,7 +33,6 @@ fn anchor_conj_node() -> Node {
   }
 }
 
-
 fn anchor_computation_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Value },
@@ -54,41 +40,38 @@ fn anchor_computation_node() -> Node {
   }
 }
 
-
 // Unit receipts: algebra_ref_is_grounded returns false for bare Atom, true for Conj,
 // and false for ComputationNode (computation nodes are never valid algebra types).
-data algebra_ref_bare_atom_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: anchor_atom_node(s: anchor_algebra_ungrounded_sym))
+data algebra_ref_bare_atom_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym))
 
 data algebra_ref_conj_is_grounded: Bool = algebra_ref_is_grounded(algebra: anchor_conj_node())
 
 data algebra_ref_computation_node_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: anchor_computation_node())
 
-
 fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
   InferredFacts {
     grounding: CanonicalGrounding {
-      node: anchor_atom_node(s: anchor_resolved_type_sym),
+      node: anchor_atom_node(s: ^anchor_resolved_type_sym),
       witness: CanonicalGroundingWitness {
         structural: StructuralPropertyWitness {
-          property: constraint_property_being_canonical,
-          evidence: anchor_atom_node(s: anchor_algebra_ungrounded_sym)
+          property: ^constraint_property_being_canonical,
+          evidence: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym)
         },
         closedness: StructuralPropertyWitness {
-          property: constraint_property_candidate_set_closedness,
-          evidence: anchor_atom_node(s: anchor_resolved_type_sym)
+          property: ^constraint_property_candidate_set_closedness,
+          evidence: anchor_atom_node(s: ^anchor_resolved_type_sym)
         }
       }
     },
     descent: Holds {
       value: TerminationProof {
         non_increasing: [],
-        strict: RankingDimension { measured: anchor_descent_dim_sym }
+        strict: RankingDimension { measured: ^anchor_descent_dim_sym }
       }
     }
   }
 }
 
-
 // Behavior receipt: canonical_grounding_from_inferred_facts rejects when algebra is a bare Atom.
 // T-22 runner verifies this is Rejected { reason: infer_algebra_ref_ungrounded }.
-data anchor_canonical_grounding_rejects_bare_atom: Outcome<CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: anchor_atom_node(s: anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())
+data anchor_canonical_grounding_rejects_bare_atom: Outcome<CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: anchor_atom_node(s: ^anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())

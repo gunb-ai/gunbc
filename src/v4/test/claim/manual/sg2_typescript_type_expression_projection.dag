@@ -22,11 +22,6 @@ import v4.extdeps.languages.typescript {
   ts_sg2_instantiation_source_type_node,
   ts_sg2_sum_xy_emitted,
   ts_sg2_type_expr_target_model,
-  ts_token_comma,
-  ts_token_fat_arrow,
-  ts_token_gt,
-  ts_token_lt,
-  ts_token_pipe,
   ts_type_expression_projection
 }
 import v4.std.target_model {
@@ -51,9 +46,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data ts_sg2_pass_sym: Symbol = ts_sg2_pass_sym
-data ts_sg2_fail_sym: Symbol = ts_sg2_fail_sym
 data ts_sg2_fail_text: String = ""
 data ts_sg2_expected_instantiation_text: String = "FooBar<X, Y>"
 data ts_sg2_expected_arrow_text: String = "(X) => Y"
@@ -63,14 +55,14 @@ data ts_sg2_expected_disj_text: String = "X | Y"
 
 fn ts_sg2_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ts_sg2_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^ts_sg2_pass_sym } },
     children: []
   }
 }
 
 fn ts_sg2_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ts_sg2_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^ts_sg2_fail_sym } },
     children: []
   }
 }
@@ -251,9 +243,9 @@ fn ts_sg2_wire_decode_accepts(emitted: Node) -> Bool {
 
 fn ts_sg2_instantiation_delimiters_bidirectional() -> Bool {
   let row = ts_type_expression_projection()
-  row.instantiation_form.open == ts_token_lt &&
-    row.instantiation_form.separator == ts_token_comma &&
-    row.instantiation_form.close == ts_token_gt
+  row.instantiation_form.open == ^ts_token_lt &&
+    row.instantiation_form.separator == ^ts_token_comma &&
+    row.instantiation_form.close == ^ts_token_gt
 }
 
 data claim_ts_sg2_projection_structural: TestClaim = EqualsClaim {

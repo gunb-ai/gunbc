@@ -25,10 +25,6 @@ import v4.std.diagnostic {
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
-
-data ownership_reason_unresolved_projection: Symbol = ownership_reason_unresolved_projection
-data ownership_projection_virtual_file: Symbol = ownership_projection_virtual_file
-
 // 🟢 projection-only classification. `RequiresAccessWitness` is the
 // fail-closed slot for resource/effect edges that need access evidence.
 type OwnershipMode
@@ -93,8 +89,8 @@ fn ownership_fact_unresolved(fact: OwnershipFact) -> Bool {
 
 fn ownership_witness_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: ownership_reason_unresolved_projection,
-    at: Textual { file: ownership_projection_virtual_file, extent: WholeFile },
+    reason: ^ownership_reason_unresolved_projection,
+    at: Textual { file: ^ownership_projection_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

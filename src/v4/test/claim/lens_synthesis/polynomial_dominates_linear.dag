@@ -24,17 +24,13 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data synthesis_poly_x_symbol: Symbol = synthesis_poly_x_symbol
-data synthesis_poly_y_symbol: Symbol = synthesis_poly_y_symbol
-
 data synthesis_poly_x: Node = Node {
-  kind: TypeNode { connective: Atom { identity: synthesis_poly_x_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^synthesis_poly_x_symbol } },
   children: []
 }
 
 data synthesis_poly_y: Node = Node {
-  kind: TypeNode { connective: Atom { identity: synthesis_poly_y_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^synthesis_poly_y_symbol } },
   children: []
 }
 

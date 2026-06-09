@@ -19,11 +19,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data sibling_degenerate_symbol: Symbol = sibling_degenerate_symbol
-
 data sibling_degenerate_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: sibling_degenerate_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^sibling_degenerate_symbol } },
   children: []
 }
 
