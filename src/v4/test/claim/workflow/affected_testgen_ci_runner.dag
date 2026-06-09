@@ -25,7 +25,7 @@ import v4.std.artifact {
   source_tree_node_artifact_provenance,
   source_tree_to_node_graph
 }
-import v4.std.collection { Absent, List, Present }
+import v4.std.collection { List, optional_absent, optional_present }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
@@ -86,14 +86,14 @@ data affected_testgen_source_dependency_artifact: Artifact = Artifact {
 
 data affected_testgen_generated_claim_source_tree: SourceTreeNode = SourceTreeNode {
   kind: TypeNode { connective: Atom { identity: affected_testgen_generated_input_symbol } },
-  artifact: Present { value: affected_testgen_generated_claim_artifact },
+  artifact: optional_present(value: affected_testgen_generated_claim_artifact),
   children: []
 }
 
 
 data affected_testgen_source_dependency_tree: SourceTreeNode = SourceTreeNode {
   kind: TypeNode { connective: Atom { identity: affected_testgen_source_dependency_symbol } },
-  artifact: Present { value: affected_testgen_source_dependency_artifact },
+  artifact: optional_present(value: affected_testgen_source_dependency_artifact),
   children: [
     SourceTreeEdge {
       label: affected_testgen_source_dependency_edge_symbol,
@@ -105,7 +105,7 @@ data affected_testgen_source_dependency_tree: SourceTreeNode = SourceTreeNode {
 
 data affected_testgen_source_tree: SourceTreeNode = SourceTreeNode {
   kind: TypeNode { connective: Conj },
-  artifact: Absent,
+  artifact: optional_absent(),
   children: [
     SourceTreeEdge {
       label: affected_testgen_graph_edge_symbol,

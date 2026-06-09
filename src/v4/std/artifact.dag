@@ -5,7 +5,7 @@
 module v4.std.artifact
 
 import v4.std.diagnostic { Accepted, Locus, Outcome, Rejected }
-import v4.std.algebra { fold_list, list_append, list_snoc_item }
+import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item }
 import v4.std.collection { Absent, List, Optional, Present }
 import v4.std.node { Edge, Named, Node, NodeKind, Symbol }
 import v4.std.refinement { Refined, Validation, refine }
@@ -112,17 +112,21 @@ type SourceTreeNode {
   children: List<SourceTreeEdge>
 }
 
+fn source_tree_edge_target(edge: SourceTreeEdge) -> SourceTreeNode {
+  edge.target
+}
+
 fn source_tree_edge_to_node_edge(edge: SourceTreeEdge) -> Edge {
   Edge {
     label: Named { name: edge.label },
-    target: source_tree_to_node_graph(tree: edge.target)
+    target: source_tree_to_node_graph(tree: source_tree_edge_target(edge: edge))
   }
 }
 
 fn source_tree_edges_to_node_edges(edges: List<SourceTreeEdge>) -> List<Edge> {
   fold_list(
     xs: edges,
-    empty: [],
+    empty: Empty,
     cons: fn(acc, edge) {
       list_snoc_item(xs: acc, item: source_tree_edge_to_node_edge(edge: edge))
     }
@@ -152,11 +156,11 @@ fn source_tree_own_artifact_provenance(tree: SourceTreeNode) -> List<NodeArtifac
 fn source_tree_children_artifact_provenance(edges: List<SourceTreeEdge>) -> List<NodeArtifactProvenance> {
   fold_list(
     xs: edges,
-    empty: [],
+    empty: Empty,
     cons: fn(acc, edge) {
       list_append(
         left: acc,
-        right: source_tree_node_artifact_provenance(tree: edge.target)
+        right: source_tree_node_artifact_provenance(tree: source_tree_edge_target(edge: edge))
       )
     }
   )
