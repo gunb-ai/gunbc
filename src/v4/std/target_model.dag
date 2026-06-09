@@ -3656,7 +3656,7 @@ fn type_expr_projection_substrate_facts(
   }
 }
 
-// SG-2 fold checkpoint 3b — graft substrate facts into per-connective row slot shape.
+// SG-2 fold checkpoint 3b — graft row slot metadata onto substrate facts (facts.kind authority).
 fn type_expr_projection_encode_substrate_in_row_slot(
   projection: TargetTypeExpressionProjection,
   connective: Connective,
@@ -3675,7 +3675,7 @@ fn type_expr_projection_encode_substrate_in_row_slot(
     f: fn(slot_shape) {
       outcome_accepted(
         Node {
-          kind: slot_shape.kind,
+          kind: facts.kind,
           children: list_append(
             left: slot_shape.children,
             right: facts.children
