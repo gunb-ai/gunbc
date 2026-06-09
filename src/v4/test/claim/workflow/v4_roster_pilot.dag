@@ -93,7 +93,6 @@ data witness_lens_parallelism_family_gate_closed: Symbol = witness_lens_parallel
 data witness_model_core_bool_fact_lookup_discriminates: Symbol = witness_model_core_bool_fact_lookup_discriminates
 data witness_sg2_arrow_holds: Symbol = witness_sg2_arrow_holds
 data witness_sg2_projection_falsification_holds: Symbol = witness_sg2_projection_falsification_holds
-data parallel_executor_claims_hold: Symbol = parallel_executor_claims_hold
 
 
 fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
@@ -175,8 +174,7 @@ fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
   let m70 = map_insert(m69, cross_target_rust_i32_python_int_widens, "witness_cross_target_rust_i32_to_python_int_accepts")
   let m71 = map_insert(m70, cross_target_python_int_rust_i32_narrows, "witness_cross_target_python_to_rust_i32_would_lose_information")
   let m72 = map_insert(m71, cross_target_python_int_rust_i32_exact_rejects, "witness_cross_target_python_to_rust_i32_rejects")
-  let m73 = map_insert(m72, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
-  map_insert(m73, parallel_executor_claims_hold, "parallel_executor_claims_hold")
+  map_insert(m72, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
 }
 
 
@@ -803,13 +801,6 @@ data v4_roster_pilot_row_scheduler_runnable_frontier: V4RosterPilotClaimRunRow =
   function_symbol: scheduler_runnable_frontier_claims_hold
 }
 
-data v4_roster_pilot_row_parallel_executor: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
-  label: "parallel executor batches independent runnable jobs",
-  entry: "src/v4/test/claim/manual/parallel_executor.dag",
-  function: "parallel_executor_claims_hold",
-  function_symbol: parallel_executor_claims_hold
-}
-
 
 data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_edit_locus_narrow,
@@ -870,7 +861,6 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_derivable_coercion_surfaces_distinct,
   v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap,
   v4_roster_pilot_row_scheduler_runnable_frontier,
-  v4_roster_pilot_row_parallel_executor,
   v4_roster_pilot_row_project_to_core_accepts_sibling,
   v4_roster_pilot_row_project_to_core_rejects_wrong_core,
   v4_roster_pilot_row_project_to_core_rejects_empty_core,
@@ -906,7 +896,7 @@ fn v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds() -> Bool {
 
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "79"
+data v4_roster_pilot_claim_run_row_count: String = "78"
 
 
 fn v4_roster_pilot_row_matches(
@@ -988,7 +978,6 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_surfaces_distinct)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_scheduler_runnable_frontier)
-    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_parallel_executor)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_accepts_sibling)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_wrong_core)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_empty_core)
@@ -1013,8 +1002,8 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 79)
-    && (v4_roster_pilot_claim_run_row_count == "79")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 78)
+    && (v4_roster_pilot_claim_run_row_count == "78")
     && v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds()
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
@@ -1306,11 +1295,6 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_scheduler_runnable_frontier,
       entry: "src/v4/test/claim/manual/scheduler_runnable_frontier.dag",
       function: "scheduler_runnable_frontier_claims_hold"
-    )
-    && v4_roster_pilot_row_matches(
-      row: v4_roster_pilot_row_parallel_executor,
-      entry: "src/v4/test/claim/manual/parallel_executor.dag",
-      function: "parallel_executor_claims_hold"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_project_to_core_accepts_sibling,
