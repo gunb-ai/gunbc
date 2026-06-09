@@ -82,6 +82,9 @@ data depth_three_expected_root: Node = Node {
               ]
             }
           }
+        ],
+        span: Unanchored
+} }
         ]
       }
     }

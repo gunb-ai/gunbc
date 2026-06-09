@@ -147,15 +147,17 @@ fn sg_rc_outcome_node_source_type() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_outcome } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       },
       Edge {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_node } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
     ],
     span: Unanchored

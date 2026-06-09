@@ -37,8 +37,9 @@ fn spine_resolve_service_parse_tree() -> Node {
         label: Named { name: ^spine_resolve_service_decl },
         target: Node {
           kind: TypeNode { connective: Conj },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
     ],
     span: Unanchored

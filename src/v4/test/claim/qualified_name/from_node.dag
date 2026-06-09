@@ -108,8 +108,12 @@ data qn_single_malformed_head_node: Node = Node {
 data qn_tail_to_atom_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: fold_list_node_head }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_a } }, children: [] } },
-    Edge { label: Named { name: fold_list_node_tail }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_b } }, children: [] } }
+    Edge { label: Named { name: fold_list_node_head }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_a } }, children: [],
+span: Unanchored
+} },
+    Edge { label: Named { name: fold_list_node_tail }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_b } }, children: [],
+span: Unanchored
+} }
   ],
   span: Unanchored
 }
@@ -119,7 +123,9 @@ data qn_single_reversed_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge { label: Named { name: fold_list_node_tail }, target: qn_empty_conj_node },
-    Edge { label: Named { name: fold_list_node_head }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_a } }, children: [] } }
+    Edge { label: Named { name: fold_list_node_head }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_a } }, children: [],
+span: Unanchored
+} }
   ],
   span: Unanchored
 }
@@ -138,8 +144,12 @@ data qn_head_to_conj_node: Node = Node {
 data qn_double_head_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: fold_list_node_head }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_a } }, children: [] } },
-    Edge { label: Named { name: fold_list_node_head }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_b } }, children: [] } }
+    Edge { label: Named { name: fold_list_node_head }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_a } }, children: [],
+span: Unanchored
+} },
+    Edge { label: Named { name: fold_list_node_head }, target: Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_b } }, children: [],
+span: Unanchored
+} }
   ],
   span: Unanchored
 }

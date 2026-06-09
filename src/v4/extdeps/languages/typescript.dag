@@ -1493,8 +1493,9 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_foobar } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       },
       Edge {
         label: Positional,
@@ -1514,6 +1515,11 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
                 kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_y } },
                 children: []
               }
+            }
+          ],
+          span: Unanchored
+}ed
+}
             }
           ]
         }

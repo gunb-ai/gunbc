@@ -63,8 +63,9 @@ data substitute_expected_root: Node = Node {
             label: Named { name: ^substitute_step_b },
             target: substitute_replacement_leaf
           }
-        ]
-      }
+        ],
+        span: Unanchored
+}
     }
   ],
   span: Unanchored

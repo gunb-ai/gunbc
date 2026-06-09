@@ -398,8 +398,9 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
         label: Named { name: ^bootstrap_projection_hash_pin_slot_edge },
         target: Node {
           kind: TypeNode { connective: Atom { identity: pin } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       },
       Edge {
         label: Named { name: ^bootstrap_projection_hash_digest_slot_edge },

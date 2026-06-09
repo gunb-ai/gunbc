@@ -416,8 +416,9 @@ fn formal_production_to_node(production: FormalProduction) -> Node {
           kind: TypeNode {
             connective: Conj
           },
-          children: formal_rhs_to_edges(symbols: production.rhs)
-        }
+          children: formal_rhs_to_edges(symbols: production.rhs),
+          span: Unanchored
+}
       )
     ],
     span: Unanchored

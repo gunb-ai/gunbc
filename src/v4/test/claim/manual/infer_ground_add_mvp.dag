@@ -371,8 +371,9 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
               label: Positional,
               target: fixture_int_type_node(atom: ^fixture_add_body_int_atom)
             }
-          ]
-        }
+          ],
+          span: Unanchored
+}
       }
     ],
     span: Unanchored

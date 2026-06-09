@@ -1373,8 +1373,9 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
               name: target_type_expr_field_close,
               target: rust_inhabitant_atom(id: form.apply.close)
             )
-          ]
-        }
+          ],
+          span: Unanchored
+}
       )
     ],
     span: Unanchored
@@ -3458,8 +3459,9 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
         name: target_model_edge_translation_rules,
         target: Node {
           kind: TypeNode { connective: Conj },
-          children: Empty
-        }
+          children: Empty,
+          span: Unanchored
+}
       ),
       rust_named_edge(
         name: target_model_edge_selection_policy,
@@ -3553,8 +3555,9 @@ fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
         name: target_model_edge_translation_rules,
         target: Node {
           kind: TypeNode { connective: Conj },
-          children: Empty
-        }
+          children: Empty,
+          span: Unanchored
+}
       ),
       rust_named_edge(
         name: target_model_edge_selection_policy,
@@ -3652,22 +3655,25 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_foobar } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       },
       Edge {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_x } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       },
       Edge {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_y } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
     ],
     span: Unanchored
@@ -3682,8 +3688,9 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_rc } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       },
       Edge {
         label: Positional,

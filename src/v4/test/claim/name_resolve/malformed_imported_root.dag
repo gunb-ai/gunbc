@@ -74,8 +74,9 @@ fn malformed_root_node() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
     ],
     span: Unanchored

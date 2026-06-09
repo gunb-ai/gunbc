@@ -993,8 +993,9 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
                       label: Named { name: ^witness_validity_locus_textual_extent },
                       target: en
                     }
-                  ]
-                }
+                  ],
+                  span: Unanchored
+}
               }
             ],
             span: Unanchored
@@ -1155,8 +1156,9 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
                       label: Named { name: ^witness_validity_outcome_accepted_diagnostics },
                       target: dsn
                     }
-                  ]
-                }
+                  ],
+                  span: Unanchored
+}
               }
             ],
             span: Unanchored

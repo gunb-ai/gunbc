@@ -56,8 +56,9 @@ fn service_atom_conj_tree() -> Node {
           kind: TypeNode {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
     ],
     span: Unanchored
@@ -89,8 +90,9 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
             kind: TypeNode {
               connective: Atom { identity: ^dag_c3_surface_sugar_service }
             },
-            children: []
-          }
+            children: [],
+            span: Unanchored
+}
         },
         Edge {
           label: Named { name: ^anchor_decl_second },
@@ -98,8 +100,9 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
             kind: TypeNode {
               connective: Atom { identity: ^dag_c3_surface_sugar_type }
             },
-            children: []
-          }
+            children: [],
+            span: Unanchored
+}
         }
       ],
       span: Unanchored
@@ -144,6 +147,11 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
                   },
                   children: []
                 }
+              }
+            ],
+            span: Unanchored
+}span: Unanchored
+}
               }
             ]
           }
@@ -202,8 +210,9 @@ fn resolve_imported_module_root() -> Node {
           kind: TypeNode {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
     ],
     span: Unanchored

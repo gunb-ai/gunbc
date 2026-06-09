@@ -142,15 +142,17 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             label: Named { name: concrete_syntax_token_field_kind },
             target: Node {
               kind: TypeNode { connective: Atom { identity: concrete_syntax_token_kind_fixed } },
-              children: []
-            }
+              children: [],
+              span: Unanchored
+}
           },
           Edge {
             label: Named { name: concrete_syntax_token_field_class },
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
-              children: []
-            }
+              children: [],
+              span: Unanchored
+}
           }
         ],
         span: Unanchored
@@ -163,22 +165,25 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             label: Named { name: concrete_syntax_token_field_kind },
             target: Node {
               kind: TypeNode { connective: Atom { identity: concrete_syntax_token_kind_bound } },
-              children: []
-            }
+              children: [],
+              span: Unanchored
+}
           },
           Edge {
             label: Named { name: concrete_syntax_token_field_class },
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
-              children: []
-            }
+              children: [],
+              span: Unanchored
+}
           },
           Edge {
             label: Named { name: concrete_syntax_token_field_binding },
             target: Node {
               kind: TypeNode { connective: Atom { identity: b } },
-              children: []
-            }
+              children: [],
+              span: Unanchored
+}
           }
         ],
         span: Unanchored
@@ -472,8 +477,9 @@ fn target_value_expression_symbol_identity(identity: Symbol) -> TargetValueExpre
           name: ^target_value_expression_field_identity,
           target: Node {
             kind: TypeNode { connective: Atom { identity: identity } },
-            children: []
-          }
+            children: [],
+            span: Unanchored
+}
         )
       ],
       span: Unanchored
@@ -493,8 +499,9 @@ fn target_value_expression_symbol_to_owned_string(identity: Symbol) -> TargetVal
           name: ^target_value_expression_field_identity,
           target: Node {
             kind: TypeNode { connective: Atom { identity: identity } },
-            children: []
-          }
+            children: [],
+            span: Unanchored
+}
         )
       ],
       span: Unanchored
@@ -532,8 +539,9 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
           name: ^target_value_expression_field_codepoint,
           target: Node {
             kind: TypeNode { connective: Atom { identity: codepoint } },
-            children: []
-          }
+            children: [],
+            span: Unanchored
+}
         )
       ],
       span: Unanchored
@@ -852,8 +860,9 @@ fn target_atom_realization_to_node(row: TargetAtomRealization, host_bundle: Node
         name: ^target_atom_realization_field_display_name,
         target: Node {
           kind: TypeNode { connective: Atom { identity: row.display_name } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       )
     ],
     span: Unanchored
@@ -3123,8 +3132,9 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
               identity: discriminant(v: row.source_projection)
             }
           },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       ),
       target_model_named_edge(
         name: ^target_use_site_ownership_field_use_site,
@@ -3132,8 +3142,9 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
           kind: TypeNode {
             connective: Atom { identity: discriminant(v: row.use_site) }
           },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       ),
       target_model_named_edge(
         name: ^target_use_site_ownership_field_reference_layer,
@@ -3141,8 +3152,9 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
           kind: TypeNode {
             connective: Atom { identity: discriminant(v: row.reference_layer) }
           },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       )
     ],
     span: Unanchored
@@ -3301,29 +3313,33 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
         name: ^target_reference_layer_tokens_field_rc_head,
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.rc_type_head } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       ),
       target_model_named_edge(
         name: ^target_reference_layer_tokens_field_box_head,
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.box_type_head } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       ),
       target_model_named_edge(
         name: ^target_reference_layer_tokens_field_rc_new,
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.rc_new_ctor } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       ),
       target_model_named_edge(
         name: ^target_reference_layer_tokens_field_box_new,
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.box_new_ctor } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       )
     ],
     span: Unanchored
