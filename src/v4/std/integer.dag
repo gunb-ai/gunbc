@@ -172,7 +172,10 @@ fn decimal_nonzero_magnitude_compare(left: DecimalNonZeroMagnitude, right: Decim
   } else if left_len > right_len {
     Greater
   } else {
-    match decimal_digit_compare(left: left.lead, right: right.lead) {
+    match decimal_digit_compare(
+      left: integer_nonzero_decimal_digit_widen(digit: left.lead),
+      right: integer_nonzero_decimal_digit_widen(digit: right.lead)
+    ) {
       Equal => decimal_digit_list_compare(left: left.tail, right: right.tail)
       Less => Less
       Greater => Greater
