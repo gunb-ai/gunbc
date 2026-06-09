@@ -57,10 +57,23 @@ fn integer_value_set_kind_is(value_set: Node, kind: Symbol) -> Bool {
   }
 }
 
+fn integer_value_set_interval_payload_is_valid(value_set: Node) -> Bool {
+  match find_named_child(root: value_set, name: integer_value_set_field_interval) {
+    Accepted { value: interval, diagnostics: None } =>
+      integer_interval_spec_node_contains(container: interval, contained: interval)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn integer_value_set_is_valid_interval(value_set: Node) -> Bool {
+  integer_value_set_kind_is(value_set: value_set, kind: integer_value_set_kind_interval)
+    && integer_value_set_interval_payload_is_valid(value_set: value_set)
+}
+
 fn integer_value_set_contains(container: Node, contained: Node) -> Bool {
   if integer_value_set_kind_is(value_set: container, kind: integer_value_set_kind_unbounded) {
     integer_value_set_kind_is(value_set: contained, kind: integer_value_set_kind_unbounded)
-      || integer_value_set_kind_is(value_set: contained, kind: integer_value_set_kind_interval)
+      || integer_value_set_is_valid_interval(value_set: contained)
   } else if integer_value_set_kind_is(value_set: container, kind: integer_value_set_kind_interval) {
     match find_named_child(root: container, name: integer_value_set_field_interval) {
       Accepted { value: container_interval, diagnostics: None } =>

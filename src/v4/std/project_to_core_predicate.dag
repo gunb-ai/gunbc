@@ -36,7 +36,7 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
       } else if project_to_core_axis_is_core(name: edge_name) {
         Node {
           kind: acc.kind,
-          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: edge.target })
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
         }
       } else {
         acc
