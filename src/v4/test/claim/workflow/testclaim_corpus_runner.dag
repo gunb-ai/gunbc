@@ -13,7 +13,8 @@ import v4.compiler.eval {
   test_claim_run_claim,
   test_claim_run_verdict
 }
-import v4.std.collection { List }
+import v4.std.algebra { length }
+import v4.std.collection { Absent, List, Optional }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
 import v4.std.node { Node, Symbol }
@@ -24,14 +25,49 @@ import v4.std.verdict {
   verdict_tally_empty,
   verdict_tally_total
 }
-import v4.std.verification { test_claim_label }
+import v4.std.verification {
+  BoolWitness,
+  EvalOnly,
+  NodeCorpus,
+  UnifiedTestClaim,
+  bool_witness_descriptor,
+  test_claim_label,
+  unified_test_claim_modality,
+  UnifiedBoolWitnessModality,
+  UnifiedNodeCorpusModality
+}
 import v4.test.claim.manual.manual_corpus_roster {
   manual_corpus_node_subject_rows
 }
+import v4.test.claim.workflow.v4_roster_pilot {
+  V4RosterPilotClaimRunRow,
+  bool_witness_from_roster_row,
+  v4_roster_pilot_claim_run_rows,
+  v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds
+}
+
+
+// Consolidation #4553 Phase 2: execution receipts are unified here at the workflow layer.
+// `UnifiedTestClaim` remains a descriptor-only registration row in `std.verification`.
+type BoolWitnessExecutionStatus
+  = BoolWitnessRuntimeVerdict
+  | BoolWitnessQueuedForHostTransport
+
+
+type BoolWitnessRun {
+  witness: BoolWitness
+  result: Optional<Bool>
+  execution_status: BoolWitnessExecutionStatus
+}
+
+
+type UnifiedClaimRun
+  = NodeCorpusRun { run: TestClaimRun<Node, RuntimeValue> }
+  | BoolWitnessRunReceipt { run: BoolWitnessRun }
 
 
 type CorpusEvalEntry {
-  run: TestClaimRun<Node, RuntimeValue>
+  run: UnifiedClaimRun
 }
 
 
@@ -73,7 +109,12 @@ fn corpus_entry_label(e: CorpusEvalEntry) -> String {
 
 fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
-    verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
+    match e.run {
+      NodeCorpusRun { run: node_run } =>
+        verdict_tally_add(t: acc, v: test_claim_run_verdict(run: node_run))
+      BoolWitnessRunReceipt { run: _ } =>
+        acc
+    }
   })
 }
 
@@ -101,7 +142,7 @@ fn corpus_report_total(r: CorpusEvalReport) -> Nat {
 fn corpus_entry_from_node_runtime_value_run(
   run: TestClaimRun<Node, RuntimeValue>
 ) -> CorpusEvalEntry {
-  CorpusEvalEntry { run: run }
+  CorpusEvalEntry { run: NodeCorpusRun { run: run } }
 }
 
 
@@ -116,6 +157,89 @@ fn run_node_runtime_value_subjects(
   subjects: List<TestClaimEvalSubject<Node>>
 ) -> List<TestClaimRun<Node, RuntimeValue>> {
   map(subjects, fn(subject) { run_test_claim(subject: subject) })
+}
+
+
+fn node_corpus_claim_from_subject(subject: TestClaimEvalSubject<Node>) -> UnifiedTestClaim {
+  NodeCorpus {
+    claim: subject.claim,
+    transport: EvalOnly
+  }
+}
+
+
+fn manual_node_corpus_unified_claims() -> List<UnifiedTestClaim> {
+  map(manual_corpus_node_subject_rows, fn(subject) { node_corpus_claim_from_subject(subject: subject) })
+}
+
+
+fn bool_witness_unified_claim_from_roster_row(row: V4RosterPilotClaimRunRow) -> UnifiedTestClaim {
+  bool_witness_descriptor(w: bool_witness_from_roster_row(row: row))
+}
+
+
+fn v4_roster_pilot_bool_witness_unified_claims() -> List<UnifiedTestClaim> {
+  map(v4_roster_pilot_claim_run_rows, fn(row) { bool_witness_unified_claim_from_roster_row(row: row) })
+}
+
+
+fn queued_bool_witness_run(witness: BoolWitness) -> BoolWitnessRun {
+  BoolWitnessRun {
+    witness: witness,
+    result: Absent,
+    execution_status: BoolWitnessQueuedForHostTransport
+  }
+}
+
+
+fn corpus_entry_from_queued_bool_witness(witness: BoolWitness) -> CorpusEvalEntry {
+  CorpusEvalEntry {
+    run: BoolWitnessRunReceipt { run: queued_bool_witness_run(witness: witness) }
+  }
+}
+
+
+fn v4_roster_pilot_queued_bool_witness_entries() -> List<CorpusEvalEntry> {
+  map(
+    v4_roster_pilot_claim_run_rows,
+    fn(row) { corpus_entry_from_queued_bool_witness(witness: bool_witness_from_roster_row(row: row)) }
+  )
+}
+
+
+fn unified_claim_is_node_corpus(c: UnifiedTestClaim) -> Bool {
+  match unified_test_claim_modality(c: c) {
+    UnifiedNodeCorpusModality => true
+    UnifiedBoolWitnessModality => false
+  }
+}
+
+
+fn unified_claim_is_bool_witness(c: UnifiedTestClaim) -> Bool {
+  match unified_test_claim_modality(c: c) {
+    UnifiedBoolWitnessModality => true
+    UnifiedNodeCorpusModality => false
+  }
+}
+
+
+fn manual_node_corpus_unified_claim_projection_holds() -> Bool {
+  fold(
+    manual_node_corpus_unified_claims(),
+    init: true,
+    f: fn(acc, c) { acc && unified_claim_is_node_corpus(c: c) }
+  )
+}
+
+
+fn v4_roster_pilot_bool_witness_unified_claim_projection_holds() -> Bool {
+  v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds()
+    && (length(xs: v4_roster_pilot_bool_witness_unified_claims()) == length(xs: v4_roster_pilot_claim_run_rows))
+    && fold(
+      v4_roster_pilot_bool_witness_unified_claims(),
+      init: true,
+      f: fn(acc, c) { acc && unified_claim_is_bool_witness(c: c) }
+    )
 }
 
 
@@ -150,3 +274,5 @@ fn manual_testclaim_subject_roster_family_receipt_holds() -> Bool {
 
 
 data witness_manual_testclaim_subject_roster_family_receipt: Bool = manual_testclaim_subject_roster_family_receipt_holds()
+data witness_manual_node_corpus_unified_claim_projection: Bool = manual_node_corpus_unified_claim_projection_holds()
+data witness_v4_roster_pilot_bool_witness_unified_claim_projection: Bool = v4_roster_pilot_bool_witness_unified_claim_projection_holds()
