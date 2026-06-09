@@ -6,9 +6,9 @@
 module v4.test.claim.workflow.unified_test_claim_substrate_equivalence
 
 
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.verification {
-  BoolWitness,
   EvalOnly,
   NodeCorpus,
   UnifiedBoolWitnessModality,
@@ -16,8 +16,7 @@ import v4.std.verification {
   UnifiedTestClaim,
   bool_witness_descriptor,
   bool_witness_matches_entry_function,
-  unified_test_claim_bool_witness_entry,
-  unified_test_claim_bool_witness_function,
+  unified_test_claim_bool_witness,
   unified_test_claim_modality
 }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
@@ -47,7 +46,7 @@ fn substrate_equivalence_roster_projection_preserves_entry_function() -> Bool {
   bool_witness_matches_entry_function(
     w: w,
     entry: v4_roster_pilot_row_edit_locus_narrow.entry,
-    function: v4_roster_pilot_row_edit_locus_narrow.function
+    function: v4_roster_pilot_row_edit_locus_narrow.function_symbol
   )
 }
 
@@ -69,15 +68,16 @@ fn substrate_equivalence_node_corpus_modality_discriminates() -> Bool {
 
 
 fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
-  let c = substrate_equivalence_sample_bool_unified_claim()
-  bool_witness_matches_entry_function(
-    w: BoolWitness {
-      entry: unified_test_claim_bool_witness_entry(c: c),
-      function: unified_test_claim_bool_witness_function(c: c)
-    },
-    entry: v4_roster_pilot_row_edit_locus_narrow.entry,
-    function: v4_roster_pilot_row_edit_locus_narrow.function
-  )
+  let w = bool_witness_from_roster_row(row: v4_roster_pilot_row_edit_locus_narrow)
+  match unified_test_claim_bool_witness(c: bool_witness_descriptor(w: w)) {
+    Accepted { value: extracted, diagnostics: None } =>
+      bool_witness_matches_entry_function(
+        w: extracted,
+        entry: w.entry,
+        function: w.function
+      )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 

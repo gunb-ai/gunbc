@@ -32,11 +32,21 @@ import v4.std.diagnostic {
 
 data v4_std_verification_file: Symbol = v4_std_verification_file
 data test_claim_expected_outcome_undeclared: Symbol = test_claim_expected_outcome_undeclared
+data unified_test_claim_bool_witness_absent: Symbol = unified_test_claim_bool_witness_absent
 
 
 fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: test_claim_expected_outcome_undeclared,
+    at: Textual { file: v4_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn unified_test_claim_bool_witness_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: unified_test_claim_bool_witness_absent,
     at: Textual { file: v4_std_verification_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -470,21 +480,28 @@ fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
 
 // Consolidation #4553 Phase 1 — Bool-witness registration descriptor (ctrl#1490 / test-claim-consolidation-design §3).
 // P2: descriptor fields only — execution output lives on run-receipt types in Phase 2 eval module.
-// `function` carries the nullary `fn() -> Bool` witness name (roster `{entry, function}` projection).
+// RULING-1: pretty-much-done — nullary fn () -> Bool witness identity at registration boundary.
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1 terminal registration descriptor.
 type BoolWitness {
   entry: String
-  function: String
+  function: Symbol
 }
 
 
 // Node-corpus transport mode on `UnifiedTestClaim.NodeCorpus` — not a separate runner.
+// RULING-1: pretty-much-done — closed NodeCorpus transport modes (design §3.4).
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1.
 type TestClaimTransportMode
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1
   = EvalOnly
   | EmitVsEval { target: TargetModel }
 
 
 // Structural modality tag for unified dispatch — keys off the coproduct arm, not string heuristics.
+// RULING-1: pretty-much-done — closed modality tag for unified dispatch (design §3.1).
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1.
 type UnifiedTestClaimModality
+// 🟢 coproduct dissolution — consolidation #4553 Phase 1
   = UnifiedNodeCorpusModality
   | UnifiedBoolWitnessModality
 
@@ -492,14 +509,17 @@ type UnifiedTestClaimModality
 // Unified registration coproduct (both modalities, one authority).
 // `NodeCorpus` carries `claim` + `transport` at std layer; `TestClaimEvalSubject` binds at the
 // eval boundary in Phase 2 runner migration (std cannot import `v4.compiler.eval`).
+// RULING-1: needs-more-work — NodeCorpus lacks TestClaimEvalSubject until Phase 2 runner migration.
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 binds subject at eval boundary; dissolve-on: NodeCorpus.subject lands when unified runner migrates.
 type UnifiedTestClaim
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 runner migration
   = NodeCorpus {
       claim: TestClaim
       transport: TestClaimTransportMode
     }
   | BoolWitness {
       entry: String
-      function: String
+      function: Symbol
     }
 
 
@@ -516,18 +536,15 @@ fn bool_witness_descriptor(w: BoolWitness) -> UnifiedTestClaim {
 }
 
 
-fn unified_test_claim_bool_witness_entry(c: UnifiedTestClaim) -> String {
+// Arm-specific projection — Rejected on NodeCorpus (no fabricated empty String/Symbol).
+fn unified_test_claim_bool_witness(c: UnifiedTestClaim) -> Outcome<BoolWitness> {
   match c {
-    BoolWitness { entry: e, function: _ } => e
-    NodeCorpus { claim: _, transport: _ } => ""
-  }
-}
-
-
-fn unified_test_claim_bool_witness_function(c: UnifiedTestClaim) -> String {
-  match c {
-    BoolWitness { entry: _, function: f } => f
-    NodeCorpus { claim: _, transport: _ } => ""
+    BoolWitness { entry: e, function: f } =>
+      Accepted { value: BoolWitness { entry: e, function: f }, diagnostics: None }
+    NodeCorpus { claim: _, transport: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: unified_test_claim_bool_witness_absent_diagnostic())
+      }
   }
 }
 
@@ -535,7 +552,7 @@ fn unified_test_claim_bool_witness_function(c: UnifiedTestClaim) -> String {
 fn bool_witness_matches_entry_function(
   w: BoolWitness,
   entry: String,
-  function: String
+  function: Symbol
 ) -> Bool {
   w.entry == entry && w.function == function
 }
