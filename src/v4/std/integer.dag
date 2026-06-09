@@ -403,6 +403,7 @@ fn integer_interval_bound_less_or_equal(left: IntegerIntervalBound, right: Integ
   }
 }
 
+// 🟡 predicate dissolution — feature:integer-interval-family-gates — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: these Bool helpers are interim role classifiers for the closed IntegerIntervalBound / IntegerIntervalSpec family and should collapse into the shared typed containment path.
 fn integer_interval_bound_is_pointer_width(bound: IntegerIntervalBound) -> Bool {
   match bound {
     IntegerPointerWidthBound { signedness: _, endpoint: _ } => true
