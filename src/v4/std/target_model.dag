@@ -3591,13 +3591,23 @@ fn type_expr_projection_row_shape_envelope(
   }
 }
 
-fn type_expr_projection_append_child_slot_edges(
+// SG-2 fold — substrate child slots as named coordinate (substrate TypeNode authority; not flat Conj mix).
+fn type_expr_projection_graft_child_slots_coordinate(
   envelope: Node,
-  child_edges: List<Edge>
+  facts: Node
 ) -> Node {
   Node {
     kind: envelope.kind,
-    children: list_append(left: envelope.children, right: child_edges)
+    children: list_append(
+      left: envelope.children,
+      right: Cons {
+        head: target_model_named_edge(
+          name: target_type_expr_field_child_slots,
+          target: facts
+        ),
+        tail: Empty
+      }
+    )
   }
 }
 
@@ -3777,9 +3787,9 @@ fn type_expr_projection_graft_substrate_in_row_slot(
     ),
     f: fn(envelope) {
       outcome_accepted(
-        type_expr_projection_append_child_slot_edges(
+        type_expr_projection_graft_child_slots_coordinate(
           envelope: envelope,
-          child_edges: facts.children
+          facts: facts
         )
       )
     }
