@@ -3727,6 +3727,18 @@ fn type_expr_projection_row_witness_gate(
   )
 }
 
+// SG-2 fold — connective → step_algebra row slot field (uniform key for graft + bundle decode).
+fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symbol {
+  match connective {
+    Atom { identity: _ } => target_type_expr_field_atom
+    Conj => target_type_expr_field_conj
+    Disj => target_type_expr_field_disj
+    Arrow => target_type_expr_field_arrow
+    Cardinality => target_type_expr_field_cardinality
+    Instantiation => target_type_expr_field_instantiation
+  }
+}
+
 // SG-2 fold — connective shape node from TargetModel bundle (P2 authority; not caller projection).
 fn type_expr_projection_bundle_shape_for_connective(
   bundle: Node,
@@ -3734,14 +3746,7 @@ fn type_expr_projection_bundle_shape_for_connective(
 ) -> Outcome<Node> {
   find_named_child(
     root: bundle,
-    name: match connective {
-      Atom { identity: _ } => target_type_expr_field_atom
-      Conj => target_type_expr_field_conj
-      Disj => target_type_expr_field_disj
-      Arrow => target_type_expr_field_arrow
-      Cardinality => target_type_expr_field_cardinality
-      Instantiation => target_type_expr_field_instantiation
-    }
+    name: type_expr_projection_row_field_for_connective(connective: connective)
   )
 }
 
