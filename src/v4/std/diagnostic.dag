@@ -8,7 +8,7 @@ module v4.std.diagnostic
 
 
 import v4.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item }
-import v4.std.node { Node }
+import v4.std.node { Anchored, Node, Unanchored }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
   = WholeFile
@@ -61,6 +61,17 @@ fn diagnostics_singleton(d: Diagnostic) -> NonEmptyDiagnostics {
 }
 fn node_locus(node: Node) -> Locus {
   NodeLocus { anchor: LocusAnchor { at: node } }
+}
+
+fn textual_locus_from_node_span(node: Node) -> Locus {
+  match node.span {
+    Unanchored => node_locus(node: node)
+    Anchored { span: s } =>
+      Textual {
+        file: s.file,
+        extent: ByteRange { start: s.start, end: s.end }
+      }
+  }
 }
 fn port_locus(port: Symbol) -> Locus {
   PortLocus { anchor: LocusAnchor { at: port } }

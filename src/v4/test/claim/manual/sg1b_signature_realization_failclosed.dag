@@ -30,15 +30,17 @@ import v4.std.verification {
 fn sg1b_fc_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg1b_fc_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg1b_fc_claim_input(ok: Bool) -> Node {
@@ -52,8 +54,9 @@ fn sg1b_fc_claim_input(ok: Bool) -> Node {
 fn sg1b_fc_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_probe_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 // Boundary-site atom carrying a child — violates the declared nullary shape.
@@ -62,24 +65,27 @@ fn sg1b_fc_boundary_param_with_children() -> Node {
     kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
     children: [
       Edge { label: Positional, target: sg1b_fc_probe_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // Well-formed nullary boundary-site atom (happy-path sanity).
 fn sg1b_fc_boundary_param_nullary() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 // Catalog node that is not Conj — a present-but-malformed realizations catalog edge.
 fn sg1b_fc_non_conj_catalog() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_probe_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool {

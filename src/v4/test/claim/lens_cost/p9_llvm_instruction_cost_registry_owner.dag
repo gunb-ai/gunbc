@@ -26,7 +26,8 @@ import v4.std.node { Atom, Conj, Node, TypeNode }
 
 data p9_registry_owner_authority_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^symbol_llvm_instruction_cost } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 fn p9_owned_fn_name_eq(left: LensOwnedFnV0, right: LensOwnedFnV0) -> Bool {
@@ -59,8 +60,9 @@ fn p9_registry_owner_receipt_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

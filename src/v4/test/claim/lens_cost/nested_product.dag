@@ -30,21 +30,24 @@ import v4.std.witness { Holds }
 
 data nested_product_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data nested_product_inner: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: nested_product_body }
-  ]
+  ],
+  span: Unanchored
 }
 
 data nested_product_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: nested_product_inner }
-  ]
+  ],
+  span: Unanchored
 }
 
 fn nested_product_claim_holds() -> Bool {
@@ -64,8 +67,9 @@ fn nested_product_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

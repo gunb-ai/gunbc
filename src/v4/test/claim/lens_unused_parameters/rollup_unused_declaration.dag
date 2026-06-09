@@ -31,7 +31,8 @@ data rollup_function: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^rollup_function_symbol } },
   children: [
     Edge { label: Named { name: ^rollup_edge_symbol }, target: rollup_parameter }
-  ]
+  ],
+  span: Unanchored
 }
 
 // `Contains` edge positions `rollup_parameter` as a declaration candidate

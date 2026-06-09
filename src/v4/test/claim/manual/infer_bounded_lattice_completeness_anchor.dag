@@ -43,16 +43,18 @@ import v4.std.verification {
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
 fn anchor_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
@@ -67,8 +69,9 @@ fn anchor_complete_lattice_node() -> Node {
     children: [
       anchor_named_edge(name: lattice_field_meet, target: anchor_fn_node()),
       anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -77,8 +80,9 @@ fn anchor_lattice_missing_meet_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -88,7 +92,8 @@ data anchor_complete_bounded_lattice_instance: Node = Node {
     anchor_named_edge(name: bounded_lattice_field_lattice, target: anchor_complete_lattice_node()),
     anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
     anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -98,7 +103,8 @@ data anchor_partial_bounded_lattice_instance: Node = Node {
     anchor_named_edge(name: bounded_lattice_field_lattice, target: anchor_lattice_missing_meet_node()),
     anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
     anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -107,7 +113,8 @@ data anchor_partial_missing_lattice_field_instance: Node = Node {
   children: [
     anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
     anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -118,7 +125,8 @@ data anchor_consumer_of_partial: Node = Node {
       name: inhabitant_edge,
       target: anchor_partial_bounded_lattice_instance
     )
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -129,7 +137,8 @@ data anchor_module_with_partial_only: Node = Node {
       name: ^anchor_partial_decl_sym,
       target: anchor_partial_bounded_lattice_instance
     )
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -144,7 +153,8 @@ data anchor_module_with_partial_and_consumer: Node = Node {
       name: ^anchor_consumer_decl_sym,
       target: anchor_consumer_of_partial
     )
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -222,16 +232,18 @@ data anchor_infer_consumer_tree_rejects: Bool = anchor_infer_consumer_tree_is_re
 fn sg6_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg6_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
 fn sg6_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg6_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 

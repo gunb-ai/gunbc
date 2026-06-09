@@ -63,16 +63,18 @@ data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
 fn bool_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: bool_node_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
 fn bool_fact_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
@@ -106,8 +108,9 @@ fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> Node {
         name: bool_facts_field_encoding,
         target: bool_encoding_fact_node(encoding: facts.encoding)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 

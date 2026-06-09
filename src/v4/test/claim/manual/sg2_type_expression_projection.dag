@@ -75,15 +75,17 @@ data sg2_expected_conj_text: String = " { X: X, Y: Y }"
 fn sg2_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg2_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg2_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg2_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg2_claim_input(ok: Bool) -> Node {

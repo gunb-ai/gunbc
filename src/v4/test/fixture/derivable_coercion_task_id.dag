@@ -36,8 +36,9 @@ data derivable_coercion_closed_candidates: Symbol = derivable_coercion_closed_ca
 fn task_id_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn task_id_semantic_core_node() -> Node {
@@ -51,8 +52,9 @@ fn task_id_semantic_core_node() -> Node {
           carrier: task_id_carrier_symbol_identity
         )
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn task_id_encoding_core_node(representation: Symbol, carrier: Symbol) -> Node {
@@ -67,8 +69,9 @@ fn task_id_encoding_core_node(representation: Symbol, carrier: Symbol) -> Node {
         label: Named { name: task_id_encoding_core_field_carrier },
         target: task_id_inhabitant_atom(id: carrier)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
@@ -86,8 +89,9 @@ fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
         label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: task_id_inhabitant_atom(id: surface_nickname)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // API layer — domain `TaskId { identity: Symbol }`.
@@ -120,8 +124,9 @@ fn account_id_wrong_inhabitant_node() -> Node {
         label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: task_id_inhabitant_atom(id: account_id_nickname_surface)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn derivable_coercion_candidate_closedness(evidence: Node) -> StructuralPropertyWitness {

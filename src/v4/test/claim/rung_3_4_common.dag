@@ -37,7 +37,8 @@ import v4.test.claim.manual.eval_runtime_mvp {
 }
 data rung34_emit_host_target_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data rung34_emit_host_rust_target_model: TargetModel = TargetModel {
@@ -66,8 +67,9 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
         label: Named { name: ^rung34_roundtrip_module_axis },
         target: fixture_subject
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rung34_test_claim_subject(claim: TestClaim, evaluator_input: Node) -> TestClaimEvalSubject<Node> {

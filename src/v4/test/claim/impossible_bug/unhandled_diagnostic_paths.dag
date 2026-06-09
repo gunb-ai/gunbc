@@ -37,7 +37,9 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -47,8 +49,9 @@ fn safety_subject(op: Symbol, witness: Symbol) -> Node {
     children: [
       Edge { label: Named { name: ^operation_field }, target: atom_node(s: op) },
       Edge { label: Named { name: ^witness_field }, target: atom_node(s: witness) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 

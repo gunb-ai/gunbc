@@ -50,8 +50,9 @@ import v4.test.claim.manual.connective_anchors {
 fn lens_testgen_marker_node(marker: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: marker } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn language_behavior_generator_uses_conj_dag_input(g: Generator<TestgenConcept>) -> Bool {

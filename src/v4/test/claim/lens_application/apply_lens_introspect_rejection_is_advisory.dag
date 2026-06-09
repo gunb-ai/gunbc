@@ -109,8 +109,9 @@ fn apply_lens_introspect_rejection_is_advisory_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

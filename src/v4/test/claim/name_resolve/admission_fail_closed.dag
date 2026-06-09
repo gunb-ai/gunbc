@@ -40,10 +40,14 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn fc_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^fc_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^fc_pass_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn fc_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^fc_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^fc_fail_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn fc_claim_input(ok: Bool) -> Node {
   if ok { fc_pass_node() } else { fc_fail_node() }
@@ -53,7 +57,9 @@ fn fc_qn_node(seg: Symbol) -> Node {
   fold_list_node(
     xs: Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
-      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [] }
+      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+ span: Unanchored
+}
     }
   )
 }
@@ -79,8 +85,9 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
           children: []
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn fc_module_root(seg: Symbol) -> Node {
@@ -121,8 +128,9 @@ fn fc_malformed_subject_root() -> Node {
           children: []
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn fc_malformed_subject_roots() -> FreeMonoid<Node> {

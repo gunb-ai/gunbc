@@ -31,7 +31,9 @@ import v4.std.verification {
 import v4.std.diagnostic { Outcome }
 // 🟡 gated — feature:t19-nat-expression-node-encoding — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: replace these local expression-shape tags with a canonical Nat-expression Node encoder that reflects function application identity directly; forbidden: exporting per-operation/per-value mirror symbols from v4.std.nat.
 fn algebra_law_generated_atom(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -44,8 +46,9 @@ fn algebra_law_generated_nat_value(value: Nat) -> Node {
         children: [
           Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
           Edge { label: Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
-        ]
-      }
+        ],
+        span: Unanchored
+}
   }
 }
 
@@ -58,8 +61,9 @@ fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, resu
       Edge { label: Named { name: ^algebra_law_generated_left_field }, target: left },
       Edge { label: Named { name: ^algebra_law_generated_right_field }, target: right },
       Edge { label: Named { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 

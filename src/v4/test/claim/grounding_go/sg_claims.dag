@@ -53,8 +53,9 @@ import v4.test.claim.manual.eval_runtime_mvp {
 fn go_g2_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^go_g2_claim_fail_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn go_g2_executable_claim_input(ok: Bool) -> Node {

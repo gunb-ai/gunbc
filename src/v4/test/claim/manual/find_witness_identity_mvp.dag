@@ -58,14 +58,16 @@ import v4.std.witness { StructuralPropertyWitness }
 fn identity_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^identity_mvp_source_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 fn identity_other_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^identity_mvp_other_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 fn identity_closedness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {

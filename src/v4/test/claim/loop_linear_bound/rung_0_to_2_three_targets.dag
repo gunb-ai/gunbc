@@ -28,7 +28,8 @@ import v4.test.claim.computation_shapes.loop_linear_bound {
 }
 data phase4_loop_linear_bound_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase4_loop_linear_bound_rung_subject_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 

@@ -29,16 +29,18 @@ import v4.test.claim.lens_ownership.resource_dependency {
 fn ownership_claim_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_pass_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
 fn ownership_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_fail_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 

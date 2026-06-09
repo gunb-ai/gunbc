@@ -27,8 +27,9 @@ import v4.std.verification {
 fn lens_testgen_shadow_ci_marker_node(marker: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: marker } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {

@@ -616,8 +616,9 @@ type RustNever = Never
 fn rust_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn rust_int_kind_node(kind: RustIntKind) -> Node {
@@ -703,8 +704,9 @@ fn rust_overflow_disposition_node(disposition: OverflowDisposition<RustIntegerCa
         name: ^rust_overflow_field_checked_arithmetic_checks_disabled,
         target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_disabled)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_scalar_node(scalar: RustScalar) -> Node {
@@ -718,8 +720,9 @@ fn rust_scalar_node(scalar: RustScalar) -> Node {
         ),
         rust_named_edge(name: ^rust_scalar_field_kind, target: rust_int_kind_node(kind: kind)),
         rust_named_edge(name: ^rust_scalar_field_width, target: rust_int_width_node(width: width))
-      ]
-    }
+      ],
+      span: Unanchored
+}
     FloatScalar { width } => Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -728,8 +731,9 @@ fn rust_scalar_node(scalar: RustScalar) -> Node {
           target: rust_inhabitant_atom(id: ^rust_tag_scalar_float)
         ),
         rust_named_edge(name: ^rust_scalar_field_width, target: rust_float_width_node(width: width))
-      ]
-    }
+      ],
+      span: Unanchored
+}
     BoolScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_bool)
     CharScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_char)
     StrScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_str)
@@ -786,8 +790,9 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
           scalar: rust_integer_carrier_as_scalar(carrier: facts.overflow_disposition.ir_carrier)
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_float_facts_node(facts: RustFloatPrimitiveFacts) -> Node {
@@ -811,8 +816,9 @@ fn rust_float_facts_node(facts: RustFloatPrimitiveFacts) -> Node {
         name: ^rust_facts_field_scalar_classifier,
         target: rust_scalar_node(scalar: FloatScalar { width: facts.width })
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_noninteger_facts_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
@@ -837,8 +843,9 @@ fn rust_noninteger_facts_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
         name: ^rust_facts_field_representation,
         target: rust_inhabitant_atom(id: facts.representation)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_integer_inhabitant_node(id: Symbol, facts: RustIntegerPrimitiveFacts) -> Node {
@@ -850,8 +857,9 @@ fn rust_integer_inhabitant_node(id: Symbol, facts: RustIntegerPrimitiveFacts) ->
         name: ^rust_inhabitant_field_facts,
         target: rust_integer_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_float_inhabitant_node(id: Symbol, facts: RustFloatPrimitiveFacts) -> Node {
@@ -863,8 +871,9 @@ fn rust_float_inhabitant_node(id: Symbol, facts: RustFloatPrimitiveFacts) -> Nod
         name: ^rust_inhabitant_field_facts,
         target: rust_float_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_noninteger_inhabitant_node(id: Symbol, facts: RustNonIntegerPrimitiveFacts) -> Node {
@@ -876,8 +885,9 @@ fn rust_noninteger_inhabitant_node(id: Symbol, facts: RustNonIntegerPrimitiveFac
         name: ^rust_inhabitant_field_facts,
         target: rust_noninteger_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_inhabitant_i8_node() -> Node {
@@ -988,8 +998,9 @@ fn rust_declared_inhabitants_root() -> Node {
       rust_named_edge(name: ^rust_inhabitant_field_str, target: rust_inhabitant_str_node()),
       rust_named_edge(name: ^rust_inhabitant_field_unit, target: rust_inhabitant_unit_node()),
       rust_named_edge(name: ^rust_inhabitant_field_never, target: rust_inhabitant_never_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // Value-semantics (Copy) carrier atom identities — the SINGLE, hand-maintained
@@ -1039,7 +1050,8 @@ data rust_mvp1_fixture_emitted_add_fn: Node = Node {
     Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
     Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
     Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant }
-  ]
+  ],
+  span: Unanchored
 }
 
 fn rust_mvp1_i32_overflow_disposition_node() -> Node {
@@ -1117,8 +1129,9 @@ fn rust_mvp1_coercion_candidate_edges() -> List<Edge> {
 fn rust_mvp1_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: rust_mvp1_coercion_candidate_edges()
-  }
+    children: rust_mvp1_coercion_candidate_edges(),
+    span: Unanchored
+}
 }
 
 fn rust_mvp1_emitted_add_fn_node() -> Node {
@@ -1174,8 +1187,9 @@ fn rust_mvp1_serialize_source_node() -> Node {
   let _authority = rust_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: rust_mvp1_serialize_source_children()
-  }
+    children: rust_mvp1_serialize_source_children(),
+    span: Unanchored
+}
 }
 
 fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -1237,8 +1251,9 @@ fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
           token_to_node: rust_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_mvp1_translation_rules_node() -> Node {
@@ -1249,8 +1264,9 @@ fn rust_mvp1_translation_rules_node() -> Node {
         name: ^rust_relation_rule_mvp1_fn_add,
         target: rust_grammar_relation_row_node(row: rust_mvp1_grammar_relation_row())
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 fn rust_set_collection_apply_btree() -> TargetGenericApply {
   TargetGenericApply {
@@ -1359,8 +1375,9 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
           ]
         }
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
@@ -1377,8 +1394,9 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
             name: target_collection_witness_field_type_param,
             target: rust_inhabitant_atom(id: type_param)
           )
-        ]
-      }
+        ],
+        span: Unanchored
+}
     TargetCollectionWitnessHash { type_param: type_param } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -1391,8 +1409,9 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
             name: target_collection_witness_field_type_param,
             target: rust_inhabitant_atom(id: type_param)
           )
-        ]
-      }
+        ],
+        span: Unanchored
+}
     TargetCollectionWitnessEq { type_param: type_param } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -1405,8 +1424,9 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
             name: target_collection_witness_field_type_param,
             target: rust_inhabitant_atom(id: type_param)
           )
-        ]
-      }
+        ],
+        span: Unanchored
+}
   }
 }
 
@@ -1425,8 +1445,9 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
           item_node: rust_collection_witness_bundle_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_set_collection_realization_bundle_node() -> Node {
@@ -1452,8 +1473,9 @@ fn rust_set_collection_realization_bundle_node() -> Node {
         name: target_collection_row_field_fallback,
         target: rust_inhabitant_atom(id: target_collection_set_no_representation)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_free_monoid_collection_realization_bundle_node() -> Node {
@@ -1479,8 +1501,9 @@ fn rust_free_monoid_collection_realization_bundle_node() -> Node {
         name: target_collection_row_field_fallback,
         target: rust_inhabitant_atom(id: target_collection_free_monoid_no_representation)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_collection_realization_catalog_node() -> Node {
@@ -1549,8 +1572,9 @@ fn rust_mvp1_target_model_core_edges() -> List<Edge> {
 fn rust_mvp1_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: rust_mvp1_target_model_core_edges()
-  }
+    children: rust_mvp1_target_model_core_edges(),
+    span: Unanchored
+}
 }
 
 fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
@@ -1657,8 +1681,9 @@ fn rust_mvp1_target_model_node() -> Node {
           host_bundle: rust_mvp1_target_model_bundle_core()
         )
       )
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn rust_mvp1_target_model() -> TargetModel {
@@ -1864,8 +1889,9 @@ fn rust_integer_algebra_witness_node(facts: RustIntegerPrimitiveFacts) -> Node {
       rust_named_edge(name: ^rust_witness_checked_integer_arithmetic, target: rust_symbol_node(id: ^rust_witness_checked_integer_arithmetic)),
       rust_named_edge(name: ^rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection)),
       rust_named_edge(name: ^rust_facts_field_overflow_disposition, target: rust_overflow_disposition_node(disposition: facts.overflow_disposition))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_float_algebra_witness_node(facts: RustFloatPrimitiveFacts) -> Node {
@@ -1875,8 +1901,9 @@ fn rust_float_algebra_witness_node(facts: RustFloatPrimitiveFacts) -> Node {
       rust_named_edge(name: ^rust_witness_float_approximate_field, target: rust_symbol_node(id: ^rust_witness_float_approximate_field)),
       rust_named_edge(name: ^rust_facts_field_ieee754_binary, target: rust_symbol_node(id: facts.ieee754_binary)),
       rust_named_edge(name: ^rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_bool_algebra_witness_node() -> Node {
@@ -1885,8 +1912,9 @@ fn rust_bool_algebra_witness_node() -> Node {
     children: [
       rust_named_edge(name: ^rust_witness_bool_boolean_algebra, target: rust_symbol_node(id: ^rust_witness_bool_boolean_algebra)),
       rust_named_edge(name: ^rust_facts_field_std_projection, target: rust_symbol_node(id: rust_facts_bool.std_projection))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_integer_algebra_inhabitance(facts: RustIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -1962,8 +1990,9 @@ fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawK
         name: model_core_wave1_law_field_kind,
         target: rust_inhabitant_atom(id: discriminant(v: key))
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {
@@ -3453,8 +3482,9 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
           rows: rust_sg_rc_use_site_ownership_catalog()
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_sg2_type_expr_target_model_node() -> Node {
@@ -3470,8 +3500,9 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
               rows: rust_target_function_signature_realization_catalog
             )
           )
-        )
-      }
+        ),
+        span: Unanchored
+}
     _ => rust_sg2_type_expr_target_model_bundle_core()
   }
 }
@@ -3488,8 +3519,9 @@ fn rust_sg2_serialize_source_node() -> Node {
         name: serialize_source_field_source_text,
         target: rust_inhabitant_atom(id: ^rust_sg2_type_alias_literal)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_sg2_type_expr_target_model() -> TargetModel {
@@ -3535,8 +3567,9 @@ fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
         name: target_model_edge_collection_realization,
         target: rust_collection_realization_catalog_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
@@ -3563,8 +3596,9 @@ fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
 fn rust_sg5_non_ordable_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^rust_binding_sg5_non_ordable } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 // SG-5 probe: Set<NonOrdable> as Cardinality(set_carrier, NonOrdable).
@@ -3574,8 +3608,9 @@ fn rust_sg5_set_non_ordable_source_type_node() -> Node {
     children: [
       Edge { label: Positional, target: target_collection_set_carrier_node() },
       Edge { label: Positional, target: rust_sg5_non_ordable_type_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // SG-2 probe: Rc<FooBar<X, Y>> as Instantiation(Rc, Instantiation(FooBar, X, Y)).
@@ -3633,8 +3668,9 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
           children: []
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_sg2_instantiation_source_type_node() -> Node {
@@ -3652,8 +3688,9 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
         label: Positional,
         target: rust_sg2_foobar_xy_inner_instantiation_node()
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // Perturbed twin: same inner apply without outer Rc — discriminates mode-2 emit text.
@@ -3664,8 +3701,9 @@ fn rust_sg2_foobar_xy_no_rc_source_type_node() -> Node {
 fn rust_sg2_atom_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn rust_sg2_arrow_xy_emitted() -> Node {
@@ -3691,8 +3729,9 @@ fn rust_sg2_arrow_source_type_node() -> Node {
     children: [
       Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
       Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_sg2_binary_fn_source_type_node() -> Node {
@@ -3707,8 +3746,9 @@ fn rust_sg2_arrow_malformed_source_type_node() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_sg2_conj_xy_emitted() -> Node {
@@ -3739,8 +3779,9 @@ fn rust_sg2_conj_source_type_node() -> Node {
     children: [
       rust_named_edge(name: ^rust_binding_sg2_x, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x)),
       rust_named_edge(name: ^rust_binding_sg2_y, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn rust_sg2_sum_xy_emitted() -> Node {
@@ -3789,8 +3830,9 @@ fn rust_sg2_emitted_without_named_edge(base: Node, field: Symbol) -> Node {
           }
         Positional => list_snoc_item(xs: acc, item: e)
       }
-    })
-  }
+    }),
+    span: Unanchored
+}
 }
 
 fn rust_sg2_malformed_atom_missing_surface_emitted() -> Node {
@@ -3815,8 +3857,9 @@ fn rust_sg2_malformed_atom_duplicate_surface_emitted() -> Node {
       item: target_type_expr_surface_edge(
         surface: rust_type_expression_projection().atom_form.surface
       )
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn rust_sg2_malformed_atom_wrong_surface_emitted() -> Node {
@@ -3829,8 +3872,9 @@ fn rust_sg2_malformed_atom_wrong_surface_emitted() -> Node {
     children: list_snoc_item(
       xs: rust_sg2_emitted_without_named_edge(base: base, field: target_type_expr_field_surface).children,
       item: target_type_expr_surface_edge(surface: ^rust_binding_sg2_bogus_meta)
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn rust_sg2_malformed_atom_extra_named_emitted() -> Node {
@@ -3846,8 +3890,9 @@ fn rust_sg2_malformed_atom_extra_named_emitted() -> Node {
         name: ^rust_binding_sg2_bogus_named,
         target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       )
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
@@ -3863,8 +3908,9 @@ fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
         label: Positional,
         target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       }
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
@@ -3879,8 +3925,9 @@ fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
         Positional => acc
         _ => list_snoc_item(xs: acc, item: e)
       }
-    })
-  }
+    }),
+    span: Unanchored
+}
 }
 
 fn rust_sg2_malformed_arrow_one_positional_emitted() -> Node {
@@ -3912,8 +3959,9 @@ fn rust_sg2_malformed_record_extra_positional_emitted() -> Node {
         label: Positional,
         target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       }
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
@@ -3926,6 +3974,7 @@ fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
         label: Positional,
         target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       }
-    )
-  }
+    ),
+    span: Unanchored
+}
 }

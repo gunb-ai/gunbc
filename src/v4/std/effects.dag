@@ -82,7 +82,8 @@ data sample_label_only_callable: Symbol = sample_label_only_callable
 
 data sample_state: Node = Node {
   kind: TypeNode { connective: Atom { identity: sample_state_value } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 
@@ -140,7 +141,9 @@ data sample_label_only_subject: IdempotentOperationSubject = LabelOnlyIdempotent
 
 
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -158,8 +161,9 @@ fn key_source_node(key_source: KeySource) -> Node {
             label: Named { name: key_source_path_param_value_field },
             target: atom_node(s: p)
           },
-        ]
-      }
+        ],
+        span: Unanchored
+}
     InputField { field: f } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -172,8 +176,9 @@ fn key_source_node(key_source: KeySource) -> Node {
             label: Named { name: key_source_input_value_field },
             target: atom_node(s: f)
           },
-        ]
-      }
+        ],
+        span: Unanchored
+}
   }
 }
 
@@ -193,8 +198,9 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
             label: Named { name: idempotent_operation_key_source_field },
             target: key_source_node(key_source: key_source)
           },
-        ]
-      }
+        ],
+        span: Unanchored
+}
     DeleteEffect { key_source: key_source } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -207,8 +213,9 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
             label: Named { name: idempotent_operation_key_source_field },
             target: key_source_node(key_source: key_source)
           },
-        ]
-      }
+        ],
+        span: Unanchored
+}
   }
 }
 
@@ -225,8 +232,9 @@ fn classified_idempotent_effect_node(shape: IdempotentShape) -> Node {
         label: Named { name: effect_shape_inner_field },
         target: idempotent_shape_node(shape: shape)
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -238,8 +246,9 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
         label: Named { name: idempotent_operation_callable_field },
         target: atom_node(s: operation.callable)
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -255,8 +264,9 @@ fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOpe
         label: Named { name: idempotent_apply_operation_field },
         target: idempotent_operation_witness_node(subject: subject)
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -287,8 +297,9 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             label: Named { name: idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
-        ]
-      }
+        ],
+        span: Unanchored
+}
     UpsertIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -301,8 +312,9 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             label: Named { name: idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
-        ]
-      }
+        ],
+        span: Unanchored
+}
     DeleteIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -315,7 +327,8 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             label: Named { name: idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
-        ]
-      }
+        ],
+        span: Unanchored
+}
   }
 }

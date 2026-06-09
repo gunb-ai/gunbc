@@ -39,8 +39,12 @@ import v4.std.verification {
 }
 fn rust_r1_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^rust_r1_claim_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^rust_r1_claim_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^rust_r1_claim_bool_true } }, children: [],
+ span: Unanchored
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^rust_r1_claim_bool_false } }, children: [],
+ span: Unanchored
+}
   }
 }
 

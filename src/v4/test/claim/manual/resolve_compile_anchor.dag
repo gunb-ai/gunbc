@@ -58,8 +58,9 @@ fn service_atom_conj_tree() -> Node {
           children: []
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
@@ -99,8 +100,9 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
             children: []
           }
         }
-      ]
-    },
+      ],
+      span: Unanchored
+},
     lm: dag_language_model_wave1_void()
   )
 }
@@ -145,8 +147,9 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
             ]
           }
         }
-      ]
-    },
+      ],
+      span: Unanchored
+},
     lm: dag_language_model_wave1_void()
   )
 }
@@ -155,13 +158,15 @@ fn resolve_roots_claim_node(ok: Bool) -> Node {
   if ok {
     Node {
       kind: TypeNode { connective: Atom { identity: ^anchor_resolve_roots_pass } },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   } else {
     Node {
       kind: TypeNode { connective: Atom { identity: ^anchor_resolve_roots_fail } },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 
@@ -171,8 +176,9 @@ fn resolve_imported_qn_node() -> Node {
     item_node: fn(sym) {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
     }
   )
 }
@@ -198,8 +204,9 @@ fn resolve_imported_module_root() -> Node {
           children: []
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn resolve_subject_qn_node() -> Node {
@@ -208,8 +215,9 @@ fn resolve_subject_qn_node() -> Node {
     item_node: fn(sym) {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
     }
   )
 }
@@ -226,8 +234,9 @@ fn resolve_subject_module_root() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: resolve_subject_qn_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn resolve_subject_module_root_with_import_use() -> Node {
@@ -246,8 +255,9 @@ fn resolve_subject_module_root_with_import_use() -> Node {
         label: Named { name: ^anchor_subject_import_use },
         target: resolve_imported_use_tree()
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn resolve_subject_name() -> QualifiedName {
@@ -267,8 +277,9 @@ fn resolve_roots_single_import() -> FreeMonoid<Node> {
 fn resolve_imported_use_tree() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^anchor_imported_decl } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn resolve_import_target() -> QualifiedName {

@@ -85,9 +85,66 @@ type Edge {
 data loop_bound_edge: Symbol = ^loop_bound_edge
 // 🟢 TERMINAL — E-9/DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
 data arrow_body_edge: Symbol = ^arrow_body_edge
+
+// T-8 source-text anchor — byte extent within one compilation unit (R3 gate #31 discipline:
+// file + start/end only; no parallel file authority on lens-produced surfaces).
+type SourceSpan {
+  file: Symbol
+  start: Int
+  end: Int
+}
+
+// Closed optional carrier for Node.span — avoids node↔collection import cycle.
+type NodeSpan
+  = Unanchored
+  | Anchored { span: SourceSpan }
+
+fn node_span_unanchored() -> NodeSpan {
+  Unanchored
+}
+
+fn node_span_anchored(span: SourceSpan) -> NodeSpan {
+  Anchored { span: span }
+}
+
+fn merge_node_span(left: NodeSpan, right: NodeSpan) -> NodeSpan {
+  match left {
+    Unanchored => right
+    Anchored { span: ls } =>
+      match right {
+        Unanchored => left
+        Anchored { span: rs } =>
+          if ls.file == rs.file {
+            Anchored {
+              span: SourceSpan {
+                file: ls.file,
+                start: if ls.start < rs.start { ls.start } else { rs.start },
+                end: if ls.end > rs.end { ls.end } else { rs.end }
+              }
+            }
+          } else {
+            left
+          }
+      }
+  }
+}
+
+fn node_span_from_node(n: Node) -> NodeSpan {
+  n.span
+}
+
+fn node_with_span(kind: NodeKind, children: List<Edge>, span: NodeSpan) -> Node {
+  Node { kind: kind, children: children, span: span }
+}
+
+fn node_unanchored(kind: NodeKind, children: List<Edge>) -> Node {
+  node_with_span(kind: kind, children: children, span: Unanchored)
+}
+)
 type Node {
   kind: NodeKind
   children: List<Edge>
+  span: NodeSpan
 }
 type NodeFold<R> {
   init: fn(Node) -> R
@@ -422,8 +479,9 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
     LabeledEdges =>
       Node {
         kind: n.kind,
-        children: sort_by(n.children, e => named_edge_sort_key(e: e))
-      }
+        children: sort_by(n.children, e => named_edge_sort_key(e: e)),
+        span: Unanchored
+}
     NoEdges => n
     PositionalEdges => n
     ArrowBodyEdges =>
@@ -434,8 +492,9 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
     LoopBoundEdges =>
       Node {
         kind: n.kind,
-        children: canonicalize_loop_children_for_content_hash(children: n.children)
-      }
+        children: canonicalize_loop_children_for_content_hash(children: n.children),
+        span: Unanchored
+}
   }
 }
 // 🟢 TERMINAL — B1 merkle_fold: canonicalize_node_for_content_hash at every recursive step (plain fold_node would skip nested LabeledEdges/Loop reorder).
@@ -1122,8 +1181,9 @@ data byte_offset_proj_pred_edge: Symbol = ^byte_offset_proj_pred_edge
 fn node_offset_atom(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
@@ -1135,8 +1195,9 @@ fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
 fn node_offset_conj(children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: children
-  }
+    children: children,
+    span: Unanchored
+}
 }
 
 

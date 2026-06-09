@@ -48,28 +48,32 @@ type LensComplexityClaim {
 }
 data nested_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^nested_body_atom } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data nested_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge { label: Positional, target: nested_body_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 data nested_inner: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: nested_body }
-  ]
+  ],
+  span: Unanchored
 }
 
 data nested_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: nested_inner }
-  ]
+  ],
+  span: Unanchored
 }
 
 data nested_claim: LensComplexityClaim = LensComplexityClaim {

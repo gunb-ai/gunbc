@@ -23,7 +23,8 @@ import v4.std.artifact { Artifact, SourceFile }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty, count_equal, length }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Anchored, Node, Symbol, Unanchored }
+import v4.std.provenance { node_has_anchored_span, node_span_byte_extent }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.test.claim.lens_affected_set.node_precision {
@@ -148,7 +149,9 @@ fn edit_locus_source_provenance_producer_holds() -> Bool {
     source_read: edit_locus_source_producer_fixture_source_read
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
-      provenance.artifact.file_path == edit_locus_path_source_producer_fixture
+      (provenance.artifact.file_path == edit_locus_path_source_producer_fixture)
+        && node_has_anchored_span(node: provenance.node)
+        && node_span_byte_extent(span: provenance.node.span)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -189,6 +192,19 @@ fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
   }
 }
 
+fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
+  match source_ir_node_artifact_provenance(
+    source_read: edit_locus_source_producer_fixture_source_read
+  ) {
+    Accepted { value: provenance, diagnostics: _ } =>
+      match provenance.node.span {
+        Anchored { span: s } => (s.start == 0) && (s.end > s.start)
+        Unanchored => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
   match source_ir_node_artifact_provenance(
     source_read: edit_locus_source_producer_malformed_source_read
@@ -203,6 +219,7 @@ data edit_locus_fail_closed_claim_passes: Bool = edit_locus_fail_closed_holds()
 data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_wire_holds()
 data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
 data edit_locus_source_provenance_producer_claim_passes: Bool = edit_locus_source_provenance_producer_holds()
+data edit_locus_source_provenance_parse_root_span_claim_passes: Bool = edit_locus_source_provenance_parse_root_span_holds()
 data edit_locus_source_provenance_affected_set_wire_claim_passes: Bool = edit_locus_source_provenance_affected_set_wire_holds()
 data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes: Bool = edit_locus_source_provenance_producer_rejects_malformed_source_holds()
 

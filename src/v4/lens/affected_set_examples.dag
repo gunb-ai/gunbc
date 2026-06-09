@@ -48,11 +48,13 @@ data affected_set_example_hash: Hash = affected_set_example_hash
 
 data affected_set_example_node: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  span: Unanchored
 }
 data affected_set_claim_failure_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^affected_set_claim_failure_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 

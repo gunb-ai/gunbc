@@ -37,8 +37,9 @@ data go_l1_nat_semiring_rung2_l1_receipt_schema: String = "scripts/v4-phase1-nat
 fn l1_go_receipt_atom(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 data phase1_l1_go_compiler_slice_subject_slice_binding: Node = l1_go_receipt_atom(sym: ^go_l1_nat_semiring_rung2)
@@ -51,7 +52,8 @@ data phase1_nat_semiring_l1_go_compiler_slice_subject: Node = Node {
       label: Named { name: ^l1_go_receipt_slice_edge },
       target: phase1_l1_go_compiler_slice_subject_slice_binding
     }
-  ]
+  ],
+  span: Unanchored
 }
 
 fn phase1_l1_go_compiler_slice_claim(label: String) -> TestClaim {

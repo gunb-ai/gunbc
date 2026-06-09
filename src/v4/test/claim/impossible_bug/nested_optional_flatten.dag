@@ -36,7 +36,9 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -55,7 +57,8 @@ data falsification_nested_optional: Node = Node {
         ]
       }
     },
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -63,7 +66,8 @@ data falsification_optional_double_unwrap: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
-  ]
+  ],
+  span: Unanchored
 }
 
 

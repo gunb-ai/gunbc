@@ -32,7 +32,8 @@ data ownership_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ownership_root_symbol } },
   children: [
     Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
-  ]
+  ],
+  span: Unanchored
 }
 
 data ownership_dependency: DependencyView = DependencyView {

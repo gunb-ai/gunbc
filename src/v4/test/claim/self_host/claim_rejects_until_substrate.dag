@@ -26,7 +26,8 @@ import v4.std.verification {
 }
 data rejects_until_substrate_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^rejects_until_substrate_subject_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 

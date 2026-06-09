@@ -48,7 +48,9 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -58,8 +60,9 @@ fn complexity_contract(body: Node) -> Node {
     children: [
       Edge { label: Named { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
       Edge { label: Named { name: ^complexity_body_field }, target: body },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 

@@ -1,0 +1,38 @@
+// src/v4/std/provenance.dag
+// Scope: source-text → Node byte-range provenance (T-8 producer substrate).
+// Status: Layer-3/4 — span on Node (v4.std.node) + parse stamp (v4.compiler.parse).
+
+module v4.std.provenance
+
+import v4.std.artifact { Artifact, NodeArtifactProvenance }
+import v4.std.diagnostic { ByteRange, Locus, Textual, node_locus }
+import v4.std.node { Anchored, Node, NodeSpan, Unanchored }
+
+fn locus_from_node_span(node: Node) -> Locus {
+  match node.span {
+    Unanchored => node_locus(node: node)
+    Anchored { span: s } =>
+      Textual {
+        file: s.file,
+        extent: ByteRange { start: s.start, end: s.end }
+      }
+  }
+}
+
+fn node_has_anchored_span(node: Node) -> Bool {
+  match node.span {
+    Unanchored => false
+    Anchored { span: _ } => true
+  }
+}
+
+fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
+  NodeArtifactProvenance { node: node, artifact: artifact }
+}
+
+fn node_span_byte_extent(span: NodeSpan) -> Bool {
+  match span {
+    Unanchored => false
+    Anchored { span: s } => s.start < s.end
+  }
+}

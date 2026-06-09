@@ -272,8 +272,9 @@ fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
 fn canonical_atom(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
@@ -325,8 +326,9 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
         Accepted { value: resolved_children, diagnostics: d } =>
           Accepted { value: Node {
               kind: n.kind,
-              children: resolved_children
-            }, diagnostics: d }
+              children: resolved_children,
+              span: Unanchored
+}, diagnostics: d }
       }
     ComputationNode { behavior: Bind } =>
       resolve_bind_node(n: n, scope: scope)
@@ -364,8 +366,9 @@ fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
     Accepted { value: resolved_children, diagnostics: d } =>
       Accepted { value: Node {
           kind: n.kind,
-          children: resolved_children
-        }, diagnostics: d }
+          children: resolved_children,
+          span: Unanchored
+}, diagnostics: d }
   }
 }
 
@@ -564,8 +567,9 @@ fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
       Accepted { value: resolved_children, diagnostics: d } =>
         Accepted { value: Node {
             kind: n.kind,
-            children: resolved_children
-          }, diagnostics: d }
+            children: resolved_children,
+            span: Unanchored
+}, diagnostics: d }
     }
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)) }

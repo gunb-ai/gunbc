@@ -24,12 +24,14 @@ import v4.std.diagnostic { Accepted, None }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
 data refinement_subject_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data refinement_new_field_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_new_field_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data refinement_after_node: Node = Node {
@@ -39,22 +41,26 @@ data refinement_after_node: Node = Node {
       label: Named { name: ^refinement_new_field_symbol },
       target: refinement_new_field_node
     }
-  ]
+  ],
+  span: Unanchored
 }
 
 data testclaim_lens_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^testclaim_lens_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data boundary_test_lens_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^boundary_test_lens_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data target_test_projection_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^target_test_projection_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data dependency_projection_subgraph: Node = Node {
@@ -72,7 +78,8 @@ data dependency_projection_subgraph: Node = Node {
       label: Named { name: ^target_test_projection_symbol },
       target: target_test_projection_node
     }
-  ]
+  ],
+  span: Unanchored
 }
 
 data refinement_change_path: Path = Path {

@@ -52,8 +52,9 @@ fn edit_locus_no_match_diagnostic() -> Diagnostic {
     reason: ^edit_locus_reason_no_match,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }),
+      children: [],
+      span: Unanchored
+}),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -64,8 +65,9 @@ fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
     reason: ^edit_locus_reason_ambiguous,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }),
+      children: [],
+      span: Unanchored
+}),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

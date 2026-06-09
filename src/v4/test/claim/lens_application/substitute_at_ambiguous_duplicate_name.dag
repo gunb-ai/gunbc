@@ -19,17 +19,20 @@ import v4.std.verification {
 }
 data substitute_ambiguous_leaf_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_leaf_a_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data substitute_ambiguous_leaf_b: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_leaf_b_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data substitute_ambiguous_replacement: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_replacement_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data substitute_ambiguous_duplicate_name_root: Node = Node {
@@ -43,7 +46,8 @@ data substitute_ambiguous_duplicate_name_root: Node = Node {
       label: Named { name: ^substitute_ambiguous_dup_step },
       target: substitute_ambiguous_leaf_b
     }
-  ]
+  ],
+  span: Unanchored
 }
 
 fn substitute_at_ambiguous_duplicate_name_claim_holds() -> Bool {

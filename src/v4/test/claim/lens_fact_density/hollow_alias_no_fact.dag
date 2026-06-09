@@ -18,7 +18,8 @@ import v4.std.verification {
 }
 data hollow_alias_input: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_int32_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 fn hollow_alias_no_fact_claim_holds() -> Bool {
@@ -31,8 +32,9 @@ fn hollow_alias_no_fact_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

@@ -24,8 +24,9 @@ import v4.std.verification {
 fn lens_testgen_generator_provenance_marker_node(marker: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: marker } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 

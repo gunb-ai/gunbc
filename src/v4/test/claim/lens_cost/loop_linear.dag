@@ -32,19 +32,22 @@ import v4.std.verification {
 import v4.std.witness { Holds }
 data loop_linear_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_linear_body_atom } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data loop_linear_measure_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_linear_measure_atom } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data loop_linear_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge { label: Positional, target: loop_linear_body_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 data loop_linear_input: Node = Node {
@@ -52,7 +55,8 @@ data loop_linear_input: Node = Node {
   children: [
     Edge { label: Positional, target: loop_linear_body },
     Edge { label: Named { name: loop_bound_edge }, target: loop_linear_measure_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 fn loop_linear_claim_holds() -> Bool {
@@ -72,8 +76,9 @@ fn loop_linear_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

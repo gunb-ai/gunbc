@@ -22,8 +22,9 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 fn claim_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn claim_canonical_grounding(

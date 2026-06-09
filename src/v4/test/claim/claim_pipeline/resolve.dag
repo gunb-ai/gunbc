@@ -24,7 +24,8 @@ import v4.std.verification {
 }
 data spine_resolve_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_resolve_module } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 fn spine_resolve_service_parse_tree() -> Node {
   Node {
@@ -39,8 +40,9 @@ fn spine_resolve_service_parse_tree() -> Node {
           children: []
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 / G.3.5 spine harness —
@@ -61,13 +63,15 @@ fn spine_resolve_bool_atom(b: Bool) -> Node {
     true =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_resolve_pass } },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
     false =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_resolve_fail } },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
   }
 }
 

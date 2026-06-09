@@ -984,8 +984,9 @@ fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagn
     reason: translate_lex_rule_literal_not_found,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: token_class } },
-      children: []
-    }),
+      children: [],
+      span: Unanchored
+}),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -994,8 +995,9 @@ fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnosti
     reason: translate_binding_spelling_not_found,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: binding } },
-      children: []
-    }),
+      children: [],
+      span: Unanchored
+}),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -3740,8 +3742,9 @@ fn translate_outcome_is_signature_realization_miss(
 fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn function_boundary_site_to_ownership_use_site(
@@ -3899,7 +3902,9 @@ fn translate_coerced_shell_base(coerced: Node, target: TargetModel) -> Outcome<N
       }
     Rejected { diagnostics: r } =>
       if translate_outcome_is_catalog_lookup_miss(diagnostics: r) {
-        outcome_accepted(Node { kind: coerced.kind, children: [] })
+        outcome_accepted(Node { kind: coerced.kind, children: [],
+ span: Unanchored
+})
       } else {
         Rejected { diagnostics: r }
       }
@@ -4029,8 +4034,9 @@ fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
             name: target_model_edge_value_expression,
             target: value
           )
-        )
-      }
+        ),
+        span: Unanchored
+}
     _ => shell
   }
 }
@@ -4209,7 +4215,9 @@ fn translate_coerced_with_atom_realization(
 
 fn translate_type_fold_init(node: Node) -> Outcome<Node> {
   Accepted {
-    value: Node { kind: node.kind, children: [] },
+    value: Node { kind: node.kind, children: [],
+ span: Unanchored
+},
     diagnostics: None
   }
 }
@@ -4363,7 +4371,9 @@ fn project_type_expression_subtree(
           ),
           f: fn(children) {
             Accepted {
-              value: Node { kind: ComputationNode { behavior: b }, children: children },
+              value: Node { kind: ComputationNode { behavior: b }, children: children,
+ span: Unanchored
+},
               diagnostics: None
             }
           }
@@ -4499,8 +4509,9 @@ fn translate_fold_step(
           Accepted {
             value: Node {
               kind: parent.kind,
-              children: list_snoc_item(xs: parent.children, item: Edge { label: edge.label, target: translated_child })
-            },
+              children: list_snoc_item(xs: parent.children, item: Edge { label: edge.label, target: translated_child }),
+              span: Unanchored
+},
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
         Rejected { diagnostics: r } =>

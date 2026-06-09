@@ -55,7 +55,8 @@ data parallelism_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^parallelism_root_symbol } },
   children: [
     Edge { label: Named { name: ^parallelism_edge_symbol }, target: parallelism_child }
-  ]
+  ],
+  span: Unanchored
 }
 
 data parallelism_dependency: DependencyView = DependencyView {
@@ -114,15 +115,17 @@ data parallelism_data_dependency_claim_passes: Bool = parallelism_data_dependenc
 fn parallelism_claim_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^parallelism_claim_pass_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn parallelism_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^parallelism_claim_fail_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn parallelism_claim_input(ok: Bool) -> Node {

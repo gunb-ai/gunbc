@@ -136,8 +136,9 @@ fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
 fn type_node(connective: Connective, children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: connective },
-    children: children
-  }
+    children: children,
+    span: Unanchored
+}
 }
 
 fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Outcome<Node> {
@@ -198,8 +199,9 @@ fn normalize_node(n: Node) -> Outcome<Node> {
         None =>
           Accepted { value: Node {
               kind: n.kind,
-              children: normalized_children
-            }, diagnostics: cd }
+              children: normalized_children,
+              span: Unanchored
+}, diagnostics: cd }
       }
   }
 }

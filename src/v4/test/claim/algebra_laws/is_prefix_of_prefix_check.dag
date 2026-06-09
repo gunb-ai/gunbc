@@ -26,10 +26,14 @@ fn sym_ab() -> FreeMonoid<Symbol> { Cons { head: ^prefix_sym_a, tail: Cons { hea
 
 
 fn prefix_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^prefix_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^prefix_pass_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn prefix_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^prefix_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^prefix_fail_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn prefix_claim_input(ok: Bool) -> Node {
   if ok { prefix_pass_node() } else { prefix_fail_node() }

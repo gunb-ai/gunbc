@@ -99,16 +99,18 @@ type InferReceiptCase
 fn fixture_int_type_node(atom: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
 fn infer_receipt_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
@@ -371,8 +373,9 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
           ]
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 

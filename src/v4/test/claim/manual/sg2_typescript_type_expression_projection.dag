@@ -56,15 +56,17 @@ data ts_sg2_expected_disj_text: String = "X | Y"
 fn ts_sg2_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_sg2_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn ts_sg2_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_sg2_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn ts_sg2_claim_input(ok: Bool) -> Node {

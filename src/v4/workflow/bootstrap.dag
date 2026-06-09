@@ -171,15 +171,17 @@ fn bootstrap_construct_list_append_unique(
 fn seed_capability_language_model() -> LanguageModel {
   Node {
     kind: TypeNode { connective: Atom { identity: ^bootstrap_seed_language_model_identity } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn bootstrap_construct_subset_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 // Live snapshot root: source-language facet only (target/runtime/lowering ride projection inputs).
@@ -208,8 +210,9 @@ fn bootstrap_seed_capability_inventory_root() -> Node {
         label: Named { name: ^bootstrap_construct_lowering_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 type BootstrapConstructFoldState {
@@ -340,15 +343,17 @@ fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<Bootstrap
 fn bootstrap_projection_runtime_identity_node(runtime: V4EvaluatorRuntime) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: runtime.runtime_identity } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn bootstrap_projection_snapshot_content_hash_pin_node(pin: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: pin } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 fn bootstrap_hash_digest_in_fixture_constants(digest: Hash) -> Bool {
   (digest == v4_stage0_hash)
@@ -361,23 +366,27 @@ fn bootstrap_hash_digest_fixture_atom_node(digest: Hash) -> Node {
   if digest == v4_stage0_hash {
     Node {
       kind: TypeNode { connective: Atom { identity: v4_stage0_hash } },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   } else if digest == v4_stage1_hash {
     Node {
       kind: TypeNode { connective: Atom { identity: v4_stage1_hash } },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   } else if digest == v4_stage2_hash {
     Node {
       kind: TypeNode { connective: Atom { identity: v4_stage2_hash } },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   } else {
     Node {
       kind: TypeNode { connective: Atom { identity: pinned_v4_fixed_point_hash } },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 
@@ -396,8 +405,9 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
         label: Named { name: ^bootstrap_projection_hash_digest_slot_edge },
         target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // 🟡 derived-operation — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; replace fixture-constant gate + closed (pin,digest) pair match with a total BootstrapHashPin digest coproduct projection.
@@ -509,8 +519,9 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
         label: Named { name: ^bootstrap_projection_runtime_identity_edge },
         target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) -> Bool {

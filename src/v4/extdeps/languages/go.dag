@@ -438,8 +438,9 @@ data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 fn go_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn go_named_edge(name: Symbol, target: Node) -> Edge {
@@ -533,8 +534,9 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           name: ^go_facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
     GoUnsignedIntegerPrimitiveFacts {
       surface_spelling,
       width,
@@ -569,8 +571,9 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           name: ^go_facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -594,8 +597,9 @@ fn go_float_facts_node(facts: GoFloatPrimitiveFacts) -> Node {
         name: ^go_facts_field_std_projection,
         target: go_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
@@ -618,8 +622,9 @@ fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
         name: ^go_facts_field_std_projection,
         target: go_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_bool_facts_node(facts: GoBoolPrimitiveFacts) -> Node {
@@ -638,8 +643,9 @@ fn go_bool_facts_node(facts: GoBoolPrimitiveFacts) -> Node {
         name: ^go_facts_field_std_projection,
         target: go_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
@@ -658,8 +664,9 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
         name: ^go_facts_field_std_projection,
         target: go_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_empty_primitive_spec_facts() -> Map<Symbol, Node> {
@@ -1230,8 +1237,9 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           name: ^go_facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
     GoUnsignedIntegerPrimitiveFacts {
       surface_spelling: _,
       width,
@@ -1266,8 +1274,9 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           name: ^go_facts_field_std_projection,
           target: go_inhabitant_atom(id: std_projection)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -1287,8 +1296,9 @@ fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
         name: ^go_facts_field_std_projection,
         target: go_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_bool_algebra_witness_node() -> Node {
@@ -1303,8 +1313,9 @@ fn go_bool_algebra_witness_node() -> Node {
         name: ^go_facts_field_std_projection,
         target: go_inhabitant_atom(id: go_facts_bool.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
@@ -1323,8 +1334,9 @@ fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
         name: ^go_facts_field_std_projection,
         target: go_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_string_element_node() -> Node {
@@ -1453,8 +1465,9 @@ fn go_int_inhabitant_node() -> Node {
     children: [
       go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(name: ^go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_declared_inhabitants_root() -> Node {
@@ -1462,8 +1475,9 @@ fn go_declared_inhabitants_root() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // Zip-fold support nodes derived from go_facts_int constructors — not parallel fixture data.
@@ -1519,8 +1533,9 @@ fn go_mvp1_coercion_candidate_edges() -> List<Edge> {
 fn go_mvp1_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: go_mvp1_coercion_candidate_edges()
-  }
+    children: go_mvp1_coercion_candidate_edges(),
+    span: Unanchored
+}
 }
 
 fn go_mvp1_selection_policy_node() -> Node {
@@ -1535,8 +1550,9 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
@@ -1565,7 +1581,9 @@ fn go_mvp1_serialize_source_children() -> List<Edge> {
 }
 
 fn go_mvp1_serialize_source_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: go_mvp1_serialize_source_children() }
+  Node { kind: TypeNode { connective: Conj }, children: go_mvp1_serialize_source_children(),
+ span: Unanchored
+}
 }
 
 fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -1658,8 +1676,9 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
           token_to_node: go_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_mvp1_translation_rules_node() -> Node {
@@ -1667,8 +1686,9 @@ fn go_mvp1_translation_rules_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_relation_rule_mvp1_fn_add, target: go_grammar_relation_row_node(row: go_mvp1_grammar_relation_row()))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_mvp1_binding_spellings() -> Map<Symbol, String> {
@@ -1703,8 +1723,9 @@ fn go_mvp1_target_model_bundle_core() -> Node {
       go_named_edge(name: target_model_edge_declared_inhabitants, target: go_mvp1_declared_inhabitants_root()),
       go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
       go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_mvp1_target_model_staging() -> TargetModel {
@@ -1778,8 +1799,9 @@ fn go_mvp1_target_model_node() -> Node {
           host_bundle: go_mvp1_target_model_bundle_core()
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn go_mvp1_target_model() -> TargetModel {

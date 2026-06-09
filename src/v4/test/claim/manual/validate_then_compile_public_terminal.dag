@@ -49,8 +49,9 @@ import v4.std.witness { Holds, Witness }
 data rust_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
-    children: []
-  },
+    children: [],
+    span: Unanchored
+},
   lex: VoidLexRules,
   binding_spellings: empty_map(),
   authority_source_text: Empty
@@ -58,8 +59,9 @@ data rust_target_model_stub: TargetModel = TargetModel {
 fn claim_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
@@ -152,8 +154,9 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 
@@ -175,7 +178,8 @@ fn claim_rejecting_lens_blocks_passes() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }

@@ -65,22 +65,25 @@ type V4EvaluatorRuntime {
 fn v4_eval_wave1_unit_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v4_eval_wave1_unit_type_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn v4_eval_wave1_boundary_operation_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v4_eval_wave1_boundary_operation_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn v4_eval_wave1_effect_signature_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v4_eval_wave1_boundary_effect_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn v4_eval_wave1_runtime_diagnostic(node: Node) -> Diagnostic {

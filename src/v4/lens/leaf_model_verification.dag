@@ -653,7 +653,9 @@ fn go_run_fixture(source: String) -> LeafModelGoRunFixture {
 }
 
 fn go_leaf_model_fact_atom(id: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [],
+ span: Unanchored
+}
 }
 
 fn go_r2a_algebra_inhabitance_fact_node() -> Node {

@@ -32,8 +32,9 @@ import v4.std.refinement_widening_predicate { refinement_widening_predicate_alge
 fn coercion_widening_unknown_value_set_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^coercion_widening_unknown_value_set } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: Node) -> Node {
@@ -53,7 +54,9 @@ fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) 
     Accepted { value: facts, diagnostics: None } =>
       match find_named_child(root: facts, name: ^python_facts_field_encoding) {
         Accepted { value: encoding, diagnostics: None } =>
-          if encoding == Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [] } {
+          if encoding == Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [],
+ span: Unanchored
+} {
             integer_unbounded_value_set_node()
           } else {
             coercion_widening_unknown_value_set_node()

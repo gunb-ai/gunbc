@@ -61,8 +61,9 @@ fn dag_round_trip_input_node() -> Node {
         name: ^dag_round_trip_normalization_axis,
         target: dag_round_trip_bool_node(pass: dag_round_trip_normalization_declared())
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 data claim_dag_ingest_round_trip: TestClaim = RoundTripClaim {

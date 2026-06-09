@@ -33,7 +33,8 @@ data phase1_nat_semiring_l1_python_runtime_fixture_subject: Node = Node {
   kind: TypeNode {
     connective: Atom { identity: ^phase1_nat_semiring_l1_python_runtime_fixture_symbol }
   },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 fn phase1_l1_python_runtime_fixture_claim(label: String) -> TestClaim {

@@ -134,8 +134,9 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
 fn emit_host_rust_i64_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: emit_host_rust_i64_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn emit_host_receipt_from_source(

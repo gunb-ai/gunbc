@@ -36,7 +36,9 @@ import v4.std.verification {ManualAnchorAbsent,
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -46,8 +48,9 @@ fn pair_node(left: Symbol, right: Symbol) -> Node {
     children: [
       Edge { label: Named { name: ^correction_left }, target: atom_node(s: left) },
       Edge { label: Named { name: ^correction_right }, target: atom_node(s: right) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 

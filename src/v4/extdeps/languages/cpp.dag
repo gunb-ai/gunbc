@@ -226,8 +226,9 @@ fn cpp_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
 fn cpp_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn cpp_named_edge(name: Symbol, target: Node) -> Edge {
@@ -274,8 +275,9 @@ fn cpp_width_selection_node(spelling: Node, target_profile: Node) -> Node {
         name: ^cpp_field_target_profile,
         target: target_profile
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_target_profile_selection_node(kind: Symbol, target_profile: Node) -> Node {
@@ -284,8 +286,9 @@ fn cpp_target_profile_selection_node(kind: Symbol, target_profile: Node) -> Node
     children: [
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_atom(id: kind)),
       cpp_named_edge(name: ^cpp_field_target_profile, target: target_profile)
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_integer_scalar_fact_node(facts: CppIntegerPrimitiveFacts) -> Node {
@@ -296,8 +299,9 @@ fn cpp_integer_scalar_fact_node(facts: CppIntegerPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_field_width_selection, target: facts.width_fact),
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact),
       cpp_named_edge(name: ^cpp_field_overflow_disposition, target: facts.overflow_fact)
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_character_scalar_fact_node(facts: CppCharacterPrimitiveFacts) -> Node {
@@ -307,8 +311,9 @@ fn cpp_character_scalar_fact_node(facts: CppCharacterPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
       cpp_named_edge(name: ^cpp_field_width_selection, target: facts.width_fact),
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact)
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_integer_facts_node(facts: CppIntegerPrimitiveFacts) -> Node {
@@ -317,8 +322,9 @@ fn cpp_integer_facts_node(facts: CppIntegerPrimitiveFacts) -> Node {
     children: [
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_integer_scalar_fact_node(facts: facts))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_character_facts_node(facts: CppCharacterPrimitiveFacts) -> Node {
@@ -327,8 +333,9 @@ fn cpp_character_facts_node(facts: CppCharacterPrimitiveFacts) -> Node {
     children: [
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_character_scalar_fact_node(facts: facts))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_bool_facts_node(facts: CppBoolPrimitiveFacts) -> Node {
@@ -338,8 +345,9 @@ fn cpp_bool_facts_node(facts: CppBoolPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_atom(id: ^cpp_tag_bool)),
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact)
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_signed_integer_facts(
@@ -775,8 +783,9 @@ fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: Sy
       cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact),
       cpp_named_edge(name: ^cpp_field_overflow_disposition, target: facts.overflow_fact)
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_signed_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> Node {
@@ -796,8 +805,9 @@ fn cpp_signed_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> N
       cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact),
       cpp_named_edge(name: ^cpp_field_overflow_disposition, target: facts.overflow_fact)
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_signed_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -828,8 +838,9 @@ fn cpp_bool_algebra_witness_node(facts: CppBoolPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_witness_bool_boolean_algebra, target: cpp_atom(id: ^cpp_witness_bool_boolean_algebra)),
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact)
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_bool_algebra_inhabitance(facts: CppBoolPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -960,8 +971,9 @@ fn cpp_int_inhabitant_node(target_profile: Node) -> Node {
           )
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
@@ -969,8 +981,9 @@ fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_inhabitant_field_int, target: cpp_int_inhabitant_node(target_profile: target_profile))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // Zip-fold support nodes derived from cpp signed-int facts — not parallel fixture data.
@@ -1044,8 +1057,9 @@ fn cpp_mvp1_coercion_candidate_edges(target_profile: Node) -> List<Edge> {
 fn cpp_mvp1_declared_inhabitants_root(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: cpp_mvp1_coercion_candidate_edges(target_profile: target_profile)
-  }
+    children: cpp_mvp1_coercion_candidate_edges(target_profile: target_profile),
+    span: Unanchored
+}
 }
 
 fn cpp_mvp1_selection_policy_node(target_profile: Node) -> Node {
@@ -1059,8 +1073,9 @@ fn cpp_mvp1_emitted_add_fn_node(target_profile: Node) -> Node {
       Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
       Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
       Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
@@ -1089,7 +1104,9 @@ fn cpp_mvp1_serialize_source_children() -> List<Edge> {
 }
 
 fn cpp_mvp1_serialize_source_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: cpp_mvp1_serialize_source_children() }
+  Node { kind: TypeNode { connective: Conj }, children: cpp_mvp1_serialize_source_children(),
+ span: Unanchored
+}
 }
 
 
@@ -1181,8 +1198,9 @@ fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
           token_to_node: cpp_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_mvp1_translation_rules_node(target_profile: Node) -> Node {
@@ -1190,8 +1208,9 @@ fn cpp_mvp1_translation_rules_node(target_profile: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_relation_rule_mvp1_fn_add, target: cpp_grammar_relation_row_node(row: cpp_mvp1_grammar_relation_row(target_profile: target_profile)))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_mvp1_target_model_node(target_profile: Node) -> Node {
@@ -1202,8 +1221,9 @@ fn cpp_mvp1_target_model_node(target_profile: Node) -> Node {
       cpp_named_edge(name: target_model_edge_declared_inhabitants, target: cpp_mvp1_declared_inhabitants_root(target_profile: target_profile)),
       cpp_named_edge(name: target_model_edge_translation_rules, target: cpp_mvp1_translation_rules_node(target_profile: target_profile)),
       cpp_named_edge(name: target_model_edge_serialize_source, target: cpp_mvp1_serialize_source_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn cpp_mvp1_binding_spellings() -> Map<Symbol, String> {
@@ -1219,7 +1239,8 @@ fn cpp_mvp1_binding_spellings() -> Map<Symbol, String> {
 }
 data cpp_mvp1_target_profile: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^cpp_mvp1_target_profile_atom } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 fn cpp_mvp1_target_model() -> TargetModel {

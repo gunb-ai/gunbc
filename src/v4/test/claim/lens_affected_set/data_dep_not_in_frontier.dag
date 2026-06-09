@@ -20,8 +20,9 @@ import v4.std.verification {
 fn data_dep_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 data data_dep_root: Node = data_dep_node(s: ^data_dep_root_symbol)
@@ -43,8 +44,9 @@ fn data_dep_not_in_frontier_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

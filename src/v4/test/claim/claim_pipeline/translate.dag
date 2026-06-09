@@ -25,7 +25,8 @@ import v4.std.verification {
 import v4.test.claim.manual.mvp1_rust_add_translate { mvp1_rust_inferred_tree }
 data spine_translate_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_translate_module } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 // 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 / G.3.5 spine harness —
 // dissolve-on: T-22 claim runner evaluates translate Outcome<TargetNodeTree> directly without Bool projection.
@@ -42,13 +43,15 @@ fn spine_translate_bool_atom(b: Bool) -> Node {
     true =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_translate_pass } },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
     false =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_translate_fail } },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
   }
 }
 

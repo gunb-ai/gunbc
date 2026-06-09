@@ -576,8 +576,9 @@ fn uint_platform_interval_spec() -> IntegerIntervalSpec {
 fn integer_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn integer_named_edge(name: Symbol, target: Node) -> Edge {
@@ -669,8 +670,9 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
           name: ^integer_bound_field_kind,
           target: integer_inhabitant_atom(id: ^integer_tag_bound_zero)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
     IntegerConcreteBound { sign, magnitude } => Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -686,8 +688,9 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
           name: ^integer_bound_field_magnitude,
           target: integer_decimal_nonzero_node(magnitude: magnitude)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
     IntegerPointerWidthBound { signedness, endpoint } => Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -703,8 +706,9 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
           name: ^integer_bound_field_endpoint,
           target: integer_range_endpoint_node(endpoint: endpoint)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -720,8 +724,9 @@ fn integer_interval_spec_node(spec: IntegerIntervalSpec) -> Node {
         name: ^integer_interval_field_inclusive_max,
         target: integer_interval_bound_node(bound: spec.inclusive_max)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 fn int_add(a: Int, b: Int) -> Int {
   a + b

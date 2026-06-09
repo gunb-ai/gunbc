@@ -31,8 +31,9 @@ data sr_claim_hash: Hash = sr_claim_hash
 fn sr_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 // Atom reference (NoEdges); declaration container carries the BindsTo edge (P6 / node discipline).
@@ -42,7 +43,8 @@ data sr_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_use }
-  ]
+  ],
+  span: Unanchored
 }
 
 data sr_dependency: DependencyView = DependencyView {

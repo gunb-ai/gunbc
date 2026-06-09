@@ -32,7 +32,9 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn branch_dispatch_leaf(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -41,8 +43,9 @@ fn branch_dispatch_arm(s: Symbol) -> Node {
     kind: ComputationNode { behavior: Transform },
     children: [
       Edge { label: Positional, target: branch_dispatch_leaf(s: s) }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -55,7 +58,8 @@ data branch_dispatch_subject: Node = Node {
   children: [
     Edge { label: Positional, target: branch_dispatch_arm_then },
     Edge { label: Positional, target: branch_dispatch_arm_else }
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -103,7 +107,8 @@ data branch_dispatch_subject_rebuilt: Node = Node {
   children: [
     Edge { label: Positional, target: branch_dispatch_arm_then },
     Edge { label: Positional, target: branch_dispatch_arm_else }
-  ]
+  ],
+  span: Unanchored
 }
 
 // Distinct node (arms swapped) — sensitivity: a distinct input must yield a distinct hash.
@@ -112,7 +117,8 @@ data branch_dispatch_subject_arms_swapped: Node = Node {
   children: [
     Edge { label: Positional, target: branch_dispatch_arm_else },
     Edge { label: Positional, target: branch_dispatch_arm_then }
-  ]
+  ],
+  span: Unanchored
 }
 
 data witness_branch_dispatch_content_hash_stable: Bool = (content_hash(n: branch_dispatch_subject) == content_hash(n: branch_dispatch_subject_rebuilt)) && (content_hash(n: branch_dispatch_subject) != content_hash(n: branch_dispatch_subject_arms_swapped))

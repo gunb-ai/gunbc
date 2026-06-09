@@ -45,7 +45,8 @@ import v4.std.witness { Violates, Witness }
 
 data anchor_stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data anchor_stub_target_model: TargetModel = TargetModel {

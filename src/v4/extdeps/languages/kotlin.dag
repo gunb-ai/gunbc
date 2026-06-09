@@ -373,8 +373,9 @@ data kotlin_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 fn kotlin_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn kotlin_named_edge(name: Symbol, target: Node) -> Edge {
@@ -441,8 +442,9 @@ fn kotlin_scalar_node(scalar: KotlinScalar) -> Node {
           target: kotlin_atom(id: ^kotlin_tag_scalar_int)
         ),
         kotlin_named_edge(name: ^kotlin_facts_field_width, target: kotlin_int_width_node(width: width))
-      ]
-    }
+      ],
+      span: Unanchored
+}
     FloatScalar { width } => Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -451,8 +453,9 @@ fn kotlin_scalar_node(scalar: KotlinScalar) -> Node {
           target: kotlin_atom(id: ^kotlin_tag_scalar_float)
         ),
         kotlin_named_edge(name: ^kotlin_facts_field_width, target: kotlin_float_width_node(width: width))
-      ]
-    }
+      ],
+      span: Unanchored
+}
     BoolScalar => kotlin_atom(id: ^kotlin_tag_scalar_bool)
     CharScalar => kotlin_atom(id: ^kotlin_tag_scalar_char)
     StringScalar => kotlin_atom(id: ^kotlin_tag_scalar_string)
@@ -483,8 +486,9 @@ fn kotlin_integer_facts_node(facts: KotlinIntegerPrimitiveFacts) -> Node {
         name: ^kotlin_facts_field_scalar_classifier,
         target: kotlin_scalar_node(scalar: IntScalar { width: facts.width })
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> Node {
@@ -508,8 +512,9 @@ fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> Node {
         name: ^kotlin_facts_field_scalar_classifier,
         target: kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> Node {
@@ -528,8 +533,9 @@ fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> Node {
         name: ^kotlin_facts_field_scalar_classifier,
         target: kotlin_scalar_node(scalar: facts.scalar)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_nonnumeric_value_fact_field(value_fact: KotlinNonNumericValueFact) -> Symbol {
@@ -789,8 +795,9 @@ fn kotlin_ordered_ring_integer_algebra_witness_body(
         name: ^kotlin_facts_field_representation,
         target: kotlin_runtime_representation_node(representation: representation)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_integer_algebra_witness_node(facts: KotlinOrderedRingIntegerFacts) -> Node {
@@ -824,8 +831,9 @@ fn kotlin_float_algebra_witness_node(facts: KotlinFloatPrimitiveFacts) -> Node {
         name: ^kotlin_facts_field_representation,
         target: kotlin_runtime_representation_node(representation: facts.representation)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_bool_algebra_witness_node() -> Node {
@@ -842,8 +850,9 @@ fn kotlin_bool_algebra_witness_node() -> Node {
           representation: kotlin_platform_specific_runtime_representation
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_integer_algebra_inhabitance(facts: KotlinOrderedRingIntegerFacts) -> AlgebraInhabitanceDecl {
@@ -978,8 +987,9 @@ fn kotlin_integer_inhabitant_node(id: Symbol, facts: KotlinIntegerPrimitiveFacts
         name: ^kotlin_inhabitant_field_facts,
         target: kotlin_integer_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_inhabitant_int_node() -> Node {
@@ -991,8 +1001,9 @@ fn kotlin_declared_inhabitants_root() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(name: ^kotlin_inhabitant_field_int, target: kotlin_inhabitant_int_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_mvp1_selection_policy_node() -> Node {
@@ -1011,8 +1022,9 @@ fn kotlin_mvp1_param_binding_node(binding: Symbol) -> Node {
         name: ^kotlin_emitted_field_param_type,
         target: kotlin_inhabitant_int_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_mvp1_add_fn_signature_arrow() -> Node {
@@ -1022,8 +1034,9 @@ fn kotlin_mvp1_add_fn_signature_arrow() -> Node {
       Edge { label: Positional, target: kotlin_inhabitant_int_node() },
       Edge { label: Positional, target: kotlin_inhabitant_int_node() },
       Edge { label: Positional, target: kotlin_inhabitant_int_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_mvp1_return_add_expr_node() -> Node {
@@ -1039,8 +1052,9 @@ fn kotlin_mvp1_return_add_expr_node() -> Node {
         name: ^kotlin_binding_param_y,
         target: kotlin_atom(id: ^kotlin_binding_param_y)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // ParseGrammar-as-data function item: name, param bindings, Int signature, return `x + y` expression facts.
@@ -1072,8 +1086,9 @@ fn kotlin_mvp1_emitted_add_fn_node() -> Node {
         name: ^kotlin_emitted_field_return_expr,
         target: kotlin_mvp1_return_add_expr_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_mvp1_source_text_authority() -> String {
@@ -1122,8 +1137,9 @@ fn kotlin_mvp1_serialize_source_node() -> Node {
   let _authority = kotlin_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: kotlin_mvp1_serialize_source_children()
-  }
+    children: kotlin_mvp1_serialize_source_children(),
+    span: Unanchored
+}
 }
 
 fn kotlin_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -1345,8 +1361,9 @@ fn kotlin_grammar_relation_row_node(row: KotlinGrammarRelationRow) -> Node {
           token_to_node: kotlin_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_mvp1_translation_rules_node() -> Node {
@@ -1357,8 +1374,9 @@ fn kotlin_mvp1_translation_rules_node() -> Node {
         name: ^kotlin_relation_rule_mvp1_fn_add,
         target: kotlin_grammar_relation_row_node(row: kotlin_mvp1_grammar_relation_row())
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_mvp1_target_model_node() -> Node {
@@ -1381,8 +1399,9 @@ fn kotlin_mvp1_target_model_node() -> Node {
         name: target_model_edge_serialize_source,
         target: kotlin_mvp1_serialize_source_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn kotlin_mvp1_binding_spellings() -> Map<Symbol, String> {

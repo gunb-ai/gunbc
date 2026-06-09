@@ -24,8 +24,9 @@ fn project_to_core_axis_is_surface(name: Symbol) -> Bool {
 fn project_to_core_init(n: Node) -> Node {
   Node {
     kind: n.kind,
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
@@ -37,14 +38,16 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
       } else {
         Node {
           kind: acc.kind,
-          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: projected_target })
-        }
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: projected_target }),
+          span: Unanchored
+}
       }
     Positional =>
       Node {
         kind: acc.kind,
-        children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: projected_target })
-      }
+        children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: projected_target }),
+        span: Unanchored
+}
   }
 }
 

@@ -34,8 +34,9 @@ data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
 fn sr_unbound_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 data sr_unbound_use: Node = sr_unbound_claim_atom(s: ^sr_unbound_use_symbol)
@@ -44,7 +45,8 @@ data sr_unbound_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_unbound_use }
-  ]
+  ],
+  span: Unanchored
 }
 
 data sr_unbound_dependency: DependencyView = DependencyView {

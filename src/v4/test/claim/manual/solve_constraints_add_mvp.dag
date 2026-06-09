@@ -56,8 +56,9 @@ data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraint
 fn solve_constraints_witness_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^solve_constraints_witness_fail_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 fn solve_constraints_claim_input(ok: Bool) -> Node {
   if ok {

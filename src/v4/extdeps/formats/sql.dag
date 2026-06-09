@@ -234,7 +234,8 @@ fn sql_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-  }
+    span: Unanchored
+}
 }
 
 fn sql_named_edge(name: Symbol, target: Node) -> Edge {
@@ -250,7 +251,8 @@ fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
-  }
+    span: Unanchored
+}
 }
 
 fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
@@ -262,7 +264,8 @@ fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
-  }
+    span: Unanchored
+}
 }
 
 fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
@@ -278,7 +281,8 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
         target: sql_inhabitant_atom(id: facts.representation),
       ),
     ],
-  }
+    span: Unanchored
+}
 }
 
 fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> {

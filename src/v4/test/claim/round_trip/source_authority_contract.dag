@@ -35,7 +35,8 @@ data source_authority_contract_source: DagSource = ""
 
 data source_authority_contract_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^source_authority_contract_subject_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data source_authority_contract_target_model: TargetModel = TargetModel {
@@ -48,15 +49,17 @@ data source_authority_contract_target_model: TargetModel = TargetModel {
 fn source_authority_contract_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^source_authority_contract_pass_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn source_authority_contract_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^source_authority_contract_fail_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn source_authority_contract_claim_input(ok: Bool) -> Node {

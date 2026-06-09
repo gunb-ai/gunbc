@@ -33,8 +33,9 @@ data sr_mod_claim_hash: Hash = sr_mod_claim_hash
 fn sr_mod_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 data sr_mod_imported: Node = sr_mod_claim_atom(s: ^sr_mod_child_symbol)
@@ -43,7 +44,8 @@ data sr_mod_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge { label: Named { name: ^dependency_module_import_edge }, target: sr_mod_imported }
-  ]
+  ],
+  span: Unanchored
 }
 
 data sr_mod_dependency: DependencyView = DependencyView {

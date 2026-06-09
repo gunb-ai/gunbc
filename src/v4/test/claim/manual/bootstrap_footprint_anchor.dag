@@ -40,15 +40,17 @@ import v4.workflow.bootstrap {
 fn bootstrap_footprint_anchor_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_fail_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn bootstrap_footprint_anchor_bad_snapshot_root_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_bad_snapshot_root } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn bootstrap_footprint_anchor_bad_projection_inputs() -> BootstrapProjectionInputs {

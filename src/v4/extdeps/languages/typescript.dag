@@ -297,8 +297,9 @@ data ts_numeric_facts_catalog: List<TsEcma262NumericPrimitiveFactsUnion> = [
 fn ts_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn ts_named_edge(name: Symbol, target: Node) -> Edge {
@@ -349,8 +350,9 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
         name: ^ts_facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
@@ -373,8 +375,9 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
         name: ^ts_facts_field_encoding,
         target: ts_inhabitant_atom(id: facts.encoding)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> Node {
@@ -397,8 +400,9 @@ fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> Node {
         name: ^ts_facts_field_encoding,
         target: ts_inhabitant_atom(id: facts.encoding)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_number_inhabitant_node(id: Symbol, facts: TsNumberPrimitiveFacts) -> Node {
@@ -410,8 +414,9 @@ fn ts_number_inhabitant_node(id: Symbol, facts: TsNumberPrimitiveFacts) -> Node 
         name: ^ts_inhabitant_field_facts,
         target: ts_number_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_bigint_inhabitant_node(id: Symbol, facts: TsBigIntPrimitiveFacts) -> Node {
@@ -423,8 +428,9 @@ fn ts_bigint_inhabitant_node(id: Symbol, facts: TsBigIntPrimitiveFacts) -> Node 
         name: ^ts_inhabitant_field_facts,
         target: ts_bigint_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_bool_inhabitant_node(id: Symbol, facts: TsBooleanPrimitiveFacts) -> Node {
@@ -436,8 +442,9 @@ fn ts_bool_inhabitant_node(id: Symbol, facts: TsBooleanPrimitiveFacts) -> Node {
         name: ^ts_inhabitant_field_facts,
         target: ts_bool_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_inhabitant_number_node() -> Node {
@@ -459,8 +466,9 @@ fn ts_declared_inhabitants_root() -> Node {
       ts_named_edge(name: ^ts_inhabitant_field_number, target: ts_inhabitant_number_node()),
       ts_named_edge(name: ^ts_inhabitant_field_bigint, target: ts_inhabitant_bigint_node()),
       ts_named_edge(name: ^ts_inhabitant_field_boolean, target: ts_inhabitant_boolean_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // Zip-fold support nodes derived from ts_facts_number constructors — not parallel fixture data.
@@ -516,8 +524,9 @@ fn ts_mvp1_coercion_candidate_edges() -> List<Edge> {
 fn ts_mvp1_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: ts_mvp1_coercion_candidate_edges()
-  }
+    children: ts_mvp1_coercion_candidate_edges(),
+    span: Unanchored
+}
 }
 
 fn ts_mvp1_selection_policy_node() -> Node {
@@ -531,8 +540,9 @@ fn ts_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: ts_inhabitant_number_node() },
       Edge { label: Positional, target: ts_inhabitant_number_node() },
       Edge { label: Positional, target: ts_inhabitant_number_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_mvp1_source_text_authority() -> String {
@@ -578,8 +588,9 @@ fn ts_mvp1_serialize_source_node() -> Node {
   let _authority = ts_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: ts_mvp1_serialize_source_children()
-  }
+    children: ts_mvp1_serialize_source_children(),
+    span: Unanchored
+}
 }
 
 fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -636,8 +647,9 @@ fn ts_wave2a_type_annotation_name_emitted(binding: Symbol) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Positional, target: ts_inhabitant_atom(id: binding) }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_wave2a_record_field_emitted(field_binding: Symbol, type_child: Node) -> Node {
@@ -646,8 +658,9 @@ fn ts_wave2a_record_field_emitted(field_binding: Symbol, type_child: Node) -> No
     children: [
       Edge { label: Positional, target: ts_inhabitant_atom(id: field_binding) },
       Edge { label: Positional, target: type_child }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_wave2a_record_fields_single_emitted(field: Node) -> Node {
@@ -655,8 +668,9 @@ fn ts_wave2a_record_fields_single_emitted(field: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Positional, target: field }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_wave2a_record_fields_pair_emitted(left: Node, right: Node) -> Node {
@@ -665,8 +679,9 @@ fn ts_wave2a_record_fields_pair_emitted(left: Node, right: Node) -> Node {
     children: [
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: right }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_wave2a_record_type_task_emitted() -> Node {
@@ -694,8 +709,9 @@ fn ts_wave2a_record_type_task_emitted() -> Node {
           )
         )
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_wave2a_type_annotation_task_record_emitted() -> Node {
@@ -703,8 +719,9 @@ fn ts_wave2a_type_annotation_task_record_emitted() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Positional, target: ts_wave2a_record_type_task_emitted() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_wave2a_type_alias_decl_emitted(name_binding: Symbol, type_child: Node) -> Node {
@@ -713,8 +730,9 @@ fn ts_wave2a_type_alias_decl_emitted(name_binding: Symbol, type_child: Node) -> 
     children: [
       Edge { label: Positional, target: ts_inhabitant_atom(id: name_binding) },
       Edge { label: Positional, target: type_child }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_wave2a_task_type_alias_emitted() -> Node {
@@ -862,8 +880,9 @@ fn ts_wave2a_task_serialize_source_witness() -> Witness<Node> {
               children: list_append(
                 left: ts_wave2a_task_serialize_source_children(),
                 right: token_edges
-              )
-            }
+              ),
+              span: Unanchored
+}
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
@@ -906,8 +925,9 @@ fn ts_pr3_identity_typed_param_emitted() -> Node {
     children: [
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
       Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_pr3_identity_typed_params_emitted() -> Node {
@@ -915,8 +935,9 @@ fn ts_pr3_identity_typed_params_emitted() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Positional, target: ts_pr3_identity_typed_param_emitted() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_pr3_identity_typed_params_opt_emitted() -> Node {
@@ -924,8 +945,9 @@ fn ts_pr3_identity_typed_params_opt_emitted() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Positional, target: ts_pr3_identity_typed_params_emitted() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_pr3_identity_typed_fn_emitted() -> Node {
@@ -936,8 +958,9 @@ fn ts_pr3_identity_typed_fn_emitted() -> Node {
       Edge { label: Positional, target: ts_pr3_identity_typed_params_opt_emitted() },
       Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() },
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_pr3_identity_formal_productions() -> List<FormalProduction> {
@@ -1030,8 +1053,9 @@ fn ts_pr3_identity_serialize_source_witness() -> Witness<Node> {
               children: list_append(
                 left: ts_pr3_identity_serialize_source_children(),
                 right: token_edges
-              )
-            }
+              ),
+              span: Unanchored
+}
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
@@ -1060,8 +1084,9 @@ fn ts_pr3_translation_rules_witness() -> Witness<Node> {
                   name: ^ts_relation_rule_pr3_identity,
                   target: pr3_row
                 )
-              ]
-            }
+              ],
+              span: Unanchored
+}
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
@@ -1094,8 +1119,9 @@ fn ts_pr3_identity_target_model_bundle_witness() -> Witness<Node> {
                   name: target_model_edge_serialize_source,
                   target: serialize
                 )
-              ]
-            }
+              ],
+              span: Unanchored
+}
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
@@ -1157,8 +1183,9 @@ fn ts_mvp1_translation_rules_node() -> Node {
         name: ^ts_relation_rule_mvp1_fn_add,
         target: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_mvp1_translation_rules_witness() -> Witness<Node> {
@@ -1176,8 +1203,9 @@ fn ts_mvp1_translation_rules_witness() -> Witness<Node> {
               name: ^ts_relation_rule_type_alias_task,
               target: task_row
             )
-          ]
-        }
+          ],
+          span: Unanchored
+}
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
@@ -1203,8 +1231,9 @@ fn ts_mvp1_target_model_node() -> Node {
         name: target_model_edge_serialize_source,
         target: ts_mvp1_serialize_source_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_mvp1_binding_spellings() -> Map<Symbol, String> {
@@ -1383,8 +1412,9 @@ fn ts_sg2_type_expr_target_model_node() -> Node {
         name: target_model_edge_type_expression_projection,
         target: ts_type_expression_projection_bundle_node()
       )
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn ts_target_atom_realization_target_model_node() -> Node {
@@ -1399,8 +1429,9 @@ fn ts_target_atom_realization_target_model_node() -> Node {
           host_bundle: ts_sg2_type_expr_target_model_node()
         )
       )
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn ts_sg2_binding_spellings() -> Map<Symbol, String> {
@@ -1486,15 +1517,17 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
           ]
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_sg2_atom_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn ts_sg2_arrow_xy_emitted() -> Node {
@@ -1546,8 +1579,9 @@ fn ts_sg2_arrow_mixed_wire_emitted() -> Node {
           identity: ^ts_binding_sg2_y
         )
       )
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn ts_sg2_arrow_source_type_node() -> Node {
@@ -1556,8 +1590,9 @@ fn ts_sg2_arrow_source_type_node() -> Node {
     children: [
       Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
       Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_sg2_binary_fn_source_type_node() -> Node {
@@ -1572,8 +1607,9 @@ fn ts_sg2_arrow_malformed_source_type_node() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_sg2_conj_xy_emitted() -> Node {
@@ -1604,8 +1640,9 @@ fn ts_sg2_conj_source_type_node() -> Node {
     children: [
       ts_named_edge(name: ^ts_binding_sg2_x, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x)),
       ts_named_edge(name: ^ts_binding_sg2_y, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_sg2_sum_xy_emitted() -> Node {
@@ -1636,8 +1673,9 @@ fn ts_sg2_disj_source_type_node() -> Node {
     children: [
       ts_named_edge(name: ^ts_binding_sg2_x, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x)),
       ts_named_edge(name: ^ts_binding_sg2_y, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y))
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_wave2a_task_target_model_bundle_witness() -> Witness<Node> {
@@ -1665,8 +1703,9 @@ fn ts_wave2a_task_target_model_bundle_witness() -> Witness<Node> {
                   name: target_model_edge_serialize_source,
                   target: serialize
                 )
-              ]
-            }
+              ],
+              span: Unanchored
+}
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
@@ -1925,8 +1964,9 @@ fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> Node {
         name: ^ts_facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
@@ -1945,8 +1985,9 @@ fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
         name: ^ts_facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_bool_algebra_witness_node() -> Node {
@@ -1965,8 +2006,9 @@ fn ts_bool_algebra_witness_node() -> Node {
         name: ^ts_facts_field_std_projection,
         target: ts_inhabitant_atom(id: ts_facts_boolean.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_number_algebra_inhabitance(facts: TsNumberPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -2847,8 +2889,9 @@ fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
         name: ^ts_facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_string_inhabitant_node(id: Symbol, facts: TsStringPrimitiveFacts) -> Node {
@@ -2861,8 +2904,9 @@ fn ts_string_inhabitant_node(id: Symbol, facts: TsStringPrimitiveFacts) -> Node 
         name: ^ts_facts_field_surface_spelling,
         target: ts_inhabitant_atom(id: facts.surface_spelling)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
@@ -2881,8 +2925,9 @@ fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
         name: ^ts_facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -3097,8 +3142,9 @@ fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) 
         name: model_core_wave1_law_field_kind,
         target: ts_inhabitant_atom(id: discriminant(v: key))
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {

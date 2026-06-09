@@ -87,8 +87,9 @@ import v4.test.claim.manual.connective_anchors {
 fn lbe_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn lbe_runtime_value() -> RuntimeValue {

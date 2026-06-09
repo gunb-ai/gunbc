@@ -80,15 +80,17 @@ import v4.std.witness { Violates }
 fn tcc_cache_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn tcc_cache_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn tcc_cache_root() -> Node {

@@ -56,20 +56,23 @@ import v4.std.witness { StructuralPropertyWitness }
 fn distinct_source_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 fn distinct_target_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 fn distinct_wrong_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^distinct_zip_wrong_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 fn distinct_source_add_node() -> Node {
   Node {
@@ -78,8 +81,9 @@ fn distinct_source_add_node() -> Node {
       Edge { label: Positional, target: distinct_source_leaf() },
       Edge { label: Positional, target: distinct_source_leaf() },
       Edge { label: Positional, target: distinct_source_leaf() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 fn distinct_target_add_node() -> Node {
   Node {
@@ -88,8 +92,9 @@ fn distinct_target_add_node() -> Node {
       Edge { label: Positional, target: distinct_target_leaf() },
       Edge { label: Positional, target: distinct_target_leaf() },
       Edge { label: Positional, target: distinct_target_leaf() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 fn distinct_wrong_arity_node() -> Node {
   Node {
@@ -97,8 +102,9 @@ fn distinct_wrong_arity_node() -> Node {
     children: [
       Edge { label: Positional, target: distinct_wrong_leaf() },
       Edge { label: Positional, target: distinct_wrong_leaf() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 fn distinct_wrong_subtree_node() -> Node {
   Node {
@@ -107,8 +113,9 @@ fn distinct_wrong_subtree_node() -> Node {
       Edge { label: Positional, target: distinct_wrong_arity_node() },
       Edge { label: Positional, target: distinct_target_leaf() },
       Edge { label: Positional, target: distinct_target_leaf() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 fn distinct_source_nested_node() -> Node {
   Node {
@@ -116,8 +123,9 @@ fn distinct_source_nested_node() -> Node {
     children: [
       Edge { label: Positional, target: distinct_source_add_node() },
       Edge { label: Positional, target: distinct_source_leaf() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 fn distinct_target_nested_node() -> Node {
   Node {
@@ -125,14 +133,16 @@ fn distinct_target_nested_node() -> Node {
     children: [
       Edge { label: Positional, target: distinct_target_add_node() },
       Edge { label: Positional, target: distinct_target_leaf() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 fn distinct_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 fn distinct_closedness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {

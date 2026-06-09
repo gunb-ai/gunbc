@@ -166,8 +166,9 @@ data model_core_wave1_law_field_kind: Symbol = model_core_wave1_law_field_kind
 fn model_core_wave1_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
@@ -237,8 +238,9 @@ fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
         label: Named { name: model_core_wave1_law_field_kind },
         target: model_core_wave1_atom(id: discriminant(v: key))
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 

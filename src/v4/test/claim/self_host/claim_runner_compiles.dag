@@ -23,7 +23,8 @@ import v4.std.verification {
 }
 data runner_compiles_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^runner_compiles_subject_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 

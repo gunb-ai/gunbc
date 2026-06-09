@@ -42,7 +42,8 @@ import v4.test.claim.algebra_laws.nat_semiring {
 // per ladder rung specs §2.4 verdict reporting shape and §2.5 worker brief triple.
 data phase1_nat_semiring_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase1_nat_semiring_rung_subject_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 

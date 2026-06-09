@@ -22,22 +22,25 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn anchor_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn anchor_computation_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Value },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 // Unit receipts: algebra_ref_is_grounded returns false for bare Atom, true for Conj,

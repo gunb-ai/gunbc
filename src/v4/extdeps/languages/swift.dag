@@ -393,8 +393,9 @@ data swift_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 fn swift_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn swift_named_edge(name: Symbol, target: Node) -> Edge {
@@ -482,8 +483,9 @@ fn swift_integer_facts_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
         name: ^swift_facts_field_overflow,
         target: swift_overflow_node(overflow: facts.overflow)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_float_facts_node(facts: SwiftFloatPrimitiveFacts) -> Node {
@@ -502,8 +504,9 @@ fn swift_float_facts_node(facts: SwiftFloatPrimitiveFacts) -> Node {
         name: ^swift_facts_field_ieee754_binary,
         target: swift_atom(id: facts.ieee754_binary)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_nonnumeric_surface_spelling(facts: SwiftNonNumericPrimitiveFacts) -> Symbol {
@@ -531,8 +534,9 @@ fn swift_nonnumeric_facts_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
         name: ^swift_facts_field_value_fact,
         target: swift_nonnumeric_representation_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_integer_inhabitant_node(id: Symbol, facts: SwiftIntegerPrimitiveFacts) -> Node {
@@ -544,8 +548,9 @@ fn swift_integer_inhabitant_node(id: Symbol, facts: SwiftIntegerPrimitiveFacts) 
         name: ^swift_inhabitant_field_facts,
         target: swift_integer_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_inhabitant_int32_node() -> Node {
@@ -557,8 +562,9 @@ fn swift_declared_inhabitants_root() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(name: ^swift_inhabitant_field_int32, target: swift_inhabitant_int32_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_mvp1_selection_policy_node() -> Node {
@@ -572,8 +578,9 @@ fn swift_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: swift_inhabitant_int32_node() },
       Edge { label: Positional, target: swift_inhabitant_int32_node() },
       Edge { label: Positional, target: swift_inhabitant_int32_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_mvp1_source_text_authority() -> String {
@@ -622,8 +629,9 @@ fn swift_mvp1_serialize_source_node() -> Node {
   let _authority = swift_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: swift_mvp1_serialize_source_children()
-  }
+    children: swift_mvp1_serialize_source_children(),
+    span: Unanchored
+}
 }
 
 fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -677,8 +685,9 @@ fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
           token_to_node: swift_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_mvp1_translation_rules_node() -> Node {
@@ -689,8 +698,9 @@ fn swift_mvp1_translation_rules_node() -> Node {
         name: ^swift_relation_rule_mvp1_fn_add,
         target: swift_grammar_relation_row_node(row: swift_mvp1_grammar_relation_row())
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_mvp1_target_model_node() -> Node {
@@ -713,8 +723,9 @@ fn swift_mvp1_target_model_node() -> Node {
         name: target_model_edge_serialize_source,
         target: swift_mvp1_serialize_source_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_mvp1_binding_spellings() -> Map<Symbol, String> {
@@ -1914,8 +1925,9 @@ fn swift_float_inhabitant_node(id: Symbol, facts: SwiftFloatPrimitiveFacts) -> N
         name: ^swift_inhabitant_field_facts,
         target: swift_float_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_signed_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
@@ -1938,8 +1950,9 @@ fn swift_signed_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) -> N
         name: ^swift_facts_field_overflow,
         target: swift_overflow_node(overflow: facts.overflow)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_unsigned_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
@@ -1962,8 +1975,9 @@ fn swift_unsigned_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) ->
         name: ^swift_facts_field_overflow,
         target: swift_overflow_node(overflow: facts.overflow)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_float_algebra_witness_node(facts: SwiftFloatPrimitiveFacts) -> Node {
@@ -1982,8 +1996,9 @@ fn swift_float_algebra_witness_node(facts: SwiftFloatPrimitiveFacts) -> Node {
         name: ^swift_facts_field_width,
         target: swift_float_width_node(width: facts.width)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_bool_algebra_witness_node() -> Node {
@@ -1994,8 +2009,9 @@ fn swift_bool_algebra_witness_node() -> Node {
         name: ^swift_witness_bool_boolean_algebra,
         target: swift_atom(id: ^swift_witness_bool_boolean_algebra)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_string_algebra_witness_node() -> Node {
@@ -2010,8 +2026,9 @@ fn swift_string_algebra_witness_node() -> Node {
         name: ^swift_facts_field_value_fact,
         target: swift_atom(id: ^swift_tag_string_unicode_text)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_integer_algebra_inhabitance(facts: SwiftIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -2123,8 +2140,9 @@ fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLa
         name: model_core_wave1_law_field_kind,
         target: swift_atom(id: discriminant(v: key))
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn swift_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {

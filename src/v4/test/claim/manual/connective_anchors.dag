@@ -53,7 +53,8 @@ import v4.std.node {
 
 data stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 
@@ -62,55 +63,64 @@ data stub_arrow_pair: Node = Node {
   children: [
     Edge { label: Positional, target: stub_empty_conj },
     Edge { label: Positional, target: stub_empty_conj }
-  ]
+  ],
+  span: Unanchored
 }
 
 
 data stub_empty_disj: Node = Node {
   kind: TypeNode { connective: Disj },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 
 data stub_empty_cardinality: Node = Node {
   kind: TypeNode { connective: Cardinality },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 
 data stub_empty_instantiation: Node = Node {
   kind: TypeNode { connective: Instantiation },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 
 data stub_empty_arrow: Node = Node {
   kind: TypeNode { connective: Arrow },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 
 data stub_empty_transform: Node = Node {
   kind: ComputationNode { behavior: Transform },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 
 data stub_empty_branch: Node = Node {
   kind: ComputationNode { behavior: Branch },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 
 data stub_empty_loop: Node = Node {
   kind: ComputationNode { behavior: Loop },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 
 data stub_bind_zero_children: Node = Node {
   kind: ComputationNode { behavior: Bind },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 

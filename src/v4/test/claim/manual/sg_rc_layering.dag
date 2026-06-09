@@ -74,15 +74,17 @@ data sg_rc_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 fn sg_rc_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_rc_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg_rc_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_rc_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg_rc_claim_input(ok: Bool) -> Node {
@@ -155,8 +157,9 @@ fn sg_rc_outcome_node_source_type() -> Node {
           children: []
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn sg_rc_outcome_node_projected_type() -> Node {

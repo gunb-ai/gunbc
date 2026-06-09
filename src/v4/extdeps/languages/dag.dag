@@ -261,8 +261,9 @@ fn dag_grammar_atom(id: Symbol) -> Node {
     kind: TypeNode {
       connective: Atom { identity: id }
     },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn dag_named_edge(name: Symbol, target: Node) -> Edge {
@@ -316,8 +317,9 @@ fn emit_grammar_relation_row(
           token_to_node: fn(token) { token }
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
@@ -2365,8 +2367,9 @@ fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: qualified_name
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn emit_row_module_header(qualified_name: Node) -> Node {
@@ -2409,8 +2412,9 @@ fn emit_import_decl_emitted_node(
           ]
         )
       None => prefix
-    }
-  }
+    },
+    span: Unanchored
+}
 }
 
 fn emit_row_import_decl(
@@ -2462,8 +2466,9 @@ fn emit_data_decl_emitted_node(
         name: ^dag_surface_data_decl_expr,
         target: expr
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn emit_row_data_decl(
@@ -2839,8 +2844,9 @@ fn dag_surface_module_header_metadata_edge(name: Symbol) -> Bool {
 fn dag_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn dag_int_inhabitant_node() -> Node {
@@ -2852,8 +2858,9 @@ fn dag_int_inhabitant_node() -> Node {
         name: ^dag_inhabitant_field_int,
         target: dag_inhabitant_atom(id: ^dag_surface_spelling_int)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn dag_declared_inhabitants_core() -> Node {
@@ -2861,8 +2868,9 @@ fn dag_declared_inhabitants_core() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 data dag_mvp1_fixture_int_inhabitant: Node = dag_int_inhabitant_node()
@@ -2873,7 +2881,8 @@ data dag_mvp1_fixture_emitted_add_fn: Node = Node {
     Edge { label: Positional, target: dag_mvp1_fixture_int_inhabitant },
     Edge { label: Positional, target: dag_mvp1_fixture_int_inhabitant },
     Edge { label: Positional, target: dag_mvp1_fixture_int_inhabitant }
-  ]
+  ],
+  span: Unanchored
 }
 
 fn dag_mvp1_zip_fold_closure_edges() -> List<Edge> {
@@ -2899,8 +2908,9 @@ fn dag_mvp1_declared_inhabitants_root() -> Node {
     children: list_append(
       left: dag_declared_inhabitants_core().children,
       right: dag_mvp1_zip_fold_closure_edges()
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn dag_mvp1_selection_policy_node() -> Node {
@@ -2947,8 +2957,9 @@ fn dag_mvp1_serialize_source_node() -> Node {
   let _authority = dag_mvp1_source_text
   Node {
     kind: TypeNode { connective: Conj },
-    children: dag_mvp1_serialize_source_children()
-  }
+    children: dag_mvp1_serialize_source_children(),
+    span: Unanchored
+}
 }
 
 fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -3032,8 +3043,9 @@ fn dag_mvp1_grammar_relation_row_node() -> Node {
           token_to_node: dag_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn dag_mvp1_translation_rules_node() -> Node {
@@ -3044,8 +3056,9 @@ fn dag_mvp1_translation_rules_node() -> Node {
         name: ^dag_relation_rule_mvp1_fn_add,
         target: dag_mvp1_grammar_relation_row_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn dag_mvp1_target_model_bundle_core() -> Node {
@@ -3068,8 +3081,9 @@ fn dag_mvp1_target_model_bundle_core() -> Node {
         name: target_model_edge_serialize_source,
         target: dag_mvp1_serialize_source_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn dag_mvp1_target_model_node() -> Node {
@@ -3094,7 +3108,9 @@ fn dag_mvp1_target_model() -> TargetModel {
 
 // T-36 / rung-3 RoundTripClaim precondition receipt — wave-1 lex/grammar/C5 trivia axes.
 fn dag_round_trip_atom(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 fn dag_round_trip_edge(name: Symbol, target: Node) -> Edge {

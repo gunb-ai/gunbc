@@ -37,14 +37,16 @@ type LensComplexityClaim {
 }
 data while_loop_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^while_loop_body_atom } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data while_external_condition_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: while_loop_body_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 data while_external_condition_loop_bound_diagnostic: Diagnostic = Diagnostic {

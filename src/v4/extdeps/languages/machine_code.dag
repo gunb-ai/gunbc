@@ -395,8 +395,9 @@ data mc_integer_facts_catalog: List<MachineIntegerPrimitiveFacts> = [
 fn mc_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn mc_int_kind_node(kind: MachineIntKind) -> Node {
@@ -452,8 +453,9 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
         label: Named { name: ^mc_facts_field_std_projection },
         target: mc_inhabitant_atom(id: facts.std_projection)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Node> {

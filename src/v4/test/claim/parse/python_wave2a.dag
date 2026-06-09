@@ -25,8 +25,12 @@ data python_wave2a_non_mvp_source: String = "def choose(x):\n    y = x + 1\n    
 
 fn python_wave2a_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^python_wave2a_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^python_wave2a_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^python_wave2a_bool_true } }, children: [],
+ span: Unanchored
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^python_wave2a_bool_false } }, children: [],
+ span: Unanchored
+}
   }
 }
 

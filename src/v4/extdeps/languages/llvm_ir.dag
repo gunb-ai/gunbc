@@ -692,8 +692,9 @@ data llvm_float_facts_catalog: List<LlvmFloatPrimitiveFacts> = [
 fn llvm_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn llvm_wave1_integer_bits_node(wave1_bits: LlvmWave1IntegerBits) -> Node {
@@ -731,8 +732,9 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
         label: Named { name: ^llvm_facts_field_std_projection },
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
@@ -751,8 +753,9 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
         label: Named { name: ^llvm_facts_field_std_projection },
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node> {

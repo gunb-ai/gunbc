@@ -151,8 +151,9 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               children: []
             }
           }
-        ]
-      }
+        ],
+        span: Unanchored
+}
     BoundToken { token_class: c, binding: b } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -178,8 +179,9 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               children: []
             }
           }
-        ]
-      }
+        ],
+        span: Unanchored
+}
   }
 }
 
@@ -260,15 +262,17 @@ data char_kernel_type_atom: Symbol = char_kernel_type_atom
 fn symbol_kernel_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: symbol_kernel_type_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn char_kernel_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: char_kernel_type_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn source_atom_symbol(identity: Symbol) -> SourceAtomValue {
@@ -450,8 +454,9 @@ fn target_value_template_tag_node(kind: TargetValueTemplateKind) -> Node {
     kind: TypeNode {
       connective: Atom { identity: discriminant(v: kind) }
     },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn target_value_expression_symbol_identity(identity: Symbol) -> TargetValueExpression {
@@ -469,8 +474,9 @@ fn target_value_expression_symbol_identity(identity: Symbol) -> TargetValueExpre
             children: []
           }
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -489,8 +495,9 @@ fn target_value_expression_symbol_to_owned_string(identity: Symbol) -> TargetVal
             children: []
           }
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -506,8 +513,9 @@ fn target_value_expression_bool_literal(value: Bool) -> TargetValueExpression {
           name: ^target_value_expression_field_value,
           target: target_value_expression_bool_atom(value: value)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -526,8 +534,9 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
             children: []
           }
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -543,8 +552,9 @@ fn target_value_expression_string_literal(value: Node) -> TargetValueExpression 
           name: ^target_value_expression_field_value,
           target: value
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -692,15 +702,17 @@ fn target_value_expression_bool_atom(value: Bool) -> Node {
         kind: TypeNode {
           connective: Atom { identity: ^target_value_expression_bool_true }
         },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
     false =>
       Node {
         kind: TypeNode {
           connective: Atom { identity: ^target_value_expression_bool_false }
         },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
   }
 }
 
@@ -719,8 +731,9 @@ fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -
         kind: TypeNode {
           connective: Atom { identity: ^target_constructor_template_optional_absent }
         },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
     Present { value: template } =>
       match template {
         CtorTemplateUnit {} =>
@@ -728,8 +741,9 @@ fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -
             kind: TypeNode {
               connective: Atom { identity: ^target_constructor_template_constructor_absent }
             },
-            children: []
-          }
+            children: [],
+            span: Unanchored
+}
       }
   }
 }
@@ -790,8 +804,9 @@ fn target_model_bundle_core(host: TargetModel) -> Node {
           cons: fn(acc, edge) {
             target_model_bundle_core_keep_edge(acc: acc, edge: edge)
           }
-        )
-      }
+        ),
+        span: Unanchored
+}
     _ => host.bundle
   }
 }
@@ -839,8 +854,9 @@ fn target_atom_realization_to_node(row: TargetAtomRealization, host_bundle: Node
           children: []
         }
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn target_atom_realization_catalog_edge(
@@ -880,8 +896,9 @@ fn target_atom_realization_catalog_node(
           host_bundle: host_bundle
         )
       }
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 type TargetAtomRealizationCatalogLookup
@@ -1219,8 +1236,9 @@ fn target_function_boundary_site_to_node(site: FunctionBoundarySite) -> Node {
     kind: TypeNode {
       connective: Atom { identity: discriminant(v: site) }
     },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn target_function_boundary_site_eq(a: FunctionBoundarySite, b: FunctionBoundarySite) -> Bool {
@@ -1321,8 +1339,9 @@ fn target_function_signature_realization_to_node(
         name: ^target_function_signature_realization_field_signature_type_form,
         target: row.signature_type_form.node
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // Catalog rows are POSITIONAL slots, not Named edges: the (source_carrier, boundary_site)
@@ -1362,8 +1381,9 @@ fn target_function_signature_realization_catalog_node(
           row: row
         )
       }
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn target_function_signature_realization_from_row_node(
@@ -1631,8 +1651,9 @@ fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
     label: Named { name: target_type_expr_field_surface },
     target: Node {
       kind: TypeNode { connective: Atom { identity: surface } },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 
@@ -1740,8 +1761,9 @@ fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
       kind: TypeNode {
         connective: Atom { identity: discriminant(v: kind) }
       },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 
@@ -1771,8 +1793,9 @@ fn target_type_expr_wrapped_emitted(
         item: target_type_expr_surface_edge(surface: surface)
       ),
       item: target_type_expr_kind_edge(kind: kind)
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: Symbol) -> Node {
@@ -1782,8 +1805,9 @@ fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: Symbol) ->
     children: [
       Node {
         kind: TypeNode { connective: Atom { identity: identity } },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
     ]
   )
 }
@@ -1811,8 +1835,9 @@ fn target_type_expr_wrapped_emitted_labeled(
         right: Cons { head: target_type_expr_surface_edge(surface: surface), tail: Empty }
       ),
       right: Cons { head: target_type_expr_kind_edge(kind: kind), tail: Empty }
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn target_type_expr_instantiation_emitted(
@@ -2439,8 +2464,9 @@ fn target_collection_realization_lookup_in_catalog(
 fn target_collection_set_carrier_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: target_collection_set_carrier } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectionReprKind> {
@@ -2678,8 +2704,9 @@ data target_carrier_probe_heap: Symbol = target_carrier_probe_heap
 fn target_carrier_type_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn target_carrier_diagnostics_node() -> Node {
@@ -3116,8 +3143,9 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
           children: []
         }
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn target_use_site_ownership_catalog_edge(row: TargetUseSiteOwnershipRealization) -> Edge {
@@ -3143,15 +3171,18 @@ fn target_use_site_ownership_catalog_node(
       xs: rows,
       empty: Empty,
       cons: fn(acc, row) { target_use_site_ownership_catalog_snoc_edge(acc: acc, row: row) }
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 // Value-semantics carrier set encode/decode (a Conj of bare atom nodes keyed by
 // identity — mirrors how carriers are encoded elsewhere). Encodes the target's
 // Copy carrier atom-identities for the bundle; the lookup decodes + matches.
 fn target_value_semantics_carrier_atom_node(id: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: id } }, children: Empty }
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: Empty,
+ span: Unanchored
+}
 }
 
 fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
@@ -3166,8 +3197,9 @@ fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
           item: target_model_named_edge(name: id, target: target_value_semantics_carrier_atom_node(id: id))
         )
       }
-    )
-  }
+    ),
+    span: Unanchored
+}
 }
 
 fn target_value_semantics_carrier_snoc(acc: List<Symbol>, edge: Edge) -> List<Symbol> {
@@ -3292,8 +3324,9 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
           children: []
         }
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn target_reference_layer_apply_type_emitted(
@@ -3338,8 +3371,9 @@ fn target_value_expression_reference_rc_new(
           name: ^target_value_expression_field_inner,
           target: target_value_expression_node(expr: inner)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -3358,8 +3392,9 @@ fn target_value_expression_reference_box_new(
           name: ^target_value_expression_field_inner,
           target: target_value_expression_node(expr: inner)
         )
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 

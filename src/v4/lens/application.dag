@@ -269,8 +269,9 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
             Positional => list_snoc_item(xs: current_acc, item: edge)
           }
         }
-      )
-    })
+      ),
+      span: Unanchored
+})
   } else {
     outcome_rejected(d: path_ambiguous_diagnostic(at: root))
   }
