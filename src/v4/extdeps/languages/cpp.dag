@@ -26,7 +26,6 @@ import v4.std.lexing {
   LexRuleSet,
   LexRules,
   LiteralPattern,
-  lex_rule_set_token_class_member,
   ModeledLexRules,
   TokenRule
 }
@@ -37,7 +36,6 @@ import v4.std.algebra {
   BooleanAlgebra,
   boolean_algebra_node,
   commutative_semiring_node,
-  Cons,
   Empty,
   fold_list,
   group_field_inverse,
@@ -47,17 +45,7 @@ import v4.std.algebra {
   ring_field_add,
   ring_field_mul
 }
-import v4.std.collection {
-  Absent,
-  List,
-  Map,
-  Present,
-  Set,
-  empty_map,
-  map_insert,
-  optional_absent,
-  optional_present
-}
+import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -74,20 +62,7 @@ import v4.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.node {
-  Arrow,
-  Atom,
-  Cardinality,
-  Conj,
-  Disj,
-  Edge,
-  Instantiation,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode
-}
+import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,
@@ -97,22 +72,7 @@ import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
-  target_model_edge_serialize_source,
-  target_model_edge_type_expression_projection,
-  TargetAtomTypeShape,
-  TargetFunctionTypeShape,
-  TargetGenericApply,
-  TargetSumTypeShape,
-  TargetTypeExpressionProjection,
-  type_expr_projection_step_algebra,
-  TargetTypeExprFieldSlot,
-  TargetTypeExprVariantSlot,
-  target_type_expr_arrow_emitted,
-  target_type_expr_atom_emitted,
-  target_type_expr_cardinality_emitted,
-  target_type_expr_instantiation_emitted,
-  target_type_expr_record_emitted,
-  target_type_expr_sum_emitted
+  target_model_edge_serialize_source
 }
 import v4.extdeps.cpp_abi { CppTargetProfile }
 import v4.std.text { String }
@@ -661,56 +621,10 @@ fn cpp_catalog_surface_symbol(sym: Symbol, target_profile: Node) -> Bool {
     cpp_bool_catalog_surface_symbol(sym: sym)
 }
 
-fn cpp_wave1_lex_token_symbol(sym: Symbol) -> Bool {
-  sym == ^cpp_token_ty_int ||
-    sym == ^cpp_token_ident ||
-    sym == ^cpp_token_lparen ||
-    sym == ^cpp_token_comma ||
-    sym == ^cpp_token_rparen ||
-    sym == ^cpp_token_lbrace ||
-    sym == ^cpp_token_kw_return ||
-    sym == ^cpp_token_plus ||
-    sym == ^cpp_token_semicolon ||
-    sym == ^cpp_token_rbrace
-}
-
-fn cpp_sg2_type_expr_surface_symbol(sym: Symbol) -> Bool {
-  sym == ^cpp_surface_type_atom ||
-    sym == ^cpp_surface_type_record ||
-    sym == ^cpp_surface_type_sum ||
-    sym == ^cpp_surface_type_arrow ||
-    sym == ^cpp_surface_type_cardinality ||
-    sym == ^cpp_surface_type_generic_apply
-}
-
-fn cpp_sg2_type_expr_binding_symbol(sym: Symbol) -> Bool {
-  sym == ^cpp_binding_sg2_foobar
-    || sym == ^cpp_binding_sg2_rc
-    || sym == ^cpp_binding_sg2_set
-    || sym == ^cpp_binding_sg2_x
-    || sym == ^cpp_binding_sg2_y
-}
-
-// SG-2 type-expression row vocabulary — declare before projection row / lex / binding consumers.
-fn cpp_sg2_type_expr_symbol_authority(sym: Symbol) -> Bool {
-  cpp_sg2_type_expr_surface_symbol(sym: sym) ||
-    cpp_sg2_type_expr_binding_symbol(sym: sym) ||
-    sym == ^cpp_sg2_type_alias_literal ||
-    cpp_wave1_lex_token_symbol(sym: sym) ||
-    sym == ^cpp_token_lt ||
-    sym == ^cpp_token_gt ||
-    sym == ^cpp_token_pipe ||
-    sym == ^cpp_token_rparen_tight ||
-    sym == ^cpp_token_arrow ||
-    sym == ^cpp_token_colon
-}
-
 fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<Symbol> {
   Set {
     member: fn(sym) {
-      cpp_catalog_surface_symbol(sym: sym, target_profile: target_profile) ||
-        cpp_wave1_lex_token_symbol(sym: sym) ||
-        cpp_sg2_type_expr_symbol_authority(sym: sym)
+      cpp_catalog_surface_symbol(sym: sym, target_profile: target_profile)
     }
   }
 }
@@ -1346,360 +1260,3 @@ fn cpp_wave1_lex() -> LexRules {
 // Anchor: https://eel.is/c++draft/basic.fundamental
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
-
-// SG-2 — canonical per-connective TargetTypeExpressionProjection row for C++.
-// Single authority: carrier lives in v4.std.target_model; this is the per-language row only.
-// Connective → emitted-wire kind tags (cpp_surface_type_*) + lex-delimited spellings.
-// Serialized text comes from cpp_sg2_type_expr_lex_rules token literals (e.g. " -> ", "<", ">"),
-// not from the surface symbol names. Row mirrors rust/TS SG-2 structural staging:
-//   atom          ident
-//   conj          { ... }  brace record (field_label_separator from row)
-//   disj          variant_separator lex (pipe-delimited staging wire; not std::variant spell-out)
-//   arrow         paren + trailing-return arrow lex (" -> "; ISO C++ function-type staging)
-//   cardinality   angle-bracket generic apply (Head<args>)
-//   instantiation angle-bracket generic apply Foo<X, Y>
-fn cpp_type_expression_projection() -> TargetTypeExpressionProjection {
-  TargetTypeExpressionProjection {
-    atom_form: TargetAtomTypeShape {
-      surface: ^cpp_surface_type_atom,
-      ident_token: ^cpp_token_ident
-    },
-    conj_form: TargetGenericApply {
-      surface: ^cpp_surface_type_record,
-      open: ^cpp_token_lbrace,
-      separator: ^cpp_token_comma,
-      field_label_separator: optional_present(value: ^cpp_token_colon),
-      close: ^cpp_token_rbrace
-    },
-    disj_form: TargetSumTypeShape {
-      surface: ^cpp_surface_type_sum,
-      variant_separator: ^cpp_token_pipe
-    },
-    arrow_form: TargetFunctionTypeShape {
-      surface: ^cpp_surface_type_arrow,
-      open: ^cpp_token_lparen,
-      close: ^cpp_token_rparen_tight,
-      arrow: ^cpp_token_arrow,
-      param_ident_token: ^cpp_token_ident,
-      param_type_separator: ^cpp_token_colon,
-      param_list_separator: ^cpp_token_comma
-    },
-    cardinality_form: TargetGenericApply {
-      surface: ^cpp_surface_type_cardinality,
-      open: ^cpp_token_lt,
-      separator: ^cpp_token_comma,
-      field_label_separator: optional_absent(),
-      close: ^cpp_token_gt
-    },
-    instantiation_form: TargetGenericApply {
-      surface: ^cpp_surface_type_generic_apply,
-      open: ^cpp_token_lt,
-      separator: ^cpp_token_comma,
-      field_label_separator: optional_absent(),
-      close: ^cpp_token_gt
-    }
-  }
-}
-
-fn cpp_type_expression_projection_bundle_node() -> Node {
-  type_expr_projection_step_algebra(projection: cpp_type_expression_projection())
-}
-
-fn cpp_sg2_type_expr_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: list_append(
-      left: cpp_wave1_lex_rules(),
-      right: [
-        cpp_lex_rule(token_class: ^cpp_token_lt, text: "<"),
-        cpp_lex_rule(token_class: ^cpp_token_gt, text: ">"),
-        cpp_lex_rule(token_class: ^cpp_token_pipe, text: " | "),
-        cpp_lex_rule(token_class: ^cpp_token_rparen_tight, text: ")"),
-        cpp_lex_rule(token_class: ^cpp_token_arrow, text: " -> "),
-        cpp_lex_rule(token_class: ^cpp_token_colon, text: ": ")
-      ]
-    )
-  }
-}
-
-fn cpp_sg2_type_expr_lex() -> LexRules {
-  ModeledLexRules { root: cpp_sg2_type_expr_lex_rules() }
-}
-
-// SG-2 lex closure — row vocabulary plus every token_class in cpp_sg2_type_expr_lex_rules.
-fn cpp_sg2_type_expr_canonical_symbols() -> Set<Symbol> {
-  Set {
-    member: fn(sym) {
-      cpp_sg2_type_expr_symbol_authority(sym: sym) ||
-        lex_rule_set_token_class_member(rules: cpp_sg2_type_expr_lex_rules(), token_class: sym)
-    }
-  }
-}
-
-data cpp_sg2_type_alias_text: String = "using Sg2Probe = std::shared_ptr<FooBar<X, Y>>;"
-
-// SG-2 live target bundle — SG-2-only core (peer rust_sg2_type_expr_target_model_bundle_core).
-// Do not graft cpp_mvp1_target_model_node: inherited MVP-1 translation/serialize rows carry
-// BoundTokens for add/x/y that conflict with SG-2-only binding_spellings (P2/P3).
-fn cpp_sg2_type_expr_target_model_node(target_profile: Node) -> Node {
-  cpp_sg2_type_expr_projection_probe_bundle_core(target_profile: target_profile)
-}
-
-fn cpp_sg2_type_expr_target_model(target_profile: Node) -> TargetModel {
-  TargetModel {
-    bundle: cpp_sg2_type_expr_target_model_node(target_profile: target_profile),
-    lex: cpp_sg2_type_expr_lex(),
-    binding_spellings: cpp_sg2_binding_spellings(),
-    authority_source_text: cpp_sg2_type_alias_text
-  }
-}
-
-fn cpp_sg2_binding_spellings() -> Map<Symbol, String> {
-  let m0 = map_insert(empty_map(), ^cpp_binding_sg2_foobar, "FooBar")
-  let m1 = map_insert(m0, ^cpp_binding_sg2_x, "X")
-  let m2 = map_insert(m1, ^cpp_binding_sg2_y, "Y")
-  let m3 = map_insert(m2, ^cpp_binding_sg2_rc, "std::shared_ptr")
-  map_insert(m3, ^cpp_binding_sg2_set, "set")
-}
-
-fn cpp_sg2_serialize_source_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      cpp_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: cpp_atom(id: ^cpp_sg2_type_alias_literal)
-      )
-    ]
-  }
-}
-
-fn cpp_sg2_type_expr_projection_probe_bundle_core(target_profile: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      cpp_named_edge(
-        name: target_model_edge_type_expression_projection,
-        target: cpp_type_expression_projection_bundle_node()
-      ),
-      cpp_named_edge(
-        name: target_model_edge_serialize_source,
-        target: cpp_sg2_serialize_source_node()
-      ),
-      cpp_named_edge(
-        name: target_model_edge_translation_rules,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: Empty
-        }
-      ),
-      cpp_named_edge(
-        name: target_model_edge_selection_policy,
-        target: cpp_mvp1_selection_policy_node(target_profile: target_profile)
-      ),
-      cpp_named_edge(
-        name: target_model_edge_declared_inhabitants,
-        target: cpp_mvp1_declared_inhabitants_root(target_profile: target_profile)
-      )
-    ]
-  }
-}
-
-fn cpp_sg2_type_expr_projection_probe_target_model(target_profile: Node) -> TargetModel {
-  TargetModel {
-    bundle: cpp_sg2_type_expr_projection_probe_bundle_core(target_profile: target_profile),
-    lex: cpp_sg2_type_expr_lex(),
-    binding_spellings: cpp_sg2_binding_spellings(),
-    authority_source_text: cpp_sg2_type_alias_text
-  }
-}
-
-fn cpp_sg2_atom_node(binding: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: binding } },
-    children: []
-  }
-}
-
-fn cpp_sg2_arrow_xy_emitted() -> Node {
-  target_type_expr_arrow_emitted(
-    form: cpp_type_expression_projection().arrow_form,
-    inputs: Cons {
-      head: target_type_expr_atom_emitted(
-        form: cpp_type_expression_projection().atom_form,
-        identity: ^cpp_binding_sg2_x
-      ),
-      tail: Empty
-    },
-    output: target_type_expr_atom_emitted(
-      form: cpp_type_expression_projection().atom_form,
-      identity: ^cpp_binding_sg2_y
-    )
-  )
-}
-
-fn cpp_sg2_arrow_source_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x) },
-      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_y) }
-    ]
-  }
-}
-
-fn cpp_sg2_foobar_xy_inner_instantiation_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Instantiation },
-    children: [
-      Edge {
-        label: Positional,
-        target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_foobar)
-      },
-      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x) },
-      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_y) }
-    ]
-  }
-}
-
-fn cpp_sg2_instantiation_source_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Instantiation },
-    children: [
-      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_rc) },
-      Edge {
-        label: Positional,
-        target: cpp_sg2_foobar_xy_inner_instantiation_node()
-      }
-    ]
-  }
-}
-
-fn cpp_sg2_rc_foobar_xy_emitted() -> Node {
-  target_type_expr_instantiation_emitted(
-    form: cpp_type_expression_projection().instantiation_form,
-    head: target_type_expr_atom_emitted(
-      form: cpp_type_expression_projection().atom_form,
-      identity: ^cpp_binding_sg2_rc
-    ),
-    args: [
-      target_type_expr_instantiation_emitted(
-        form: cpp_type_expression_projection().instantiation_form,
-        head: target_type_expr_atom_emitted(
-          form: cpp_type_expression_projection().atom_form,
-          identity: ^cpp_binding_sg2_foobar
-        ),
-        args: [
-          target_type_expr_atom_emitted(
-            form: cpp_type_expression_projection().atom_form,
-            identity: ^cpp_binding_sg2_x
-          ),
-          target_type_expr_atom_emitted(
-            form: cpp_type_expression_projection().atom_form,
-            identity: ^cpp_binding_sg2_y
-          )
-        ]
-      )
-    ]
-  )
-}
-
-fn cpp_sg2_conj_xy_emitted() -> Node {
-  target_type_expr_record_emitted(
-    form: cpp_type_expression_projection().conj_form,
-    fields: [
-      TargetTypeExprFieldSlot {
-        label: ^cpp_binding_sg2_x,
-        type_expr: target_type_expr_atom_emitted(
-          form: cpp_type_expression_projection().atom_form,
-          identity: ^cpp_binding_sg2_x
-        )
-      },
-      TargetTypeExprFieldSlot {
-        label: ^cpp_binding_sg2_y,
-        type_expr: target_type_expr_atom_emitted(
-          form: cpp_type_expression_projection().atom_form,
-          identity: ^cpp_binding_sg2_y
-        )
-      }
-    ]
-  )
-}
-
-fn cpp_sg2_conj_source_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      cpp_named_edge(name: ^cpp_binding_sg2_x, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x)),
-      cpp_named_edge(name: ^cpp_binding_sg2_y, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_y))
-    ]
-  }
-}
-
-fn cpp_sg2_sum_xy_emitted() -> Node {
-  target_type_expr_sum_emitted(
-    form: cpp_type_expression_projection().disj_form,
-    variants: [
-      TargetTypeExprVariantSlot {
-        label: ^cpp_binding_sg2_x,
-        type_expr: target_type_expr_atom_emitted(
-          form: cpp_type_expression_projection().atom_form,
-          identity: ^cpp_binding_sg2_x
-        )
-      },
-      TargetTypeExprVariantSlot {
-        label: ^cpp_binding_sg2_y,
-        type_expr: target_type_expr_atom_emitted(
-          form: cpp_type_expression_projection().atom_form,
-          identity: ^cpp_binding_sg2_y
-        )
-      }
-    ]
-  )
-}
-
-fn cpp_sg2_disj_source_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Disj },
-    children: [
-      cpp_named_edge(name: ^cpp_binding_sg2_x, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x)),
-      cpp_named_edge(name: ^cpp_binding_sg2_y, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_y))
-    ]
-  }
-}
-
-fn cpp_sg2_cardinality_x_emitted() -> Node {
-  target_type_expr_cardinality_emitted(
-    form: cpp_type_expression_projection().cardinality_form,
-    head: target_type_expr_atom_emitted(
-      form: cpp_type_expression_projection().atom_form,
-      identity: ^cpp_binding_sg2_set
-    ),
-    args: [
-      target_type_expr_atom_emitted(
-        form: cpp_type_expression_projection().atom_form,
-        identity: ^cpp_binding_sg2_x
-      )
-    ]
-  )
-}
-
-fn cpp_sg2_cardinality_source_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Cardinality },
-    children: [
-      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_set) },
-      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x) }
-    ]
-  }
-}
-
-fn cpp_sg2_atom_x_emitted() -> Node {
-  target_type_expr_atom_emitted(
-    form: cpp_type_expression_projection().atom_form,
-    identity: ^cpp_binding_sg2_x
-  )
-}
-
-fn cpp_sg2_atom_source_type_node() -> Node {
-  cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x)
-}
