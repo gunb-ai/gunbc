@@ -132,6 +132,13 @@ fn preservation_predicate_holds(
       candidate: candidate,
       algebra: predicate.algebra
     )
+  } else if predicate.preservation_rule
+    == preservation_rule_type_expr_projection_discipline_zip_fold {
+    type_expr_projection_discipline_zip_fold_preservation_holds(
+      source_facts: source_facts,
+      candidate: candidate,
+      algebra: predicate.algebra
+    )
   } else {
     false
   }
