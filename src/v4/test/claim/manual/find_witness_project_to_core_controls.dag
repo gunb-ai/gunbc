@@ -262,8 +262,11 @@ fn integer_value_set_rejects_malformed_interval_payload_control() -> Bool {
 
 data witness_integer_value_set_rejects_malformed_interval_payload: Bool = integer_value_set_rejects_malformed_interval_payload_control()
 
-data witness_integer_value_set_interval_containment_rejects_malformed_payload: Bool =
+fn integer_value_set_interval_containment_rejects_malformed_payload_control() -> Bool {
   !integer_value_set_contains(container: i32_value_set(), contained: malformed_interval_value_set())
+}
+
+data witness_integer_value_set_interval_containment_rejects_malformed_payload: Bool = integer_value_set_interval_containment_rejects_malformed_payload_control()
 
 fn integer_value_set_reverse_is_strict_coarsening_control() -> Bool {
   let strict = integer_value_set_strictly_contains(container: python_int_value_set(), contained: i32_value_set())
