@@ -11,12 +11,12 @@ import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model {
   FunctionBoundaryParam,
-  target_atom_realization_catalog_row_decode_invalid,
+  ^target_atom_realization_catalog_row_decode_invalid,
   target_atom_realization_lookup_in_catalog_node,
-  target_function_boundary_site_decode_invalid,
+  ^target_function_boundary_site_decode_invalid,
   target_function_boundary_site_from_node,
   target_function_signature_realization_lookup_in_catalog_node,
-  target_function_signature_realization_row_decode_invalid
+  ^target_function_signature_realization_row_decode_invalid
 }
 import v4.std.verification {
   CompilesClaim,
@@ -93,7 +93,7 @@ fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool {
     source_carrier: sg1b_fc_probe_node()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == target_function_boundary_site_decode_invalid
+    Rejected { diagnostics: d } => d.head.reason == ^target_function_boundary_site_decode_invalid
   }
 }
 
@@ -114,7 +114,7 @@ fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> Bool {
     host_target_model: rust_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == target_atom_realization_catalog_row_decode_invalid
+    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
   }
 }
 
@@ -126,7 +126,7 @@ fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> Bool {
     host_target_model: rust_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == target_function_signature_realization_row_decode_invalid
+    Rejected { diagnostics: d } => d.head.reason == ^target_function_signature_realization_row_decode_invalid
   }
 }
 
