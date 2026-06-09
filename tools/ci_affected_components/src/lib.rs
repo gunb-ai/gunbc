@@ -10,6 +10,7 @@
 pub mod git_diff_transport;
 pub mod receipt;
 pub mod runner_pool;
+pub mod source_tree_provenance;
 pub mod wave3_shadow_receipt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CiComponentAffected {
