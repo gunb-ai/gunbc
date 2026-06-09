@@ -253,10 +253,10 @@ Parse-time refs start with `ident: none`; infer stamps after env bind.
 
 | Principle | How this design satisfies it |
 |-----------|-------------------------------|
-| **P2 Boundary Discipline** | One authority per fact: span ≠ identity. |
-| **P1 Modeling Faithfulness** | Declaration identity grounds in `InternTable` (shared CS string-intern / symbol-table pattern), not source-text re-parse. |
-| **P5 Progress Is Dissolution** | Extends existing `ident` + `lookup_type_for` rather than adding parallel brand state. |
-| **E-6 target identity** | Aligns v2 compare path with v3 `DeclarationId` direction without requiring v3 migration first. |
+| **P2 Boundary Discipline** | Three facts, three carriers: `ident_span` (source location), `InternTable` (spelling lookup), `binding_id` (declaration identity). |
+| **P1 Modeling Faithfulness** | `binding_id` is assigned at the authoritative registration site (`build_type_env`), not re-derived from spelling or source-text re-parse. |
+| **P5 Progress Is Dissolution** | Reuses `Node.ident` slot and `TypeBinding`; adds one field rather than parallel brand state or span graft. |
+| **E-6 target identity** | `BindingId` is the v2 staging form of v3 `DeclarationId`; convergence path is rename + substrate migration, not a second identity scheme. |
 
 ---
 
@@ -266,13 +266,14 @@ Ordered for minimal blast radius; each step has a consumer test.
 
 | Step | Change | Consumer |
 |------|--------|----------|
-| 1 | Add `declaration_identity_at`, `brand_name_at` helpers in `00_core.dag` | unit tests in `infer_semantics.rs` |
-| 2 | Parse: stamp `ident` on type ref nodes | `m1_brand_twins_over_refined_base_remain_distinct` |
-| 3 | `with_preserved_declaration_identity`; delete ident_span graft | same + parse span tests still green |
-| 4 | PD-3 fns use ident compare | `pd3_*`, `pd3_adversarial.rs` |
-| 5 | Remove `ident_span` brand dependency from `authored_name_at` call sites in compare path | grep audit |
+| 1 | Add `BindingId` type; `binding_id_at` / `brand_name_at` helpers in `00_core.dag` + `04_env.dag` | unit tests in `infer_semantics.rs` |
+| 2 | `build_type_env`: assign `binding_id` per declaration; stamp on `TypeBinding.resolved` | `m1_brand_twins_over_refined_base_remain_distinct` |
+| 3 | Infer/resolve: stamp `binding_id` after lookup; `with_preserved_binding_id`; delete ident_span graft | same + parse span tests still green |
+| 4 | PD-3 fns compare `binding_id` | `pd3_*`, `pd3_adversarial.rs` |
+| 5 | Remove `authored_name_at` from compare path (use `binding_id` / `source_name_at` fallback) | grep audit |
 | 6 | Delete `with_authored_identity` | — |
 | 7 | Remove `module_skips_direct_call_arg_check` when substrate compiles clean | ROADMAP `PD-3-DOGFOOD` row |
+| 8 | *(Phase 2, escalate)* Migrate `bindings` map key off spelling intern id for cross-module disambiguation | new tests for same-spelled types in different modules |
 
 **Regression anchors (must stay green throughout):**
 
@@ -286,29 +287,37 @@ Ordered for minimal blast radius; each step has a consumer test.
 
 ## 8. Open questions (escalate if blocking implementation)
 
-1. **Cross-module re-exports.** If module B re-exports type `UserId` from module A, do references
-   in B stamp A's binding id or a B-local alias id? Recommendation: **canonical binding id from
-   defining module** (same as `lookup_type_for` resolution target); re-export is spelling, not a new
-   declaration.
+1. **Cross-module same-spelling declarations (phase 2).** `bindings` map keyed by spelling intern
+   id cannot host two `type UserId` in different modules. Phase-1 bounds PD-3 to single-module
+   dogfood. Phase-2 must either key `bindings` by `binding_id` with a secondary spelling index, or
+   adopt qualified keys `(module_path, name)`. **Escalate before** implementing cross-module brand
+   compare.
 
-2. **`where brand("Char")` nominal refinements** (`dsl/std/types.dag`). Predicate brand string vs
-   declaration `ident` — PD-3 scope today is **type-alias twins**, not refinement brands.
-   Refinement brand compare is a separate relation hook; do not conflate in step 4.
+2. **Cross-module re-exports.** References should stamp the **defining binding's `binding_id`**
+   (from `lookup_type_for` resolution target), not a re-export spelling. Re-export alias
+   declarations get their own `binding_id` only when they are a distinct `type` item.
 
-3. **v4 wave-1 record types** (`nominal_distinctness_cross_call.dag`). Record-syntax `type IntentId
-   { value: String }` may not lower to alias+brand yet. Side-channel design still applies once
-   those declarations register distinct `ident` ids; wave-1 grammar gap is orthogonal.
+3. **`where brand("Char")` nominal refinements** (`dsl/std/types.dag`). Predicate brand string vs
+   `binding_id` — PD-3 scope today is **type-alias twins**, not refinement brands. Separate hook.
+
+4. **v4 wave-1 record types** (`nominal_distinctness_cross_call.dag`). Record-syntax declarations
+   need `binding_id` at registration like alias declarations; wave-1 grammar gap is orthogonal.
 
 ---
 
 ## 9. Verdict
 
-**Recommended path:** wire `Node.ident` as the declaration-identity side-channel; replace
-`with_authored_identity` ident_span graft with ident graft; split accessors so `ident_span` is
-source-location-only and PD-3 compares intern ids.
+**Recommended path:** introduce `TypeBinding.binding_id` assigned at `build_type_env`; carry on
+`Node.ident` through infer/resolve peel; replace `with_authored_identity` ident_span graft with
+`binding_id` graft; split accessors so `ident_span` is source-location-only and PD-3 compares
+`binding_id` (not spelling intern id).
 
-**Implementation estimate:** one focused PR on `00_core.dag`, `02_parse.dag`, `04_resolve.dag`,
-`04_types.dag`, `04_infer.dag` (+ generated stage0 regen). No new `Node` fields required.
+**Implementation estimate:** one focused PR on `00_core.dag`, `04_env.dag`, `04_infer.dag`,
+`04_resolve.dag`, `04_types.dag` (+ generated stage0 regen). One new field on `TypeBinding`; no
+new `Node` fields.
+
+**Explicit non-implementation:** do **not** stamp `intern(type_name).id` at parse as declaration
+identity.
 
 **This lane delivers:** design report only. Implementation is a follow-on worker item under the
 same parent lane.
