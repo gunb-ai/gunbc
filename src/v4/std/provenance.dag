@@ -33,15 +33,12 @@ import v4.std.node {
   merge_node_span_same_file,
   node_span_has_byte_extent,
   node_span_is_anchored,
-  node_span_same_file
+  node_span_same_file,
+  source_span_byte_extent_admits
 }
 
 data provenance_span_file_mismatch: Symbol = provenance_span_file_mismatch
 data provenance_invalid_source_span: Symbol = provenance_invalid_source_span
-
-fn source_span_byte_extent_admits(start: Int, end: Int) -> Bool {
-  (start >= 0) && (end >= 0) && (start < end)
-}
 
 fn provenance_invalid_source_span_diagnostic(file: Symbol, start: Int, end: Int) -> Diagnostic {
   Diagnostic {

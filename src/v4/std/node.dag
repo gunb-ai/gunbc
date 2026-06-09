@@ -171,6 +171,29 @@ fn node_span_is_anchored(span: NodeSpan) -> Bool {
   )
 }
 
+fn source_span_byte_extent_admits(start: Int, end: Int) -> Bool {
+  (start >= 0) && (end >= 0) && (start < end)
+}
+
+fn source_span_well_formed(span: SourceSpan) -> Bool {
+  source_span_byte_extent_admits(start: span.start, end: span.end)
+}
+
+// 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): well_formed span gate; Unanchored synthetic substrate; Anchored requires source_span_well_formed.
+fn node_span_well_formed(span: NodeSpan) -> Bool {
+  fold_node_span_coproduct(
+    span: span,
+    algebra: NodeSpanFold {
+      on_unanchored: fn() {
+        true
+      },
+      on_anchored: fn(s) {
+        source_span_well_formed(span: s)
+      }
+    }
+  )
+}
+
 fn node_span_has_byte_extent(span: NodeSpan) -> Bool {
   fold_node_span_coproduct(
     span: span,
@@ -179,7 +202,7 @@ fn node_span_has_byte_extent(span: NodeSpan) -> Bool {
         false
       },
       on_anchored: fn(s) {
-        s.start < s.end
+        source_span_well_formed(span: s)
       }
     }
   )
@@ -412,10 +435,11 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   }
 }
 fn locally_well_formed(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: c } => connective_edges_conform(children: n.children, c: c)
-    ComputationNode { behavior: b } => behavior_edges_conform(children: n.children, b: b)
-  }
+  node_span_well_formed(span: n.span)
+    && match n.kind {
+      TypeNode { connective: c } => connective_edges_conform(children: n.children, c: c)
+      ComputationNode { behavior: b } => behavior_edges_conform(children: n.children, b: b)
+    }
 }
 fn well_formed(n: Node) -> Bool {
   fold_node(
