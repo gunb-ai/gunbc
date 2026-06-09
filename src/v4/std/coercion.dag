@@ -40,6 +40,7 @@ import v4.std.find_witness {
   preservation_rule_refinement_widening
 }
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.refinement_widening_predicate { refinement_widening_is_strict_coarsening }
 import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
 data coercion_property_candidate_set_closedness: Symbol = coercion_property_candidate_set_closedness
@@ -221,6 +222,26 @@ fn coercion_wrap_find_witness_rejection(
       }
   }
 }
+fn coercion_wrap_find_witness_rejection_with_refinement_algebra(
+  source: CanonicalGrounding,
+  upstream: NonEmptyDiagnostics,
+  refinement_algebra: Node,
+) -> Outcome<NonEmptyDiagnostics> {
+  if refinement_widening_is_strict_coarsening(algebra: refinement_algebra) {
+    Accepted {
+      value: NonEmptyDiagnostics {
+        head: coercion_not_realized_diagnostic(source: source, kind: WouldLoseInformation),
+        tail: list_append(
+          left: list_snoc_item(xs: Empty, item: upstream.head),
+          right: upstream.tail
+        )
+      },
+      diagnostics: None
+    }
+  } else {
+    coercion_wrap_find_witness_rejection(source: source, upstream: upstream)
+  }
+}
 fn coercion_homomorphism_evidence(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
@@ -308,7 +329,11 @@ fn coercion_fold_refinement_widening(
         diagnostics: fw_d
       }
     Rejected { diagnostics: r } =>
-      match coercion_wrap_find_witness_rejection(source: source, upstream: r) {
+      match coercion_wrap_find_witness_rejection_with_refinement_algebra(
+        source: source,
+        upstream: r,
+        refinement_algebra: predicate.algebra
+      ) {
         Accepted { value: wrapped, diagnostics: _ } =>
           Rejected { diagnostics: wrapped }
         Rejected { diagnostics: wrap_r } => Rejected { diagnostics: wrap_r }
