@@ -17,7 +17,11 @@ import v4.lens.edit_locus {
 import v4.compiler.source_authority {
   DagSource,
   DagSourceArtifact,
-  source_ir_node_artifact_provenance
+  source_ir_node_artifact_provenance_from_authority
+}
+import v4.extdeps.languages.dag {
+  dag_mvp1_source_text,
+  dag_mvp1_target_model
 }
 import v4.std.artifact { Artifact, SourceFile }
 import v4.std.diagnostic { Accepted, Rejected }
@@ -37,7 +41,7 @@ data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.d
 data edit_locus_path_source_producer_fixture: RepoPath = "src/v4/test/claim/lens_affected_set/source_producer_fixture.dag"
 data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
-data edit_locus_source_producer_fixture_source: DagSource = "type SourceProducerFixture = Bool"
+data edit_locus_source_producer_fixture_source: DagSource = dag_mvp1_source_text
 
 data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -128,8 +132,9 @@ fn edit_locus_affected_set_wire_fail_closed_holds() -> Bool {
 }
 
 fn edit_locus_source_provenance_producer_holds() -> Bool {
-  match source_ir_node_artifact_provenance(
-    source_artifact: edit_locus_source_producer_fixture_source_artifact
+  match source_ir_node_artifact_provenance_from_authority(
+    source_artifact: edit_locus_source_producer_fixture_source_artifact,
+    authority: dag_mvp1_target_model()
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
       provenance.artifact.file_path == edit_locus_path_source_producer_fixture
@@ -138,8 +143,9 @@ fn edit_locus_source_provenance_producer_holds() -> Bool {
 }
 
 fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
-  match source_ir_node_artifact_provenance(
-    source_artifact: edit_locus_source_producer_fixture_source_artifact
+  match source_ir_node_artifact_provenance_from_authority(
+    source_artifact: edit_locus_source_producer_fixture_source_artifact,
+    authority: dag_mvp1_target_model()
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
       match affected_set_reading_from_git_diff_provenance(

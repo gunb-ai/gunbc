@@ -26,6 +26,7 @@ import v4.std.diagnostic {
   bind_outcome,
   diagnostics_singleton,
   outcome_accepted,
+  outcome_rejected,
   port_locus
 }
 import v4.std.grammar { ParseTree }
@@ -96,6 +97,7 @@ data source_authority_ast_mismatch: Symbol = source_authority_ast_mismatch
 data source_authority_ir_mismatch: Symbol = source_authority_ir_mismatch
 data source_authority_normalized_ast_mismatch: Symbol = source_authority_normalized_ast_mismatch
 data source_authority_serializer_nondeterministic: Symbol = source_authority_serializer_nondeterministic
+data source_authority_source_text_mismatch: Symbol = source_authority_source_text_mismatch
 
 
 fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
@@ -192,6 +194,25 @@ fn source_ir_node_artifact_provenance(
     source_artifact: source_artifact,
     lm: dag_language_model_wave1_modeled()
   )
+}
+
+
+fn source_ir_node_artifact_provenance_from_authority(
+  source_artifact: DagSourceArtifact,
+  authority: TargetModel
+) -> Outcome<NodeArtifactProvenance> {
+  if source_artifact.source == authority.authority_source_text {
+    outcome_accepted(
+      value: NodeArtifactProvenance {
+        node: authority.bundle,
+        artifact: source_artifact.artifact
+      }
+    )
+  } else {
+    outcome_rejected(
+      d: source_authority_diagnostic(reason: source_authority_source_text_mismatch)
+    )
+  }
 }
 
 
