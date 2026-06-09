@@ -284,11 +284,11 @@ data v4_roster_pilot_row_map_structural_key_equality: V4RosterPilotClaimRunRow =
   function: "map_structural_key_equality_holds"
 }
 
-// DERIVABLE-COERCION gap-proof acceptance test (nickname-triple CRUX matrix).
-data v4_roster_pilot_row_derivable_coercion_crux_substrate_gap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
-  label: "derivable_coercion CRUX substrate gap (no faithful sibling rule)",
+// DERIVABLE-COERCION completion acceptance test (nickname-triple CRUX matrix).
+data v4_roster_pilot_row_derivable_coercion_crux_constraint_satisfaction_complete: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "derivable_coercion CRUX constraint_satisfaction complete",
   entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
-  function: "witness_crux_substrate_gap"
+  function: "witness_crux_constraint_satisfaction_complete"
 }
 
 data v4_roster_pilot_row_derivable_coercion_surfaces_distinct: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
@@ -297,10 +297,10 @@ data v4_roster_pilot_row_derivable_coercion_surfaces_distinct: V4RosterPilotClai
   function: "witness_claim_task_id_surfaces_distinct"
 }
 
-data v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
-  label: "derivable_coercion executing claim CRUX substrate gap",
+data v4_roster_pilot_row_derivable_coercion_claim_crux_constraint_satisfaction_complete: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "derivable_coercion executing claim CRUX constraint_satisfaction complete",
   entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
-  function: "witness_claim_crux_substrate_gap"
+  function: "witness_claim_crux_constraint_satisfaction_complete"
 }
 
 // Wave-A W2: lens smoke→witness fold-delete (application, idempotency, identical_variant,
@@ -430,9 +430,9 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_lens_registry_singleton_row_counts,
   v4_roster_pilot_row_map_lookup_miss_witness_violates,
   v4_roster_pilot_row_map_structural_key_equality,
-  v4_roster_pilot_row_derivable_coercion_crux_substrate_gap,
+  v4_roster_pilot_row_derivable_coercion_crux_constraint_satisfaction_complete,
   v4_roster_pilot_row_derivable_coercion_surfaces_distinct,
-  v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap
+  v4_roster_pilot_row_derivable_coercion_claim_crux_constraint_satisfaction_complete
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
@@ -509,9 +509,9 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_registry_singleton_row_counts)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_map_lookup_miss_witness_violates)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_map_structural_key_equality)
-    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_crux_substrate_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_crux_constraint_satisfaction_complete)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_surfaces_distinct)
-    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_claim_crux_constraint_satisfaction_complete)
 }
 
 
@@ -765,9 +765,9 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "map_structural_key_equality_holds"
     )
     && v4_roster_pilot_row_matches(
-      row: v4_roster_pilot_row_derivable_coercion_crux_substrate_gap,
+      row: v4_roster_pilot_row_derivable_coercion_crux_constraint_satisfaction_complete,
       entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
-      function: "witness_crux_substrate_gap"
+      function: "witness_crux_constraint_satisfaction_complete"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_derivable_coercion_surfaces_distinct,
@@ -775,10 +775,8 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "witness_claim_task_id_surfaces_distinct"
     )
     && v4_roster_pilot_row_matches(
-      row: v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap,
+      row: v4_roster_pilot_row_derivable_coercion_claim_crux_constraint_satisfaction_complete,
       entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
-      function: "witness_claim_crux_substrate_gap"
+      function: "witness_claim_crux_constraint_satisfaction_complete"
     )
 }
-
-

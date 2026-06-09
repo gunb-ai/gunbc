@@ -7,7 +7,41 @@
 module v4.std.constraint_satisfaction_predicate
 
 
-import v4.std.node { Node, well_formed }
+import v4.std.algebra { Empty, list_snoc_item }
+import v4.std.model_core { ModelCoreFactAxisSurfaceSpelling }
+import v4.std.node { Edge, Named, Node, Positional, well_formed }
+fn constraint_satisfaction_surface_erased_node(n: Node) -> Node {
+  Node {
+    kind: n.kind,
+    children: fold(n.children, init: Empty, f: fn(acc, e) {
+      match e.label {
+        Named { name: edge_name } =>
+          if edge_name == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+            acc
+          } else {
+            list_snoc_item(
+              xs: acc,
+              item: Edge {
+                label: e.label,
+                target: constraint_satisfaction_surface_erased_node(n: e.target)
+              }
+            )
+          }
+        Positional =>
+          list_snoc_item(
+            xs: acc,
+            item: Edge {
+              label: e.label,
+              target: constraint_satisfaction_surface_erased_node(n: e.target)
+            }
+          )
+      }
+    })
+  }
+}
+fn constraint_satisfaction_semantic_core_matches(source_facts: Node, candidate: Node) -> Bool {
+  constraint_satisfaction_surface_erased_node(n: source_facts) == constraint_satisfaction_surface_erased_node(n: candidate)
+}
 fn constraint_satisfaction_preservation_holds(
   source_facts: Node,
   candidate: Node,
@@ -17,5 +51,5 @@ fn constraint_satisfaction_preservation_holds(
     && well_formed(n: algebra)
     && well_formed(n: candidate)
     && (algebra == source_facts)
-    && (candidate == source_facts)
+    && constraint_satisfaction_semantic_core_matches(source_facts: source_facts, candidate: candidate)
 }

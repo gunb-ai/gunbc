@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag
 // Scope: DERIVABLE-COERCION thesis payoff — TaskId nickname triple (API+DB+wire);
 //   distinct SurfaceSpelling per layer, shared encoding+carrier core; CRUX matrix by execution.
-// Status: EXECUTED Bool witnesses — all realized preservation rules × sibling pairs measured.
+// Status: EXECUTED Bool witnesses — constraint_satisfaction derives nickname siblings and rejects wrong-core.
 
 module v4.test.claim.manual.derivable_coercion_nickname_triple
 
@@ -124,7 +124,7 @@ data witness_matrix_constraint_db_to_wire_accepts: Bool = find_witness_sibling_a
 
 data witness_matrix_constraint_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: preservation_rule_constraint_satisfaction)
 
-// --- CRUX verdict: no faithful rule derives siblings (accept sibling AND reject wrong-core) ---
+// --- CRUX verdict: constraint_satisfaction is the faithful sibling rule (accept sibling AND reject wrong-core) ---
 
 fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
   if rule == preservation_rule_exact_structural_equality_zip_fold {
@@ -147,7 +147,7 @@ fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
   }
 }
 
-data witness_crux_substrate_gap: Bool = !preservation_rule_faithful_for_siblings(rule: preservation_rule_exact_structural_equality_zip_fold) && !preservation_rule_faithful_for_siblings(rule: preservation_rule_refinement_widening) && !preservation_rule_faithful_for_siblings(rule: preservation_rule_constraint_satisfaction)
+data witness_crux_constraint_satisfaction_complete: Bool = !preservation_rule_faithful_for_siblings(rule: preservation_rule_exact_structural_equality_zip_fold) && !preservation_rule_faithful_for_siblings(rule: preservation_rule_refinement_widening) && preservation_rule_faithful_for_siblings(rule: preservation_rule_constraint_satisfaction)
 
 // Same-layer reflexivity control (exact rule still works for identity).
 data witness_matrix_exact_api_to_api_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node(), rule: preservation_rule_exact_structural_equality_zip_fold)
@@ -174,10 +174,10 @@ data claim_task_id_surfaces_distinct: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_crux_substrate_gap: TestClaim = EqualsClaim {
-  label: "manual/derivable_coercion: CRUX — no faithful preservation rule derives nickname siblings (substrate gap)",
+data claim_crux_constraint_satisfaction_complete: TestClaim = EqualsClaim {
+  label: "manual/derivable_coercion: CRUX — constraint_satisfaction derives nickname siblings and rejects wrong-core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: derivable_coercion_claim_lhs(ok: witness_crux_substrate_gap),
+  lhs: derivable_coercion_claim_lhs(ok: witness_crux_constraint_satisfaction_complete),
   rhs: derivable_coercion_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -200,8 +200,8 @@ data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_assert
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
-  claim: claim_crux_substrate_gap,
+data witness_claim_crux_constraint_satisfaction_complete: Bool = match run_test_claim_assert(
+  claim: claim_crux_constraint_satisfaction_complete,
   actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
   at: task_id_api_inhabitant_node()
 ) {
