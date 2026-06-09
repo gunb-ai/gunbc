@@ -14,7 +14,7 @@ import v4.compiler.eval {
   test_claim_run_verdict
 }
 import v4.std.algebra { length }
-import v4.std.collection { Absent, List, Optional }
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
 import v4.std.node { Node, Symbol }
@@ -49,16 +49,14 @@ import v4.test.claim.workflow.v4_roster_pilot {
 
 // Consolidation #4553 Phase 2: execution receipts are unified here at the workflow layer.
 // `UnifiedTestClaim` remains a descriptor-only registration row in `std.verification`.
-type BoolWitnessExecutionStatus
-  = BoolWitnessRuntimeVerdict
-  | BoolWitnessQueuedForHostTransport
-
-
-type BoolWitnessRun {
-  witness: BoolWitness
-  result: Optional<Bool>
-  execution_status: BoolWitnessExecutionStatus
-}
+type BoolWitnessRun
+  = BoolWitnessRuntimeVerdict {
+      witness: BoolWitness
+      result: Bool
+    }
+  | BoolWitnessQueuedForHostTransport {
+      witness: BoolWitness
+    }
 
 
 type UnifiedClaimRun
@@ -106,8 +104,10 @@ fn corpus_entry_label(e: CorpusEvalEntry) -> String {
   match e.run {
     NodeCorpusRun { run: node_run } =>
       test_claim_label(c: test_claim_run_claim(run: node_run))
-    BoolWitnessRunReceipt { run: bool_run } =>
-      bool_run.witness.entry
+    BoolWitnessRunReceipt { run: bool_run } => match bool_run {
+      BoolWitnessRuntimeVerdict { witness: witness, result: _ } => witness.entry
+      BoolWitnessQueuedForHostTransport { witness: witness } => witness.entry
+    }
   }
 }
 
@@ -189,11 +189,7 @@ fn v4_roster_pilot_bool_witness_unified_claims() -> List<UnifiedTestClaim> {
 
 
 fn queued_bool_witness_run(witness: BoolWitness) -> BoolWitnessRun {
-  BoolWitnessRun {
-    witness: witness,
-    result: Absent,
-    execution_status: BoolWitnessQueuedForHostTransport
-  }
+  BoolWitnessQueuedForHostTransport { witness: witness }
 }
 
 
