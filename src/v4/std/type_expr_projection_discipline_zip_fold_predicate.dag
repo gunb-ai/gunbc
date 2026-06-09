@@ -6,12 +6,10 @@
 
 module v4.std.type_expr_projection_discipline_zip_fold_predicate
 
-import v4.std.algebra { Cons, Empty, length }
+import v4.std.algebra { Cons, Empty, FreeMonoid, length }
 import v4.std.collection {
-  Absent,
   List,
   Optional,
-  Present,
   optional_absent,
   optional_present
 }
@@ -89,8 +87,8 @@ fn type_expr_projection_edges_exact_equal(
 }
 
 fn type_expr_projection_edges_prefix_equal(
-  prefix: List<Edge>,
-  full: List<Edge>
+  prefix: FreeMonoid<Edge>,
+  full: FreeMonoid<Edge>
 ) -> Bool {
   match prefix {
     Empty => true
@@ -112,12 +110,12 @@ fn type_expr_projection_row_envelope_exact_equal(
     children: source_facts.children,
     coordinate: target_type_expr_field_child_slots
   ) {
-    Present { value: envelope } =>
+    Some { value: envelope } =>
       type_expr_projection_edges_exact_equal(
         left: candidate.children,
         right: envelope
       )
-    Absent => false
+    None => false
   }
 }
 
@@ -127,7 +125,7 @@ fn type_expr_projection_discipline_zip_fold_preservation_holds(
   algebra: Node,
 ) -> Bool {
   match type_expr_projection_child_slot_discipline_from_envelope(node: candidate) {
-    Present { value: discipline } =>
+    Some { value: discipline } =>
       match find_named_child(
         root: source_facts,
         name: target_type_expr_field_child_slots
@@ -146,6 +144,6 @@ fn type_expr_projection_discipline_zip_fold_preservation_holds(
             && edges_conform(children: child_slots, d: discipline)
         Rejected { diagnostics: _ } => false
       }
-    Absent => false
+    None => false
   }
 }

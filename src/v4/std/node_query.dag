@@ -19,12 +19,10 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.algebra { Cons, Empty, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v4.std.collection {
   List,
   Optional,
-  Absent,
-  Present,
   optional_absent,
   optional_present
 }
@@ -53,11 +51,11 @@ fn node_labeled_child_edges(node: Node) -> List<Edge> {
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-envelope-without-named-coordinate — bind node://adhoc-sg2-envelope-peel — dissolve-on-arrival: substrate canonical peel of ≤1 named coordinate from a Conj envelope edge list; forbidden: parallel edge-label Bool filters outside std/node_query.
 fn node_envelope_without_named_coordinate_go(
-  xs: List<Edge>,
+  xs: FreeMonoid<Edge>,
   coordinate: Symbol,
-  acc: List<Edge>,
+  acc: FreeMonoid<Edge>,
   saw_coordinate: Bool
-) -> Optional<List<Edge>> {
+) -> Optional<FreeMonoid<Edge>> {
   match xs {
     Empty => optional_present(value: acc)
     Cons { head: h, tail: t } =>
@@ -94,9 +92,9 @@ fn node_envelope_without_named_coordinate_go(
 }
 
 fn node_envelope_without_named_coordinate(
-  children: List<Edge>,
+  children: FreeMonoid<Edge>,
   coordinate: Symbol
-) -> Optional<List<Edge>> {
+) -> Optional<FreeMonoid<Edge>> {
   node_envelope_without_named_coordinate_go(
     xs: children,
     coordinate: coordinate,
