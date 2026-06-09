@@ -3629,7 +3629,12 @@ fn type_expr_projection_substrate_facts(
   projected_positional: List<Node>
 ) -> Node {
   match node.kind {
-    TypeNode { connective: Conj } | TypeNode { connective: Disj } =>
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: node.kind,
+        children: node.children
+      }
+    TypeNode { connective: Disj } =>
       Node {
         kind: node.kind,
         children: node.children
