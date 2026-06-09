@@ -6,7 +6,8 @@ module v4.test.claim.workflow.v4_roster_pilot
 
 
 import v4.std.algebra { count_equal, length }
-import v4.std.collection { List, Map, empty_map, map_get, map_insert }
+import v4.std.collection { Absent, List, Map, Present, empty_map, map_get, map_insert }
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.text { String }
