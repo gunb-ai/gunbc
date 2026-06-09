@@ -23,22 +23,16 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Node, Symbol }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
-
-
-data diag_eq_reason_x: Symbol = diag_eq_reason_x
-data diag_eq_reason_y: Symbol = diag_eq_reason_y
-
-
 fn diag_eq_x() -> Diagnostic {
   Diagnostic {
-    reason: diag_eq_reason_x,
+    reason: ^diag_eq_reason_x,
     at: node_locus(node: stub_empty_conj),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn diag_eq_y() -> Diagnostic {
   Diagnostic {
-    reason: diag_eq_reason_y,
+    reason: ^diag_eq_reason_y,
     at: node_locus(node: stub_empty_conj),
     correction: Unavailable { reason: ExternalContractUnknown }
   }

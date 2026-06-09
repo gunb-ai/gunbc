@@ -28,12 +28,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data synthesis_no_tech_atom_symbol: Symbol = synthesis_no_tech_atom_symbol
-data synthesis_no_tech_sentinel_symbol: Symbol = synthesis_no_tech_sentinel_symbol
-
 data synthesis_no_tech_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: synthesis_no_tech_atom_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^synthesis_no_tech_atom_symbol } },
   children: []
 }
 
@@ -60,7 +56,7 @@ data synthesis_no_tech_input: Node = Node {
 }
 
 data synthesis_no_tech_sentinel: Node = Node {
-  kind: TypeNode { connective: Atom { identity: synthesis_no_tech_sentinel_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^synthesis_no_tech_sentinel_symbol } },
   children: []
 }
 

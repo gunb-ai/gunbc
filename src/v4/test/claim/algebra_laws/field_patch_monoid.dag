@@ -17,17 +17,11 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-
-data fp_pass_sym: Symbol = fp_pass_sym
-data fp_fail_sym: Symbol = fp_fail_sym
-
-
 fn fp_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: fp_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^fp_pass_sym } }, children: [] }
 }
 fn fp_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: fp_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^fp_fail_sym } }, children: [] }
 }
 fn fp_ok(b: Bool) -> Node {
   if b { fp_pass_node() } else { fp_fail_node() }

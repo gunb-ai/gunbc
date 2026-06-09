@@ -6,7 +6,6 @@
 module v4.test.claim.manual.typescript_derive_grammar_relation_row_round_trip
 
 import v4.extdeps.languages.typescript {
-  ts_binding_task,
   ts_formal_production_mvp1_fn_add,
   ts_grammar_relation_row_node,
   ts_inhabitant_atom,
@@ -27,7 +26,7 @@ import v4.std.grammar {
   grammar_relation_row_to_node,
   grammar_relation_tokens_node
 }
-import v4.extdeps.languages.typescript { ts_production_wave2a_type_alias_decl }
+
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, content_hash }
@@ -42,21 +41,16 @@ import v4.std.verification {
 }
 // Structural import: ties this claim to the T-16 TaskManager demo module identity.
 import v4.test.fixture.task_manager_demo { Task, create_task }
-
-data ts_grammar_relation_round_trip_pass_sym: Symbol = ts_grammar_relation_round_trip_pass_sym
-data ts_grammar_relation_round_trip_fail_sym: Symbol = ts_grammar_relation_round_trip_fail_sym
-data ts_surplus_conj_slot_dummy: Symbol = ts_surplus_conj_slot_dummy
-
 fn ts_grammar_relation_round_trip_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ts_grammar_relation_round_trip_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_pass_sym } },
     children: []
   }
 }
 
 fn ts_grammar_relation_round_trip_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ts_grammar_relation_round_trip_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_fail_sym } },
     children: []
   }
 }
@@ -90,9 +84,9 @@ fn ts_wave2a_task_type_alias_emitted_surplus_conj_slot() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ts_binding_task) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
       Edge { label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ts_surplus_conj_slot_dummy) }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
     ]
   }
 }
@@ -100,7 +94,7 @@ fn ts_wave2a_task_type_alias_emitted_surplus_conj_slot() -> Node {
 fn ts_wave2a_lhs_exact_arrow_emitted_rejects() -> Bool {
   match formal_production_for_lhs_exact(
     productions: ts_wave2a_task_formal_productions(),
-    lhs: ts_production_wave2a_type_alias_decl,
+    lhs: ^ts_production_wave2a_type_alias_decl,
     child: ts_mvp1_emitted_add_fn_node()
   ) {
     Violates { diagnostic: d } => d.reason == grammar_relation_emitted_not_conj
@@ -111,7 +105,7 @@ fn ts_wave2a_lhs_exact_arrow_emitted_rejects() -> Bool {
 fn ts_wave2a_task_derive_row_surplus_conj_slot_rejects() -> Bool {
   match formal_production_for_lhs_exact(
     productions: ts_wave2a_task_formal_productions(),
-    lhs: ts_production_wave2a_type_alias_decl,
+    lhs: ^ts_production_wave2a_type_alias_decl,
     child: ts_wave2a_task_type_alias_emitted()
   ) {
     Holds { value: production } =>
@@ -132,7 +126,7 @@ fn ts_wave2a_task_derive_row_round_trip_holds() -> Bool {
     Holds { value: fixture_row } =>
       match formal_production_for_lhs_exact(
         productions: ts_wave2a_task_formal_productions(),
-        lhs: ts_production_wave2a_type_alias_decl,
+        lhs: ^ts_production_wave2a_type_alias_decl,
         child: ts_wave2a_task_type_alias_emitted()
       ) {
         Holds { value: production } =>

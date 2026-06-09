@@ -20,15 +20,10 @@ import v4.std.verification {
   Integration,
   manual_claim_anchor
 }
-
-data go_wave2a_file: Symbol = go_wave2a_file
-data go_wave2a_bool_true: Symbol = go_wave2a_bool_true
-data go_wave2a_bool_false: Symbol = go_wave2a_bool_false
-
 fn go_wave2a_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: go_wave2a_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: go_wave2a_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^go_wave2a_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^go_wave2a_bool_false } }, children: [] }
   }
 }
 
@@ -44,7 +39,7 @@ fn go_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
 fn go_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
   match tokenize(
     text: go_mvp1_source_text,
-    file: go_wave2a_file,
+    file: ^go_wave2a_file,
     rules: go_wave1_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }

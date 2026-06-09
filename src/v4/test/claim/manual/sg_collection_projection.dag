@@ -29,21 +29,18 @@ import v4.std.verification {
   Tier1,
   manual_claim_anchor
 }
-
-data sg_collection_pass_sym: Symbol = sg_collection_pass_sym
-data sg_collection_fail_sym: Symbol = sg_collection_fail_sym
 data sg_collection_expected_vec_rc_node: String = "Vec<Rc<Node>>"
 
 fn sg_collection_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg_collection_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg_collection_pass_sym } },
     children: []
   }
 }
 
 fn sg_collection_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg_collection_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg_collection_fail_sym } },
     children: []
   }
 }

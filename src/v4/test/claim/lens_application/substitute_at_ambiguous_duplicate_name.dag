@@ -17,24 +17,18 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data substitute_ambiguous_dup_step: Symbol = substitute_ambiguous_dup_step
-data substitute_ambiguous_leaf_a_symbol: Symbol = substitute_ambiguous_leaf_a_symbol
-data substitute_ambiguous_leaf_b_symbol: Symbol = substitute_ambiguous_leaf_b_symbol
-data substitute_ambiguous_replacement_symbol: Symbol = substitute_ambiguous_replacement_symbol
-
 data substitute_ambiguous_leaf_a: Node = Node {
-  kind: TypeNode { connective: Atom { identity: substitute_ambiguous_leaf_a_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_leaf_a_symbol } },
   children: []
 }
 
 data substitute_ambiguous_leaf_b: Node = Node {
-  kind: TypeNode { connective: Atom { identity: substitute_ambiguous_leaf_b_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_leaf_b_symbol } },
   children: []
 }
 
 data substitute_ambiguous_replacement: Node = Node {
-  kind: TypeNode { connective: Atom { identity: substitute_ambiguous_replacement_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_replacement_symbol } },
   children: []
 }
 
@@ -42,11 +36,11 @@ data substitute_ambiguous_duplicate_name_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: substitute_ambiguous_dup_step },
+      label: Named { name: ^substitute_ambiguous_dup_step },
       target: substitute_ambiguous_leaf_a
     },
     Edge {
-      label: Named { name: substitute_ambiguous_dup_step },
+      label: Named { name: ^substitute_ambiguous_dup_step },
       target: substitute_ambiguous_leaf_b
     }
   ]
@@ -55,7 +49,7 @@ data substitute_ambiguous_duplicate_name_root: Node = Node {
 fn substitute_at_ambiguous_duplicate_name_claim_holds() -> Bool {
   match substitute_at(
     root: substitute_ambiguous_duplicate_name_root,
-    path: Path { steps: [substitute_ambiguous_dup_step] },
+    path: Path { steps: [^substitute_ambiguous_dup_step] },
     replacement: substitute_ambiguous_replacement
   ) {
     Rejected { diagnostics: _ } => true

@@ -12,12 +12,11 @@ import v4.std.collection { List }
 import v4.std.diagnostic { Locus, Outcome }
 import v4.std.node { Symbol }
 type NonEmptyList<T> = Refined<List<T>>
-data refinement_empty_list_reason: Symbol = refinement_empty_list_reason
 fn witness_non_empty_list<T>(xs: List<T>, at: Locus) -> Outcome<NonEmptyList<T>> {
   refine(
     base: xs,
     by: Validation {
-      reason: refinement_empty_list_reason,
+      reason: ^refinement_empty_list_reason,
       admits: fn(items) { non_empty(xs: items) }
     },
     at: at

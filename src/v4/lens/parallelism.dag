@@ -33,11 +33,6 @@ import v4.std.diagnostic {
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
-
-data parallelism_reason_unresolved_projection: Symbol = parallelism_reason_unresolved_projection
-data parallelism_reason_coupling_carrier_absent: Symbol = parallelism_reason_coupling_carrier_absent
-data parallelism_projection_virtual_file: Symbol = parallelism_projection_virtual_file
-
 // 🟢 lens-specific classification; endpoints live on the inner DependencyView.
 type ParallelismRelation
   = DataDependent
@@ -76,8 +71,8 @@ fn parallelism_dependency_kind_classifier() -> DependencyKindClassifier<Parallel
 
 fn parallelism_witness_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: parallelism_reason_unresolved_projection,
-    at: Textual { file: parallelism_projection_virtual_file, extent: WholeFile },
+    reason: ^parallelism_reason_unresolved_projection,
+    at: Textual { file: ^parallelism_projection_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -88,7 +83,7 @@ fn parallelism_facts_for_source(tree: InferredTree, view: DependencyView) -> Wit
 
 fn parallelism_coupling_absent_diagnostic(facts: InferredFacts) -> Diagnostic {
   Diagnostic {
-    reason: parallelism_reason_coupling_carrier_absent,
+    reason: ^parallelism_reason_coupling_carrier_absent,
     at: node_locus(node: facts.grounding.node),
     correction: Unavailable { reason: AmbiguousIntent }
   }
