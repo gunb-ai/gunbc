@@ -963,7 +963,8 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let inferred_parent = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
           let optional_variant_name = optional_match_variant_canonical_name(variant_name: variant_name)
-          if resolved_scrut_node.return_cardinality == CardOptional && (optional_variant_name == "Present" || optional_variant_name == "Absent") {
+          let optional_cardinality_bridge = resolved_scrut_node.return_cardinality == CardOptional && authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node) != "Optional"
+          if optional_cardinality_bridge && (optional_variant_name == "Present" || optional_variant_name == "Absent") {
             Some { value: "Optional" }
           } else {
             let is_coproduct = resolved_scrut_node.connective == Disj
@@ -973,6 +974,16 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
           }
         PatternDynamic { span: _ } => none
         PatternLookupBlocked => none
+      }
+      let annotated_variant_name = match resolved_scrut {
+        PatternResolved { node: resolved_scrut_node } =>
+          let optional_cardinality_bridge = resolved_scrut_node.return_cardinality == CardOptional && authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node) != "Optional"
+          if optional_cardinality_bridge {
+            optional_match_variant_legacy_name(variant_name: variant_name)
+          } else {
+            variant_name
+          }
+        _ => variant_name
       }
       let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, source_indices: scope.type_env.source_indices, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
@@ -984,7 +995,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       match inferred_parent {
         Some { value: parent_name } =>
           VariantPattern {
-            name: if parent_name == "Optional" { optional_match_variant_legacy_name(variant_name: variant_name) } else { variant_name },
+            name: annotated_variant_name,
             parent_enum: parent_name,
             field_bindings: annotated_bindings
           }

@@ -160,9 +160,10 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         node_lookup_failed(diagnostics: [])
       } else {
         let optional_variant_name = optional_match_variant_canonical_name(variant_name: variant_name)
-        if scrut_opt && optional_variant_name == "Present" {
+        let optional_cardinality_bridge = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
+        if optional_cardinality_bridge && optional_variant_name == "Present" {
           node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
-        } else if scrut_opt && optional_variant_name == "Absent" {
+        } else if optional_cardinality_bridge && optional_variant_name == "Absent" {
           node_lookup_resolved(node: none_type)
         } else {
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)

@@ -1694,8 +1694,16 @@ pub fn annotate_pattern_parent_enums(
                     } => {
                         let optional_variant_name =
                             optional_match_variant_canonical_name(variant_name.clone());
-                        if ((resolved_scrut_node.return_cardinality.clone()
-                            == Cardinality::CardOptional)
+                        let optional_cardinality_bridge =
+                            ((resolved_scrut_node.return_cardinality.clone()
+                                == Cardinality::CardOptional)
+                                && (authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    resolved_scrut_node.clone(),
+                                )
+                                .as_str()
+                                    != "Optional".to_string().as_str()));
+                        if (optional_cardinality_bridge.clone()
                             && ((optional_variant_name.as_str() == "Present".to_string().as_str())
                                 || (optional_variant_name.as_str()
                                     == "Absent".to_string().as_str())))
@@ -1718,6 +1726,28 @@ pub fn annotate_pattern_parent_enums(
                     }
                     PatternSubject::PatternDynamic { span: _, .. } => None,
                     PatternSubject::PatternLookupBlocked => None,
+                };
+                let annotated_variant_name = match (*resolved_scrut.clone()).clone() {
+                    PatternSubject::PatternResolved {
+                        node: resolved_scrut_node,
+                        ..
+                    } => {
+                        let optional_cardinality_bridge =
+                            ((resolved_scrut_node.return_cardinality.clone()
+                                == Cardinality::CardOptional)
+                                && (authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    resolved_scrut_node.clone(),
+                                )
+                                .as_str()
+                                    != "Optional".to_string().as_str()));
+                        if optional_cardinality_bridge {
+                            optional_match_variant_legacy_name(variant_name.clone())
+                        } else {
+                            variant_name.clone()
+                        }
+                    }
+                    _ => variant_name.clone(),
                 };
                 let variant_lookup = lookup_variant_in_type(
                     resolved_scrut.clone(),
@@ -1760,11 +1790,7 @@ pub fn annotate_pattern_parent_enums(
                 });
                 match inferred_parent {
                     Some(parent_name) => Rc::new(MatchPattern::VariantPattern {
-                        name: if parent_name.as_str() == "Optional" {
-                            optional_match_variant_legacy_name(variant_name.clone())
-                        } else {
-                            variant_name.clone()
-                        },
+                        name: annotated_variant_name.clone(),
                         parent_enum: Some(parent_name.clone()),
                         field_bindings: annotated_bindings,
                     }),

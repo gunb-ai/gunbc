@@ -234,12 +234,15 @@ pub fn lookup_variant_in_type(
                 {
                     let optional_variant_name =
                         optional_match_variant_canonical_name(variant_name.clone());
-                    if (scrut_opt.clone()
+                    let optional_cardinality_bridge = (scrut_opt.clone()
+                        && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
+                            != "Optional".to_string().as_str()));
+                    if (optional_cardinality_bridge.clone()
                         && (optional_variant_name.as_str() == "Present".to_string().as_str()))
                     {
                         node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
                     } else {
-                        if (scrut_opt.clone()
+                        if (optional_cardinality_bridge.clone()
                             && (optional_variant_name.as_str() == "Absent".to_string().as_str()))
                         {
                             node_lookup_resolved(none_type())

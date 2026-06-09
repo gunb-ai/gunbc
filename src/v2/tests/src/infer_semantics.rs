@@ -184,6 +184,30 @@ fn empty_infer_scope() -> Rc<InferScope> {
     })
 }
 
+fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc<Node> {
+    let sp = make_span(0, 0);
+    Rc::new(Node {
+        name: name.to_string(),
+        ident: None,
+        span: sp.clone(),
+        ident_span: default_ident_span(name.to_string(), sp),
+        children: Rc::new(variants),
+        connective: Connective::Disj,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: cardinality,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
+
 fn variant_arm(name: &str) -> Rc<Node> {
     make_arm_node(
         Rc::new(MatchPattern::VariantPattern {
@@ -699,6 +723,36 @@ fn optional_present_absent_patterns_annotate_to_v2_internal_names() {
         absent.as_ref(),
         MatchPattern::VariantPattern { name, parent_enum: Some(parent), .. }
           if name == "None" && parent == "Optional"
+    ));
+}
+
+#[test]
+fn real_optional_coproduct_preserves_present_absent_pattern_names() {
+    let scope = empty_infer_scope();
+    let optional_sum = sum_node(
+        "Optional",
+        vec![
+            leaf_node("Absent".to_string()),
+            leaf_node("Present".to_string()),
+        ],
+        Cardinality::CardOptional,
+    );
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(optional_sum);
+
+    let present = v2_compiler::v2_compiler_infer::annotate_pattern_parent_enums(
+        Rc::new(MatchPattern::VariantPattern {
+            name: "Present".to_string(),
+            parent_enum: None,
+            field_bindings: Rc::new(vec![]),
+        }),
+        subject,
+        scope,
+    );
+
+    assert!(matches!(
+        present.as_ref(),
+        MatchPattern::VariantPattern { name, parent_enum: Some(parent), .. }
+          if name == "Present" && parent == "Optional"
     ));
 }
 
