@@ -6,7 +6,7 @@ module v4.test.claim.workflow.v4_roster_pilot
 
 
 import v4.std.algebra { count_equal, length }
-import v4.std.collection { List, Map, empty_map, map_insert }
+import v4.std.collection { List, Map, empty_map, map_get, map_insert }
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.text { String }
@@ -142,10 +142,16 @@ fn bool_witness_from_roster_row(row: V4RosterPilotClaimRunRow) -> BoolWitness {
 }
 
 
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
+// dissolve-on: bootstrap Witness<V> dispatch at Map.lookup (substrate Witness at v4.std.collection:70);
+// site: v4_roster_pilot_row_function_transport_matches_symbol spellings bridge.
 fn v4_roster_pilot_row_function_transport_matches_symbol(row: V4RosterPilotClaimRunRow) -> Bool {
-  match v4_roster_pilot_witness_function_spellings().lookup(row.function_symbol) {
-    Some { value: spelling } => row.function == spelling
-    None => false
+  match map_get(m: v4_roster_pilot_witness_function_spellings(), key: row.function_symbol) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: spelling } => row.function == spelling
+      Absent => false
+    }
+    Rejected { diagnostics: _ } => false
   }
 }
 
