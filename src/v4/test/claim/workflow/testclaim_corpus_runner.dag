@@ -103,7 +103,12 @@ data testclaim_subject_roster_unsupported_rows: List<TestClaimSubjectRosterUnsup
 
 
 fn corpus_entry_label(e: CorpusEvalEntry) -> String {
-  test_claim_label(c: test_claim_run_claim(run: e.run))
+  match e.run {
+    NodeCorpusRun { run: node_run } =>
+      test_claim_label(c: test_claim_run_claim(run: node_run))
+    BoolWitnessRunReceipt { run: bool_run } =>
+      bool_run.witness.entry
+  }
 }
 
 
