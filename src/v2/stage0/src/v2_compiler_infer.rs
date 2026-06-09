@@ -53,7 +53,7 @@ use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
 pub use crate::v2_compiler_infer_items::{
-    inferred_to_outputs, item_kind, variant_locals_from_items,
+    inferred_to_outputs, item_kind, pd3_direct_call_scope_excluded, variant_locals_from_items,
 };
 pub use crate::v2_compiler_infer_items::{
     ItemInfo, ItemKind, ResolvedGraph, TypedGraph, TypedModule,
@@ -1015,19 +1015,6 @@ pub fn direct_call_set_element_types_mismatch(
         false
     } else {
         set_element_types_mismatch(formal.clone(), actual.clone(), source_indices)
-    }
-}
-
-pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
-    {
-        let is_v4 = ((v2_rt::string_length(&module_name) >= 3)
-            && (v2_rt::substring(&module_name, 0, 3).as_str() == "v4.".to_string().as_str()));
-        let is_compiler_substrate = ((v2_rt::string_length(&module_name) >= 12)
-            && (v2_rt::substring(&module_name, 0, 12).as_str()
-                == "v2.compiler.".to_string().as_str()));
-        let is_std_substrate = ((v2_rt::string_length(&module_name) >= 8)
-            && (v2_rt::substring(&module_name, 0, 8).as_str() == "v2.std.".to_string().as_str()));
-        ((is_v4 || is_compiler_substrate) || is_std_substrate)
     }
 }
 
@@ -2932,7 +2919,7 @@ pub fn infer_expr(
                             __result
                         });
                         let arg_compat_diags =
-                            if module_skips_direct_call_arg_check(scope.module_name.clone()) {
+                            if pd3_direct_call_scope_excluded(scope.module_name.clone()) {
                                 Rc::new(vec![])
                             } else {
                                 direct_call_arg_mismatch_diags(

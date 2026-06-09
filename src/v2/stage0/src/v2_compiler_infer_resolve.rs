@@ -38,7 +38,7 @@ pub use crate::v2_std_core::{
     make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
     make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
     param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
+    resource_use_resource, string_type, transport_request_body, unit_type, with_ident_span,
     with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
@@ -59,26 +59,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 
 pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-        name: structural.name.clone(),
-        ident: structural.ident.clone(),
-        span: structural.span.clone(),
-        ident_span: identity.ident_span.clone(),
-        children: structural.children.clone(),
-        connective: structural.connective.clone(),
-        params: structural.params.clone(),
-        inferred: structural.inferred.clone(),
-        return_cardinality: structural.return_cardinality.clone(),
-        uses: structural.uses.clone(),
-        body: structural.body.clone(),
-        transport: structural.transport.clone(),
-        properties: structural.properties.clone(),
-        type_annotation: structural.type_annotation.clone(),
-        is_self_recursive: structural.is_self_recursive.clone(),
-        has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
-        match_pattern: structural.match_pattern.clone(),
-        expr_data: structural.expr_data.clone(),
-    })
+    with_ident_span(structural, identity.ident_span.clone())
 }
 
 pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
@@ -1272,10 +1253,7 @@ pub fn resolve_node_bounded(
                                                     Some(InferredNode::Resolved {
                                                         node: target,
                                                         ..
-                                                    }) => with_authored_identity(
-                                                        n.clone(),
-                                                        target.clone(),
-                                                    ),
+                                                    }) => target.clone(),
                                                     _ => resolved.clone(),
                                                 }
                                             } else {

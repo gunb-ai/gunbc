@@ -223,3 +223,18 @@ pub fn variant_locals_from_items(
         },
     )
 }
+
+pub fn module_name_has_prefix(module_name: String, prefix: String) -> bool {
+    {
+        let prefix_len = v2_rt::string_length(&prefix);
+        ((v2_rt::string_length(&module_name) >= prefix_len.clone())
+            && (v2_rt::substring(&module_name, 0, prefix_len.clone()).as_str()
+                == prefix.clone().as_str()))
+    }
+}
+
+pub fn pd3_direct_call_scope_excluded(module_name: String) -> bool {
+    ((module_name_has_prefix(module_name.clone(), "v4.".to_string())
+        || module_name_has_prefix(module_name.clone(), "v2.compiler.".to_string()))
+        || module_name_has_prefix(module_name.clone(), "v2.std.".to_string()))
+}
