@@ -6,8 +6,15 @@
 
 module v4.std.type_expr_projection_discipline_zip_fold_predicate
 
-import v4.std.algebra { Cons, Empty, length, list_snoc_item }
-import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.algebra { Cons, Empty, FreeMonoid, length, list_snoc_item }
+import v4.std.collection {
+  Absent,
+  List,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v4.std.node {
   Atom,
   Edge,
