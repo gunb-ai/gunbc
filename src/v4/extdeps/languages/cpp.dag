@@ -1454,11 +1454,11 @@ fn cpp_sg2_type_expr_target_model(target_profile: Node) -> TargetModel {
 }
 
 fn cpp_sg2_binding_spellings() -> Map<Symbol, String> {
-  map_insert(
-    map_insert(empty_map(), ^cpp_binding_sg2_x, "X"),
-    ^cpp_binding_sg2_y,
-    "Y"
-  )
+  let m0 = map_insert(empty_map(), ^cpp_binding_sg2_foobar, "FooBar")
+  let m1 = map_insert(m0, ^cpp_binding_sg2_x, "X")
+  let m2 = map_insert(m1, ^cpp_binding_sg2_y, "Y")
+  let m3 = map_insert(m2, ^cpp_binding_sg2_rc, "shared_ptr")
+  map_insert(m3, ^cpp_binding_sg2_set, "set")
 }
 
 fn cpp_sg2_serialize_source_node() -> Node {
@@ -1545,4 +1545,161 @@ fn cpp_sg2_arrow_source_type_node() -> Node {
       Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_y) }
     ]
   }
+}
+
+fn cpp_sg2_foobar_xy_inner_instantiation_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_foobar)
+      },
+      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x) },
+      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_y) }
+    ]
+  }
+}
+
+fn cpp_sg2_instantiation_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_rc) },
+      Edge {
+        label: Positional,
+        target: cpp_sg2_foobar_xy_inner_instantiation_node()
+      }
+    ]
+  }
+}
+
+fn cpp_sg2_rc_foobar_xy_emitted() -> Node {
+  target_type_expr_instantiation_emitted(
+    form: cpp_type_expression_projection().instantiation_form,
+    head: target_type_expr_atom_emitted(
+      form: cpp_type_expression_projection().atom_form,
+      identity: ^cpp_binding_sg2_rc
+    ),
+    args: [
+      target_type_expr_instantiation_emitted(
+        form: cpp_type_expression_projection().instantiation_form,
+        head: target_type_expr_atom_emitted(
+          form: cpp_type_expression_projection().atom_form,
+          identity: ^cpp_binding_sg2_foobar
+        ),
+        args: [
+          target_type_expr_atom_emitted(
+            form: cpp_type_expression_projection().atom_form,
+            identity: ^cpp_binding_sg2_x
+          ),
+          target_type_expr_atom_emitted(
+            form: cpp_type_expression_projection().atom_form,
+            identity: ^cpp_binding_sg2_y
+          )
+        ]
+      )
+    ]
+  )
+}
+
+fn cpp_sg2_conj_xy_emitted() -> Node {
+  target_type_expr_record_emitted(
+    form: cpp_type_expression_projection().conj_form,
+    fields: [
+      TargetTypeExprFieldSlot {
+        label: ^cpp_binding_sg2_x,
+        type_expr: target_type_expr_atom_emitted(
+          form: cpp_type_expression_projection().atom_form,
+          identity: ^cpp_binding_sg2_x
+        )
+      },
+      TargetTypeExprFieldSlot {
+        label: ^cpp_binding_sg2_y,
+        type_expr: target_type_expr_atom_emitted(
+          form: cpp_type_expression_projection().atom_form,
+          identity: ^cpp_binding_sg2_y
+        )
+      }
+    ]
+  )
+}
+
+fn cpp_sg2_conj_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: ^cpp_binding_sg2_x, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x)),
+      cpp_named_edge(name: ^cpp_binding_sg2_y, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_y))
+    ]
+  }
+}
+
+fn cpp_sg2_sum_xy_emitted() -> Node {
+  target_type_expr_sum_emitted(
+    form: cpp_type_expression_projection().disj_form,
+    variants: [
+      TargetTypeExprVariantSlot {
+        label: ^cpp_binding_sg2_x,
+        type_expr: target_type_expr_atom_emitted(
+          form: cpp_type_expression_projection().atom_form,
+          identity: ^cpp_binding_sg2_x
+        )
+      },
+      TargetTypeExprVariantSlot {
+        label: ^cpp_binding_sg2_y,
+        type_expr: target_type_expr_atom_emitted(
+          form: cpp_type_expression_projection().atom_form,
+          identity: ^cpp_binding_sg2_y
+        )
+      }
+    ]
+  )
+}
+
+fn cpp_sg2_disj_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      cpp_named_edge(name: ^cpp_binding_sg2_x, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x)),
+      cpp_named_edge(name: ^cpp_binding_sg2_y, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_y))
+    ]
+  }
+}
+
+fn cpp_sg2_cardinality_x_emitted() -> Node {
+  target_type_expr_cardinality_emitted(
+    form: cpp_type_expression_projection().cardinality_form,
+    head: target_type_expr_atom_emitted(
+      form: cpp_type_expression_projection().atom_form,
+      identity: ^cpp_binding_sg2_set
+    ),
+    args: [
+      target_type_expr_atom_emitted(
+        form: cpp_type_expression_projection().atom_form,
+        identity: ^cpp_binding_sg2_x
+      )
+    ]
+  )
+}
+
+fn cpp_sg2_cardinality_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_set) },
+      Edge { label: Positional, target: cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x) }
+    ]
+  }
+}
+
+fn cpp_sg2_atom_x_emitted() -> Node {
+  target_type_expr_atom_emitted(
+    form: cpp_type_expression_projection().atom_form,
+    identity: ^cpp_binding_sg2_x
+  )
+}
+
+fn cpp_sg2_atom_source_type_node() -> Node {
+  cpp_sg2_atom_node(binding: ^cpp_binding_sg2_x)
 }
