@@ -5,6 +5,13 @@
 **Session:** wise-ant-182
 **Parent lane:** bright-owl-653 (Mgr-ENF-2 / A3 dogfood)
 
+**Amendment (2026-06-09, codex review on #4579):** v1 incorrectly equated `InternTable` intern ids
+with declaration identity. `InternTable` is a **spelling** table (`String → Int`,
+`00_core.dag:1448`); `build_type_env` keys bindings by `intern(authored_name)` (`04_infer.dag:5193`),
+so same-spelled declarations in different modules collapse to the same lookup key. The revised
+design below separates **spelling id** (lookup) from **binding id** (declaration identity) and
+bounds PD-3 phase-1 scope accordingly.
+
 ---
 
 ## 1. Problem
@@ -66,40 +73,65 @@ Preserve nominal **declaration identity** through alias peel and env resolve so 
 
 ---
 
-## 3. Recommended side-channel: `Node.ident` (intern-table declaration id)
+## 3. Recommended side-channel: `BindingId` on `Node.ident`
 
-### Why `Node.ident`
+### 3.1 Two authorities — do not conflate
 
-v2 already models declaration identity infrastructure:
+| Concept | What it is today | Role |
+|---------|------------------|------|
+| **Spelling id** | `InternTable` intern (`String → Int`, `00_core.dag:1463`) | Fast lookup key for `TypeEnv.bindings`; **not** declaration identity |
+| **Binding id** | *Missing* — must be introduced | One id per **type declaration registration** in `build_type_env`; survives alias peel |
 
-```62:67:src/v2/04_env.dag
-fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
-  match node.ident {
-    Some { value: id } => lookup_type(env: env, ident: id)
-    None => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
-  }
+`lookup_type_for` (`04_env.dag:62`) uses `node.ident` as a lookup hint into `bindings`. That is
+correct for **name resolution**, but stamping `ident: Some(intern(table, type_name).id)` at parse
+would only record spelling — two modules both declaring `type UserId = …` share the same intern
+id and the later `map_insert` wins (`04_infer.dag:5254` `merge_envs`). PD-3 would then compare
+spellings while claiming declaration identity (P1/P2 violation; codex #4579 finding).
+
+### 3.2 BindingId — the actual declaration-identity authority
+
+Introduce `BindingId` as a monotonic `Int` assigned when `build_type_env` registers each type
+declaration item (one fresh id per `map_insert` into `local_bindings`, independent of spelling).
+
+```dag
+type TypeBinding {
+  name: String
+  resolved: Node
+  provenance: SubValueRelation
+  binding_id: BindingId   // NEW — declaration identity; assigned at registration
 }
 ```
 
-- `InternTable` is built at parse and carried on `FrontendResult`.
-- `TypeEnv.bindings` is keyed by intern id (`04_infer.dag:5193+`).
-- Module/import nodes already stamp `ident` at parse (`02_parse.dag:883,947`).
+**Carrier on `Node`:** reuse existing `Node.ident: Int?` to hold `BindingId` on type nodes after
+env bind / resolve peel. This is a **semantic rebind** of the field for type-reference nodes:
+`ident` means "which `TypeBinding` declared this nominal," not "which spelling token."
 
-**Gap:** type reference nodes (`leaf_type_node`, `parse_type_expr`, alias RHS, call-site inferred
-types) do **not** stamp `ident`. Brand comparison falls back to `authored_name_at` → `ident_span`
-text.
+Module/import parse nodes (`02_parse.dag:883`) may continue using `ident` for module IR ids;
+type-reference stamping is a separate path gated on `binding_id != none`.
 
-Using `Node.ident` as the brand side-channel is **dissolution, not new substrate**: the field and
-env lookup path exist; A3/PD-3 needs them wired through parse → resolve → peel → compare.
+### 3.3 Phase-1 scope bound (PD-3 dogfood)
 
-### Alternatives considered
+Current PD-3 tests and adversarial suite are **single-module** (`pd3.brand_relation`,
+`pd3.brand_call_reject`, etc. — all one `module` block). Phase-1 implementation:
+
+- Assigns distinct `binding_id` per declaration within a module (`UserId` ≠ `AccountId` even when
+  both alias to `Refined<String>`).
+- Stamps `Node.ident = Some(binding_id)` after env lookup / alias peel — **not at parse**.
+- Does **not** claim cross-module same-spelling disambiguation is solved (that requires binding
+  map key migration off spelling intern id — tracked as phase-2 escalation).
+
+Workers must **not** implement `intern(type_name).id` at parse as declaration identity.
+
+### 3.4 Alternatives considered
 
 | Option | Verdict |
 |--------|---------|
 | Continue `ident_span` graft | **Reject** — carrier conflict is the bug being fixed. |
-| New `Node.brand_id` field | **Defer** — duplicates `ident` semantics; only justified if module `ident` and type-ref `ident` must diverge (no evidence today). |
-| `properties` entry `BrandIdentity` | **Reject** — properties are predicate/refinement carriers; identity would not propagate through the dozens of `Node { … }` rebuild sites in resolve. |
-| Compare via `TypeEnv` lookup only | **Reject** — call-site actual args after `peel_nominal_alias_identity` must carry identity locally; env binding name is not always reachable. |
+| `intern(type_name).id` at parse (v1 design) | **Reject** — spelling id, not declaration identity (codex finding). |
+| New `Node.brand_id` field | **Defer** — `Node.ident` is an unused slot on type-ref nodes; rebind before adding fields. |
+| `properties` entry `BrandIdentity` | **Reject** — properties are predicate/refinement carriers; identity would not propagate through resolve rebuild sites. |
+| Compare via `TypeEnv` lookup only | **Reject** — call-site actual args after peel must carry identity locally. |
+| Full v3 `DeclarationId` now | **Defer** — correct long-term target; `BindingId` is the minimal v2 staging form. |
 
 ---
 
@@ -107,14 +139,15 @@ env lookup path exist; A3/PD-3 needs them wired through parse → resolve → pe
 
 | Fact | Authority | Accessor |
 |------|-----------|----------|
-| Source token text / diagnostic span | `ident_span` | `source_name_at(node, source_indices)` — **rename intent** of current `authored_name_at` for display/diagnostics |
-| Declaration identity (brand) | `ident` (+ `InternTable`) | `declaration_identity_at(node) -> Int?` |
-| Declaration name string | `intern_str(table, ident)` | `brand_name_at(node, env) -> String` |
+| Source token text / diagnostic span | `ident_span` | `source_name_at(node, source_indices)` — rename intent of current `authored_name_at` for display/diagnostics |
+| Spelling / lookup key | `InternTable` | `intern_find(table, name)` — **lookup only**, not PD-3 compare |
+| Declaration identity (brand) | `TypeBinding.binding_id` → `Node.ident` | `binding_id_at(node) -> BindingId?` |
+| Declaration name string | `TypeBinding.name` | `brand_name_at(binding_id, env) -> String` |
 | Structural template head | `name` (post-resolve) | `structural_carrier_template_name` (unchanged) |
 
-**Compatibility rule during migration:** `brand_name_at` falls back to `source_name_at` when
-`ident == none` (kernel types, synthetic nodes, pre-migration graphs). PD-3 tests become the
-consumer that forces `ident` stamping on user-module type refs.
+**Compatibility rule during migration:** when `binding_id == none` (kernel types, synthetic nodes,
+pre-migration graphs), PD-3 falls back to `source_name_at` string compare (today's behavior).
+Stamping is a post-`build_type_env` / post-lookup obligation, not a parse-time intern.
 
 ---
 
@@ -122,44 +155,55 @@ consumer that forces `ident` stamping on user-module type refs.
 
 ```mermaid
 flowchart LR
-  subgraph parse [Parse]
-    TE[type expr token] --> INT["intern(type_name)"]
-    INT --> STAMP["Node.ident = Some(id)"]
-    TE --> SPAN["Node.ident_span = token span"]
+  subgraph env_bind [build_type_env]
+    DECL[type declaration item] --> ASSIGN["binding_id = next_binding_id()"]
+    ASSIGN --> TB["TypeBinding { binding_id, … }"]
   end
 
-  subgraph resolve [Resolve]
-    STAMP --> PEEL[peel / resolve to structural]
-    PEEL --> PRESERVE["copy identity.ident → structural.ident"]
-    SPAN --> HONEST["structural.ident_span stays structural or none"]
+  subgraph infer_resolve [Infer / Resolve]
+    REF[type reference node] --> LOOKUP[lookup_type_for → binding]
+    LOOKUP --> STAMP["Node.ident = Some(binding.binding_id)"]
+    STAMP --> PEEL[peel alias to structural]
+    PEEL --> PRESERVE["copy binding_id → structural.ident"]
+  end
+
+  subgraph parse [Parse]
+    REF --> SPAN["ident_span = token span only"]
   end
 
   subgraph compare [A3 / PD-3]
-    PRESERVE --> CMP["brand_id_equal(left, right)"]
+    PRESERVE --> CMP["binding_id_equal(left, right)"]
     CMP --> REJECT["nominal_call_arg_brand_mismatch"]
   end
 ```
 
-### 5.1 Parse — stamp `ident` on every type reference node
+### 5.1 `build_type_env` — assign `binding_id` per declaration
 
-**Sites to update** (`02_parse.dag` / `v2_compiler_parse.rs`):
+**Sites to update** (`04_infer.dag` `build_type_env`, ~5192+):
 
-- `leaf_type_node` / `parse_type_expr` simple refs: `ident: Some(intern(table, type_name).id)`.
-- Applied types (`List<T>`): container node gets `ident` for `List`; args get their own.
-- Alias RHS leaf refs: same stamp as use-site.
-- **Do not** stamp `ident` on structural heads created by resolve (synthetic `Refined` expansion).
+- Maintain `next_binding_id: Int` counter per `build_type_env` invocation (or per compilation
+  graph — pick one authority; per-graph is simpler for cross-module phase-2).
+- On each `map_insert` into `local_bindings`, assign a fresh `binding_id` on the `TypeBinding`.
+- Set `TypeBinding.resolved.ident = Some(binding_id)` on the registered node so env round-trips
+  carry identity.
+- **Keep** `item_ident = intern(authored_name).id` as the `bindings` map **lookup key** for now
+  (spelling-keyed map is a known limitation; binding_id is the compare authority).
 
-`ident_span` continues to point at the authored token — no semantic change at parse.
+**Do not** assign `binding_id` from `intern(type_name)` — spelling and identity diverge by design.
 
-### 5.2 Resolve — replace ident_span graft with ident graft
+### 5.2 Infer / resolve — stamp `binding_id` after lookup, replace ident_span graft
 
-Replace `with_authored_identity` with `with_preserved_declaration_identity`:
+After `lookup_type_for` resolves a type reference to a `TypeBinding`, stamp
+`node.ident = Some(binding.binding_id)`.
+
+Replace `with_authored_identity` with `with_preserved_binding_id`:
 
 ```dag
-fn with_preserved_declaration_identity(identity: Node, structural: Node) -> Node {
+fn with_preserved_binding_id(identity: Node, structural: Node) -> Node {
   Node {
-    name: structural.name, ident: identity.ident,   // ← side-channel
-    ident_span: structural.ident_span,              // ← honest source span
+    name: structural.name,
+    ident: identity.ident,              // BindingId side-channel
+    ident_span: structural.ident_span,  // honest source span
     // … all other fields from structural …
   }
 }
@@ -167,44 +211,41 @@ fn with_preserved_declaration_identity(identity: Node, structural: Node) -> Node
 
 Update call sites:
 
-- `preserve_nominal_brand_on_resolve` — graft `identity.ident`, not `identity.ident_span`.
-- `peel_nominal_alias_identity` — same.
-- **Guard:** only graft when `identity.ident != none` and brand differs from structural template
-  (same condition as today, but compare via `brand_name_at` / `ident`).
+- `preserve_nominal_brand_on_resolve` — graft `identity.ident` (binding id), not `identity.ident_span`.
+- `peel_nominal_alias_identity` — stamp from looked-up binding before peel; graft binding id onto
+  structural result.
+- **Guard:** only graft when `identity.ident != none` and binding names differ from structural
+  template spelling.
 
-`topo_resolve_types` paths that call `preserve_nominal_brand_on_resolve` (`04_infer.dag:5743+`)
-remain; they gain correct identity preservation for free once `pre` nodes carry `ident`.
+`topo_resolve_types` (`04_infer.dag:5743+`) passes pre-resolve nodes that already carry binding id
+from binding registration.
 
 ### 5.3 Compare — PD-3 and relation refinement
 
-**Primary change:** `nominal_call_arg_brand_mismatch` compares declaration ids:
+**Primary change:** `nominal_call_arg_brand_mismatch` compares `BindingId` values:
 
 ```dag
 fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   // … callable / empty guards unchanged …
   match (formal.ident, actual.ident) {
     (Some { value: f }, Some { value: a }) =>
-      f != a
+      f != a   // distinct binding registrations
         && structural_carrier_template_name(n: formal, …) == structural_carrier_template_name(n: actual, …)
         && !is_declared_container_alias_spelling(…)
     _ =>
-      // Fallback for unstamped nodes (kernel / synthetic): string brand compare
-      brand_name_at(…) != brand_name_at(…) && same structural carrier …
+      // Fallback for unstamped nodes (kernel / synthetic): source_name_at string compare
+      source_name_at(…) != source_name_at(…) && same structural carrier …
   }
 }
 ```
 
-**`node_type_compatible` leaf branch** (`04_types.dag:772`): prefer `ident` equality when both
-sides stamped; fall back to `brand_name_at` string equality. Container branches that compare
-`authored_name_at` for container kind should use `brand_name_at` only when checking **element
-slot** brand twins — container **kind** compare stays on `authored_name_at` / canonical template
-(unchanged).
+**`node_type_compatible` leaf branch** (`04_types.dag:772`): prefer `binding_id` equality when both
+sides stamped; fall back to `source_name_at` string equality. Container kind compare unchanged.
 
-### 5.4 Env binding registration
+### 5.4 Reference nodes
 
-When `build_type_env` registers a type (`04_infer.dag:5192+`), the `TypeBinding.resolved` node
-should carry `ident: Some(item_ident)` so env round-trips reinforce the same id. Reference nodes
-created by `nominal_ref_node` should accept `ident` parameter.
+`nominal_ref_node` should accept optional `binding_id: BindingId?` and set `ident` when known.
+Parse-time refs start with `ident: none`; infer stamps after env bind.
 
 ---
 
