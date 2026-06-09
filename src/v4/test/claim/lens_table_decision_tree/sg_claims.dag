@@ -15,13 +15,17 @@ import v4.lens.table_decision_tree {
   table_decision_tree_fact_for_fn
 }
 import v4.std.logic { Bool }
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
 
 
-data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
+data tdt_witness_fn_node_symbol: Symbol = tdt_witness_fn_node_symbol
+data tdt_witness_fn_node: Node = claim_atom_node(s: tdt_witness_fn_node_symbol)
 
 
+// 🟡 gated — predicate-dissolution interim — dissolve-on-arrival: replace with
+// discriminant()-based or substrate-derived coproduct arm predicate; forbidden:
+// treating this as a permanent variant-discriminant authority.
 fn tdt_verdict_is_unrealized(verdict: TableDecisionTreeVerdict) -> Bool {
   match verdict {
     Unrealized => true

@@ -16,6 +16,9 @@ import v4.lens.structural_similarity {
 import v4.std.logic { Bool }
 
 
+// 🟡 gated — predicate-dissolution interim — dissolve-on-arrival: replace with
+// discriminant()-based or substrate-derived coproduct arm predicate; forbidden:
+// treating this as a permanent variant-discriminant authority.
 fn ss_verdict_is_unrealized(verdict: StructuralSimilarityVerdict) -> Bool {
   match verdict {
     Unrealized => true
