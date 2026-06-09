@@ -6,7 +6,8 @@
 
 module v4.std.type_expr_projection_discipline_zip_fold_predicate
 
-import v4.std.algebra { Cons, Empty, is_empty, length }
+import v4.std.algebra { Cons, Empty, length }
+import v4.std.collection { List }
 import v4.std.node {
   Atom,
   Edge,
@@ -104,9 +105,9 @@ fn type_expr_projection_discipline_zip_fold_preservation_holds(
 ) -> Bool {
   let discipline = type_expr_projection_child_slot_discipline_from_envelope(node: candidate)
   let envelope_count = length(xs: candidate.children)
-  let child_slots = type_expr_projection_child_slot_suffix(
-    full: source_facts.children,
-    envelope_count: envelope_count
+  let child_slots = type_expr_projection_skip_edges(
+    xs: source_facts.children,
+    count: envelope_count
   )
   well_formed(n: source_facts)
     && well_formed(n: candidate)
