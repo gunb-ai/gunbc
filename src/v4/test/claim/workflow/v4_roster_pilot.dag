@@ -327,6 +327,13 @@ data v4_roster_pilot_row_sg2_projection_falsification: V4RosterPilotClaimRunRow 
   function_symbol: witness_sg2_projection_falsification_holds
 }
 
+data v4_roster_pilot_row_sg2_fold_row_delimiter_discriminates: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "sg2 type-expr row gate delimiter discrimination",
+  entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+  function: "witness_sg2_fold_row_delimiter_discriminates_holds",
+  function_symbol: witness_sg2_fold_row_delimiter_discriminates_holds
+}
+
 // Exemplar E1: v4.std.text smoke→witness migration (fold-delete W1). Discriminating
 // claim-run witnesses (mutation-proven red-under-mutation) carry the behavioral content
 // of the now-retired v4_std_text_dag_smoke_test.rs parse-surface greps; that .rs and its
