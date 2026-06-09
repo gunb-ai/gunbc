@@ -141,9 +141,8 @@ seed, get-off-v3 goal).
 
 ## Next Adoption Site
 
-When the enforcement AIM operator GO arrives, the `04_infer` ExprCall arm should call
-`coercion_fold` (from `std/coercion.dag`) to check call-arg compatibility — wiring
-`node_type_compatible` into the direct-call arm (~L1349–1368 of v2/04_infer.dag per the
-AIM design, with brand-twin reject + alias-accept gate). That PR will be the second genuine
-`find_witness` adoption site in the compiler pipeline. The design lives in project memory
-(session calm-badger-881); no planning doc has been committed for it yet.
+The next `find_witness` consumer in the pipeline is the direct-call arg-compatibility check
+in `04_infer`. Its current status is tracked in `ROADMAP.md` under the `PD-3-DOGFOOD` row
+(scaffold deletion criterion: `direct_call_arg_mismatch_diags` passes with zero false-positive
+diags on v4/compiler substrate). Implementation design is out of scope for this measurement
+report; consult ROADMAP.md for the checkable authority.
