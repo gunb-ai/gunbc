@@ -25,7 +25,10 @@ import v4.extdeps.languages.cpp {
   cpp_sg2_type_expr_projection_probe_target_model,
   cpp_type_expression_projection
 }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model {
+  TargetModel,
+  target_type_expr_emitted_wire_decode
+}
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
@@ -92,22 +95,6 @@ fn cpp_sg2_project_arrow_emitted() -> Node {
   cpp_sg2_project_emitted(node: cpp_sg2_arrow_source_type_node())
 }
 
-fn cpp_sg2_project_instantiation_emitted() -> Node {
-  cpp_sg2_project_emitted(node: cpp_sg2_instantiation_source_type_node())
-}
-
-fn cpp_sg2_project_conj_emitted() -> Node {
-  cpp_sg2_project_emitted(node: cpp_sg2_conj_source_type_node())
-}
-
-fn cpp_sg2_project_disj_emitted() -> Node {
-  cpp_sg2_project_emitted(node: cpp_sg2_disj_source_type_node())
-}
-
-fn cpp_sg2_project_cardinality_emitted() -> Node {
-  cpp_sg2_project_emitted(node: cpp_sg2_cardinality_source_type_node())
-}
-
 fn cpp_sg2_project_atom_emitted() -> Node {
   cpp_sg2_project_emitted(node: cpp_sg2_atom_source_type_node())
 }
@@ -128,6 +115,16 @@ fn cpp_sg2_projection_structural_matches(golden: Node, projected: Node) -> Bool 
 
 fn cpp_sg2_projection_serialize_matches(emitted: Node, expected: String) -> Bool {
   cpp_sg2_serialized_text(emitted: emitted) == expected
+}
+
+fn cpp_sg2_wire_decode_accepts(emitted: Node) -> Bool {
+  match target_type_expr_emitted_wire_decode(
+    node: emitted,
+    projection: cpp_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn cpp_sg2_row_delimiters_bidirectional() -> Bool {
@@ -154,43 +151,35 @@ fn witness_cpp_sg2_arrow_holds() -> Bool {
 }
 
 fn witness_cpp_sg2_instantiation_holds() -> Bool {
-  cpp_sg2_projection_structural_matches(
-    golden: cpp_sg2_rc_foobar_xy_emitted(),
-    projected: cpp_sg2_project_instantiation_emitted()
-  ) && cpp_sg2_projection_serialize_matches(
-    emitted: cpp_sg2_project_instantiation_emitted(),
-    expected: cpp_sg2_expected_instantiation_text
-  )
+  cpp_sg2_wire_decode_accepts(emitted: cpp_sg2_rc_foobar_xy_emitted())
+    && cpp_sg2_projection_serialize_matches(
+      emitted: cpp_sg2_rc_foobar_xy_emitted(),
+      expected: cpp_sg2_expected_instantiation_text
+    )
 }
 
 fn witness_cpp_sg2_conj_holds() -> Bool {
-  cpp_sg2_projection_structural_matches(
-    golden: cpp_sg2_conj_xy_emitted(),
-    projected: cpp_sg2_project_conj_emitted()
-  ) && cpp_sg2_projection_serialize_matches(
-    emitted: cpp_sg2_project_conj_emitted(),
-    expected: cpp_sg2_expected_conj_text
-  )
+  cpp_sg2_wire_decode_accepts(emitted: cpp_sg2_conj_xy_emitted())
+    && cpp_sg2_projection_serialize_matches(
+      emitted: cpp_sg2_conj_xy_emitted(),
+      expected: cpp_sg2_expected_conj_text
+    )
 }
 
 fn witness_cpp_sg2_disj_holds() -> Bool {
-  cpp_sg2_projection_structural_matches(
-    golden: cpp_sg2_sum_xy_emitted(),
-    projected: cpp_sg2_project_disj_emitted()
-  ) && cpp_sg2_projection_serialize_matches(
-    emitted: cpp_sg2_project_disj_emitted(),
-    expected: cpp_sg2_expected_disj_text
-  )
+  cpp_sg2_wire_decode_accepts(emitted: cpp_sg2_sum_xy_emitted())
+    && cpp_sg2_projection_serialize_matches(
+      emitted: cpp_sg2_sum_xy_emitted(),
+      expected: cpp_sg2_expected_disj_text
+    )
 }
 
 fn witness_cpp_sg2_cardinality_holds() -> Bool {
-  cpp_sg2_projection_structural_matches(
-    golden: cpp_sg2_cardinality_x_emitted(),
-    projected: cpp_sg2_project_cardinality_emitted()
-  ) && cpp_sg2_projection_serialize_matches(
-    emitted: cpp_sg2_project_cardinality_emitted(),
-    expected: cpp_sg2_expected_cardinality_text
-  )
+  cpp_sg2_wire_decode_accepts(emitted: cpp_sg2_cardinality_x_emitted())
+    && cpp_sg2_projection_serialize_matches(
+      emitted: cpp_sg2_cardinality_x_emitted(),
+      expected: cpp_sg2_expected_cardinality_text
+    )
 }
 
 fn witness_cpp_sg2_atom_holds() -> Bool {
@@ -205,6 +194,22 @@ fn witness_cpp_sg2_atom_holds() -> Bool {
 
 fn witness_cpp_sg2_projection_row_delimiters_holds() -> Bool {
   cpp_sg2_row_delimiters_bidirectional()
+}
+
+fn cpp_sg2_debug_instantiation_serialize() -> String {
+  cpp_sg2_serialized_text(emitted: cpp_sg2_project_instantiation_emitted())
+}
+
+fn cpp_sg2_debug_conj_serialize() -> String {
+  cpp_sg2_serialized_text(emitted: cpp_sg2_project_conj_emitted())
+}
+
+fn cpp_sg2_debug_disj_serialize() -> String {
+  cpp_sg2_serialized_text(emitted: cpp_sg2_project_disj_emitted())
+}
+
+fn cpp_sg2_debug_cardinality_serialize() -> String {
+  cpp_sg2_serialized_text(emitted: cpp_sg2_project_cardinality_emitted())
 }
 
 data claim_cpp_sg2_projection_row_delimiters: TestClaim = CompilesClaim {
