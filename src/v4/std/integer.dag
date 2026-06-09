@@ -403,9 +403,36 @@ fn integer_interval_bound_less_or_equal(left: IntegerIntervalBound, right: Integ
   }
 }
 
+fn integer_interval_bound_is_pointer_width(bound: IntegerIntervalBound) -> Bool {
+  match bound {
+    IntegerPointerWidthBound { signedness: _, endpoint: _ } => true
+    IntegerConcreteZero => false
+    IntegerConcreteBound { sign: _, magnitude: _ } => false
+  }
+}
+
+fn integer_interval_spec_is_pointer_width(spec: IntegerIntervalSpec) -> Bool {
+  integer_interval_bound_is_pointer_width(bound: spec.inclusive_min)
+    && integer_interval_bound_is_pointer_width(bound: spec.inclusive_max)
+}
+
+fn integer_interval_spec_is_concrete(spec: IntegerIntervalSpec) -> Bool {
+  !integer_interval_bound_is_pointer_width(bound: spec.inclusive_min)
+    && !integer_interval_bound_is_pointer_width(bound: spec.inclusive_max)
+}
+
 fn integer_interval_spec_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
-  integer_interval_bound_less_or_equal(left: container.inclusive_min, right: contained.inclusive_min)
-    && integer_interval_bound_less_or_equal(left: contained.inclusive_max, right: container.inclusive_max)
+  if integer_interval_spec_is_concrete(spec: container) {
+    integer_interval_spec_is_concrete(spec: contained)
+      && integer_interval_bound_less_or_equal(left: container.inclusive_min, right: contained.inclusive_min)
+      && integer_interval_bound_less_or_equal(left: contained.inclusive_max, right: container.inclusive_max)
+  } else if integer_interval_spec_is_pointer_width(spec: container) {
+    integer_interval_spec_is_pointer_width(spec: contained)
+      && integer_interval_bound_less_or_equal(left: container.inclusive_min, right: contained.inclusive_min)
+      && integer_interval_bound_less_or_equal(left: contained.inclusive_max, right: container.inclusive_max)
+  } else {
+    false
+  }
 }
 fn integer_interval_spec_strictly_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
   integer_interval_spec_contains(container: container, contained: contained)

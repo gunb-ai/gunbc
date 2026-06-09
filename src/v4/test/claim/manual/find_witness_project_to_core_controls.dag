@@ -385,11 +385,11 @@ data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = 
       left: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin),
       right: integer_concrete_zero()
     ) == Equal
-    && integer_interval_spec_contains(
+    && !integer_interval_spec_contains(
       container: uint_platform_interval_spec(),
       contained: uint8_interval_spec()
     )
-    && integer_interval_spec_contains(
+    && !integer_interval_spec_contains(
       container: int_platform_interval_spec(),
       contained: int8_interval_spec()
     )

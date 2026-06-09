@@ -145,10 +145,26 @@ fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
   let m51 = map_insert(m50, sg_rc_value_rc_wrap_tagged, "sg_rc_value_rc_wrap_tagged")
   let m52 = map_insert(m51, witness_lens_idempotency_family_gate_closed, "witness_lens_idempotency_family_gate_closed")
   let m53 = map_insert(m52, witness_lens_parallelism_family_gate_closed, "witness_lens_parallelism_family_gate_closed")
-  let m54 = map_insert(m53, project_to_core_rejects_different_connective_same_core_children, "witness_project_to_core_rejects_different_connective_same_core_children")
-  let m55 = map_insert(m54, integer_value_set_rejects_unbounded_with_extra_field, "witness_integer_value_set_rejects_unbounded_with_extra_field")
-  let m56 = map_insert(m55, integer_interval_bound_compare_orders_pointer_width_bounds, "integer_interval_bound_compare_orders_pointer_width_bounds")
-  map_insert(m56, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
+  let m54 = map_insert(m53, project_to_core_accepts_sibling, "witness_project_to_core_real_dispatch_accepts_sibling")
+  let m55 = map_insert(m54, project_to_core_rejects_wrong_core, "witness_project_to_core_real_dispatch_rejects_wrong_core")
+  let m56 = map_insert(m55, project_to_core_rejects_empty_core, "witness_project_to_core_rejects_surface_only_empty_core")
+  let m57 = map_insert(m56, project_to_core_rejects_surface_wrapped_core, "witness_project_to_core_rejects_core_only_under_surface")
+  let m58 = map_insert(m57, project_to_core_preserves_ambiguity, "witness_project_to_core_derives_preserves_ambiguity")
+  let m59 = map_insert(m58, project_to_core_drops_nested_surface, "witness_project_to_core_drops_nested_surface")
+  let m60 = map_insert(m59, project_to_core_rejects_nested_core_difference, "witness_project_to_core_rejects_nested_core_difference")
+  let m61 = map_insert(m60, project_to_core_rejects_different_connective_same_core_children, "witness_project_to_core_rejects_different_connective_same_core_children")
+  let m62 = map_insert(m61, integer_value_set_accepts_subset, "witness_integer_value_set_accepts_i32_subset_python_int")
+  let m63 = map_insert(m62, integer_value_set_accepts_proper_subrange, "witness_integer_value_set_accepts_i16_subset_i32")
+  let m64 = map_insert(m63, integer_value_set_accepts_cross_signed_subrange, "witness_integer_value_set_accepts_u8_subset_i16")
+  let m65 = map_insert(m64, integer_value_set_rejects_malformed_interval, "witness_integer_value_set_rejects_malformed_interval_payload")
+  let m66 = map_insert(m65, integer_value_set_interval_rejects_malformed_interval, "witness_integer_value_set_interval_containment_rejects_malformed_payload")
+  let m67 = map_insert(m66, integer_value_set_reverse_strict, "witness_integer_value_set_reverse_is_strict_coarsening")
+  let m68 = map_insert(m67, integer_value_set_refuses_incompatible, "witness_integer_value_set_refuses_incompatible_unknown")
+  let m69 = map_insert(m68, integer_interval_bound_compare_orders_pointer_width_bounds, "witness_integer_interval_bound_compare_orders_pointer_width_bounds")
+  let m70 = map_insert(m69, integer_value_set_rejects_unbounded_with_extra_field, "witness_integer_value_set_rejects_unbounded_with_extra_field")
+  let m71 = map_insert(m70, cross_target_rust_i32_python_int_widens, "witness_cross_target_rust_i32_to_python_int_accepts")
+  let m72 = map_insert(m71, cross_target_python_int_rust_i32_narrows, "witness_cross_target_python_to_rust_i32_would_lose_information")
+  map_insert(m72, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
 }
 
 
@@ -612,9 +628,6 @@ data v4_roster_pilot_row_integer_value_set_refuses_incompatible: V4RosterPilotCl
   function_symbol: integer_value_set_refuses_incompatible
 }
 
-data integer_interval_bound_compare_orders_pointer_width_bounds: Symbol = integer_interval_bound_compare_orders_pointer_width_bounds
-data integer_value_set_rejects_unbounded_with_extra_field: Symbol = integer_value_set_rejects_unbounded_with_extra_field
-
 data v4_roster_pilot_row_integer_interval_bound_compare_orders_pointer_width_bounds: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer interval bound compare orders pointer-width bounds",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
@@ -808,6 +821,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_project_to_core_preserves_ambiguity,
   v4_roster_pilot_row_project_to_core_drops_nested_surface,
   v4_roster_pilot_row_project_to_core_rejects_nested_core_difference,
+  v4_roster_pilot_row_project_to_core_rejects_different_connective_same_core_children,
   v4_roster_pilot_row_integer_value_set_accepts_subset,
   v4_roster_pilot_row_integer_value_set_accepts_proper_subrange,
   v4_roster_pilot_row_integer_value_set_accepts_cross_signed_subrange,
@@ -816,6 +830,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_integer_value_set_reverse_strict,
   v4_roster_pilot_row_integer_value_set_refuses_incompatible,
   v4_roster_pilot_row_integer_interval_bound_compare_orders_pointer_width_bounds,
+  v4_roster_pilot_row_integer_value_set_rejects_unbounded_with_extra_field,
   v4_roster_pilot_row_cross_target_rust_i32_python_int_widens,
   v4_roster_pilot_row_cross_target_python_int_rust_i32_narrows
 ]
@@ -833,7 +848,7 @@ fn v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds() -> Bool {
 
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "71"
+data v4_roster_pilot_claim_run_row_count: String = "73"
 
 
 fn v4_roster_pilot_row_matches(
@@ -918,6 +933,7 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_preserves_ambiguity)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_drops_nested_surface)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_nested_core_difference)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_different_connective_same_core_children)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_accepts_subset)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_accepts_proper_subrange)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_accepts_cross_signed_subrange)
@@ -926,14 +942,16 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_reverse_strict)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_refuses_incompatible)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_interval_bound_compare_orders_pointer_width_bounds)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_rejects_unbounded_with_extra_field)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_cross_target_rust_i32_python_int_widens)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_cross_target_python_int_rust_i32_narrows)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 71)
-    && (v4_roster_pilot_claim_run_row_count == "71")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 73)
+    && (v4_roster_pilot_claim_run_row_count == "73")
+    && v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds()
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
