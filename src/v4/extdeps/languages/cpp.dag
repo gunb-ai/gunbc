@@ -1327,7 +1327,7 @@ fn cpp_type_expression_projection() -> TargetTypeExpressionProjection {
     arrow_form: TargetFunctionTypeShape {
       surface: ^cpp_surface_type_arrow,
       open: ^cpp_token_lparen,
-      close: ^cpp_token_rparen,
+      close: ^cpp_token_rparen_tight,
       arrow: ^cpp_token_arrow,
       param_ident_token: ^cpp_token_ident,
       param_type_separator: ^cpp_token_colon,

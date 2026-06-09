@@ -3727,21 +3727,48 @@ fn type_expr_projection_row_witness_gate(
   )
 }
 
-// Checkpoint 2 compat shim — row-shape source_facts (tautological on correct row).
-fn type_expr_projection_row_closedness_ack(
+// SG-2 fold — connective shape node from TargetModel bundle (P2 authority; not caller projection).
+fn type_expr_projection_bundle_shape_for_connective(
+  bundle: Node,
+  connective: Connective
+) -> Outcome<Node> {
+  find_named_child(
+    root: bundle,
+    name: match connective {
+      Atom { identity: _ } => target_type_expr_field_atom
+      Conj => target_type_expr_field_conj
+      Disj => target_type_expr_field_disj
+      Arrow => target_type_expr_field_arrow
+      Cardinality => target_type_expr_field_cardinality
+      Instantiation => target_type_expr_field_instantiation
+    }
+  )
+}
+
+// SG-2 fold — fail-close when caller projection row disagrees with bundle authority (P2/P3).
+fn type_expr_projection_row_closedness_from_target(
+  target: TargetModel,
   projection: TargetTypeExpressionProjection,
   connective: Connective
 ) -> Outcome<Node> {
   bind_outcome(
-    o: type_expr_projection_shape_for_connective(
-      projection: projection,
-      connective: connective
+    o: find_named_child(
+      root: target.bundle,
+      name: target_model_edge_type_expression_projection
     ),
-    f: fn(shape) {
-      type_expr_projection_row_witness_gate(
-        source_facts: shape,
-        projection: projection,
-        connective: connective
+    f: fn(bundle) {
+      bind_outcome(
+        o: type_expr_projection_bundle_shape_for_connective(
+          bundle: bundle,
+          connective: connective
+        ),
+        f: fn(bundle_shape) {
+          type_expr_projection_row_witness_gate(
+            source_facts: bundle_shape,
+            projection: projection,
+            connective: connective
+          )
+        }
       )
     }
   )
