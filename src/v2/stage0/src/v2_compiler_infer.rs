@@ -70,8 +70,9 @@ pub use crate::v2_compiler_infer_method::{
 use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_patterns::{
     check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
-    lookup_variant_in_type, optional_match_variant_canonical_name, pattern_binding_type,
-    pattern_subject_from_inferred, pattern_subject_from_node,
+    lookup_variant_in_type, optional_match_variant_canonical_name,
+    optional_match_variant_legacy_name, pattern_binding_type, pattern_subject_from_inferred,
+    pattern_subject_from_node,
 };
 pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v2_compiler_infer_resolve::{
@@ -1759,7 +1760,11 @@ pub fn annotate_pattern_parent_enums(
                 });
                 match inferred_parent {
                     Some(parent_name) => Rc::new(MatchPattern::VariantPattern {
-                        name: variant_name.clone(),
+                        name: if parent_name.as_str() == "Optional" {
+                            optional_match_variant_legacy_name(variant_name.clone())
+                        } else {
+                            variant_name.clone()
+                        },
                         parent_enum: Some(parent_name.clone()),
                         field_bindings: annotated_bindings,
                     }),

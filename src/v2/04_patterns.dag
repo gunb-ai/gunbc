@@ -137,6 +137,17 @@ fn optional_match_variant_canonical_name(variant_name: String) -> String {
   }
 }
 
+fn optional_match_variant_legacy_name(variant_name: String) -> String {
+  let canonical = optional_match_variant_canonical_name(variant_name: variant_name)
+  if canonical == "Present" {
+    "Some"
+  } else if canonical == "Absent" {
+    "None"
+  } else {
+    variant_name
+  }
+}
+
 fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
@@ -148,26 +159,28 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         node_lookup_failed(diagnostics: [])
       } else {
-        let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
-        // Record / generic-record destructuring: `LocusAnchor { at: x }` against
-        // `LocusAnchor<A>` (Conj) — requires brace syntax (field_binding_count > 0).
-        // Bare `LocusAnchor` without `{…}` must not match; direct_match on sum variants still wins.
-        let record_destructure = field_binding_count > 0
-          && scrut_node.connective == Conj
-          && authored_name_at(source_indices: source_indices, node: scrut_node) == variant_name
         let optional_variant_name = optional_match_variant_canonical_name(variant_name: variant_name)
-        let fallback = if scrut_opt && optional_variant_name == "Present" {
+        if scrut_opt && optional_variant_name == "Present" {
           node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
         } else if scrut_opt && optional_variant_name == "Absent" {
           node_lookup_resolved(node: none_type)
-        } else if record_destructure {
-          node_lookup_resolved(node: scrut_node)
         } else {
-          variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
-        }
-        match direct_match {
-          Some { value: v } => node_lookup_resolved(node: v)
-          None => fallback
+          let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
+          // Record / generic-record destructuring: `LocusAnchor { at: x }` against
+          // `LocusAnchor<A>` (Conj) — requires brace syntax (field_binding_count > 0).
+          // Bare `LocusAnchor` without `{…}` must not match; direct_match on sum variants still wins.
+          let record_destructure = field_binding_count > 0
+            && scrut_node.connective == Conj
+            && authored_name_at(source_indices: source_indices, node: scrut_node) == variant_name
+          let fallback = if record_destructure {
+            node_lookup_resolved(node: scrut_node)
+          } else {
+            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+          }
+          match direct_match {
+            Some { value: v } => node_lookup_resolved(node: v)
+            None => fallback
+          }
         }
       }
   }

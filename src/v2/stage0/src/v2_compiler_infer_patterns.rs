@@ -232,18 +232,9 @@ pub fn lookup_variant_in_type(
                 node_lookup_failed(Rc::new(vec![]))
             } else {
                 {
-                    let direct_match = find_child_named(
-                        scrut_node.clone(),
-                        variant_name.clone(),
-                        source_indices.clone(),
-                    );
-                    let record_destructure = (((field_binding_count > 0)
-                        && (scrut_node.connective.clone() == Connective::Conj))
-                        && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
-                            == variant_name.clone().as_str()));
                     let optional_variant_name =
                         optional_match_variant_canonical_name(variant_name.clone());
-                    let fallback = if (scrut_opt.clone()
+                    if (scrut_opt.clone()
                         && (optional_variant_name.as_str() == "Present".to_string().as_str()))
                     {
                         node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
@@ -253,21 +244,36 @@ pub fn lookup_variant_in_type(
                         {
                             node_lookup_resolved(none_type())
                         } else {
-                            if record_destructure {
-                                node_lookup_resolved(scrut_node.clone())
-                            } else {
-                                variant_not_found_result(
+                            {
+                                let direct_match = find_child_named(
                                     scrut_node.clone(),
                                     variant_name.clone(),
-                                    module_name,
                                     source_indices.clone(),
-                                )
+                                );
+                                let record_destructure = (((field_binding_count > 0)
+                                    && (scrut_node.connective.clone() == Connective::Conj))
+                                    && (authored_name_at(
+                                        source_indices.clone(),
+                                        scrut_node.clone(),
+                                    )
+                                    .as_str()
+                                        == variant_name.clone().as_str()));
+                                let fallback = if record_destructure {
+                                    node_lookup_resolved(scrut_node.clone())
+                                } else {
+                                    variant_not_found_result(
+                                        scrut_node.clone(),
+                                        variant_name.clone(),
+                                        module_name,
+                                        source_indices.clone(),
+                                    )
+                                };
+                                match direct_match {
+                                    Some(v) => node_lookup_resolved(v.clone()),
+                                    None => fallback,
+                                }
                             }
                         }
-                    };
-                    match direct_match {
-                        Some(v) => node_lookup_resolved(v.clone()),
-                        None => fallback,
                     }
                 }
             }
@@ -280,6 +286,17 @@ pub fn optional_match_variant_canonical_name(variant_name: String) -> String {
         "Present".to_string()
     } else if (variant_name.as_str() == "None") || (variant_name.as_str() == "Absent") {
         "Absent".to_string()
+    } else {
+        variant_name
+    }
+}
+
+pub fn optional_match_variant_legacy_name(variant_name: String) -> String {
+    let canonical = optional_match_variant_canonical_name(variant_name.clone());
+    if canonical.as_str() == "Present" {
+        "Some".to_string()
+    } else if canonical.as_str() == "Absent" {
+        "None".to_string()
     } else {
         variant_name
     }

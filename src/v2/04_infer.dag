@@ -983,7 +983,11 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       )
       match inferred_parent {
         Some { value: parent_name } =>
-          VariantPattern { name: variant_name, parent_enum: parent_name, field_bindings: annotated_bindings }
+          VariantPattern {
+            name: if parent_name == "Optional" { optional_match_variant_legacy_name(variant_name: variant_name) } else { variant_name },
+            parent_enum: parent_name,
+            field_bindings: annotated_bindings
+          }
         None =>
           VariantPattern { name: variant_name, parent_enum: none, field_bindings: annotated_bindings }
       }

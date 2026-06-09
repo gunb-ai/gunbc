@@ -2,12 +2,14 @@ use std::rc::Rc;
 
 use v2_compiler::std_induction::SubValueRelation;
 use v2_compiler::std_types::container_param_name;
+use v2_compiler::v2_compiler_infer::InferScope;
 use v2_compiler::v2_compiler_infer_access;
 use v2_compiler::v2_compiler_infer_env::lookup_type_by_name;
 use v2_compiler::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
+use v2_compiler::v2_compiler_infer_sigs::ResolvedFuncEnv;
 use v2_compiler::v2_compiler_infer_types::{
     bare_map_node, is_fully_resolved, node_is_keyed_collection, node_type_compatible, resolved_type,
 };
@@ -154,6 +156,32 @@ fn zero_span() -> Rc<SourceSpan> {
 
 fn unit_expr() -> Rc<Node> {
     leaf_node("Unit".to_string())
+}
+
+fn empty_type_env() -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        bindings: Rc::new(std::collections::HashMap::new()),
+        recursive_types: Rc::new(vec![]),
+        recursive_type_set: Rc::new(std::collections::HashMap::new()),
+        inductive_fields: Rc::new(std::collections::HashMap::new()),
+        source_indices: Rc::new(std::collections::HashMap::new()),
+        intern_table: v2_compiler::v2_std_core::empty_intern_table(),
+    })
+}
+
+fn empty_infer_scope() -> Rc<InferScope> {
+    Rc::new(InferScope {
+        type_env: empty_type_env(),
+        func_env: Rc::new(ResolvedFuncEnv {
+            signatures: Rc::new(std::collections::HashMap::new()),
+        }),
+        locals: Rc::new(std::collections::HashMap::new()),
+        match_bound_names: Rc::new(std::collections::HashMap::new()),
+        module_name: "test".to_string(),
+        service_registry: Rc::new(std::collections::HashMap::new()),
+        item_registry: Rc::new(std::collections::HashMap::new()),
+        lambda_param_provenance: Rc::new(std::collections::HashMap::new()),
+    })
 }
 
 fn variant_arm(name: &str) -> Rc<Node> {
@@ -549,6 +577,129 @@ fn optional_pattern_lookup_resolves_present_variant() {
         }
         status => panic!("expected Present lookup to resolve, got {:?}", status),
     }
+}
+
+#[test]
+fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant() {
+    let sp = make_span(0, 0);
+    let inner_present = Rc::new(Node {
+        name: "Present".to_string(),
+        ident: None,
+        span: sp.clone(),
+        ident_span: default_ident_span("Present".to_string(), sp.clone()),
+        children: Rc::new(vec![Rc::new(Node {
+            name: "inner".to_string(),
+            ident: None,
+            span: sp.clone(),
+            ident_span: default_ident_span("inner".to_string(), sp.clone()),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: leaf_node("Int".to_string()),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+        })]),
+        connective: Connective::Conj,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    });
+    let optional_inner_sum = Rc::new(Node {
+        name: "Inner".to_string(),
+        ident: None,
+        span: sp.clone(),
+        ident_span: default_ident_span("Inner".to_string(), sp.clone()),
+        children: Rc::new(vec![inner_present]),
+        connective: Connective::Disj,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::CardOptional,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    });
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(optional_inner_sum);
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
+        subject,
+        "Present".to_string(),
+        "test".to_string(),
+        empty_source_indices(),
+        1,
+    );
+
+    match lookup.status.as_ref() {
+        NodeLookupStatus::LookupResolved { node, .. } => {
+            assert_eq!(node.name, "Some");
+            assert_eq!(node.children[0].name, "value");
+        }
+        status => panic!(
+            "expected Optional Present lookup to resolve as Some, got {:?}",
+            status
+        ),
+    }
+}
+
+#[test]
+fn optional_present_absent_patterns_annotate_to_v2_internal_names() {
+    let scope = empty_infer_scope();
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
+        leaf_node("String".to_string()),
+    ));
+
+    let present = v2_compiler::v2_compiler_infer::annotate_pattern_parent_enums(
+        Rc::new(MatchPattern::VariantPattern {
+            name: "Present".to_string(),
+            parent_enum: None,
+            field_bindings: Rc::new(vec![]),
+        }),
+        subject.clone(),
+        scope.clone(),
+    );
+    let absent = v2_compiler::v2_compiler_infer::annotate_pattern_parent_enums(
+        Rc::new(MatchPattern::VariantPattern {
+            name: "Absent".to_string(),
+            parent_enum: None,
+            field_bindings: Rc::new(vec![]),
+        }),
+        subject,
+        scope,
+    );
+
+    assert!(matches!(
+        present.as_ref(),
+        MatchPattern::VariantPattern { name, parent_enum: Some(parent), .. }
+          if name == "Some" && parent == "Optional"
+    ));
+    assert!(matches!(
+        absent.as_ref(),
+        MatchPattern::VariantPattern { name, parent_enum: Some(parent), .. }
+          if name == "None" && parent == "Optional"
+    ));
 }
 
 #[test]
