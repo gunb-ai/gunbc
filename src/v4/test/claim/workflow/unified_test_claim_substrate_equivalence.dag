@@ -8,6 +8,7 @@ module v4.test.claim.workflow.unified_test_claim_substrate_equivalence
 
 import v4.std.logic { Bool }
 import v4.std.verification {
+  BoolWitness,
   EvalOnly,
   NodeCorpus,
   UnifiedBoolWitnessModality,
@@ -69,10 +70,14 @@ fn substrate_equivalence_node_corpus_modality_discriminates() -> Bool {
 
 fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
   let c = substrate_equivalence_sample_bool_unified_claim()
-  unified_test_claim_bool_witness_entry(c: c)
-    == v4_roster_pilot_row_edit_locus_narrow.entry
-    && unified_test_claim_bool_witness_function(c: c)
-      == v4_roster_pilot_row_edit_locus_narrow.function
+  bool_witness_matches_entry_function(
+    w: BoolWitness {
+      entry: unified_test_claim_bool_witness_entry(c: c),
+      function: unified_test_claim_bool_witness_function(c: c)
+    },
+    entry: v4_roster_pilot_row_edit_locus_narrow.entry,
+    function: v4_roster_pilot_row_edit_locus_narrow.function
+  )
 }
 
 
