@@ -108,6 +108,8 @@ fn node_span_unanchored() -> NodeSpan {
   Unanchored
 }
 
+// Precondition: span satisfies non-negative start/end with start < end; parse authority:
+// v4.std.provenance.make_node_span_anchored (Outcome + provenance_invalid_source_span).
 fn node_span_anchored(span: SourceSpan) -> NodeSpan {
   Anchored { span: span }
 }
@@ -139,14 +141,6 @@ fn merge_node_span_same_file(left: NodeSpan, right: NodeSpan) -> NodeSpan {
             }
           }
       }
-  }
-}
-
-fn merge_node_span(left: NodeSpan, right: NodeSpan) -> NodeSpan {
-  if node_span_same_file(left: left, right: right) {
-    merge_node_span_same_file(left: left, right: right)
-  } else {
-    Unanchored
   }
 }
 
