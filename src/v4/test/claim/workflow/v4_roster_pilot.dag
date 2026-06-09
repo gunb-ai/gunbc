@@ -379,6 +379,12 @@ data v4_roster_pilot_row_lens_registry_singleton_row_counts: V4RosterPilotClaimR
   function: "lens_registry_singleton_row_counts_holds"
 }
 
+data v4_roster_pilot_row_scheduler_runnable_frontier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "scheduler runnable frontier respects dependency order",
+  entry: "src/v4/test/claim/manual/scheduler_runnable_frontier.dag",
+  function: "scheduler_runnable_frontier_claims_hold"
+}
+
 
 data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_edit_locus_narrow,
@@ -432,11 +438,12 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_map_structural_key_equality,
   v4_roster_pilot_row_derivable_coercion_crux_substrate_gap,
   v4_roster_pilot_row_derivable_coercion_surfaces_distinct,
-  v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap
+  v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap,
+  v4_roster_pilot_row_scheduler_runnable_frontier
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "52"
+data v4_roster_pilot_claim_run_row_count: String = "53"
 
 
 fn v4_roster_pilot_row_matches(
@@ -512,12 +519,13 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_crux_substrate_gap)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_surfaces_distinct)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_scheduler_runnable_frontier)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 52)
-    && (v4_roster_pilot_claim_run_row_count == "52")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 53)
+    && (v4_roster_pilot_claim_run_row_count == "53")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -779,6 +787,9 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
       function: "witness_claim_crux_substrate_gap"
     )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_scheduler_runnable_frontier,
+      entry: "src/v4/test/claim/manual/scheduler_runnable_frontier.dag",
+      function: "scheduler_runnable_frontier_claims_hold"
+    )
 }
-
-
