@@ -5,7 +5,7 @@
 
 module v4.workflow.scheduler
 
-import v4.std.collection { List }
+import v4.std.collection { Absent, List, Present, list_at_optional }
 import v4.std.algebra {
   contains,
   filter,
@@ -50,10 +50,6 @@ type SchedulerPlan
       remaining: List<Node>,
       layers: List<ReadinessLayer>
     }
-
-type SchedulerFirstReadinessLayer
-  = SchedulerFirstReadinessLayerMissing
-  | SchedulerFirstReadinessLayerFound { layer: ReadinessLayer }
 
 type SchedulerRunState {
   scheduled: List<Node>
@@ -329,19 +325,10 @@ fn scheduler_plan_for_layers(layers: List<ReadinessLayer>, blocked: List<Node>) 
   }
 }
 
-fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> SchedulerFirstReadinessLayer {
-  fold(layers, init: SchedulerFirstReadinessLayerMissing, f: fn(acc, layer) {
-    match acc {
-      SchedulerFirstReadinessLayerFound { layer: _ } => acc
-      SchedulerFirstReadinessLayerMissing => SchedulerFirstReadinessLayerFound { layer: layer }
-    }
-  })
-}
-
 fn runnable_frontier_from_layers(layers: List<ReadinessLayer>) -> RunnableFrontier {
-  match scheduler_first_readiness_layer(layers: layers) {
-    SchedulerFirstReadinessLayerFound { layer: layer } => RunnableFrontier { ready: layer.ready }
-    SchedulerFirstReadinessLayerMissing => RunnableFrontier { ready: [] }
+  match list_at_optional(xs: layers, index: 0) {
+    Present { value: layer } => RunnableFrontier { ready: layer.ready }
+    Absent => RunnableFrontier { ready: [] }
   }
 }
 
