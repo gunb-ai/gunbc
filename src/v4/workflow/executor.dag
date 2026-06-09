@@ -43,6 +43,12 @@ type ExecutorRunPlan
       batches: List<ExecutorBatch>,
       scheduled: List<Node>
     }
+  | ExecutorRunRunnable {
+      batch: ExecutorBatch,
+      batches: List<ExecutorBatch>,
+      scheduled: List<Node>,
+      remaining: List<Node>
+    }
   | ExecutorRunBlocked {
       evidence: ExecutorBlockedEvidence,
       batches: List<ExecutorBatch>,
@@ -95,8 +101,8 @@ fn parallel_executor_plan_from_dependencies(
       batches: executor_batches_for_layers(layers: layers),
       scheduled: scheduled_nodes
     }
-    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: layers } => ExecutorRunBlocked {
-      evidence: ExecutorEmptyFrontier {},
+    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: layers } => ExecutorRunRunnable {
+      batch: executor_batch_for_frontier(frontier: frontier),
       batches: executor_append_batch(
         batches: executor_batches_for_layers(layers: layers),
         batch: executor_batch_for_frontier(frontier: frontier)
