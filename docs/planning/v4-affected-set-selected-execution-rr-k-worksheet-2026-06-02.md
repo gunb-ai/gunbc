@@ -85,7 +85,7 @@ Metric allowed only as secondary:
 
 | Artifact | Landed state | RR-K disposition |
 | --- | --- | --- |
-| T-21/T-24 affected-set authority — `v4.lens.affected_set` (`AffectedSet`/`RerunNodeSet`, `affected_set_rerun_nodes`, fail-closed B-4/B-5 frontier) | MERGED — canonical "what changed" authority | **Consume as the only frontier source**; the `FailClosed` arm is load-bearing, not a placeholder |
+| T-21/T-24 affected-set authority — `v4.lens.affected_set` (`AffectedSet`/`RerunNodeSet`, `affected_set_rerun_nodes`, fail-closed B-4/B-5 frontier) | MERGED — canonical frontier fold on modeled/hand-built graph inputs; real repo/source input is gated on the source-provenance producer design lane | **Consume as the only frontier source**; the `FailClosed` arm is load-bearing, not a placeholder |
 | T-24 `CiComponentAffected` + `ci_component_affected_from_git_diff` + `tools/ci_affected_components` bin | MERGED — dissolves `detect-affected-components.sh`; git diff path buckets -> component flags | **Consume as the only component detector**; `ci_component_affected_is_fail_closed` = all-flags-set widens every job |
 | `ci_select_from_rerun_nodes` / `ci_select_from_affected_set` / `ci_select_ci_jobs_from_affected_set` (`v4.workflow.ci`) | MERGED — roster + job selection over the frontier; needs-closure re-add | **Consume as the only selection authority**; narrowing lives only in the `Produced` arm |
 | `test_claim_ci_selection_fail_closed` (`v4.std.verification`) | MERGED — per-claim pin (`DiagnosticClaim` always runs) | **Consume as a narrowing invariant**: pins survive frontier filtering |
@@ -191,7 +191,11 @@ carrier; editing only `ci.yml` for a modeled selection fact is forbidden (splits
 - **Runtime / TestClaim (RR-I)**: owns roster authority and per-claim verdicts; RR-K consumes
   `test_claim_ci_selection_fail_closed` and the Wave-3 shadow roster, it does not author claims.
 - **Branch H / Source Authority**: the git diff is input, not source authority; affected-set
-  selection may not treat the diff or CI artifacts as canonical `.dag` source.
+  selection may not treat the diff or CI artifacts as canonical `.dag` source. The live
+  affected-testgen gate is a fixture-wiring slice over hand-built graph/provenance rows;
+  real-input coverage is blocked on a separate design-first source-provenance producer lane
+  that derives `NodeArtifactProvenance` from the compiler/source-authority ingest, not from
+  snapshots or a parallel scanner.
 
 ## §8 Modeling DFS Arbiter Checklist
 
