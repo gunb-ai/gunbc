@@ -108,7 +108,12 @@ fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
   let m13 = map_insert(m12, sg_rc_f6_round_trip_owned, "sg_rc_f6_round_trip_owned")
   let m14 = map_insert(m13, witness_sg2_arrow_holds, "witness_sg2_arrow_holds")
   let m15 = map_insert(m14, witness_sg2_projection_falsification_holds, "witness_sg2_projection_falsification_holds")
-  let m16 = map_insert(m15, text_string_freemonoid_carrier_holds, "text_string_freemonoid_carrier_holds")
+  let m15a = map_insert(
+    m15,
+    witness_sg2_fold_row_delimiter_discriminates_holds,
+    "witness_sg2_fold_row_delimiter_discriminates_holds"
+  )
+  let m16 = map_insert(m15a, text_string_freemonoid_carrier_holds, "text_string_freemonoid_carrier_holds")
   let m17 = map_insert(m16, text_host_string_roundtrip_holds, "text_host_string_roundtrip_holds")
   let m18 = map_insert(m17, text_host_string_empty_roundtrip_holds, "text_host_string_empty_roundtrip_holds")
   let m19 = map_insert(m18, text_host_string_field_text_holds, "text_host_string_field_text_holds")
