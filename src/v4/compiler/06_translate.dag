@@ -169,7 +169,9 @@ import v4.std.target_model {
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
-  type_expr_projection_row_closedness_from_target
+  type_expr_projection_encode_substrate_in_row_slot,
+  type_expr_projection_row_closedness_from_target,
+  type_expr_projection_row_witness_gate
 }
 import v4.std.target_model {
   TargetAtomRealization,

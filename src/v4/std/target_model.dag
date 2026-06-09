@@ -3642,10 +3642,10 @@ fn type_expr_projection_substrate_facts(
     _ =>
       Node {
         kind: node.kind,
-        children: fold_list_right(
+        children: fold_list(
           xs: projected_positional,
           empty: Empty,
-          snoc: fn(acc, child) {
+          cons: fn(acc, child) {
             list_snoc_item(
               xs: acc,
               item: Edge { label: Positional, target: child }
