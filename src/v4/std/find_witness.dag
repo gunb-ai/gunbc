@@ -8,6 +8,7 @@ module v4.std.find_witness
 
 
 import v4.std.collection { List }
+import v4.std.algebra { contains }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -25,6 +26,9 @@ import v4.std.constraint_satisfaction_predicate {
 import v4.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold_preservation_holds
 }
+import v4.std.project_to_core_predicate {
+  project_to_core_preservation_holds
+}
 import v4.std.refinement_widening_predicate { refinement_widening_preservation_holds }
 import v4.std.type_expr_projection_discipline_zip_fold_predicate {
   type_expr_projection_discipline_zip_fold_preservation_holds
@@ -38,6 +42,7 @@ data find_witness_reason_invalid_witness: Symbol = find_witness_reason_invalid_w
 data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_constraint_satisfaction
 data preservation_rule_exact_structural_equality_zip_fold: Symbol = preservation_rule_exact_structural_equality_zip_fold
 data preservation_rule_refinement_widening: Symbol = preservation_rule_refinement_widening
+data preservation_rule_project_to_core: Symbol = preservation_rule_project_to_core
 data preservation_rule_type_expr_projection_discipline_zip_fold: Symbol =
   preservation_rule_type_expr_projection_discipline_zip_fold
 type CandidateSet {
@@ -67,10 +72,26 @@ type MultiplicityPolicy
   = UniqueOnly
   | TargetSelection { policy: TargetSelectionPolicy }
 fn preservation_rule_is_realized(rule: Symbol) -> Bool {
+<<<<<<< HEAD
   (rule == preservation_rule_constraint_satisfaction)
     || (rule == preservation_rule_exact_structural_equality_zip_fold)
     || (rule == preservation_rule_refinement_widening)
     || (rule == preservation_rule_type_expr_projection_discipline_zip_fold)
+=======
+  contains(
+    xs: realized_preservation_rules(),
+    item: rule,
+    eq: fn(left, right) { left == right }
+  )
+}
+fn realized_preservation_rules() -> List<Symbol> {
+  [
+    preservation_rule_constraint_satisfaction,
+    preservation_rule_exact_structural_equality_zip_fold,
+    preservation_rule_refinement_widening,
+    preservation_rule_project_to_core
+  ]
+>>>>>>> origin/main
 }
 fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
@@ -132,9 +153,14 @@ fn preservation_predicate_holds(
       candidate: candidate,
       algebra: predicate.algebra
     )
+<<<<<<< HEAD
   } else if predicate.preservation_rule
     == preservation_rule_type_expr_projection_discipline_zip_fold {
     type_expr_projection_discipline_zip_fold_preservation_holds(
+=======
+  } else if predicate.preservation_rule == preservation_rule_project_to_core {
+    project_to_core_preservation_holds(
+>>>>>>> origin/main
       source_facts: source_facts,
       candidate: candidate,
       algebra: predicate.algebra
@@ -261,6 +287,89 @@ fn find_witness(
   } else {
     outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
   }
+}
+fn derivation_predicate_for_rule(
+  source_facts: Node,
+  derivation_algebra: Node,
+  rule: Symbol
+) -> PreservationPredicate {
+  if rule == preservation_rule_project_to_core {
+    PreservationPredicate {
+      algebra: derivation_algebra,
+      preservation_rule: rule
+    }
+  } else {
+    PreservationPredicate {
+      algebra: source_facts,
+      preservation_rule: rule
+    }
+  }
+}
+
+fn find_witness_rejection_priority(reason: Symbol) -> Int {
+  if reason == find_witness_reason_invalid_witness {
+    3
+  } else if reason == find_witness_reason_ambiguous_candidate {
+    2
+  } else if reason == find_witness_reason_not_realized {
+    1
+  } else {
+    0
+  }
+}
+
+fn find_witness_derivation_rejection_better(
+  current: Outcome<FindWitnessResult>,
+  candidate: Outcome<FindWitnessResult>
+) -> Outcome<FindWitnessResult> {
+  match current {
+    Accepted { value: _, diagnostics: _ } => current
+    Rejected { diagnostics: current_diagnostics } =>
+      match candidate {
+        Accepted { value: _, diagnostics: _ } => candidate
+        Rejected { diagnostics: candidate_diagnostics } =>
+          if find_witness_rejection_priority(reason: candidate_diagnostics.head.reason) > find_witness_rejection_priority(reason: current_diagnostics.head.reason) {
+            candidate
+          } else {
+            current
+          }
+      }
+  }
+}
+
+fn find_witness_derives(
+  source_facts: Node,
+  candidates: CandidateSet,
+  derivation_algebra: Node,
+  multiplicity_policy: MultiplicityPolicy
+) -> Outcome<FindWitnessResult> {
+  fold(
+    realized_preservation_rules(),
+    init: outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts)),
+    f: fn(acc, rule) {
+	      match acc {
+	        Accepted { value: _, diagnostics: _ } => acc
+	        Rejected { diagnostics: _ } =>
+	          match find_witness(
+	            source_facts: source_facts,
+	            candidates: candidates,
+            predicate: derivation_predicate_for_rule(
+              source_facts: source_facts,
+              derivation_algebra: derivation_algebra,
+              rule: rule
+            ),
+	            multiplicity_policy: multiplicity_policy
+	          ) {
+	            Accepted { value: fw, diagnostics: d } => Accepted { value: fw, diagnostics: d }
+	            Rejected { diagnostics: r } =>
+	              find_witness_derivation_rejection_better(
+	                current: acc,
+	                candidate: Rejected { diagnostics: r }
+	              )
+	          }
+	      }
+	    }
+  )
 }
 fn find_witness_realized(
   source_facts: Node,

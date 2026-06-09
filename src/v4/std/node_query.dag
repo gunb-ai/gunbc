@@ -19,7 +19,11 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.algebra { Empty, list_snoc_item }
+import v4.std.algebra { Cons, Empty, list_snoc_item }
+import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.type_expr_projection_row_schema {
+  target_type_expr_field_child_slots
+}
 import v4.std.node { Conj, Edge, Named, Node, Positional, Symbol, TypeNode, name_occurrences }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
 fn node_positional_child_targets(node: Node) -> List<Node> {
