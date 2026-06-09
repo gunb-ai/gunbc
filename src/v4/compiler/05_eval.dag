@@ -83,7 +83,8 @@ import v4.std.node {
   byte_offset_cache_key,
   fold_node,
   is_positional,
-  well_formed
+  well_formed,
+  Unanchored
 }
 import v4.std.diagnostic {
   AmbiguousIntent,

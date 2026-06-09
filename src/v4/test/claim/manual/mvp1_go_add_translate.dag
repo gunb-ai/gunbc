@@ -72,7 +72,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.verification {
   DiagnosticClaim,

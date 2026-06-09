@@ -8,7 +8,7 @@ module v4.std.exact_structural_equality_zip_fold_predicate
 
 
 import v4.std.algebra { list_snoc_item }
-import v4.std.node { Edge, Node, NodeFold, fold_node, well_formed }
+import v4.std.node { Edge, Node, NodeFold, fold_node, well_formed, Unanchored }
 fn exact_structural_zip_fold_init(n: Node) -> Node {
   Node {
     kind: n.kind,

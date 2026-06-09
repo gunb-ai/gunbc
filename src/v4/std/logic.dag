@@ -14,7 +14,7 @@ import v4.std.algebra {
   boolean_algebra_node,
   boolean_algebra_type_node
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Bool = True | False
 type BoolWidthFact {}

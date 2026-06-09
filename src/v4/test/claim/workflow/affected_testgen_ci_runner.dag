@@ -21,7 +21,7 @@ import v4.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime { RuntimeValue }
 import v4.std.text { String }
 import v4.std.verdict { Deferred, Fail, Pass }

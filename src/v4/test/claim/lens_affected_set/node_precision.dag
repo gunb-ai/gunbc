@@ -10,7 +10,7 @@ import v4.lens.affected_set { AffectedSetReading, FrontierDependency, affected_s
 import v4.std.change { DependencyDependent, DependencySource }
 import v4.std.dependency { Contains, DependencyView }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,

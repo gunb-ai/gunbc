@@ -26,7 +26,7 @@ import v4.std.dependency {
 }
 import v4.std.diagnostic { Accepted, None }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verification {
   ManualAnchorAbsent,

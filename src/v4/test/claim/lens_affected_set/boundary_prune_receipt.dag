@@ -16,7 +16,7 @@ import v4.lens.affected_set_examples {
   expected_affected_set_boundary_prune
 }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Node, TypeNode }
+import v4.std.node { Conj, Node, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,

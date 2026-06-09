@@ -16,7 +16,8 @@ import v4.std.node {
   Transform,
   TypeNode,
   content_hash,
-  loop_bound_edge
+  loop_bound_edge,
+  Unanchored
 }
 import v4.std.verification {
   CompilesClaim,

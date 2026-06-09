@@ -5,7 +5,7 @@
 module v4.std.effects
 
 
-import v4.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode }
+import v4.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, Unanchored }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.

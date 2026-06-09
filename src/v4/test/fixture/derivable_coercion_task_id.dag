@@ -10,7 +10,7 @@ import v4.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.witness { StructuralPropertyWitness }
 
 // Layer nicknames — distinct surface spellings (API TaskId, DB TEXT/CLOB, wire string).

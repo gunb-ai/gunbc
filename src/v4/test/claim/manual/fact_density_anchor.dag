@@ -16,7 +16,8 @@ import v4.std.node {
   Conj,
   Edge,
   Named,
-  Symbol
+  Symbol,
+  Unanchored
 }
 data fact_density_anchor_hollow_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },

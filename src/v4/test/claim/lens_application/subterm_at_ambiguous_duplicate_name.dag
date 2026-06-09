@@ -7,7 +7,7 @@ module v4.test.claim.lens_application.subterm_at_ambiguous_duplicate_name
 import v4.lens.application { subterm_at }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,

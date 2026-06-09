@@ -26,7 +26,7 @@ import v4.std.dependency {
   DependencyView,
   ModuleDependsOn
 }
-import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 data sr_mod_claim_hash: Hash = sr_mod_claim_hash
 

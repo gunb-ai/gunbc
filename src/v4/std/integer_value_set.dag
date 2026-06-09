@@ -17,7 +17,7 @@ import v4.std.diagnostic {
   Unavailable
 }
 import v4.std.integer { integer_interval_spec_node_contains }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, Unanchored }
 import v4.std.node_query { find_named_child }
 
 data integer_value_set_field_kind: Symbol = integer_value_set_field_kind

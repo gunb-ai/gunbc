@@ -8,7 +8,7 @@ import v4.compiler.normalize { normalize }
 
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   EqualsClaim,

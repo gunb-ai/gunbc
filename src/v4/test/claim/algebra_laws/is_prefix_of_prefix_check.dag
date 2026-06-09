@@ -8,7 +8,7 @@ module v4.test.claim.algebra_laws.is_prefix_of_prefix_check
 
 
 import v4.std.algebra { Cons, Empty, FreeMonoid, is_prefix_of }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,

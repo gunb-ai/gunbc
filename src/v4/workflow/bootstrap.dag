@@ -5,7 +5,7 @@
 
 module v4.workflow.bootstrap
 
-import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, Unanchored }
 import v4.std.algebra {
   bag_eq,
   contains,

@@ -17,7 +17,7 @@ import v4.std.diagnostic {
   Rejected
 }
 import v4.std.find_witness { preservation_rule_constraint_satisfaction }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.test.claim.manual.infer_ground_add_mvp {
   fixture_add_resolved_node,
   fixture_add_resolved_tree

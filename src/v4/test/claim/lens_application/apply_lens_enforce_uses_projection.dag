@@ -16,7 +16,7 @@ import v4.lens.application {
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
+import v4.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Path, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,

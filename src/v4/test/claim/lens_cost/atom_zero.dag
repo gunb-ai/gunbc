@@ -6,7 +6,7 @@ module v4.test.claim.lens_cost.atom_zero
 
 import v4.lens.cost { cost_lens, zero_cost }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,

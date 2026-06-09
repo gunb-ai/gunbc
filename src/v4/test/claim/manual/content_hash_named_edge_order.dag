@@ -12,7 +12,8 @@ import v4.std.node {
   Node,
   Symbol,
   TypeNode,
-  content_hash
+  content_hash,
+  Unanchored
 }
 import v4.std.verification {
   CompilesClaim,

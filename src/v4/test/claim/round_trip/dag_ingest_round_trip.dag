@@ -9,7 +9,7 @@
 
 module v4.test.claim.round_trip.dag_ingest_round_trip
 
-import v4.std.node { Conj, Node, Symbol, TypeNode }
+import v4.std.node { Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.extdeps.languages.dag {
   dag_language_model_wave1_modeled,
   dag_round_trip_atom,

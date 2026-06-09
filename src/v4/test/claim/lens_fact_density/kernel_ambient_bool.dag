@@ -9,7 +9,7 @@ import v4.lens.fact_density {
   carrier_spec_fact
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, TypeNode }
+import v4.std.node { Atom, Conj, Node, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,

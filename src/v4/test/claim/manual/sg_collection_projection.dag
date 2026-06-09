@@ -14,7 +14,7 @@ import v4.extdeps.languages.rust {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, Unanchored }
 import v4.std.target_model {
   target_carrier_free_monoid_node,
   target_carrier_node_node

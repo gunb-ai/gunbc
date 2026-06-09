@@ -15,7 +15,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.algebra { Cons, Empty, fold_list_node }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName, qualified_name_eq }
 import v4.std.logic { Bool }
 import v4.std.verification {

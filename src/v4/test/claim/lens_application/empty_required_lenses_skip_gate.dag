@@ -18,7 +18,7 @@ import v4.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty }
 import v4.std.collection { empty_map }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,

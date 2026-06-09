@@ -14,7 +14,7 @@ import v4.std.diagnostic {
   ExternalContractUnknown,
   diagnostics_singleton
 }
-import v4.std.node { Atom, Conj, Diff, Edit, Hash, Node, Path, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Diff, Edit, Hash, Node, Path, Symbol, TypeNode, Unanchored }
 import v4.lens.affected_set {
   AffectedBoundaryRead,
   AffectedFrontierRead,

@@ -58,7 +58,7 @@ import v4.std.model_core {
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.nat { Nat }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 
 
 

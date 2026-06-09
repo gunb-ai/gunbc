@@ -10,7 +10,7 @@ module v4.test.claim.loop_linear_bound.rung_0_to_2_three_targets
 
 
 import v4.std.collection { List }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,

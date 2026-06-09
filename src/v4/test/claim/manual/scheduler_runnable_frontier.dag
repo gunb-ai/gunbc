@@ -13,7 +13,7 @@ import v4.std.dependency {
   topological_layers
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.workflow.scheduler {
   RunnableFrontier,
   SchedulerNoRunnableFrontier,

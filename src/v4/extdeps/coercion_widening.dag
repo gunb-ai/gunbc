@@ -25,7 +25,7 @@ import v4.std.integer_value_set {
   integer_interval_value_set_node,
   integer_unbounded_value_set_node
 }
-import v4.std.node { Atom, Node, TypeNode }
+import v4.std.node { Atom, Node, TypeNode, Unanchored }
 import v4.std.node_query { find_named_child }
 import v4.std.refinement_widening_predicate { refinement_widening_predicate_algebra_for_value_sets }
 

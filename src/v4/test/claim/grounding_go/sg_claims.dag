@@ -29,7 +29,7 @@ import v4.std.grounding {
   Sg5Evidence
 }
 import v4.std.logic { Bool, bool_node }
-import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
+import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, Unanchored }
 import v4.std.runtime { RuntimeValue }
 import v4.std.target_model {
   char_kernel_type_node,

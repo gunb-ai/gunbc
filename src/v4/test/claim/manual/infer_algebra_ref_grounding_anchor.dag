@@ -17,7 +17,7 @@ import v4.std.constraints {
   CanonicalGroundingWitness
 }
 import v4.std.diagnostic { Outcome, Rejected }
-import v4.std.node { Atom, Conj, ComputationNode, Node, Symbol, TypeNode, Value }
+import v4.std.node { Atom, Conj, ComputationNode, Node, Symbol, TypeNode, Value, Unanchored }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {

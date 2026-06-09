@@ -47,7 +47,7 @@ import v4.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,

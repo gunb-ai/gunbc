@@ -24,7 +24,8 @@ import v4.std.node {
   Named,
   Node,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.target_model { TargetModel }
 import v4.std.verification { TestClaim }

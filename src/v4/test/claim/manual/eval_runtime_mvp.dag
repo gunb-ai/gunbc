@@ -79,7 +79,8 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Value
+  Value,
+  Unanchored
 }
 import v4.std.verification {
   EqualsClaim,

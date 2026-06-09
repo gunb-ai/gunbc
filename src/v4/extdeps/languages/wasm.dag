@@ -99,7 +99,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.logic { Bool }
 import v4.std.algebra {

@@ -28,7 +28,8 @@ import v4.std.node {
   is_positional,
   all_edges_named,
   all_edges_positional,
-  well_formed
+  well_formed,
+  Unanchored
 }
 
 type NormalizedTree = Node

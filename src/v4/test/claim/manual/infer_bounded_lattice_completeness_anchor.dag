@@ -30,7 +30,7 @@ import v4.std.algebra {
 import v4.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,

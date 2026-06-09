@@ -7,7 +7,7 @@ module v4.test.claim.lens_affected_set.data_dep_not_in_frontier
 import v4.lens.affected_set { dependency_in_lens_frontier }
 import v4.std.dependency { DataDependsOn, DependencyView }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,

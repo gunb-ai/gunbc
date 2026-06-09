@@ -26,7 +26,7 @@ import v4.std.algebra {
 }
 import v4.std.collection { List }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable}
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.machine {
   MachineWidth,
   PointerWidth,

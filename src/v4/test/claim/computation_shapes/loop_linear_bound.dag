@@ -21,7 +21,8 @@ import v4.std.node {
   TypeNode,
   content_hash,
   loop_bound_edge,
-  well_formed
+  well_formed,
+  Unanchored
 }
 import v4.std.verification {
   ManualAnchorAbsent,

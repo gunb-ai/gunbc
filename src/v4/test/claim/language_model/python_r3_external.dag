@@ -25,7 +25,7 @@ import v4.std.leaf_model_verification {
   target_diagnostic_python_type_error_init_arity_mismatch
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verdict { verdict_fail }
 import v4.std.verification {
   EqualsClaim,

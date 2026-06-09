@@ -48,7 +48,7 @@ import v4.std.target_model {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, content_hash }
+import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, content_hash, Unanchored }
 import v4.std.text { String }
 import v4.std.verification {
   Boundary,

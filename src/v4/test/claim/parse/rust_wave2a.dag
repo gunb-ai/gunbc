@@ -8,7 +8,7 @@ import v4.compiler.tokenize { TokenStream, tokenize }
 import v4.compiler.parse { ParseTree, parse }
 import v4.extdeps.languages.rust { rust_wave2_lex, rust_wave2_grammar }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 import v4.std.verification {

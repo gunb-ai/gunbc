@@ -72,7 +72,8 @@ import v4.std.node {
   TypeNode,
   connective_edge_discipline,
   content_hash,
-  fold_node
+  fold_node,
+  Unanchored
 }
 import v4.std.witness { StructuralPropertyWitness }
 import v4.std.type_expr_projection_row_schema {

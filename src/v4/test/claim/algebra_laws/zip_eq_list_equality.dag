@@ -8,7 +8,7 @@ module v4.test.claim.algebra_laws.zip_eq_list_equality
 
 
 import v4.std.algebra { Cons, Empty, FreeMonoid, zip_eq }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,

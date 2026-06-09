@@ -43,7 +43,8 @@ import v4.std.node {
   Atom,
   Node,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.verification {
   CompilesClaim,

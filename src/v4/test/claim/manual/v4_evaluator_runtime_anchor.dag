@@ -21,7 +21,7 @@ import v4.extdeps.runtimes.v4_evaluator {
 import v4.std.collection { List }
 import v4.std.diagnostic { Rejected }
 import v4.std.model_core { ModelCore, wave1_model_core }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime {
   ExecutionSemantics,
   InterpretationAlgebra,

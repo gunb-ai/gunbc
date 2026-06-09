@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj }
+import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj, Unanchored }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,

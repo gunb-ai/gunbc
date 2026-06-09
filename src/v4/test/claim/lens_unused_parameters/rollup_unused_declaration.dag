@@ -18,7 +18,7 @@ import v4.std.dependency {
   DependencyView
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.witness { Holds, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,

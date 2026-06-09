@@ -21,7 +21,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v4.std.collection { empty_map }
-import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, Unanchored }
 import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName }
 import v4.std.verification {
   CompilesClaim,

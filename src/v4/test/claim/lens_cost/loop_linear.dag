@@ -18,7 +18,8 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  loop_bound_edge
+  loop_bound_edge,
+  Unanchored
 }
 import v4.std.verification {
   EqualsClaim,

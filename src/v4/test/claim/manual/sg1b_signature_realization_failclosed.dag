@@ -8,7 +8,7 @@ module v4.test.claim.manual.sg1b_signature_realization_failclosed
 import v4.extdeps.languages.rust { rust_sg2_type_expr_target_model }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode, Unanchored }
 import v4.std.target_model {
   FunctionBoundaryParam,
   target_atom_realization_catalog_row_decode_invalid,

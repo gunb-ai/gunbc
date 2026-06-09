@@ -22,7 +22,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v4.std.node { Atom, Conj, Node, TypeNode }
+import v4.std.node { Atom, Conj, Node, TypeNode, Unanchored }
 
 data p9_registry_owner_authority_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^symbol_llvm_instruction_cost } },

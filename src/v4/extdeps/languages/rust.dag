@@ -227,7 +227,8 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Instantiation
+  Instantiation,
+  Unanchored
 }
 import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v4.std.algebra {

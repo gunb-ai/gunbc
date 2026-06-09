@@ -13,7 +13,7 @@ import v4.extdeps.languages.lean {
   lean_wave1_grammar
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.logic { Bool }
 import v4.std.verification {
   EqualsClaim,

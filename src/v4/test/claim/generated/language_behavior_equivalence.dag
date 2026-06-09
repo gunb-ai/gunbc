@@ -36,7 +36,7 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_singleton
 }
-import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Hash, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,

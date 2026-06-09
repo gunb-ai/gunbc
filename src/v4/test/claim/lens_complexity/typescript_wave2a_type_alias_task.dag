@@ -14,7 +14,7 @@ import v4.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v4.std.node { Cardinality, Edge, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Cardinality, Edge, Node, Positional, Symbol, TypeNode, Unanchored }
 import v4.std.witness { Witness }
 type LensComplexityClaim {
   input: Node

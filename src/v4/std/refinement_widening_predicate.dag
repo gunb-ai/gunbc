@@ -12,7 +12,7 @@ import v4.std.integer_value_set {
   integer_value_set_contains,
   integer_value_set_strictly_contains
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, Unanchored }
 import v4.std.node_query { find_named_child }
 data refinement_widening_field_source_value_set: Symbol = refinement_widening_field_source_value_set
 data refinement_widening_field_candidate_value_set: Symbol = refinement_widening_field_candidate_value_set

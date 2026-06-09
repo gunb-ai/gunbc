@@ -4,7 +4,7 @@
 
 module v4.bin.main
 
-import v4.std.node { Node, TypeNode, Conj, Disj }
+import v4.std.node { Node, TypeNode, Conj, Disj, Unanchored }
 
 
 data main_rs_trampoline_authority: String = "include!(\"v4_main_generated.rs\");"

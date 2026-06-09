@@ -23,7 +23,7 @@ import v4.std.leaf_model_verification {
   leaf_model_claim_ts_r2b_bigint_beyond_safe_integer
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verdict { verdict_fail }
 import v4.std.verification {
   EqualsClaim,

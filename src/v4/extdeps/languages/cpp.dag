@@ -62,7 +62,7 @@ import v4.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, Unanchored }
 import v4.std.target_model {
   grammar_relation_field_emitted,
   grammar_relation_field_production,

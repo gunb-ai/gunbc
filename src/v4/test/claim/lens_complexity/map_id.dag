@@ -22,7 +22,8 @@ import v4.std.node {
   Positional,
   Symbol,
   Transform,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.witness { Witness }
 type LensComplexityClaim {

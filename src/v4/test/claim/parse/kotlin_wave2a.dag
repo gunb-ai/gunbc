@@ -10,7 +10,7 @@ import v4.compiler.tokenize { tokenize }
 import v4.compiler.parse { parse }
 import v4.extdeps.languages.kotlin { kotlin_wave1_lex, kotlin_wave1_grammar }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 import v4.std.verification {

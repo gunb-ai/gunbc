@@ -6,7 +6,7 @@ module v4.test.claim.lens_fact_density.hollow_alias_no_fact
 
 import v4.lens.fact_density { NoFact, carrier_spec_fact }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,

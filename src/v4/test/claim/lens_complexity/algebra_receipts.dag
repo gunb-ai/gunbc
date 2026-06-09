@@ -33,7 +33,8 @@ import v4.std.node {
   Atom,
   Node,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 type ComplexityProjectionClaim {
   input_cost: SymbolicCost

@@ -32,7 +32,7 @@ import v4.std.leaf_model_verification {
   leaf_model_python_static_falsification_verdict
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,

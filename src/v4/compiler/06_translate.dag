@@ -59,7 +59,8 @@ import v4.std.node {
   Symbol,
   TypeNode,
   fold_node,
-  well_formed
+  well_formed,
+  Unanchored
 }
 import v4.std.node_query { node_positional_child_targets }
 import v4.std.lexing {

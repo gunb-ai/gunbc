@@ -12,7 +12,7 @@ import v4.compiler.eval {
 }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,

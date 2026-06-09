@@ -27,7 +27,7 @@ import v4.std.dependency {
   BindsTo,
   DependencyView
 }
-import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.witness { Holds, Violates, Witness }
 data sr_lookup_claim_hash: Hash = sr_lookup_claim_hash
 

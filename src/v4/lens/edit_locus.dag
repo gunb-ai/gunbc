@@ -16,7 +16,7 @@ import v4.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v4.std.node { Conj, Node, Symbol, TypeNode }
+import v4.std.node { Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 

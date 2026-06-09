@@ -53,11 +53,15 @@ import v4.std.integer_value_set {
   integer_value_set_kind_unbounded
 }
 import v4.std.model_core { ModelCoreFactAxisEncoding, ModelCoreFactAxisSurfaceSpelling }
+<<<<<<< HEAD
 import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.refinement_widening_predicate {
   refinement_widening_predicate_algebra_for_value_sets,
   refinement_widening_preservation_holds
 }
+=======
+import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+>>>>>>> 431340c6a0 (WIP: PROVENANCE PRODUCER build (operator GO 2026-06-09): build the real sourc)
 import v4.std.diagnostic { Accepted, Rejected }
 
 
