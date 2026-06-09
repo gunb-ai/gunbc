@@ -10,9 +10,28 @@ module v4.std.refinement_widening_predicate
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v4.std.node_query { find_named_child }
+data refinement_value_set_kind: Symbol = refinement_value_set_kind
+data refinement_value_set_interval: Symbol = refinement_value_set_interval
+data refinement_value_set_integer_unbounded: Symbol = refinement_value_set_integer_unbounded
+data refinement_value_set_integer_interval: Symbol = refinement_value_set_integer_interval
+data refinement_widening_field_source_value_set: Symbol = refinement_widening_field_source_value_set
+data refinement_widening_field_candidate_value_set: Symbol = refinement_widening_field_candidate_value_set
 fn refinement_widening_predicate_algebra(
   source: Node,
   candidate: Node,
+) -> Node {
+  refinement_widening_predicate_algebra_for_value_sets(
+    source: source,
+    candidate: candidate,
+    source_value_set: refinement_unknown_value_set_node(),
+    candidate_value_set: refinement_unknown_value_set_node()
+  )
+}
+fn refinement_widening_predicate_algebra_for_value_sets(
+  source: Node,
+  candidate: Node,
+  source_value_set: Node,
+  candidate_value_set: Node,
 ) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -28,11 +47,113 @@ fn refinement_widening_predicate_algebra(
       Edge {
         label: Named { name: ^refinement_widening_field_source_facts },
         target: source
+      },
+      Edge {
+        label: Named { name: refinement_widening_field_source_value_set },
+        target: source_value_set
+      },
+      Edge {
+        label: Named { name: refinement_widening_field_candidate_value_set },
+        target: candidate_value_set
       }
     ]
   }
 }
 
+fn refinement_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+fn refinement_unknown_value_set_node() -> Node {
+  refinement_atom(id: ^refinement_value_set_unknown)
+}
+
+fn integer_unbounded_value_set_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: refinement_value_set_kind },
+        target: refinement_atom(id: refinement_value_set_integer_unbounded)
+      }
+    ]
+  }
+}
+
+fn integer_interval_value_set_node(interval: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: refinement_value_set_kind },
+        target: refinement_atom(id: refinement_value_set_integer_interval)
+      },
+      Edge {
+        label: Named { name: refinement_value_set_interval },
+        target: interval
+      }
+    ]
+  }
+}
+
+fn refinement_value_set_kind_is(value_set: Node, kind: Symbol) -> Bool {
+  match find_named_child(root: value_set, name: refinement_value_set_kind) {
+    Accepted { value: found, diagnostics: None } => found == refinement_atom(id: kind)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn refinement_value_set_contains(container: Node, contained: Node) -> Bool {
+  if refinement_value_set_kind_is(value_set: container, kind: refinement_value_set_integer_unbounded) {
+    refinement_value_set_kind_is(value_set: contained, kind: refinement_value_set_integer_unbounded)
+      || refinement_value_set_kind_is(value_set: contained, kind: refinement_value_set_integer_interval)
+  } else if refinement_value_set_kind_is(value_set: container, kind: refinement_value_set_integer_interval) {
+    match find_named_child(root: container, name: refinement_value_set_interval) {
+      Accepted { value: container_interval, diagnostics: None } =>
+        match find_named_child(root: contained, name: refinement_value_set_interval) {
+          Accepted { value: contained_interval, diagnostics: None } =>
+            container_interval == contained_interval
+          Rejected { diagnostics: _ } => false
+        }
+      Rejected { diagnostics: _ } => false
+    }
+  } else {
+    false
+  }
+}
+
+fn refinement_value_set_strictly_contains(container: Node, contained: Node) -> Bool {
+  refinement_value_set_contains(container: container, contained: contained)
+    && !refinement_value_set_contains(container: contained, contained: container)
+}
+
+fn refinement_widening_value_sets_hold(algebra: Node) -> Bool {
+  match find_named_child(root: algebra, name: refinement_widening_field_source_value_set) {
+    Accepted { value: source_value_set, diagnostics: None } =>
+      match find_named_child(root: algebra, name: refinement_widening_field_candidate_value_set) {
+        Accepted { value: candidate_value_set, diagnostics: None } =>
+          refinement_value_set_contains(container: candidate_value_set, contained: source_value_set)
+            && (source_value_set != candidate_value_set)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn refinement_widening_is_strict_coarsening(algebra: Node) -> Bool {
+  match find_named_child(root: algebra, name: refinement_widening_field_source_value_set) {
+    Accepted { value: source_value_set, diagnostics: None } =>
+      match find_named_child(root: algebra, name: refinement_widening_field_candidate_value_set) {
+        Accepted { value: candidate_value_set, diagnostics: None } =>
+          refinement_value_set_strictly_contains(container: source_value_set, contained: candidate_value_set)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 fn refinement_widening_bundle_holds(
   source_facts: Node,
@@ -49,6 +170,7 @@ fn refinement_widening_bundle_holds(
                 && (bundled_candidate == candidate)
                 && (bundled_source_facts == source_facts)
                 && (source_facts != candidate)
+                && refinement_widening_value_sets_hold(algebra: algebra)
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false

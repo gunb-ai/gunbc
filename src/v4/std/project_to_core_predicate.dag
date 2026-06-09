@@ -1,0 +1,79 @@
+// src/v4/std/project_to_core_predicate.dag
+// Scope: project modeled nodes to declared ModelCore core axes, dropping surface spelling.
+// Status: find_witness project_to_core predicate leaf.
+
+module v4.std.project_to_core_predicate
+
+
+import v4.std.algebra { list_snoc_item }
+import v4.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v4.std.model_core {
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisRange,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth
+}
+import v4.std.node { Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, well_formed }
+
+fn project_to_core_axis_is_core(name: Symbol) -> Bool {
+  (name == discriminant(v: ModelCoreFactAxisEncoding {}))
+    || (name == discriminant(v: ModelCoreFactAxisWidth {}))
+    || (name == discriminant(v: ModelCoreFactAxisSignedness {}))
+    || (name == discriminant(v: ModelCoreFactAxisRange {}))
+    || (name == discriminant(v: ModelCoreFactAxisOverflowDisposition {}))
+}
+
+fn project_to_core_axis_is_surface(name: Symbol) -> Bool {
+  name == discriminant(v: ModelCoreFactAxisSurfaceSpelling {})
+}
+
+fn project_to_core_init(_: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: []
+  }
+}
+
+fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
+  match edge.label {
+    Named { name: edge_name } =>
+      if project_to_core_axis_is_surface(name: edge_name) {
+        acc
+      } else if project_to_core_axis_is_core(name: edge_name) {
+        Node {
+          kind: acc.kind,
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
+        }
+      } else {
+        acc
+      }
+    Positional => acc
+  }
+}
+
+fn project_to_core_algebra() -> NodeFold<Node> {
+  NodeFold {
+    init: project_to_core_init,
+    step: project_to_core_step
+  }
+}
+
+fn project_to_core_node(n: Node) -> Node {
+  fold_node(n: n, algebra: project_to_core_algebra())
+}
+
+fn project_to_core_preservation_holds(
+  source_facts: Node,
+  candidate: Node,
+  algebra: Node,
+) -> Bool {
+  well_formed(n: source_facts)
+    && well_formed(n: candidate)
+    && well_formed(n: algebra)
+    && exact_structural_equality_zip_fold(
+      source_facts: project_to_core_node(n: source_facts),
+      candidate: project_to_core_node(n: candidate)
+    )
+}

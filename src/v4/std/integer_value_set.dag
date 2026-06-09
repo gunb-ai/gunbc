@@ -1,0 +1,81 @@
+// src/v4/std/integer_value_set.dag
+// Scope: bounded decidable integer value-set containment leaf for coercion/refinement.
+// Status: integer-only containment surface; general value-set lattice is follow-up.
+
+module v4.std.integer_value_set
+
+
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node_query { find_named_child }
+import v4.std.diagnostic { Accepted, None, Rejected }
+
+data integer_value_set_field_kind: Symbol = integer_value_set_field_kind
+data integer_value_set_field_interval: Symbol = integer_value_set_field_interval
+data integer_value_set_kind_unbounded: Symbol = integer_value_set_kind_unbounded
+data integer_value_set_kind_interval: Symbol = integer_value_set_kind_interval
+
+fn integer_value_set_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+fn integer_unbounded_value_set_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: integer_value_set_field_kind },
+        target: integer_value_set_atom(id: integer_value_set_kind_unbounded)
+      }
+    ]
+  }
+}
+
+fn integer_interval_value_set_node(interval: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: integer_value_set_field_kind },
+        target: integer_value_set_atom(id: integer_value_set_kind_interval)
+      },
+      Edge {
+        label: Named { name: integer_value_set_field_interval },
+        target: interval
+      }
+    ]
+  }
+}
+
+fn integer_value_set_kind_is(value_set: Node, kind: Symbol) -> Bool {
+  match find_named_child(root: value_set, name: integer_value_set_field_kind) {
+    Accepted { value: found, diagnostics: None } => found == integer_value_set_atom(id: kind)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn integer_value_set_contains(container: Node, contained: Node) -> Bool {
+  if integer_value_set_kind_is(value_set: container, kind: integer_value_set_kind_unbounded) {
+    integer_value_set_kind_is(value_set: contained, kind: integer_value_set_kind_unbounded)
+      || integer_value_set_kind_is(value_set: contained, kind: integer_value_set_kind_interval)
+  } else if integer_value_set_kind_is(value_set: container, kind: integer_value_set_kind_interval) {
+    match find_named_child(root: container, name: integer_value_set_field_interval) {
+      Accepted { value: container_interval, diagnostics: None } =>
+        match find_named_child(root: contained, name: integer_value_set_field_interval) {
+          Accepted { value: contained_interval, diagnostics: None } =>
+            container_interval == contained_interval
+          Rejected { diagnostics: _ } => false
+        }
+      Rejected { diagnostics: _ } => false
+    }
+  } else {
+    false
+  }
+}
+
+fn integer_value_set_strictly_contains(container: Node, contained: Node) -> Bool {
+  integer_value_set_contains(container: container, contained: contained)
+    && !integer_value_set_contains(container: contained, contained: container)
+}
