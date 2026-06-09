@@ -1518,17 +1518,11 @@ fn cpp_sg2_type_expr_canonical_symbols() -> Set<Symbol> {
 
 data cpp_sg2_type_alias_text: String = "using Sg2Probe = std::shared_ptr<FooBar<X, Y>>;"
 
+// SG-2 live target bundle — SG-2-only core (peer rust_sg2_type_expr_target_model_bundle_core).
+// Do not graft cpp_mvp1_target_model_node: inherited MVP-1 translation/serialize rows carry
+// BoundTokens for add/x/y that conflict with SG-2-only binding_spellings (P2/P3).
 fn cpp_sg2_type_expr_target_model_node(target_profile: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_snoc_item(
-      xs: cpp_mvp1_target_model_node(target_profile: target_profile).children,
-      item: cpp_named_edge(
-        name: target_model_edge_type_expression_projection,
-        target: cpp_type_expression_projection_bundle_node()
-      )
-    )
-  }
+  cpp_sg2_type_expr_projection_probe_bundle_core(target_profile: target_profile)
 }
 
 fn cpp_sg2_type_expr_target_model(target_profile: Node) -> TargetModel {
