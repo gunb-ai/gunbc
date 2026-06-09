@@ -60,5 +60,10 @@ fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
 
 
 fn lens_application_synthesis_gap_polynomial_holds() -> Bool {
-  synthesis_gap_poly_lens_non_empty() && lens_application_synthesis_gap_enforce_rejects()
+  synthesis_gap_poly_lens_non_empty()
+}
+
+
+fn lens_application_synthesis_gap_enforce_rejection_holds() -> Bool {
+  lens_application_synthesis_gap_enforce_rejects()
 }

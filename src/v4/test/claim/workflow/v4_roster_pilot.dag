@@ -291,6 +291,12 @@ data v4_roster_pilot_row_lens_application_synthesis_gap: V4RosterPilotClaimRunRo
   function: "lens_application_synthesis_gap_polynomial_holds"
 }
 
+data v4_roster_pilot_row_lens_application_synthesis_gap_enforce: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens application synthesis gap enforce rejection",
+  entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+  function: "lens_application_synthesis_gap_enforce_rejection_holds"
+}
+
 data v4_roster_pilot_row_lens_idempotency_write_effect: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens idempotency write-effect witness",
   entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
@@ -377,6 +383,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_parse_table_token_position_indices,
   v4_roster_pilot_row_lens_application_introspect_advisory,
   v4_roster_pilot_row_lens_application_synthesis_gap,
+  v4_roster_pilot_row_lens_application_synthesis_gap_enforce,
   v4_roster_pilot_row_lens_idempotency_write_effect,
   v4_roster_pilot_row_lens_identical_variant_unrealized,
   v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune,
@@ -390,7 +397,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
 ]
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-data v4_roster_pilot_claim_run_row_count: String = "46"
+data v4_roster_pilot_claim_run_row_count: String = "47"
 
 
 fn v4_roster_pilot_row_matches(
@@ -450,6 +457,7 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_parse_table_token_position_indices)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_introspect_advisory)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_synthesis_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_synthesis_gap_enforce)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_idempotency_write_effect)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_identical_variant_unrealized)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune)
@@ -464,8 +472,8 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-  (length(xs: v4_roster_pilot_claim_run_rows) == 46)
-    && (v4_roster_pilot_claim_run_row_count == "46")
+  (length(xs: v4_roster_pilot_claim_run_rows) == 47)
+    && (v4_roster_pilot_claim_run_row_count == "47")
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -648,6 +656,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "lens_application_synthesis_gap_polynomial_holds"
     )
     && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_application_synthesis_gap_enforce,
+      entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+      function: "lens_application_synthesis_gap_enforce_rejection_holds"
+    )
+    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_lens_idempotency_write_effect,
       entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
       function: "lens_idempotency_write_effect_holds"
@@ -698,5 +711,4 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "map_structural_key_equality_holds"
     )
 }
-
 
