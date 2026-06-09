@@ -38,6 +38,8 @@ data find_witness_reason_invalid_witness: Symbol = find_witness_reason_invalid_w
 data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_constraint_satisfaction
 data preservation_rule_exact_structural_equality_zip_fold: Symbol = preservation_rule_exact_structural_equality_zip_fold
 data preservation_rule_refinement_widening: Symbol = preservation_rule_refinement_widening
+data preservation_rule_type_expr_projection_discipline_zip_fold: Symbol =
+  preservation_rule_type_expr_projection_discipline_zip_fold
 type CandidateSet {
   candidates: List<Node>
   closedness: StructuralPropertyWitness
@@ -68,6 +70,7 @@ fn preservation_rule_is_realized(rule: Symbol) -> Bool {
   (rule == preservation_rule_constraint_satisfaction)
     || (rule == preservation_rule_exact_structural_equality_zip_fold)
     || (rule == preservation_rule_refinement_widening)
+    || (rule == preservation_rule_type_expr_projection_discipline_zip_fold)
 }
 fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {

@@ -99,6 +99,22 @@ fn cpp_sg2_project_atom_emitted() -> Node {
   cpp_sg2_project_emitted(node: cpp_sg2_atom_source_type_node())
 }
 
+fn cpp_sg2_project_instantiation_emitted() -> Node {
+  cpp_sg2_project_emitted(node: cpp_sg2_instantiation_source_type_node())
+}
+
+fn cpp_sg2_project_conj_emitted() -> Node {
+  cpp_sg2_project_emitted(node: cpp_sg2_conj_source_type_node())
+}
+
+fn cpp_sg2_project_disj_emitted() -> Node {
+  cpp_sg2_project_emitted(node: cpp_sg2_disj_source_type_node())
+}
+
+fn cpp_sg2_project_cardinality_emitted() -> Node {
+  cpp_sg2_project_emitted(node: cpp_sg2_cardinality_source_type_node())
+}
+
 fn cpp_sg2_serialized_text(emitted: Node) -> String {
   match target_serialize_source_from_model(
     target: cpp_sg2_type_expr_target(),
