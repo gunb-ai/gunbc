@@ -301,6 +301,9 @@ fn affected_testgen_fusion_holds() -> Bool {
 }
 
 
+// 🟢 terminal CI receipt carrier — local to this workflow gate. This is not a substrate
+// row registry; it only gives the existing host gate a modeled list of claim-run
+// witness functions to project and perturb.
 type AffectedTestgenClaimRunRow {
   label: String
   entry: String

@@ -7,7 +7,7 @@ module v4.lens.edit_locus
 
 import v4.compiler.infer { InferredTree }
 import v4.lens.affected_set { AffectedSetReading, affected_set_reading }
-import v4.std.algebra { Cons, Empty, FreeMonoid, count_equal, length, list_append }
+import v4.std.algebra { Cons, Empty, FreeMonoid, count_equal, fold_list, length, list_append }
 import v4.std.artifact { NodeArtifactProvenance }
 import v4.std.collection { List }
 import v4.std.diagnostic {
@@ -119,20 +119,17 @@ fn loci_from_provenance_for_path(
   provenance: FreeMonoid<NodeArtifactProvenance>,
   acc: FreeMonoid<Node>
 ) -> FreeMonoid<Node> {
-  match provenance {
-    Empty => acc
-    Cons { head: p, tail: rest } =>
-      let acc2 = if p.artifact.file_path == changed {
-        push_locus_if_absent(acc: acc, locus: p.node)
+  fold_list(
+    xs: provenance,
+    empty: acc,
+    cons: fn(loci, p) {
+      if p.artifact.file_path == changed {
+        push_locus_if_absent(acc: loci, locus: p.node)
       } else {
-        acc
+        loci
       }
-      loci_from_provenance_for_path(
-        changed: changed,
-        provenance: rest,
-        acc: acc2
-      )
-  }
+    }
+  )
 }
 
 
@@ -192,20 +189,17 @@ fn collect_edit_loci_from_provenance_on_paths(
   provenance: FreeMonoid<NodeArtifactProvenance>,
   acc: FreeMonoid<Node>
 ) -> FreeMonoid<Node> {
-  match changed_paths {
-    Empty => acc
-    Cons { head: changed, tail: rest } =>
-      let with_provenance = loci_from_provenance_for_path(
+  fold_list(
+    xs: changed_paths,
+    empty: acc,
+    cons: fn(loci, changed) {
+      loci_from_provenance_for_path(
         changed: changed,
         provenance: provenance,
-        acc: acc
+        acc: loci
       )
-      collect_edit_loci_from_provenance_on_paths(
-        changed_paths: rest,
-        provenance: provenance,
-        acc: with_provenance
-      )
-  }
+    }
+  )
 }
 
 
