@@ -19,11 +19,6 @@ import v4.std.node {
   TypeNode,
   fold_node
 }
-
-data dependency_binds_to_edge: Symbol = dependency_binds_to_edge
-data dependency_module_import_edge: Symbol = dependency_module_import_edge
-data dependency_bootstrap_depends_edge: Symbol = dependency_bootstrap_depends_edge
-
 // 🟢 coproduct dissolution
 type DependencyKind
   = Contains
@@ -127,16 +122,16 @@ type DependencyFoldState {
   dependencies: List<DependencyView>
 }
 
-// 🟡 gated — feature:dependency-usage-classifier-consumes-resolve-ground-facts — dissolve-on: T-9 resolve stamps dependency_binds_to_edge / module / bootstrap labels inline
+// 🟡 gated — feature:dependency-usage-classifier-consumes-resolve-ground-facts — dissolve-on: T-9 resolve stamps ^dependency_binds_to_edge / module / bootstrap labels inline
 fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
-  if sym == dependency_binds_to_edge {
+  if sym == ^dependency_binds_to_edge {
     match parent.kind {
       ComputationNode { behavior: Bind } => Contains
       _ => BindsTo
     }
-  } else if sym == dependency_module_import_edge {
+  } else if sym == ^dependency_module_import_edge {
     ModuleDependsOn
-  } else if sym == dependency_bootstrap_depends_edge {
+  } else if sym == ^dependency_bootstrap_depends_edge {
     BootstrapDependsOn
   } else {
     Contains

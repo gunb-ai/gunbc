@@ -16,36 +16,27 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-
-data affected_set_root_symbol: Symbol = affected_set_root_symbol
-data affected_set_mid_symbol: Symbol = affected_set_mid_symbol
-data affected_set_leaf_symbol: Symbol = affected_set_leaf_symbol
-data affected_set_root_edge_symbol: Symbol = affected_set_root_edge_symbol
-data affected_set_mid_edge_symbol: Symbol = affected_set_mid_edge_symbol
-data affected_set_type_symbol: Symbol = affected_set_type_symbol
-data affected_set_algebra_symbol: Symbol = affected_set_algebra_symbol
-data affected_set_descent_symbol: Symbol = affected_set_descent_symbol
-data affected_set_leaf: Node = claim_atom_node(s: affected_set_leaf_symbol)
+data affected_set_leaf: Node = claim_atom_node(s: ^affected_set_leaf_symbol)
 
 data affected_set_mid: Node = Node {
-  kind: TypeNode { connective: Atom { identity: affected_set_mid_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^affected_set_mid_symbol } },
   children: [
-    Edge { label: Named { name: affected_set_mid_edge_symbol }, target: affected_set_leaf }
+    Edge { label: Named { name: ^affected_set_mid_edge_symbol }, target: affected_set_leaf }
   ]
 }
 
 data affected_set_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: affected_set_root_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^affected_set_root_symbol } },
   children: [
-    Edge { label: Named { name: affected_set_root_edge_symbol }, target: affected_set_mid }
+    Edge { label: Named { name: ^affected_set_root_edge_symbol }, target: affected_set_mid }
   ]
 }
 
 fn affected_set_claim_facts() -> InferredFacts {
   claim_inferred_facts(
-    type_symbol: affected_set_type_symbol,
-    algebra_symbol: affected_set_algebra_symbol,
-    descent_symbol: affected_set_descent_symbol,
+    type_symbol: ^affected_set_type_symbol,
+    algebra_symbol: ^affected_set_algebra_symbol,
+    descent_symbol: ^affected_set_descent_symbol,
   )
 }
 
