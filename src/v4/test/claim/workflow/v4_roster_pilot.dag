@@ -45,7 +45,9 @@ data mvp1_python_emit_add_fn_accepts_holds: Symbol = mvp1_python_emit_add_fn_acc
 data mvp1_rust_emit_add_fn_accepts_holds: Symbol = mvp1_rust_emit_add_fn_accepts_holds
 data mvp1_ts_emit_add_fn_accepts_holds: Symbol = mvp1_ts_emit_add_fn_accepts_holds
 data parse_table_token_position_indices_no_extra_append_holds: Symbol = parse_table_token_position_indices_no_extra_append_holds
+data scheduler_runnable_frontier_claims_hold: Symbol = scheduler_runnable_frontier_claims_hold
 data sg_rc_f6_round_trip_owned: Symbol = sg_rc_f6_round_trip_owned
+data sg_rc_value_rc_wrap_tagged: Symbol = sg_rc_value_rc_wrap_tagged
 data text_host_string_empty_roundtrip_holds: Symbol = text_host_string_empty_roundtrip_holds
 data text_host_string_field_text_holds: Symbol = text_host_string_field_text_holds
 data text_host_string_roundtrip_holds: Symbol = text_host_string_roundtrip_holds
@@ -60,6 +62,8 @@ data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: S
 data witness_lens_testgen_scheduled_generators_carry_provenance_green: Symbol = witness_lens_testgen_scheduled_generators_carry_provenance_green
 data witness_lens_testgen_schedules_dag_input_surface_green: Symbol = witness_lens_testgen_schedules_dag_input_surface_green
 data witness_lens_testgen_shadow_ci_run_receipt_green: Symbol = witness_lens_testgen_shadow_ci_run_receipt_green
+data witness_lens_idempotency_family_gate_closed: Symbol = witness_lens_idempotency_family_gate_closed
+data witness_lens_parallelism_family_gate_closed: Symbol = witness_lens_parallelism_family_gate_closed
 data witness_model_core_bool_fact_lookup_discriminates: Symbol = witness_model_core_bool_fact_lookup_discriminates
 data witness_sg2_arrow_holds: Symbol = witness_sg2_arrow_holds
 data witness_sg2_projection_falsification_holds: Symbol = witness_sg2_projection_falsification_holds
@@ -115,7 +119,11 @@ fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
   let m46 = map_insert(m45, map_structural_key_equality_holds, "map_structural_key_equality_holds")
   let m47 = map_insert(m46, witness_crux_substrate_gap, "witness_crux_substrate_gap")
   let m48 = map_insert(m47, witness_claim_task_id_surfaces_distinct, "witness_claim_task_id_surfaces_distinct")
-  map_insert(m48, witness_claim_crux_substrate_gap, "witness_claim_crux_substrate_gap")
+  let m49 = map_insert(m48, witness_claim_crux_substrate_gap, "witness_claim_crux_substrate_gap")
+  let m50 = map_insert(m49, sg_rc_value_rc_wrap_tagged, "sg_rc_value_rc_wrap_tagged")
+  let m51 = map_insert(m50, witness_lens_idempotency_family_gate_closed, "witness_lens_idempotency_family_gate_closed")
+  let m52 = map_insert(m51, witness_lens_parallelism_family_gate_closed, "witness_lens_parallelism_family_gate_closed")
+  map_insert(m52, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
 }
 
 
@@ -247,7 +255,8 @@ data v4_roster_pilot_row_sg_rc_f6_owned: V4RosterPilotClaimRunRow = V4RosterPilo
 data v4_roster_pilot_row_sg_rc_value_rc_wrap_tagged: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "sg-rc value Rc-wrap node content_hash (atom_identity_hash crash fix)",
   entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
-  function: "sg_rc_value_rc_wrap_tagged"
+  function: "sg_rc_value_rc_wrap_tagged",
+  function_symbol: sg_rc_value_rc_wrap_tagged
 }
 
 // T3 Phase A (ctrl#1489) — SG-2 green-on-current claim-run witnesses only (mutation-proven).
@@ -494,13 +503,15 @@ data v4_roster_pilot_row_lens_idempotency_write_effect: V4RosterPilotClaimRunRow
 data v4_roster_pilot_row_lens_idempotency_family_gate: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens idempotency family gate closed",
   entry: "src/v4/test/claim/workflow/lens_idempotency_family_eval.dag",
-  function: "witness_lens_idempotency_family_gate_closed"
+  function: "witness_lens_idempotency_family_gate_closed",
+  function_symbol: witness_lens_idempotency_family_gate_closed
 }
 
 data v4_roster_pilot_row_lens_parallelism_family_gate: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens parallelism family gate closed",
   entry: "src/v4/test/claim/workflow/lens_parallelism_family_eval.dag",
-  function: "witness_lens_parallelism_family_gate_closed"
+  function: "witness_lens_parallelism_family_gate_closed",
+  function_symbol: witness_lens_parallelism_family_gate_closed
 }
 
 data v4_roster_pilot_row_lens_identical_variant_unrealized: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
@@ -555,7 +566,8 @@ data v4_roster_pilot_row_lens_registry_singleton_row_counts: V4RosterPilotClaimR
 data v4_roster_pilot_row_scheduler_runnable_frontier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "scheduler runnable frontier respects dependency order",
   entry: "src/v4/test/claim/manual/scheduler_runnable_frontier.dag",
-  function: "scheduler_runnable_frontier_claims_hold"
+  function: "scheduler_runnable_frontier_claims_hold",
+  function_symbol: scheduler_runnable_frontier_claims_hold
 }
 
 
