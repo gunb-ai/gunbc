@@ -217,8 +217,8 @@ fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {
 }
 
 // Result<Node, Diagnostic> ≡ Outcome<Node> per DECISIONS item I / std/diagnostic.dag.
-fn subterm_at(root: Node, p: Path) -> Outcome<Node> {
-  subterm_at_steps(root: root, steps: p.steps)
+fn subterm_at(root: Node, path: Path) -> Outcome<Node> {
+  subterm_at_steps(root: root, steps: path.steps)
 }
 
 fn replace_edge_target(e: Edge, replacement: Node) -> Edge {
@@ -393,12 +393,12 @@ fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
 fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
   match section {
     DeclarationScope { declaration: declaration } =>
-      subterm_at(root: root, p: declaration.path)
+      subterm_at(root: root, path: declaration.path)
     NodeScope { declaration: declaration, node: node } =>
       bind_outcome(
-        o: subterm_at(root: root, p: declaration.path),
+        o: subterm_at(root: root, path: declaration.path),
         f: fn(declaration_subject) {
-          subterm_at(root: declaration_subject, p: node.path)
+          subterm_at(root: declaration_subject, path: node.path)
         }
       )
   }
