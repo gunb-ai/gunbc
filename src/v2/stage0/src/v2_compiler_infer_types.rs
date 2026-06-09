@@ -1735,6 +1735,26 @@ pub fn node_type_shape(
     })
 }
 
+pub fn leaf_type_compatible_by_identity(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match left.ident.clone() {
+        Some(l) => match right.ident.clone() {
+            Some(r) => (l.clone() == r.clone()),
+            None => {
+                (authored_name_at(source_indices.clone(), left.clone()).as_str()
+                    == authored_name_at(source_indices.clone(), right.clone()).as_str())
+            }
+        },
+        None => {
+            (authored_name_at(source_indices.clone(), left.clone()).as_str()
+                == authored_name_at(source_indices.clone(), right.clone()).as_str())
+        }
+    }
+}
+
 pub fn node_type_compatible(
     mut left: Rc<Node>,
     mut right: Rc<Node>,
@@ -1893,16 +1913,11 @@ pub fn node_type_compatible(
                                     if (left_opt.clone() || right_opt.clone()) {
                                         break false;
                                     } else {
-                                        break (authored_name_at(
-                                            source_indices.clone(),
+                                        break leaf_type_compatible_by_identity(
                                             left.clone(),
-                                        )
-                                        .as_str()
-                                            == authored_name_at(
-                                                source_indices.clone(),
-                                                right.clone(),
-                                            )
-                                            .as_str());
+                                            right.clone(),
+                                            source_indices.clone(),
+                                        );
                                     }
                                 }
                             }

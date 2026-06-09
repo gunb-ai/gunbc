@@ -45,16 +45,17 @@ pub use crate::v2_std_core::{
     arg_name_at, arg_value, authored_name_at, empty_intern_table, error_type, expr_call_func_at,
     expr_var_name_at, field_access_field_at, field_binding_pattern, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
-    file_transport_node, import_node, intern, is_compiler_error, is_container_type, kernel_span,
-    leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
-    make_resource_use_node, make_span, make_text_part_node, make_variant_node, module_node,
-    no_span, node_name_span, param_node_default_value, param_node_type_expr, pre_intern_tokens,
-    rest_transport_node, service_config_properties, shell_transport_node, transport_body_key,
-    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
-    transport_query_key, transport_response_format_key, transport_stdin_key, transport_url_key,
-    variant_node_fields, variant_node_name_at, with_required_cardinality,
+    file_transport_node, import_node, intern, intern_find, is_compiler_error, is_container_type,
+    kernel_span, leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node,
+    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_resource_use_node, make_span, make_text_part_node, make_variant_node,
+    module_node, no_span, node_name_span, param_node_default_value, param_node_type_expr,
+    pre_intern_tokens, rest_transport_node, service_config_properties, shell_transport_node,
+    transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
+    transport_path_template_key, transport_query_key, transport_response_format_key,
+    transport_stdin_key, transport_url_key, variant_node_fields, variant_node_name_at,
+    with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -1867,9 +1868,18 @@ pub fn parser_result_witness(
     }
 }
 
+pub fn type_ref_ident(intern_table: Rc<InternTable>, name: String) -> Option<i64> {
+    if (name.clone().as_str() == "".to_string().as_str()) {
+        None
+    } else {
+        intern_find(intern_table, name.clone())
+    }
+}
+
 pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
         name: name.clone(),
+        ident: None,
         span: span.clone(),
         ident_span: if (name.clone().as_str() == "".to_string().as_str()) {
             None
@@ -1890,7 +1900,37 @@ pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
+    })
+}
+
+pub fn leaf_type_ref_node(
+    name: String,
+    span: Rc<SourceSpan>,
+    intern_table: Rc<InternTable>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        name: name.clone(),
+        ident: type_ref_ident(intern_table, name.clone()),
+        span: span.clone(),
+        ident_span: if (name.clone().as_str() == "".to_string().as_str()) {
+            None
+        } else {
+            Some(span.clone())
+        },
+        children: Rc::new(vec![]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
     })
 }
 
@@ -3113,7 +3153,11 @@ pub fn parse_type_after_kw(
                             connective: Connective::NoConnective,
                             params: type_params.clone(),
                             inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: leaf_type_node(name.clone(), name_span.clone()),
+                                node: leaf_type_ref_node(
+                                    name.clone(),
+                                    name_span.clone(),
+                                    ctx.intern_table.clone(),
+                                ),
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
@@ -3248,7 +3292,11 @@ pub fn parse_type_body_from_prefix(
                             connective: Connective::NoConnective,
                             params: type_params.clone(),
                             inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: leaf_type_node(name.clone(), name_span.clone()),
+                                node: leaf_type_ref_node(
+                                    name.clone(),
+                                    name_span.clone(),
+                                    ctx.intern_table.clone(),
+                                ),
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
@@ -4616,7 +4664,7 @@ pub fn finish_type_expr_from_name(
         let dummy_te = leaf_type_node(type_name.clone(), start_span.clone());
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLt))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
-                let r = parse_type_expr(__ec.clone(), ctx);
+                let r = parse_type_expr(__ec.clone(), ctx.clone());
                 if has_err(r.err.clone()) {
                     return r.clone();
                 }
@@ -4642,6 +4690,7 @@ pub fn finish_type_expr_from_name(
                 }
                 let te = Rc::new(Node {
                     name: type_name.clone(),
+                    ident: type_ref_ident(ctx.intern_table.clone(), type_name.clone()),
                     span: start_span.clone(),
                     ident_span: Some(start_span.clone()),
                     children: type_args.args.clone(),
@@ -4658,7 +4707,6 @@ pub fn finish_type_expr_from_name(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 });
                 maybe_optional(
                     r3.tokens.clone(),
@@ -4668,8 +4716,12 @@ pub fn finish_type_expr_from_name(
                 )
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let te = leaf_type_node(type_name.clone(), start_span.clone());
-                maybe_optional(tokens.clone(), ctx, te, start_span.clone())
+                let te = leaf_type_ref_node(
+                    type_name.clone(),
+                    start_span.clone(),
+                    ctx.intern_table.clone(),
+                );
+                maybe_optional(tokens.clone(), ctx.clone(), te, start_span.clone())
             }
         }
     }
@@ -4718,7 +4770,7 @@ pub fn collect_type_param_names(
             let span = r.span.clone();
             let param = make_param_node(
                 r.name.clone(),
-                leaf_type_node(r.name.clone(), span.clone()),
+                leaf_type_ref_node(r.name.clone(), span.clone(), ctx.intern_table.clone()),
                 None,
                 span.clone(),
                 span.clone(),
@@ -4736,7 +4788,7 @@ pub fn collect_type_param_names(
                     break Rc::new(TypeParamsResult {
                         params: next_params,
                         tokens: r.tokens.clone(),
-                        ctx: ctx,
+                        ctx: ctx.clone(),
                     });
                 }
             }
@@ -4744,7 +4796,7 @@ pub fn collect_type_param_names(
             break Rc::new(TypeParamsResult {
                 params: params,
                 tokens: tokens.clone(),
-                ctx: ctx,
+                ctx: ctx.clone(),
             });
         }
     }

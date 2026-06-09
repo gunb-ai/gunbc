@@ -28,22 +28,22 @@ use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v2_std_core::MatchPattern::Wildcard;
 use crate::v2_std_core::StringPart::{Interpolation, Text};
 pub use crate::v2_std_core::{
-    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
-    expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
-    field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
-    is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
-    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
+    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, brand_name_at,
+    default_ident_span, expr_call_func_at, expr_method_name_at, field_init_node_name_at,
+    field_init_node_value, field_node_cardinality, field_node_default_value, field_node_from_key,
+    field_node_name_at, field_node_type_expr, foreach_variable_at, generic_param_name_at, intern,
+    is_compiler_error, is_container_type, is_kernel_type, is_local_transport, kernel_span,
+    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
+    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
+    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
+    resource_use_name_at, resource_use_resource, string_type, transport_request_body, unit_type,
     with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
-    MatchPattern, NewlineIndex, Node, StringPart,
+    InternTable, MatchPattern, NewlineIndex, Node, StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -58,41 +58,49 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-        name: structural.name.clone(),
-        ident: structural.ident.clone(),
-        span: structural.span.clone(),
-        ident_span: identity.ident_span.clone(),
-        children: structural.children.clone(),
-        connective: structural.connective.clone(),
-        params: structural.params.clone(),
-        inferred: structural.inferred.clone(),
-        return_cardinality: structural.return_cardinality.clone(),
-        uses: structural.uses.clone(),
-        body: structural.body.clone(),
-        transport: structural.transport.clone(),
-        properties: structural.properties.clone(),
-        type_annotation: structural.type_annotation.clone(),
-        is_self_recursive: structural.is_self_recursive.clone(),
-        has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
-        match_pattern: structural.match_pattern.clone(),
-        expr_data: structural.expr_data.clone(),
-    })
+pub fn with_preserved_declaration_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
+    {
+        let preserved_ident = match identity.ident.clone() {
+            Some(id) => Some(id.clone()),
+            None => structural.ident.clone(),
+        };
+        Rc::new(Node {
+            name: structural.name.clone(),
+            ident: preserved_ident,
+            span: structural.span.clone(),
+            ident_span: structural.ident_span.clone(),
+            children: structural.children.clone(),
+            connective: structural.connective.clone(),
+            params: structural.params.clone(),
+            inferred: structural.inferred.clone(),
+            return_cardinality: structural.return_cardinality.clone(),
+            uses: structural.uses.clone(),
+            body: structural.body.clone(),
+            transport: structural.transport.clone(),
+            properties: structural.properties.clone(),
+            type_annotation: structural.type_annotation.clone(),
+            is_self_recursive: structural.is_self_recursive.clone(),
+            has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
+            match_pattern: structural.match_pattern.clone(),
+            expr_data: structural.expr_data.clone(),
+        })
+    }
 }
 
 pub fn preserve_nominal_brand_on_resolve(
     identity: Rc<Node>,
     structural: Rc<Node>,
     brand_name: String,
+    intern_table: Rc<InternTable>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if (((brand_name.clone().as_str() != "".to_string().as_str())
+    if ((((identity.ident.clone() != None)
+        && (brand_name.clone().as_str() != "".to_string().as_str()))
         && (brand_name.clone().as_str()
-            != authored_name_at(source_indices, structural.clone()).as_str()))
+            != brand_name_at(structural.clone(), intern_table, source_indices).as_str()))
         && !is_declared_container_alias_spelling(brand_name.clone()))
     {
-        with_authored_identity(identity, structural.clone())
+        with_preserved_declaration_identity(identity.clone(), structural.clone())
     } else {
         structural.clone()
     }
@@ -101,7 +109,8 @@ pub fn preserve_nominal_brand_on_resolve(
 pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
     {
         let source_indices = env.source_indices.clone();
-        let brand = authored_name_at(source_indices.clone(), n.clone());
+        let intern_table = env.intern_table.clone();
+        let brand = brand_name_at(n.clone(), intern_table.clone(), source_indices.clone());
         match lookup_type_for(env.clone(), n.clone()) {
             Some(resolved) => {
                 let structural = if (((resolved.connective.clone() == Connective::NoConnective)
@@ -131,12 +140,17 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                         .resolved
                         .clone()
                 };
-                if (((brand.clone().as_str() != "".to_string().as_str())
-                    && (brand.clone().as_str()
-                        != authored_name_at(source_indices.clone(), structural.clone()).as_str()))
+                let structural_brand = brand_name_at(
+                    structural.clone(),
+                    intern_table.clone(),
+                    source_indices.clone(),
+                );
+                if ((((n.ident.clone() != None)
+                    && (brand.clone().as_str() != "".to_string().as_str()))
+                    && (brand.clone().as_str() != structural_brand.as_str()))
                     && !is_declared_container_alias_spelling(brand.clone()))
                 {
-                    with_authored_identity(n.clone(), structural.clone())
+                    with_preserved_declaration_identity(n.clone(), structural.clone())
                 } else {
                     if (((resolved.connective.clone() == Connective::NoConnective)
                         && ((resolved.children.clone().len() as i64) == 0))
@@ -152,7 +166,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                                 )
                                 .resolved
                                 .clone();
-                                with_authored_identity(n.clone(), target_resolved)
+                                with_preserved_declaration_identity(n.clone(), target_resolved)
                             }
                             _ => resolved.clone(),
                         }

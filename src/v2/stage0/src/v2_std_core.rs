@@ -1179,6 +1179,45 @@ pub fn authored_name_at(
     }
 }
 
+pub fn source_name_at(
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: Rc<Node>,
+) -> String {
+    authored_name_at(source_indices, node)
+}
+
+pub fn declaration_identity_at(node: Rc<Node>) -> Option<i64> {
+    node.ident.clone()
+}
+
+pub fn brand_name_at(
+    node: Rc<Node>,
+    intern_table: Rc<InternTable>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match node.ident.clone() {
+        Some(id) => {
+            let s = intern_str(intern_table, id.clone());
+            if (s.clone().as_str() == "".to_string().as_str()) {
+                source_name_at(source_indices, node.clone())
+            } else {
+                s.clone()
+            }
+        }
+        None => source_name_at(source_indices, node.clone()),
+    }
+}
+
+pub fn declaration_id_equal(left: Rc<Node>, right: Rc<Node>) -> bool {
+    match left.ident.clone() {
+        Some(l) => match right.ident.clone() {
+            Some(r) => (l.clone() == r.clone()),
+            None => false,
+        },
+        None => false,
+    }
+}
+
 pub fn find_child_named(
     n: Rc<Node>,
     name: String,

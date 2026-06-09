@@ -127,24 +127,25 @@ use crate::v2_std_core::VarBindingKind::{
 };
 pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, bool_type, build_newline_index, cast_expr, cast_target, container_expected_arity,
-    default_ident_span, error_type, expr_call_func_at, expr_has_non_tail_self_call,
-    expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named, float_type,
-    foreach_body, foreach_collection, foreach_variable_at, has_child_named, has_inferred,
-    if_condition, if_else_branch, if_then_branch, import_is_all, index_base, index_expr, int_type,
-    intern, intern_str, is_child_accessor_in_model, is_compiler_error, is_container_type,
-    is_error_diagnostic, is_kernel_type, is_property_contraction, is_tree_size_reducing,
-    kernel_type_set, lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_span, make_text_part_node, make_transport_node,
-    map_children, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, module_node, no_span, node_name_span, none_type,
-    param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
+    binop_right, bool_type, brand_name_at, build_newline_index, cast_expr, cast_target,
+    container_expected_arity, default_ident_span, error_type, expr_call_func_at,
+    expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
+    field_access_base, field_access_field_at, field_binding_name_at, field_binding_pattern,
+    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
+    find_child_named, float_type, foreach_body, foreach_collection, foreach_variable_at,
+    has_child_named, has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
+    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
+    is_compiler_error, is_container_type, is_error_diagnostic, is_kernel_type,
+    is_property_contraction, is_tree_size_reducing, kernel_type_set, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, local_transport_node,
+    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
+    make_field_binding_node, make_field_init_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_span, make_text_part_node, make_transport_node, map_children,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, module_node, no_span, node_name_span, none_type, param_node_name_at,
+    param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    return_value, slice_base, slice_end, slice_start, string_type, unaryop_operand, unit_type,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -707,9 +708,11 @@ pub fn nominal_ref_node(
     name: String,
     span: Rc<SourceSpan>,
     ident_span: Option<Rc<SourceSpan>>,
+    ident: Option<i64>,
 ) -> Rc<Node> {
     Rc::new(Node {
         name: name.clone(),
+        ident: ident,
         span: span,
         ident_span: ident_span,
         children: Rc::new(vec![]),
@@ -728,7 +731,6 @@ pub fn nominal_ref_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1018,25 +1020,61 @@ pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
     }
 }
 
+pub fn nominal_call_arg_brand_mismatch_core(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    formal_name: String,
+    actual_name: String,
+    same_carrier: bool,
+    not_alias_pair: bool,
+) -> bool {
+    {
+        let fallback = (((((formal_name.clone().as_str() != "".to_string().as_str())
+            && (actual_name.clone().as_str() != "".to_string().as_str()))
+            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
+            && same_carrier.clone())
+            && not_alias_pair.clone());
+        match formal.ident.clone() {
+            Some(f) => match actual.ident.clone() {
+                Some(a) => {
+                    (((f.clone() != a.clone()) && same_carrier.clone()) && not_alias_pair.clone())
+                }
+                None => fallback,
+            },
+            None => fallback,
+        }
+    }
+}
+
 pub fn nominal_call_arg_brand_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
+    type_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
-        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-        ((((((((formal.connective.clone() != Connective::Arrow)
-            && (actual.connective.clone() != Connective::Arrow))
-            && (formal_name.clone().as_str() != "".to_string().as_str()))
-            && (actual_name.clone().as_str() != "".to_string().as_str()))
-            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
-            && (structural_carrier_template_name(formal.clone(), source_indices.clone())
-                .as_str()
+        let intern_table = type_env.intern_table.clone();
+        let formal_name =
+            brand_name_at(formal.clone(), intern_table.clone(), source_indices.clone());
+        let actual_name =
+            brand_name_at(actual.clone(), intern_table.clone(), source_indices.clone());
+        let same_carrier =
+            (structural_carrier_template_name(formal.clone(), source_indices.clone()).as_str()
                 == structural_carrier_template_name(actual.clone(), source_indices.clone())
-                    .as_str()))
-            && !is_declared_container_alias_spelling(formal_name.clone()))
-            && !is_declared_container_alias_spelling(actual_name.clone()))
+                    .as_str());
+        let not_alias_pair = (!is_declared_container_alias_spelling(formal_name.clone())
+            && !is_declared_container_alias_spelling(actual_name.clone()));
+        let callable = ((formal.connective.clone() == Connective::Arrow)
+            || (actual.connective.clone() == Connective::Arrow));
+        (!callable
+            && nominal_call_arg_brand_mismatch_core(
+                formal.clone(),
+                actual.clone(),
+                formal_name.clone(),
+                actual_name.clone(),
+                same_carrier,
+                not_alias_pair,
+            ))
     }
 }
 
@@ -1065,7 +1103,12 @@ pub fn container_element_nominal_brand_mismatch(
                         type_env.clone(),
                         module_name.clone(),
                     );
-                    nominal_call_arg_brand_mismatch(formal_el, actual_el, source_indices.clone())
+                    nominal_call_arg_brand_mismatch(
+                        formal_el,
+                        actual_el,
+                        type_env.clone(),
+                        source_indices.clone(),
+                    )
                 }
                 None => false,
             },
@@ -1086,14 +1129,18 @@ pub fn direct_call_arg_type_mismatch(
     if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
         false
     } else {
-        (nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
-            || container_element_nominal_brand_mismatch(
-                formal.clone(),
-                actual.clone(),
-                type_env,
-                module_name,
-                source_indices.clone(),
-            ))
+        (nominal_call_arg_brand_mismatch(
+            formal.clone(),
+            actual.clone(),
+            type_env.clone(),
+            source_indices.clone(),
+        ) || container_element_nominal_brand_mismatch(
+            formal.clone(),
+            actual.clone(),
+            type_env.clone(),
+            module_name,
+            source_indices.clone(),
+        ))
     }
 }
 
@@ -11020,6 +11067,7 @@ pub fn build_type_env(
                     {
                         let type_node = Rc::new(Node {
                             name: item.name.clone(),
+                            ident: Some(item_ident.clone()),
                             span: item.span.clone(),
                             ident_span: item.ident_span.clone(),
                             children: item.children.clone(),
@@ -11036,7 +11084,6 @@ pub fn build_type_env(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                         });
                         v2_rt::rc_map_insert(
                             acc.clone(),
@@ -11056,6 +11103,7 @@ pub fn build_type_env(
                         {
                             let alias_node = Rc::new(Node {
                                 name: item.name.clone(),
+                                ident: Some(item_ident.clone()),
                                 span: item.span.clone(),
                                 ident_span: item.ident_span.clone(),
                                 children: Rc::new(vec![]),
@@ -11072,7 +11120,6 @@ pub fn build_type_env(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             });
                             v2_rt::rc_map_insert(
                                 acc.clone(),
@@ -11093,6 +11140,7 @@ pub fn build_type_env(
                                     authored_name_at(source_indices.clone(), item.clone()),
                                     item.span.clone(),
                                     item.ident_span.clone(),
+                                    Some(item_ident.clone()),
                                 );
                                 v2_rt::rc_map_insert(
                                     acc.clone(),
@@ -11116,6 +11164,7 @@ pub fn build_type_env(
                                 {
                                     let bare_node = Rc::new(Node {
                                         name: item.name.clone(),
+                                        ident: Some(item_ident.clone()),
                                         span: item.span.clone(),
                                         ident_span: item.ident_span.clone(),
                                         children: Rc::new(vec![]),
@@ -11132,7 +11181,6 @@ pub fn build_type_env(
                                         has_non_tail_self_call: false,
                                         match_pattern: None,
                                         expr_data: Rc::new(ExprData::NoExprData),
-                                        ident: None,
                                     });
                                     v2_rt::rc_map_insert(
                                         acc.clone(),
@@ -11584,6 +11632,7 @@ pub fn build_type_env_unresolved(
                     {
                         let type_node = Rc::new(Node {
                             name: item.name.clone(),
+                            ident: Some(item_ident.clone()),
                             span: item.span.clone(),
                             ident_span: item.ident_span.clone(),
                             children: item.children.clone(),
@@ -11600,7 +11649,6 @@ pub fn build_type_env_unresolved(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                         });
                         v2_rt::rc_map_insert(
                             acc.clone(),
@@ -11620,6 +11668,7 @@ pub fn build_type_env_unresolved(
                         {
                             let alias_node = Rc::new(Node {
                                 name: item.name.clone(),
+                                ident: Some(item_ident.clone()),
                                 span: item.span.clone(),
                                 ident_span: item.ident_span.clone(),
                                 children: Rc::new(vec![]),
@@ -11636,7 +11685,6 @@ pub fn build_type_env_unresolved(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             });
                             v2_rt::rc_map_insert(
                                 acc.clone(),
@@ -11657,6 +11705,7 @@ pub fn build_type_env_unresolved(
                                     authored_name_at(source_indices.clone(), item.clone()),
                                     item.span.clone(),
                                     item.ident_span.clone(),
+                                    Some(item_ident.clone()),
                                 );
                                 v2_rt::rc_map_insert(
                                     acc.clone(),
@@ -12453,6 +12502,7 @@ pub fn topo_resolve_types(
                                     pre.clone(),
                                     result.resolved.clone(),
                                     binding.name.clone(),
+                                    env.intern_table.clone(),
                                     env.source_indices.clone(),
                                 );
                                 Rc::new(BindingsAccum {
@@ -12506,6 +12556,7 @@ pub fn topo_resolve_types(
                             pre.clone(),
                             result.resolved.clone(),
                             binding.name.clone(),
+                            env.intern_table.clone(),
                             env.source_indices.clone(),
                         );
                         Rc::new(BindingsAccum {
