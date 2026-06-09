@@ -26,7 +26,6 @@ import v4.std.verdict {
   verdict_tally_total
 }
 import v4.std.verification {
-  BoolWitness,
   EvalOnly,
   NodeCorpus,
   UnifiedTestClaim,
@@ -45,18 +44,6 @@ import v4.test.claim.workflow.v4_roster_pilot {
   v4_roster_pilot_claim_run_rows,
   v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds
 }
-
-
-// Consolidation #4553 Phase 2: execution receipts are unified here at the workflow layer.
-// `UnifiedTestClaim` remains a descriptor-only registration row in `std.verification`.
-type BoolWitnessRun
-  = BoolWitnessRuntimeVerdict {
-      witness: BoolWitness
-      result: Bool
-    }
-  | BoolWitnessQueuedForHostTransport {
-      witness: BoolWitness
-    }
 
 
 type CorpusEvalEntry {
@@ -168,11 +155,6 @@ fn bool_witness_unified_claim_from_roster_row(row: V4RosterPilotClaimRunRow) -> 
 
 fn v4_roster_pilot_bool_witness_unified_claims() -> List<UnifiedTestClaim> {
   map(v4_roster_pilot_claim_run_rows, fn(row) { bool_witness_unified_claim_from_roster_row(row: row) })
-}
-
-
-fn queued_bool_witness_run(witness: BoolWitness) -> BoolWitnessRun {
-  BoolWitnessQueuedForHostTransport { witness: witness }
 }
 
 
