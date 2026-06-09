@@ -34,7 +34,10 @@ import v4.std.integer_value_set {
   integer_interval_value_set_node,
   integer_unbounded_value_set_node,
   integer_value_set_contains,
-  integer_value_set_strictly_contains
+  integer_value_set_strictly_contains,
+  integer_value_set_field_extra,
+  integer_value_set_field_kind,
+  integer_value_set_kind_unbounded
 }
 import v4.std.model_core { ModelCoreFactAxisEncoding, ModelCoreFactAxisSurfaceSpelling }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
@@ -256,6 +259,28 @@ fn malformed_interval_value_set() -> Node {
   )
 }
 
+fn unbounded_value_set_with_extra_field() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^integer_value_set_field_kind },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_unbounded } },
+          children: []
+        }
+      },
+      Edge {
+        label: Named { name: ^integer_value_set_field_extra },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^integer_value_set_field_extra } },
+          children: []
+        }
+      }
+    ]
+  }
+}
+
 fn integer_value_set_rejects_malformed_interval_payload_control() -> Bool {
   !integer_value_set_contains(container: python_int_value_set(), contained: malformed_interval_value_set())
 }
@@ -267,6 +292,12 @@ fn integer_value_set_interval_containment_rejects_malformed_payload_control() ->
 }
 
 data witness_integer_value_set_interval_containment_rejects_malformed_payload: Bool = integer_value_set_interval_containment_rejects_malformed_payload_control()
+
+fn integer_value_set_rejects_unbounded_with_extra_field_control() -> Bool {
+  !integer_value_set_contains(container: python_int_value_set(), contained: unbounded_value_set_with_extra_field())
+}
+
+data witness_integer_value_set_rejects_unbounded_with_extra_field: Bool = integer_value_set_rejects_unbounded_with_extra_field_control()
 
 fn integer_value_set_reverse_is_strict_coarsening_control() -> Bool {
   let strict = integer_value_set_strictly_contains(container: python_int_value_set(), contained: i32_value_set())
