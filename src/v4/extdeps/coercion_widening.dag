@@ -21,15 +21,34 @@ import v4.std.find_witness {
   TargetDeclaredPriority,
   preservation_rule_refinement_widening
 }
+import v4.std.integer { int32_interval_spec, integer_interval_spec_node }
+import v4.std.integer_value_set {
+  integer_interval_value_set_node,
+  integer_unbounded_value_set_node
+}
 import v4.std.node { Node }
-import v4.std.refinement_widening_predicate { refinement_widening_predicate_algebra }
+import v4.std.refinement_widening_predicate { refinement_widening_predicate_algebra_for_value_sets }
 
 
 fn mvp_rust_i32_python_int_refinement_widening_predicate() -> PreservationPredicate {
   PreservationPredicate {
-    algebra: refinement_widening_predicate_algebra(
+    algebra: refinement_widening_predicate_algebra_for_value_sets(
       source: rust_inhabitant_i32_node(),
-      candidate: python_int_inhabitant_node()
+      candidate: python_int_inhabitant_node(),
+      source_value_set: integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int32_interval_spec())),
+      candidate_value_set: integer_unbounded_value_set_node()
+    ),
+    preservation_rule: preservation_rule_refinement_widening
+  }
+}
+
+fn mvp_python_int_rust_i32_refinement_narrowing_predicate() -> PreservationPredicate {
+  PreservationPredicate {
+    algebra: refinement_widening_predicate_algebra_for_value_sets(
+      source: python_int_inhabitant_node(),
+      candidate: rust_inhabitant_i32_node(),
+      source_value_set: integer_unbounded_value_set_node(),
+      candidate_value_set: integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int32_interval_spec()))
     ),
     preservation_rule: preservation_rule_refinement_widening
   }
@@ -46,5 +65,18 @@ fn coercion_fold_mvp_rust_i32_to_python_int_widening(
     candidates: candidates,
     policy: TargetDeclaredPriority { priority: priority },
     predicate: mvp_rust_i32_python_int_refinement_widening_predicate()
+  )
+}
+
+fn coercion_fold_mvp_python_int_to_rust_i32_narrowing(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  priority: Node,
+) -> Outcome<CoercionResult> {
+  coercion_fold_refinement_widening(
+    source: source,
+    candidates: candidates,
+    policy: TargetDeclaredPriority { priority: priority },
+    predicate: mvp_python_int_rust_i32_refinement_narrowing_predicate()
   )
 }

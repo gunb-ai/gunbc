@@ -124,6 +124,13 @@ type IntegerIntervalSpec {
   inclusive_min: IntegerIntervalBound
   inclusive_max: IntegerIntervalBound
 }
+fn integer_interval_spec_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
+  container == contained
+}
+fn integer_interval_spec_strictly_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
+  integer_interval_spec_contains(container: container, contained: contained)
+    && !integer_interval_spec_contains(container: contained, contained: container)
+}
 fn integer_interval(
   inclusive_min: IntegerIntervalBound,
   inclusive_max: IntegerIntervalBound
