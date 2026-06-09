@@ -315,42 +315,42 @@ data affected_testgen_gate_entry: String = "src/v4/test/claim/workflow/affected_
 
 
 data affected_testgen_gate_row_generator_emits_expected_claim: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen generator emits expected witness-validity claim",
+  label: "affected-testgen fixture wiring emits expected witness-validity claim",
   entry: affected_testgen_gate_entry,
   function: "affected_testgen_generator_emits_expected_claim_holds"
 }
 
 
 data affected_testgen_gate_row_selects_generated_claim: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen selects one generated witness-validity claim",
+  label: "affected-testgen fixture wiring selects one generated witness-validity claim",
   entry: affected_testgen_gate_entry,
   function: "affected_testgen_selects_one_generated_claim_holds"
 }
 
 
 data affected_testgen_gate_row_dependency_selects_generated_claim: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen dependency-path diff selects generated claim",
+  label: "affected-testgen fixture wiring dependency-path diff selects generated claim",
   entry: affected_testgen_gate_entry,
   function: "affected_testgen_dependency_diff_selects_generated_claim_holds"
 }
 
 
 data affected_testgen_gate_row_dependency_frontier_reaches_generated_input: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen dependency frontier reaches generated input",
+  label: "affected-testgen fixture wiring dependency frontier reaches generated input",
   entry: affected_testgen_gate_entry,
   function: "affected_testgen_dependency_frontier_reaches_generated_input_holds"
 }
 
 
 data affected_testgen_gate_row_generated_claim_runs: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen generated claim runs through run_test_claim",
+  label: "affected-testgen fixture wiring generated claim runs through run_test_claim",
   entry: affected_testgen_gate_entry,
   function: "affected_testgen_generated_claim_run_passes_holds"
 }
 
 
 data affected_testgen_gate_row_fusion: AffectedTestgenClaimRunRow = AffectedTestgenClaimRunRow {
-  label: "affected-testgen fusion diff to generated run",
+  label: "affected-testgen fixture wiring fusion diff to generated run",
   entry: affected_testgen_gate_entry,
   function: "affected_testgen_fusion_holds"
 }
