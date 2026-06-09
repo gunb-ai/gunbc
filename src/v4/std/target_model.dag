@@ -3794,11 +3794,11 @@ fn type_expr_projection_graft_substrate_in_row_slot(
   )
 }
 
-// SG-2 fold — discipline-aware zip-fold row witness gate (substrate graft authority).
-fn type_expr_projection_row_witness_gate(
+fn type_expr_projection_row_witness_gate_with_rule(
   source_facts: Node,
   projection: TargetTypeExpressionProjection,
-  connective: Connective
+  connective: Connective,
+  preservation_rule: Symbol
 ) -> Outcome<Node> {
   bind_outcome(
     o: type_expr_projection_candidate_for_connective(
@@ -3811,7 +3811,7 @@ fn type_expr_projection_row_witness_gate(
         candidates: candidates,
         predicate: PreservationPredicate {
           algebra: source_facts,
-          preservation_rule: preservation_rule_type_expr_projection_discipline_zip_fold
+          preservation_rule: preservation_rule
         },
         multiplicity_policy: UniqueOnly
       ) {
@@ -3820,6 +3820,34 @@ fn type_expr_projection_row_witness_gate(
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     }
+  )
+}
+
+// SG-2 fold — bundle row-shape closedness (no graft child-slot coordinate; exact structural match).
+fn type_expr_projection_row_shape_witness_gate(
+  source_facts: Node,
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<Node> {
+  type_expr_projection_row_witness_gate_with_rule(
+    source_facts: source_facts,
+    projection: projection,
+    connective: connective,
+    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+  )
+}
+
+// SG-2 fold — grafted substrate witness gate (requires child_slots coordinate; discipline zip-fold).
+fn type_expr_projection_graft_witness_gate(
+  source_facts: Node,
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<Node> {
+  type_expr_projection_row_witness_gate_with_rule(
+    source_facts: source_facts,
+    projection: projection,
+    connective: connective,
+    preservation_rule: preservation_rule_type_expr_projection_discipline_zip_fold
   )
 }
 
