@@ -17,6 +17,26 @@ for `BindingId` while `lookup_type_for` (`04_env.dag:62`) treats `node.ident` as
 into `TypeEnv.bindings`. One field cannot carry both key domains. The design now adds an explicit
 `Node.binding_id` side-channel; `Node.ident` keeps its lookup semantics unchanged.
 
+**Amendment 4 (2026-06-09, follow-up #4579 codex sweep — this PR):**
+
+1. **`decl_id_by_spelling` is removed from the stamp path entirely.** Deriving `binding_id`
+   through a spelling key is a P1/P3 violation: `intern(name)` ids collapse same-spelled
+   declarations from different modules to one key, so a spelling-keyed lookup cannot be the
+   authority for declaration identity. Any `Map<Int, BindingId>` constructed by folding a
+   spelling-keyed index inherits the same ambiguity silently (last insert wins = fabricated
+   plausible output, not fail-closed).
+2. **Stamp path is authority-direct.** `binding_id` is read from the `TypeDeclBinding.resolved`
+   node that `build_type_env` constructs and stores in `TypeEnv.decl_registry`. That resolved
+   node is the SAME `Node` value placed in `TypeBinding.resolved` (shared reference). After
+   `lookup_type_for` returns `TypeBinding.resolved`, `binding_id` is already present on that
+   node — no side-map lookup required.
+3. **`decl_id_by_spelling` deferred to phase 2.** If a spelling→BindingId index is eventually
+   needed for cross-module lookup optimisation, it must (a) be constructed fail-closed (collision
+   = ambiguous/absent, never silent winner-pick), (b) never be a stamp source, and (c) only be
+   introduced with cross-module collision tests. Phase 1 ships without it.
+4. **Class sweep:** every path that feeds `binding_id` onto a `Node` was audited (§5.5 below);
+   none goes through a spelling key.
+
 **Amendment 3 (2026-06-09, inline + codex review on #4579 @ 99340b4):**
 
 1. **`TypeBinding` is shared** between `TypeEnv.bindings` (type declarations) and inference
