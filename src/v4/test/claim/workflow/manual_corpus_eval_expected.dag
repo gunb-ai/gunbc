@@ -3,7 +3,7 @@
 // Status: drift gate authority — host transport mirrors `manual_corpus_eval_expected_pins` +
 // `manual_corpus_eval_host_run_specs` (single authority; no parallel bash claim-list).
 // Executed-row drift gates project TestClaimRun verdict+reason via modeled witnesses (--claim-run).
-// HostRejected arm retained for future pre-TestClaimRun transport rows (none in the 5-row roster today).
+// HostRejected arm retained for future pre-TestClaimRun transport rows (none in the 6-row roster today).
 // 🟡 gated — feature:t38-testclaim-corpus-eval — bind tracked-expectation gate design (operator GO 2026-06-05).
 
 module v4.test.claim.workflow.manual_corpus_eval_expected
@@ -32,6 +32,10 @@ import v4.test.claim.lens_effect.effect_depends_on {
   claim_lens_effect_depends_on_runtime_verdict,
   run_lens_effect_depends_on_runtime_verdict
 }
+import v4.test.claim.lens_idempotency.write_effect {
+  claim_idempotency_write_effect_run_test_claim_receipt,
+  run_idempotency_write_effect_receipt
+}
 import v4.test.claim.lens_parallelism.data_dependency {
   claim_parallelism_data_dependency_run_test_claim_receipt,
   run_parallelism_data_dependency_receipt
@@ -39,6 +43,9 @@ import v4.test.claim.lens_parallelism.data_dependency {
 import v4.test.claim.manual.eval_runtime_mvp {
   claim_eval_mvp2_test_claim_route,
   run_eval_mvp2_test_claim_route
+}
+import v4.test.claim.manual.manual_corpus_roster {
+  manual_corpus_node_subject_rows
 }
 // Pass-arm sentinel for `corpus_eval_row_primary_reason` (named constant, not a bare literal).
 // Per-row dissolution targets (flip pin to must-pass-green when substrate lands).
@@ -74,6 +81,11 @@ data manual_corpus_eval_host_run_specs: List<CorpusEvalHostRunSpec> = [
     run_fn: ^run_eval_mvp2_test_claim_route_sym
   },
   CorpusEvalHostRunSpec {
+    claim_id: claim_idempotency_write_effect_run_test_claim_receipt,
+    entry_relpath: "src/v4/test/claim/lens_idempotency/write_effect.dag",
+    run_fn: ^run_idempotency_write_effect_receipt_sym
+  },
+  CorpusEvalHostRunSpec {
     claim_id: claim_parallelism_data_dependency_run_test_claim_receipt,
     entry_relpath: "src/v4/test/claim/lens_parallelism/data_dependency.dag",
     run_fn: ^run_parallelism_data_dependency_receipt_sym
@@ -99,6 +111,12 @@ data manual_corpus_eval_host_run_specs: List<CorpusEvalHostRunSpec> = [
 data manual_corpus_eval_expected_pins: List<CorpusEvalExpectedPin> = [
   CorpusEvalExpectedPin {
     claim_id: claim_eval_mvp2_test_claim_route,
+    observation: ExecutedPass,
+    primary_reason: ^corpus_eval_verdict_pass_reason,
+    dissolution_target: ^dissolution_target_transform_eval
+  },
+  CorpusEvalExpectedPin {
+    claim_id: claim_idempotency_write_effect_run_test_claim_receipt,
     observation: ExecutedPass,
     primary_reason: ^corpus_eval_verdict_pass_reason,
     dissolution_target: ^dissolution_target_transform_eval
@@ -139,11 +157,9 @@ fn corpus_eval_expected_pins_match_host_run_specs() -> Bool {
 }
 
 
-// Cardinality must match `manual_corpus_node_subject_rows` (ci.dag run_roster authority).
-data manual_corpus_eval_tracked_expectation_row_count: Int = 5
-
+// Cardinality must match `manual_corpus_node_subject_rows` (roster authority).
 fn corpus_eval_expected_pins_match_roster_frontier() -> Bool {
-  length(xs: manual_corpus_eval_expected_pins) == manual_corpus_eval_tracked_expectation_row_count
+  length(xs: manual_corpus_eval_expected_pins) == length(xs: manual_corpus_node_subject_rows)
 }
 
 
@@ -304,6 +320,13 @@ fn witness_corpus_eval_row_subsumption_reverifies_runtime_gate() -> Bool {
   corpus_eval_executed_row_runtime_gate_for_claim(
     run: run_rust_language_model_emit_subsumption_reverifies,
     claim_id: claim_rust_language_model_emit_subsumption_reverifies
+  )
+}
+
+fn witness_corpus_eval_row_idempotency_runtime_gate() -> Bool {
+  corpus_eval_executed_row_runtime_gate_for_claim(
+    run: run_idempotency_write_effect_receipt,
+    claim_id: claim_idempotency_write_effect_run_test_claim_receipt
   )
 }
 
