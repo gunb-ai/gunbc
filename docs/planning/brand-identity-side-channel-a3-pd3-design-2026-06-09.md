@@ -355,8 +355,8 @@ Ordered for minimal blast radius; each step has a consumer test.
 
 | Step | Change | Consumer |
 |------|--------|----------|
-| 1 | Add `BindingId`; extend `Node` with `binding_id`; `bindings_by_id` on `TypeEnv`; helpers in `00_core.dag` + `04_env.dag` | unit tests in `infer_semantics.rs` |
-| 2 | `build_type_env`: assign `binding_id` per declaration; populate `bindings_by_id`; stamp on `TypeBinding.resolved` | `m1_brand_twins_over_refined_base_remain_distinct` |
+| 1 | Add `BindingId`, `TypeDeclBinding`, `BindingIdAllocator`; extend `Node.binding_id`; `decl_registry` on `TypeEnv`; helpers in `00_core.dag` + `04_env.dag` | unit tests in `infer_semantics.rs` |
+| 2 | `build_type_env`: graph-global alloc; register `TypeDeclBinding` per type decl; stamp `Node.binding_id` on decl resolved nodes | `m1_brand_twins_over_refined_base_remain_distinct` |
 | 3 | Infer/resolve: stamp `binding_id` after lookup; `with_preserved_binding_id`; delete ident_span graft | same + parse span tests still green |
 | 4 | PD-3 fns compare `binding_id` | `pd3_*`, `pd3_adversarial.rs` |
 | 5 | Remove `authored_name_at` from compare path (use `binding_id` / `source_name_at` fallback) | grep audit |
