@@ -29,6 +29,8 @@ type RunnableFrontier {
   ready: List<Node>
 }
 
+// 🟡 coproduct dissolution — feature:scheduler-blocked-evidence-kind — consumer:scheduler_plan_from_state
+// dissolve-on-arrival: blocked scheduler diagnostics classify missing prerequisite/cycle evidence directly.
 type SchedulerBlockedEvidence
   = SchedulerNoRunnableFrontier { unscheduled: List<Node> }
 
@@ -309,6 +311,8 @@ fn scheduler_nodes_from_layers(layers: List<ReadinessLayer>) -> List<Node> {
   })
 }
 
+// Graph-node plans are projections over canonical readiness layers. Dependency-row plans use
+// scheduler_plan_from_dependencies to execute the fixed point and distinguish runnable/blocked work.
 fn scheduler_plan_for_layers(layers: List<ReadinessLayer>, blocked: List<Node>) -> SchedulerPlan {
   let runnable = runnable_frontier_from_layers(layers: layers)
   if non_empty(xs: runnable.ready) {
