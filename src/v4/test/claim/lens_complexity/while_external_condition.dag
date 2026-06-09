@@ -35,11 +35,8 @@ type LensComplexityClaim {
   expected_complexity: ComplexityBound
   falsification: Diagnostic
 }
-
-data while_loop_body_atom: Symbol = while_loop_body_atom
-
 data while_loop_body_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: while_loop_body_atom } },
+  kind: TypeNode { connective: Atom { identity: ^while_loop_body_atom } },
   children: []
 }
 

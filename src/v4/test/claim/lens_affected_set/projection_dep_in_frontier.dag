@@ -17,10 +17,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data projection_dep_root_symbol: Symbol = projection_dep_root_symbol
-data projection_dep_child_symbol: Symbol = projection_dep_child_symbol
-
 fn projection_dep_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -28,13 +24,13 @@ fn projection_dep_node(s: Symbol) -> Node {
   }
 }
 
-data projection_dep_root: Node = projection_dep_node(s: projection_dep_root_symbol)
+data projection_dep_root: Node = projection_dep_node(s: ^projection_dep_root_symbol)
 
 data projection_dep_dependency: DependencyView = DependencyView {
   source: projection_dep_root,
-  dependent: projection_dep_node(s: projection_dep_child_symbol),
+  dependent: projection_dep_node(s: ^projection_dep_child_symbol),
   kind: ProjectionDependsOn,
-  usage_site: projection_dep_node(s: projection_dep_child_symbol)
+  usage_site: projection_dep_node(s: ^projection_dep_child_symbol)
 }
 
 fn projection_dep_in_frontier_claim_holds() -> Bool {

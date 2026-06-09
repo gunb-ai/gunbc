@@ -15,10 +15,7 @@ import v4.lens.identical_variant_payload {
 import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
-
-
-data ivp_witness_type_symbol: Symbol = ivp_witness_type_symbol
-data ivp_witness_type_node: Node = claim_atom_node(s: ivp_witness_type_symbol)
+data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)
 
 
 fn ivp_verdict_is_unrealized(verdict: IdenticalVariantPayloadVerdict) -> Bool {

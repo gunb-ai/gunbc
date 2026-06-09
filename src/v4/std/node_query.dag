@@ -21,12 +21,6 @@ import v4.std.diagnostic {
 }
 import v4.std.algebra { Empty, list_snoc_item }
 import v4.std.node { Conj, Edge, Named, Node, Positional, Symbol, TypeNode, name_occurrences }
-
-
-data named_child_missing: Symbol = named_child_missing
-data named_child_ambiguous: Symbol = named_child_ambiguous
-
-
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
 fn node_positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
@@ -58,7 +52,7 @@ fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
         fold(
           root.children,
           init: outcome_rejected(d: Diagnostic {
-            reason: named_child_missing,
+            reason: ^named_child_missing,
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
           }),
@@ -76,20 +70,20 @@ fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
         )
       } else if count == 0 {
         outcome_rejected(d: Diagnostic {
-          reason: named_child_missing,
+          reason: ^named_child_missing,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
         })
       } else {
         outcome_rejected(d: Diagnostic {
-          reason: named_child_ambiguous,
+          reason: ^named_child_ambiguous,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
         })
       }
     _ =>
       outcome_rejected(d: Diagnostic {
-        reason: named_child_missing,
+        reason: ^named_child_missing,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
       })
