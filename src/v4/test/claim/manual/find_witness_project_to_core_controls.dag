@@ -137,7 +137,7 @@ data witness_project_to_core_rejects_surface_only_empty_core: Bool = match find_
   Rejected { diagnostics: _ } => true
 }
 
-fn nested_project_to_core_node(core: Symbol, nested_core: Symbol, nested_surface: Symbol) -> Node {
+fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -156,36 +156,32 @@ fn nested_project_to_core_node(core: Symbol, nested_core: Symbol, nested_surface
             }
           ]
         }
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [] }
       }
     ]
   }
 }
 
 data witness_project_to_core_drops_nested_surface: Bool = match find_witness_derives(
-  source_facts: nested_project_to_core_node(core: ^nested_outer_core, nested_core: ^nested_inner_core, nested_surface: ^nested_source_surface),
+  source_facts: nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_source_surface),
   candidates: control_candidate_set(
-    candidates: [nested_project_to_core_node(core: ^nested_outer_core, nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface)],
-    closedness_evidence: nested_project_to_core_node(core: ^nested_outer_core, nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface)
+    candidates: [nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface)],
+    closedness_evidence: nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface)
   ),
-  derivation_algebra: nested_project_to_core_node(core: ^nested_outer_core, nested_core: ^nested_inner_core, nested_surface: ^nested_source_surface),
+  derivation_algebra: nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_source_surface),
   multiplicity_policy: UniqueOnly
 ) {
   Accepted { value: fw, diagnostics: _ } =>
-    fw.candidate == nested_project_to_core_node(core: ^nested_outer_core, nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface)
+    fw.candidate == nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface)
   Rejected { diagnostics: _ } => false
 }
 
 data witness_project_to_core_rejects_nested_core_difference: Bool = match find_witness_derives(
-  source_facts: nested_project_to_core_node(core: ^nested_outer_core, nested_core: ^nested_inner_core, nested_surface: ^nested_surface),
+  source_facts: nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_surface),
   candidates: control_candidate_set(
-    candidates: [nested_project_to_core_node(core: ^nested_outer_core, nested_core: ^nested_wrong_core, nested_surface: ^nested_surface)],
-    closedness_evidence: nested_project_to_core_node(core: ^nested_outer_core, nested_core: ^nested_wrong_core, nested_surface: ^nested_surface)
+    candidates: [nested_project_to_core_node(nested_core: ^nested_wrong_core, nested_surface: ^nested_surface)],
+    closedness_evidence: nested_project_to_core_node(nested_core: ^nested_wrong_core, nested_surface: ^nested_surface)
   ),
-  derivation_algebra: nested_project_to_core_node(core: ^nested_outer_core, nested_core: ^nested_inner_core, nested_surface: ^nested_surface),
+  derivation_algebra: nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_surface),
   multiplicity_policy: UniqueOnly
 ) {
   Accepted { value: _, diagnostics: _ } => false
@@ -223,8 +219,11 @@ fn malformed_interval_value_set() -> Node {
   )
 }
 
-data witness_integer_value_set_rejects_malformed_interval_payload: Bool =
+fn integer_value_set_rejects_malformed_interval_payload_control() -> Bool {
   !integer_value_set_contains(container: python_int_value_set(), contained: malformed_interval_value_set())
+}
+
+data witness_integer_value_set_rejects_malformed_interval_payload: Bool = integer_value_set_rejects_malformed_interval_payload_control()
 
 fn integer_value_set_reverse_is_strict_coarsening_control() -> Bool {
   let strict = integer_value_set_strictly_contains(container: python_int_value_set(), contained: i32_value_set())

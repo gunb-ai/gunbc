@@ -29,19 +29,22 @@ fn project_to_core_init(_: Node) -> Node {
 }
 
 fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
+  let projected_target = if count(edge.target.children) == 0 { edge.target } else { child }
   match edge.label {
     Named { name: edge_name } =>
       if project_to_core_axis_is_surface(name: edge_name) {
         acc
-      } else if project_to_core_axis_is_core(name: edge_name) {
+      } else {
         Node {
           kind: acc.kind,
-          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: projected_target })
         }
-      } else {
-        acc
       }
-    Positional => acc
+    Positional =>
+      Node {
+        kind: acc.kind,
+        children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: projected_target })
+      }
   }
 }
 
@@ -56,8 +59,26 @@ fn project_to_core_node(n: Node) -> Node {
   fold_node(n: n, algebra: project_to_core_algebra())
 }
 
+fn project_to_core_has_core_fact_init(_: Node) -> Bool {
+  false
+}
+
+fn project_to_core_has_core_fact_step(acc: Bool, edge: Edge, child: Bool) -> Bool {
+  match edge.label {
+    Named { name: edge_name } => acc || child || project_to_core_axis_is_core(name: edge_name)
+    Positional => acc || child
+  }
+}
+
+fn project_to_core_has_core_fact_algebra() -> NodeFold<Bool> {
+  NodeFold {
+    init: project_to_core_has_core_fact_init,
+    step: project_to_core_has_core_fact_step
+  }
+}
+
 fn project_to_core_has_core_fact(n: Node) -> Bool {
-  count(project_to_core_node(n: n).children) > 0
+  fold_node(n: n, algebra: project_to_core_has_core_fact_algebra())
 }
 
 fn project_to_core_preservation_holds(
