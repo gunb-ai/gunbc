@@ -7,7 +7,6 @@ module v4.test.claim.lens_affected_set.irt1_dimension_seed_receipt
 import v4.lens.affected_set { DimensionNotRead, Excluded, ExclusionKey, FrontierDecision, Rerun, empty_frontier, mark_rerun }
 import v4.lens.affected_set_examples {
   affected_set_claim_failure_node,
-  affected_set_example_dimension,
   affected_set_example_node
 }
 import v4.test.claim.lens_affected_set.frontier_observation { frontier_decision_matches }
@@ -25,7 +24,7 @@ import v4.std.verification {
 
 data irt1_dimension_seed_key: ExclusionKey = ExclusionKey {
   at: affected_set_example_node,
-  dimension: affected_set_example_dimension
+  dimension: ^affected_set_example_dimension
 }
 
 data expected_irt1_dimension_seed_decision: FrontierDecision = Rerun
@@ -44,7 +43,7 @@ fn irt1_dimension_seed_receipt_claim_holds() -> Bool {
 data irt1_dimension_seed_wrong_decision: FrontierDecision = Excluded {
   first: DimensionNotRead {
     usage_site: affected_set_example_node,
-    changed_dimension: affected_set_example_dimension
+    changed_dimension: ^affected_set_example_dimension
   },
   rest: []
 }

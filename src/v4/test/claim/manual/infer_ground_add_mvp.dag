@@ -78,23 +78,6 @@ import v4.std.runtime {
   ValueInterpreter
 }
 import v4.std.witness { Holds, Violates }
-
-
-data fixture_add_name: Symbol = fixture_add_name
-data fixture_add_int_atom: Symbol = fixture_add_int_atom
-data fixture_add_body_int_atom: Symbol = fixture_add_body_int_atom
-data infer_receipt_evaluator: Symbol = infer_receipt_evaluator
-data infer_receipt_resources: Symbol = infer_receipt_resources
-data infer_receipt_extdeps: Symbol = infer_receipt_extdeps
-data infer_receipt_runtime_value_symbol: Symbol = infer_receipt_runtime_value_symbol
-data infer_receipt_input_infer_add_mvp: Symbol = infer_receipt_input_infer_add_mvp
-data infer_receipt_input_descent_witness: Symbol = infer_receipt_input_descent_witness
-data infer_receipt_interpretation_pin: Symbol = infer_receipt_interpretation_pin
-data infer_receipt_allocate_literal_sym: Symbol = infer_receipt_allocate_literal_sym
-data infer_receipt_call_primitive_sym: Symbol = infer_receipt_call_primitive_sym
-data infer_receipt_choose_branch_sym: Symbol = infer_receipt_choose_branch_sym
-data infer_receipt_step_loop_sym: Symbol = infer_receipt_step_loop_sym
-data infer_receipt_bind_value_sym: Symbol = infer_receipt_bind_value_sym
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
 // 🟡 coproduct dissolution — LB-P4-3212 — feature: infer-receipt-testclaim-bridge — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: direct TestClaim constructors per receipt row (forbidden: Outcome<Node> bridge that drops diagnostics).
 type InferReceiptCase
@@ -132,7 +115,7 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
 fn infer_receipt_runtime_value() -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: infer_receipt_symbol_node(s: infer_receipt_runtime_value_symbol),
+      primitive_type: infer_receipt_symbol_node(s: ^infer_receipt_runtime_value_symbol),
       bytes: []
     }
   }
@@ -141,7 +124,7 @@ fn infer_receipt_runtime_value() -> RuntimeValue {
 
 fn infer_receipt_runtime_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: infer_receipt_extdeps,
+    reason: ^infer_receipt_extdeps,
     at: NodeLocus { node: n },
     correction: Unavailable { reason: AmbiguousIntent }
   }
@@ -244,17 +227,17 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 
 fn infer_receipt_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: infer_receipt_allocate_literal_sym,
-    call_primitive: infer_receipt_call_primitive_sym,
-    choose_branch: infer_receipt_choose_branch_sym,
-    step_loop: infer_receipt_step_loop_sym,
-    bind_value: infer_receipt_bind_value_sym
+    allocate_literal: ^infer_receipt_allocate_literal_sym,
+    call_primitive: ^infer_receipt_call_primitive_sym,
+    choose_branch: ^infer_receipt_choose_branch_sym,
+    step_loop: ^infer_receipt_step_loop_sym,
+    bind_value: ^infer_receipt_bind_value_sym
   }
 }
 
 fn infer_receipt_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: infer_receipt_interpretation_pin,
+    runtime_identity: ^infer_receipt_interpretation_pin,
     interpretation: infer_receipt_interpretation(),
     structure_witness: infer_receipt_interpretation_structure_witness()
   )
@@ -369,21 +352,21 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: fixture_add_name },
+        label: Named { name: ^fixture_add_name },
         target: Node {
           kind: TypeNode { connective: Arrow },
           children: [
             Edge {
               label: Positional,
-              target: fixture_int_type_node(atom: fixture_add_int_atom)
+              target: fixture_int_type_node(atom: ^fixture_add_int_atom)
             },
             Edge {
               label: Positional,
-              target: fixture_int_type_node(atom: fixture_add_int_atom)
+              target: fixture_int_type_node(atom: ^fixture_add_int_atom)
             },
             Edge {
               label: Positional,
-              target: fixture_int_type_node(atom: fixture_add_body_int_atom)
+              target: fixture_int_type_node(atom: ^fixture_add_body_int_atom)
             }
           ]
         }
@@ -410,7 +393,7 @@ fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
 
 data case_infer_add_mvp_compiles: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer(fixture_add_resolved_tree) derives descent and accepts",
-  input_symbol: infer_receipt_input_infer_add_mvp,
+  input_symbol: ^infer_receipt_input_infer_add_mvp,
   input: fixture_add_resolved_tree(),
   expected_value: fixture_add_resolved_tree()
 }
@@ -424,9 +407,9 @@ data run_infer_add_mvp_compiles: TestClaimRun<Node, InferredTree> = infer_add_mv
 
 data case_infer_descent_witness_holds_atom: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer_descent_witness_contract_node Holds on bounded Atom TypeNode",
-  input_symbol: infer_receipt_input_descent_witness,
-  input: fixture_int_type_node(atom: fixture_add_int_atom),
-  expected_value: fixture_int_type_node(atom: fixture_add_int_atom)
+  input_symbol: ^infer_receipt_input_descent_witness,
+  input: fixture_int_type_node(atom: ^fixture_add_int_atom),
+  expected_value: fixture_int_type_node(atom: ^fixture_add_int_atom)
 }
 
 

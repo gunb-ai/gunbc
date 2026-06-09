@@ -4,7 +4,6 @@
 
 module v4.test.claim.manual.dissolution_subsumption_reverification
 
-
 import v4.compiler.eval {
   EvalContext,
   TestClaimRun,
@@ -25,18 +24,11 @@ import v4.lens.subsumption {
   MechanicalReverification,
   ProducerStageDerivation,
   TestClaimId,
-  emit_rust_name_dispatch_leaf_fix,
-  emit_rust_template_leaf_fix,
-  rust_language_model_emit_mechanical_reverification_claim,
-  rust_language_model_emit_root_fix,
   rust_language_model_emit_subsumption
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map, Set }
-import v4.std.constraints {
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
+
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -85,32 +77,10 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds, Witness }
-
-
-data rust_language_model_emit_subsumption_receipt_node: Symbol = rust_language_model_emit_subsumption_receipt_node
-data subsumption_root_fix_edge: Symbol = subsumption_root_fix_edge
-data subsumption_first_leaf_edge: Symbol = subsumption_first_leaf_edge
-data subsumption_second_leaf_edge: Symbol = subsumption_second_leaf_edge
-data subsumption_mechanical_claim_edge: Symbol = subsumption_mechanical_claim_edge
-data subsumption_runtime_rejected: Symbol = subsumption_runtime_rejected
-data subsumption_descent_dimension: Symbol = subsumption_descent_dimension
-data subsumption_interpretation_pin: Symbol = subsumption_interpretation_pin
-data subsumption_allocate_literal_sym: Symbol = subsumption_allocate_literal_sym
-data subsumption_call_primitive_sym: Symbol = subsumption_call_primitive_sym
-data subsumption_choose_branch_sym: Symbol = subsumption_choose_branch_sym
-data subsumption_step_loop_sym: Symbol = subsumption_step_loop_sym
-data subsumption_bind_value_sym: Symbol = subsumption_bind_value_sym
-data subsumption_evaluator_pin: Symbol = subsumption_evaluator_pin
-data mechanical_reverification_verified: Symbol = mechanical_reverification_verified
-data mechanical_reverification_not_verified: Symbol = mechanical_reverification_not_verified
-data mechanical_reverification_unverifiable: Symbol = mechanical_reverification_unverifiable
-
-
 // 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner owns report authority rows for MechanicalReverification.
 type MechanicalReverificationReportAuthority
   = LensCiTestClaimRunner
   | ReportAuthorityUnavailable
-
 
 // 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner emits TestClaim execution status for MechanicalReverification rows.
 type MechanicalReverificationExecution
@@ -119,7 +89,6 @@ type MechanicalReverificationExecution
   | NotRun
   | ReportUnavailable
 
-
 type MechanicalReverificationRun {
   test_claim: TestClaimId
   applied_root_fix: DiffId
@@ -127,7 +96,6 @@ type MechanicalReverificationRun {
   findings_before: Set<DiffId>
   findings_after: Set<DiffId>
 }
-
 
 // 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner emits typed MechanicalReverification diagnostics.
 type MechanicalReverificationError
@@ -138,19 +106,16 @@ type MechanicalReverificationError
   | SubsumedFixMissingBefore { fix: DiffId }
   | SubsumedFixStillPresentAfter { fix: DiffId }
 
-
 // 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner emits Verified/NotVerified/Unverifiable substrate data.
 type MechanicalReverificationVerdict
   = Verified
   | NotVerified { diagnostic: MechanicalReverificationError }
   | Unverifiable { diagnostic: MechanicalReverificationError }
 
-
 // 🟡 coproduct dissolution — local manual report matcher; dissolve-on:.dag runner emits complete set-difference diagnostics.
 type OptionalDiffId
   = DiffIdAbsent
   | DiffIdPresent { value: DiffId }
-
 
 fn subsumption_symbol_node(s: Symbol) -> Node {
   Node {
@@ -159,26 +124,23 @@ fn subsumption_symbol_node(s: Symbol) -> Node {
   }
 }
 
-
 fn subsumption_template_leaf_node(row: DissolutionSubsumption) -> Node {
-  let fix = DiffId { id: emit_rust_template_leaf_fix }
+  let fix = DiffId { id: ^emit_rust_template_leaf_fix }
   if row.subsumed_fixes.member(fix) {
-    subsumption_symbol_node(s: emit_rust_template_leaf_fix)
+    subsumption_symbol_node(s: ^emit_rust_template_leaf_fix)
   } else {
-    subsumption_symbol_node(s: subsumption_runtime_rejected)
+    subsumption_symbol_node(s: ^subsumption_runtime_rejected)
   }
 }
-
 
 fn subsumption_name_dispatch_leaf_node(row: DissolutionSubsumption) -> Node {
-  let fix = DiffId { id: emit_rust_name_dispatch_leaf_fix }
+  let fix = DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
   if row.subsumed_fixes.member(fix) {
-    subsumption_symbol_node(s: emit_rust_name_dispatch_leaf_fix)
+    subsumption_symbol_node(s: ^emit_rust_name_dispatch_leaf_fix)
   } else {
-    subsumption_symbol_node(s: subsumption_runtime_rejected)
+    subsumption_symbol_node(s: ^subsumption_runtime_rejected)
   }
 }
-
 
 fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
   match row.verification {
@@ -187,58 +149,55 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
         kind: ComputationNode { behavior: Value },
         children: [
           Edge {
-            label: Named { name: subsumption_root_fix_edge },
+            label: Named { name: ^subsumption_root_fix_edge },
             target: subsumption_symbol_node(s: row.root_fix.id)
           },
           Edge {
-            label: Named { name: subsumption_first_leaf_edge },
+            label: Named { name: ^subsumption_first_leaf_edge },
             target: subsumption_template_leaf_node(row: row)
           },
           Edge {
-            label: Named { name: subsumption_second_leaf_edge },
+            label: Named { name: ^subsumption_second_leaf_edge },
             target: subsumption_name_dispatch_leaf_node(row: row)
           },
           Edge {
-            label: Named { name: subsumption_mechanical_claim_edge },
+            label: Named { name: ^subsumption_mechanical_claim_edge },
             target: subsumption_symbol_node(s: claim.id)
           }
         ]
       }
     ProducerStageDerivation { derivation_path: _ } =>
-      subsumption_symbol_node(s: subsumption_runtime_rejected)
+      subsumption_symbol_node(s: ^subsumption_runtime_rejected)
   }
 }
-
 
 fn expected_rust_language_model_emit_receipt_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Value },
     children: [
       Edge {
-        label: Named { name: subsumption_root_fix_edge },
-        target: subsumption_symbol_node(s: rust_language_model_emit_root_fix)
+        label: Named { name: ^subsumption_root_fix_edge },
+        target: subsumption_symbol_node(s: ^rust_language_model_emit_root_fix)
       },
       Edge {
-        label: Named { name: subsumption_first_leaf_edge },
-        target: subsumption_symbol_node(s: emit_rust_template_leaf_fix)
+        label: Named { name: ^subsumption_first_leaf_edge },
+        target: subsumption_symbol_node(s: ^emit_rust_template_leaf_fix)
       },
       Edge {
-        label: Named { name: subsumption_second_leaf_edge },
-        target: subsumption_symbol_node(s: emit_rust_name_dispatch_leaf_fix)
+        label: Named { name: ^subsumption_second_leaf_edge },
+        target: subsumption_symbol_node(s: ^emit_rust_name_dispatch_leaf_fix)
       },
       Edge {
-        label: Named { name: subsumption_mechanical_claim_edge },
-        target: subsumption_symbol_node(s: rust_language_model_emit_mechanical_reverification_claim)
+        label: Named { name: ^subsumption_mechanical_claim_edge },
+        target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim)
       }
     ]
   }
 }
 
-
 fn completed_lens_ci_execution() -> MechanicalReverificationExecution {
   Completed { report_authority: LensCiTestClaimRunner }
 }
-
 
 fn mechanical_reverification_execution_for_run(run: TestClaimRun<Node, RuntimeValue>) -> MechanicalReverificationExecution {
   match run.verdict {
@@ -248,10 +207,9 @@ fn mechanical_reverification_execution_for_run(run: TestClaimRun<Node, RuntimeVa
   }
 }
 
-
 fn missing_subsumed_fix_before(expected: Set<DiffId>, observed: Set<DiffId>) -> OptionalDiffId {
-  let template = DiffId { id: emit_rust_template_leaf_fix }
-  let name_dispatch = DiffId { id: emit_rust_name_dispatch_leaf_fix }
+  let template = DiffId { id: ^emit_rust_template_leaf_fix }
+  let name_dispatch = DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
   if expected.member(template) && !observed.member(template) {
     DiffIdPresent { value: template }
   } else if expected.member(name_dispatch) && !observed.member(name_dispatch) {
@@ -261,10 +219,9 @@ fn missing_subsumed_fix_before(expected: Set<DiffId>, observed: Set<DiffId>) -> 
   }
 }
 
-
 fn surviving_subsumed_fix_after(observed: Set<DiffId>) -> OptionalDiffId {
-  let template = DiffId { id: emit_rust_template_leaf_fix }
-  let name_dispatch = DiffId { id: emit_rust_name_dispatch_leaf_fix }
+  let template = DiffId { id: ^emit_rust_template_leaf_fix }
+  let name_dispatch = DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
   if observed.member(template) {
     DiffIdPresent { value: template }
   } else if observed.member(name_dispatch) {
@@ -273,7 +230,6 @@ fn surviving_subsumed_fix_after(observed: Set<DiffId>) -> OptionalDiffId {
     DiffIdAbsent
   }
 }
-
 
 fn mechanical_reverification_verdict(
   row: DissolutionSubsumption,
@@ -323,15 +279,13 @@ fn mechanical_reverification_verdict(
   }
 }
 
-
 fn mechanical_reverification_verdict_node(v: MechanicalReverificationVerdict) -> Node {
   match v {
-    Verified => subsumption_symbol_node(s: mechanical_reverification_verified)
-    NotVerified { diagnostic: _ } => subsumption_symbol_node(s: mechanical_reverification_not_verified)
-    Unverifiable { diagnostic: _ } => subsumption_symbol_node(s: mechanical_reverification_unverifiable)
+    Verified => subsumption_symbol_node(s: ^mechanical_reverification_verified)
+    NotVerified { diagnostic: _ } => subsumption_symbol_node(s: ^mechanical_reverification_not_verified)
+    Unverifiable { diagnostic: _ } => subsumption_symbol_node(s: ^mechanical_reverification_unverifiable)
   }
 }
-
 
 fn subsumption_runtime_unit(node: Node) -> RuntimeValue {
   RuntimeUnit {
@@ -339,20 +293,17 @@ fn subsumption_runtime_unit(node: Node) -> RuntimeValue {
   }
 }
 
-
 fn subsumption_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   Accepted { value: subsumption_runtime_unit(node: node), diagnostics: None }
 }
 
-
 fn subsumption_reject_runtime(node: Node) -> Outcome<RuntimeValue> {
   Rejected {
     diagnostics: diagnostics_singleton(
-      d: eval_diagnostic(reason: subsumption_runtime_rejected, node: node)
+      d: eval_diagnostic(reason: ^subsumption_runtime_rejected, node: node)
     )
   }
 }
-
 
 fn subsumption_call_primitive(
   node: Node,
@@ -362,7 +313,6 @@ fn subsumption_call_primitive(
   subsumption_reject_runtime(node: node)
 }
 
-
 fn subsumption_choose_branch(
   node: Node,
   _value: RuntimeValue,
@@ -370,16 +320,14 @@ fn subsumption_choose_branch(
 ) -> Outcome<Node> {
   Rejected {
     diagnostics: diagnostics_singleton(
-      d: eval_diagnostic(reason: subsumption_runtime_rejected, node: node)
+      d: eval_diagnostic(reason: ^subsumption_runtime_rejected, node: node)
     )
   }
 }
 
-
 fn subsumption_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
   Accepted { value: Continue { value: subsumption_runtime_unit(node: node) }, diagnostics: None }
 }
-
 
 fn subsumption_bind_value(
   _key: EnvironmentBindingKey,
@@ -388,7 +336,6 @@ fn subsumption_bind_value(
 ) -> Outcome<EvaluationEnvironment> {
   Accepted { value: env, diagnostics: None }
 }
-
 
 fn subsumption_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
@@ -410,14 +357,12 @@ fn subsumption_interpretation() -> InterpretationAlgebra {
   }
 }
 
-
 fn subsumption_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: subsumption_descent_dimension }
+    strict: RankingDimension { measured: ^subsumption_descent_dimension }
   }
 }
-
 
 fn subsumption_facts(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
@@ -427,11 +372,9 @@ fn subsumption_facts(node: Node) -> InferredFacts {
   )
 }
 
-
 fn subsumption_fact_lookup(node: Node) -> Witness<InferredFacts> {
   Holds { value: subsumption_facts(node: node) }
 }
-
 
 fn subsumption_inferred_tree(root: Node) -> InferredTree {
   InferredTree {
@@ -442,25 +385,23 @@ fn subsumption_inferred_tree(root: Node) -> InferredTree {
   }
 }
 
-
 fn subsumption_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: subsumption_allocate_literal_sym,
-    call_primitive: subsumption_call_primitive_sym,
-    choose_branch: subsumption_choose_branch_sym,
-    step_loop: subsumption_step_loop_sym,
-    bind_value: subsumption_bind_value_sym
+    allocate_literal: ^subsumption_allocate_literal_sym,
+    call_primitive: ^subsumption_call_primitive_sym,
+    choose_branch: ^subsumption_choose_branch_sym,
+    step_loop: ^subsumption_step_loop_sym,
+    bind_value: ^subsumption_bind_value_sym
   }
 }
 
 fn subsumption_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: subsumption_interpretation_pin,
+    runtime_identity: ^subsumption_interpretation_pin,
     interpretation: subsumption_interpretation(),
     structure_witness: subsumption_interpretation_structure_witness()
   )
 }
-
 
 data claim_rust_language_model_emit_mechanical_reverification: TestClaim = StructuralEqualsClaim {
   label: "dissolution subsumption rust LanguageModel emit row receipt",
@@ -470,34 +411,29 @@ data claim_rust_language_model_emit_mechanical_reverification: TestClaim = Struc
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
-
 data subject_rust_language_model_emit_mechanical_reverification_claim: TestClaimEvalSubject<Node> = eval_test_claim_subject(
   claim: claim_rust_language_model_emit_mechanical_reverification,
   context: subsumption_context(),
   tree: subsumption_inferred_tree(
     root: subsumption_receipt_node(row: rust_language_model_emit_subsumption)
   ),
-  evaluator_pin: subsumption_evaluator_pin
+  evaluator_pin: ^subsumption_evaluator_pin
 )
-
 
 data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_rust_language_model_emit_mechanical_reverification_claim
 )
 
-
 fn rust_language_model_emit_observed_before_value() -> Set<DiffId> {
   Set {
     member: fn(d) {
-      d.id == emit_rust_template_leaf_fix ||
-        d.id == emit_rust_name_dispatch_leaf_fix
+      d.id == ^emit_rust_template_leaf_fix ||
+        d.id == ^emit_rust_name_dispatch_leaf_fix
     }
   }
 }
 
-
 data rust_language_model_emit_observed_before: Set<DiffId> = rust_language_model_emit_observed_before_value()
-
 
 fn rust_language_model_emit_observed_after_value() -> Set<DiffId> {
   Set {
@@ -507,13 +443,11 @@ fn rust_language_model_emit_observed_after_value() -> Set<DiffId> {
   }
 }
 
-
 data rust_language_model_emit_observed_after: Set<DiffId> = rust_language_model_emit_observed_after_value()
 
-
 data rust_language_model_emit_lens_ci_report: MechanicalReverificationRun = MechanicalReverificationRun {
-  test_claim: TestClaimId { id: rust_language_model_emit_mechanical_reverification_claim },
-  applied_root_fix: DiffId { id: rust_language_model_emit_root_fix },
+  test_claim: TestClaimId { id: ^rust_language_model_emit_mechanical_reverification_claim },
+  applied_root_fix: DiffId { id: ^rust_language_model_emit_root_fix },
   execution: mechanical_reverification_execution_for_run(
     run: run_rust_language_model_emit_mechanical_reverification_claim
   ),
@@ -521,12 +455,10 @@ data rust_language_model_emit_lens_ci_report: MechanicalReverificationRun = Mech
   findings_after: rust_language_model_emit_observed_after
 }
 
-
 data verdict_rust_language_model_emit_subsumption: MechanicalReverificationVerdict = mechanical_reverification_verdict(
   row: rust_language_model_emit_subsumption,
   run: rust_language_model_emit_lens_ci_report
 )
-
 
 data claim_rust_language_model_emit_subsumption_reverifies: TestClaim = StructuralEqualsClaim {
   label: "dissolution subsumption rust LanguageModel emit row verifies Lens-CI verdict",
@@ -536,16 +468,14 @@ data claim_rust_language_model_emit_subsumption_reverifies: TestClaim = Structur
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
-
 data subject_rust_language_model_emit_subsumption_reverifies: TestClaimEvalSubject<Node> = eval_test_claim_subject(
   claim: claim_rust_language_model_emit_subsumption_reverifies,
   context: subsumption_context(),
   tree: subsumption_inferred_tree(
     root: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption)
   ),
-  evaluator_pin: subsumption_evaluator_pin
+  evaluator_pin: ^subsumption_evaluator_pin
 )
-
 
 data run_rust_language_model_emit_subsumption_reverifies: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_rust_language_model_emit_subsumption_reverifies

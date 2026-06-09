@@ -55,25 +55,21 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { StructuralPropertyWitness }
-data identity_mvp_source_atom: Symbol = identity_mvp_source_atom
-data identity_mvp_other_atom: Symbol = identity_mvp_other_atom
-data identity_mvp_closed_candidates: Symbol = identity_mvp_closed_candidates
-data identity_mvp_wrong_property: Symbol = identity_mvp_wrong_property
 fn identity_source_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: identity_mvp_source_atom } },
+    kind: TypeNode { connective: Atom { identity: ^identity_mvp_source_atom } },
     children: []
   }
 }
 fn identity_other_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: identity_mvp_other_atom } },
+    kind: TypeNode { connective: Atom { identity: ^identity_mvp_other_atom } },
     children: []
   }
 }
 fn identity_closedness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: identity_mvp_closed_candidates,
+    property: ^identity_mvp_closed_candidates,
     evidence: identity_source_node()
   }
 }
@@ -92,7 +88,7 @@ fn constraint_predicate() -> PreservationPredicate {
 fn unknown_rule_predicate() -> PreservationPredicate {
   PreservationPredicate {
     algebra: identity_source_node(),
-    preservation_rule: identity_mvp_wrong_property
+    preservation_rule: ^identity_mvp_wrong_property
   }
 }
 fn candidate_set_identity_single() -> CandidateSet {
@@ -121,7 +117,7 @@ fn valid_identity_witness() -> StructuralPropertyWitness {
 }
 fn mismatched_property_witness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: identity_mvp_wrong_property,
+    property: ^identity_mvp_wrong_property,
     evidence: identity_source_node()
   }
 }

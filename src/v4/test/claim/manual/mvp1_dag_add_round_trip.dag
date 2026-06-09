@@ -4,9 +4,7 @@
 //   normalized structural compare == canonical dag_mvp1 add IR; grammar_inverse validates serialize row.
 // Anchor: ctrl#1489; ingest = coercion reversed (06_translate), not parallel parse engine.
 
-
 module v4.test.claim.manual.mvp1_dag_add_round_trip
-
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -18,20 +16,16 @@ import v4.compiler.translate {
 }
 import v4.extdeps.languages.dag {
   dag_inhabitant_atom,
-  dag_inhabitant_int,
   dag_mvp1_fixture_emitted_add_fn,
   dag_mvp1_fixture_int_inhabitant,
-  dag_mvp1_target_model,
-  dag_surface_spelling_int
+  dag_mvp1_target_model
 }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.std.cardinality { termination_proof_witness_for_node }
 import v4.std.collection { Map }
 import v4.std.constraints {
   CanonicalGrounding,
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
+  CanonicalGroundingWitness
 }
 import v4.std.coercion { CoercionQuality, Exact, Identity, Widened }
 import v4.std.diagnostic {
@@ -48,16 +42,9 @@ import v4.std.logic { Bool }
 import v4.std.node { Node }
 import v4.std.target_model { TargetModel }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-
-
-data mvp1_dag_grounding_miss: Symbol = mvp1_dag_grounding_miss
-
-
 data mvp1_dag_emitted_root: Node = dag_mvp1_fixture_emitted_add_fn
 
-
 data mvp1_dag_target_model: TargetModel = dag_mvp1_target_model()
-
 
 fn mvp1_dag_canonical_grounding(
   node: Node,
@@ -67,17 +54,16 @@ fn mvp1_dag_canonical_grounding(
     node: node,
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
+        property: ^constraint_property_being_canonical,
         evidence: algebra
       },
       closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
+        property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
     }
   }
 }
-
 
 fn mvp1_dag_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   if node == dag_mvp1_fixture_emitted_add_fn {
@@ -94,14 +80,14 @@ fn mvp1_dag_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: node
       )
     }
-  } else if node == dag_inhabitant_atom(id: dag_inhabitant_int) {
+  } else if node == dag_inhabitant_atom(id: ^dag_inhabitant_int) {
     Holds {
       value: mvp1_dag_canonical_grounding(
         node: node,
         algebra: dag_mvp1_fixture_int_inhabitant
       )
     }
-  } else if node == dag_inhabitant_atom(id: dag_surface_spelling_int) {
+  } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
     Holds {
       value: mvp1_dag_canonical_grounding(
         node: node,
@@ -111,14 +97,13 @@ fn mvp1_dag_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   } else {
     Violates {
       diagnostic: Diagnostic {
-        reason: mvp1_dag_grounding_miss,
+        reason: ^mvp1_dag_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
 }
-
 
 fn mvp1_dag_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   match mvp1_dag_canonical_grounding_for(node: node) {
@@ -137,11 +122,9 @@ fn mvp1_dag_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   }
 }
 
-
 fn mvp1_dag_facts_lookup(key: Node) -> Witness<InferredFacts> {
   mvp1_dag_inferred_facts_for(node: key)
 }
-
 
 data mvp1_dag_inferred_tree: InferredTree = InferredTree {
   root: mvp1_dag_emitted_root,
@@ -150,14 +133,11 @@ data mvp1_dag_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-
 fn anchor_mvp1_dag_emit_accepts() -> Outcome<TargetSource> {
   emit(tree: mvp1_dag_inferred_tree, target: mvp1_dag_target_model)
 }
 
-
 data mvp1_dag_emit_receipt: Outcome<TargetSource> = anchor_mvp1_dag_emit_accepts()
-
 
 fn mvp1_dag_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   match q {
@@ -166,7 +146,6 @@ fn mvp1_dag_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
     Widened => false
   }
 }
-
 
 fn mvp1_dag_emit_matches_serialize_holds() -> Bool {
   match target_serialize_source_from_model(
@@ -183,7 +162,6 @@ fn mvp1_dag_emit_matches_serialize_holds() -> Bool {
   }
 }
 
-
 fn mvp1_dag_grammar_inverse_holds() -> Bool {
   match grammar_inverse_source_validated(
     target: mvp1_dag_target_model,
@@ -193,7 +171,6 @@ fn mvp1_dag_grammar_inverse_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 fn mvp1_dag_ingest_via_coerce_matches_canonical() -> Bool {
   match coerce_grounded_node(
@@ -209,12 +186,10 @@ fn mvp1_dag_ingest_via_coerce_matches_canonical() -> Bool {
   }
 }
 
-
 // R2 keystone — emit(add) must match grammar-inverse serialize (shared 06_translate path).
 fn mvp1_dag_emit_add_fn_accepts_holds() -> Bool {
   mvp1_dag_emit_matches_serialize_holds()
 }
-
 
 // RTADD round-trip: emit(add) → ingest (coerce/find_witness fold) → normalized compare == canonical IR.
 fn mvp1_dag_add_emit_ingest_round_trip_holds() -> Bool {

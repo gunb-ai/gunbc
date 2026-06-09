@@ -54,23 +54,14 @@ type TestClaimSubjectRosterFamilyReceipt {
   unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow>
   report: CorpusEvalReport
 }
-
-
-data testclaim_subject_roster_family_node_runtime_value: Symbol = testclaim_subject_roster_family_node_runtime_value
-data testclaim_subject_roster_run_test_claim: Symbol = run_test_claim
-data testclaim_subject_roster_family_ci_pipeline: Symbol = testclaim_subject_roster_family_ci_pipeline
-data testclaim_subject_roster_family_non_runtime_value: Symbol = testclaim_subject_roster_family_non_runtime_value
-data testclaim_subject_roster_unsupported_until_runner_projection_lands: Symbol = testclaim_subject_roster_unsupported_until_runner_projection_lands
-
-
 data testclaim_subject_roster_unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow> = [
   TestClaimSubjectRosterUnsupportedRow {
-    subject_family: testclaim_subject_roster_family_ci_pipeline,
-    reason: testclaim_subject_roster_unsupported_until_runner_projection_lands
+    subject_family: ^testclaim_subject_roster_family_ci_pipeline,
+    reason: ^testclaim_subject_roster_unsupported_until_runner_projection_lands
   },
   TestClaimSubjectRosterUnsupportedRow {
-    subject_family: testclaim_subject_roster_family_non_runtime_value,
-    reason: testclaim_subject_roster_unsupported_until_runner_projection_lands
+    subject_family: ^testclaim_subject_roster_family_non_runtime_value,
+    reason: ^testclaim_subject_roster_unsupported_until_runner_projection_lands
   }
 ]
 
@@ -140,8 +131,8 @@ fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
 fn manual_testclaim_subject_roster_family_receipt() -> TestClaimSubjectRosterFamilyReceipt {
   let runs = run_node_runtime_value_subjects(subjects: manual_corpus_node_subject_rows)
   TestClaimSubjectRosterFamilyReceipt {
-    subject_family: testclaim_subject_roster_family_node_runtime_value,
-    run_family: testclaim_subject_roster_run_test_claim,
+    subject_family: ^testclaim_subject_roster_family_node_runtime_value,
+    run_family: ^run_test_claim,
     subjects: manual_corpus_node_subject_rows,
     runs: runs,
     unsupported_rows: testclaim_subject_roster_unsupported_rows,

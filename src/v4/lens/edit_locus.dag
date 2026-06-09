@@ -47,14 +47,9 @@ type EditLocusBinding {
 type EditLocusRead {
   path_regex_matches: fn(RepoPath, PathRegex) -> Bool
 }
-
-data edit_locus_reason_no_match: Symbol = edit_locus_reason_no_match
-data edit_locus_reason_ambiguous: Symbol = edit_locus_reason_ambiguous
-
-
 fn edit_locus_no_match_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: edit_locus_reason_no_match,
+    reason: ^edit_locus_reason_no_match,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
       children: []
@@ -66,7 +61,7 @@ fn edit_locus_no_match_diagnostic() -> Diagnostic {
 
 fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: edit_locus_reason_ambiguous,
+    reason: ^edit_locus_reason_ambiguous,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
       children: []

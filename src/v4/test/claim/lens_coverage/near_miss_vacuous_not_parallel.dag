@@ -19,11 +19,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data near_miss_vacuous_symbol: Symbol = near_miss_vacuous_symbol
-
 data near_miss_vacuous_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: near_miss_vacuous_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^near_miss_vacuous_symbol } },
   children: []
 }
 
