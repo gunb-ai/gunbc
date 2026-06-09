@@ -40,7 +40,7 @@ import v4.std.integer_value_set {
   integer_value_set_kind_unbounded
 }
 import v4.std.model_core { ModelCoreFactAxisEncoding, ModelCoreFactAxisSurfaceSpelling }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.diagnostic { Accepted, Rejected }
 
 fn control_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
@@ -222,6 +222,53 @@ data witness_project_to_core_rejects_nested_core_difference: Bool = match find_w
     closedness_evidence: nested_project_to_core_node(nested_core: ^nested_wrong_core, nested_surface: ^nested_surface)
   ),
   derivation_algebra: nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_surface),
+  multiplicity_policy: UniqueOnly
+) {
+  Accepted { value: _, diagnostics: _ } => false
+  Rejected { diagnostics: _ } => true
+}
+
+data witness_project_to_core_rejects_different_connective_same_core_children: Bool = match find_witness_derives(
+  source_facts: Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
+      }
+    ]
+  },
+  candidates: control_candidate_set(
+    candidates: [
+      Node {
+        kind: TypeNode { connective: Disj },
+        children: [
+          Edge {
+            label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
+          }
+        ]
+      }
+    ],
+    closedness_evidence: Node {
+      kind: TypeNode { connective: Disj },
+      children: [
+        Edge {
+          label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
+        }
+      ]
+    }
+  ),
+  derivation_algebra: Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
+      }
+    ]
+  },
   multiplicity_policy: UniqueOnly
 ) {
   Accepted { value: _, diagnostics: _ } => false
