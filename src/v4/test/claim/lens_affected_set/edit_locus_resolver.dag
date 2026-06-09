@@ -19,7 +19,6 @@ import v4.compiler.source_authority {
   DagSourceArtifact,
   source_ir_node_artifact_provenance
 }
-import v4.std.artifact { Artifact, SourceFile }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty, count_equal, length }
@@ -38,30 +37,22 @@ import v4.test.claim.lens_common.infer_fixture {
 }
 
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.dag"
-data edit_locus_path_source_producer_fixture: RepoPath = "src/v4/test/claim/lens_affected_set/source_producer_fixture.dag"
+data edit_locus_path_source_authority_parsed_source: RepoPath = "source-authority://parsed-dag-source"
 data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
 data edit_locus_source_producer_fixture_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
 data edit_locus_source_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + y }"
 
-data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
-  kind: SourceFile,
-  id: ^edit_locus_source_producer_fixture_artifact,
-  file_path: edit_locus_path_source_producer_fixture
-}
-
 data edit_locus_source_producer_fixture_source_artifact: DagSourceArtifact = DagSourceArtifact {
-  source: edit_locus_source_producer_fixture_source,
-  artifact: edit_locus_source_producer_fixture_artifact
+  source: edit_locus_source_producer_fixture_source
 }
 
 data edit_locus_source_producer_malformed_source_artifact: DagSourceArtifact = DagSourceArtifact {
-  source: edit_locus_source_producer_malformed_source,
-  artifact: edit_locus_source_producer_fixture_artifact
+  source: edit_locus_source_producer_malformed_source
 }
 
 data edit_locus_source_producer_git_diff: GitDiffNameOnly = GitDiffNameOnly {
-  changed_paths: [edit_locus_path_source_producer_fixture]
+  changed_paths: [edit_locus_path_source_authority_parsed_source]
 }
 
 fn edit_locus_fixture_path_regex_matches(changed: RepoPath, pattern: PathRegex) -> Bool {
@@ -142,7 +133,7 @@ fn edit_locus_source_provenance_producer_holds() -> Bool {
     source_artifact: edit_locus_source_producer_fixture_source_artifact
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
-      provenance.artifact.file_path == edit_locus_path_source_producer_fixture
+      provenance.artifact.file_path == edit_locus_path_source_authority_parsed_source
     Rejected { diagnostics: _ } => false
   }
 }
