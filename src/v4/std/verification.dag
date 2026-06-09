@@ -517,30 +517,27 @@ type UnifiedTestClaim
       claim: TestClaim
       transport: TestClaimTransportMode
     }
-  | BoolWitness {
-      entry: String
-      function: Symbol
-    }
+  | BoolWitnessClaim { witness: BoolWitness }
 
 
 fn unified_test_claim_modality(c: UnifiedTestClaim) -> UnifiedTestClaimModality {
   match c {
     NodeCorpus { claim: _, transport: _ } => UnifiedNodeCorpusModality
-    BoolWitness { entry: _, function: _ } => UnifiedBoolWitnessModality
+    BoolWitnessClaim { witness: _ } => UnifiedBoolWitnessModality
   }
 }
 
 
 fn bool_witness_descriptor(w: BoolWitness) -> UnifiedTestClaim {
-  BoolWitness { entry: w.entry, function: w.function }
+  BoolWitnessClaim { witness: w }
 }
 
 
 // Arm-specific projection — Rejected on NodeCorpus (no fabricated empty String/Symbol).
 fn unified_test_claim_bool_witness(c: UnifiedTestClaim) -> Outcome<BoolWitness> {
   match c {
-    BoolWitness { entry: e, function: f } =>
-      Accepted { value: BoolWitness { entry: e, function: f }, diagnostics: None }
+    BoolWitnessClaim { witness: w } =>
+      Accepted { value: w, diagnostics: None }
     NodeCorpus { claim: _, transport: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(d: unified_test_claim_bool_witness_absent_diagnostic())

@@ -22,6 +22,7 @@ import v4.std.verification {
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
 import v4.test.claim.workflow.v4_roster_pilot {
   bool_witness_from_roster_row,
+  v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds,
   v4_roster_pilot_row_edit_locus_narrow
 }
 
@@ -82,7 +83,8 @@ fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
 
 
 fn substrate_equivalence_holds() -> Bool {
-  substrate_equivalence_roster_projection_preserves_entry_function()
+  v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds()
+    && substrate_equivalence_roster_projection_preserves_entry_function()
     && substrate_equivalence_bool_modality_discriminates()
     && substrate_equivalence_node_corpus_modality_discriminates()
     && substrate_equivalence_unified_claim_preserves_bool_fields()
