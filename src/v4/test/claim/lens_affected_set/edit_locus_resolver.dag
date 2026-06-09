@@ -15,23 +15,9 @@ import v4.lens.edit_locus {
   resolve_edit_locus
 }
 import v4.compiler.source_authority {
-  CanonicalDagSourceEmissionLaw,
   DagSource,
-  DagSemanticIr,
   DagSourceArtifact,
-  DagSourceAst,
-  DeterministicDagSourceSerializerLaw,
-  NormalizedDagSourceAst,
-  NormalizedDagSourceParsePrintLaw,
-  NormalizedSourceAstEqual,
-  SemanticIrEqual,
-  SourceAstEqual,
-  SourceAuthorityRoundTripLaw,
-  source_ir_node_artifact_provenance_from_law
-}
-import v4.extdeps.languages.dag {
-  dag_mvp1_source_text,
-  dag_mvp1_target_model
+  source_ir_node_artifact_provenance
 }
 import v4.std.artifact { Artifact, SourceFile }
 import v4.std.diagnostic { Accepted, Rejected }
@@ -55,7 +41,8 @@ data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.d
 data edit_locus_path_source_producer_fixture: RepoPath = "src/v4/test/claim/lens_affected_set/source_producer_fixture.dag"
 data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
-data edit_locus_source_producer_fixture_source: DagSource = dag_mvp1_source_text
+data edit_locus_source_producer_fixture_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
+data edit_locus_source_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + y }"
 
 data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -68,30 +55,9 @@ data edit_locus_source_producer_fixture_source_artifact: DagSourceArtifact = Dag
   artifact: edit_locus_source_producer_fixture_artifact
 }
 
-fn edit_locus_source_producer_ir_node() -> Node {
-  dag_mvp1_target_model().bundle
-}
-
-fn edit_locus_source_producer_round_trip_law() -> SourceAuthorityRoundTripLaw {
-  let ir_node = edit_locus_source_producer_ir_node()
-  let ast = DagSourceAst { tree: ir_node }
-  let normalized = NormalizedDagSourceAst { tree: ir_node }
-  let ir = DagSemanticIr { tree: ir_node }
-  SourceAuthorityRoundTripLaw {
-    canonical_source: edit_locus_source_producer_fixture_source,
-    source_law: SourceAstEqual { original: ast, reparsed: ast },
-    semantic_law: SemanticIrEqual { original: ir, reparsed: ir },
-    canonical_source_law: CanonicalDagSourceEmissionLaw {
-      canonical_source: edit_locus_source_producer_fixture_source,
-      serializer_law: DeterministicDagSourceSerializerLaw {},
-      parse_print_law: NormalizedDagSourceParsePrintLaw {
-        normalized_source_law: NormalizedSourceAstEqual {
-          original: normalized,
-          reparsed: normalized
-        }
-      }
-    }
-  }
+data edit_locus_source_producer_malformed_source_artifact: DagSourceArtifact = DagSourceArtifact {
+  source: edit_locus_source_producer_malformed_source,
+  artifact: edit_locus_source_producer_fixture_artifact
 }
 
 data edit_locus_source_producer_git_diff: GitDiffNameOnly = GitDiffNameOnly {
@@ -172,9 +138,8 @@ fn edit_locus_affected_set_wire_fail_closed_holds() -> Bool {
 }
 
 fn edit_locus_source_provenance_producer_holds() -> Bool {
-  match source_ir_node_artifact_provenance_from_law(
-    source_artifact: edit_locus_source_producer_fixture_source_artifact,
-    law: edit_locus_source_producer_round_trip_law()
+  match source_ir_node_artifact_provenance(
+    source_artifact: edit_locus_source_producer_fixture_source_artifact
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
       provenance.artifact.file_path == edit_locus_path_source_producer_fixture
@@ -187,9 +152,8 @@ fn edit_locus_source_provenance_node_eq(left: Node, right: Node) -> Bool {
 }
 
 fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
-  match source_ir_node_artifact_provenance_from_law(
-    source_artifact: edit_locus_source_producer_fixture_source_artifact,
-    law: edit_locus_source_producer_round_trip_law()
+  match source_ir_node_artifact_provenance(
+    source_artifact: edit_locus_source_producer_fixture_source_artifact
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
       let producer_graph = claim_inferred_tree(
@@ -219,9 +183,19 @@ fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
   }
 }
 
+fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
+  match source_ir_node_artifact_provenance(
+    source_artifact: edit_locus_source_producer_malformed_source_artifact
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 data edit_locus_narrow_resolution_claim_passes: Bool = edit_locus_narrow_resolution_holds()
 data edit_locus_fail_closed_claim_passes: Bool = edit_locus_fail_closed_holds()
 data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_wire_holds()
 data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
 data edit_locus_source_provenance_producer_claim_passes: Bool = edit_locus_source_provenance_producer_holds()
 data edit_locus_source_provenance_affected_set_wire_claim_passes: Bool = edit_locus_source_provenance_affected_set_wire_holds()
+data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes: Bool = edit_locus_source_provenance_producer_rejects_malformed_source_holds()
