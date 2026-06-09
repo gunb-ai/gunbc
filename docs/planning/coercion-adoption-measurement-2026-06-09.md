@@ -41,9 +41,9 @@ lands (Ratified Q4 gate in std/diagnostic.dag).
 (the source facts) that translate's `coerce_grounded_node` later consumes.  
 **Gap:** By design. `04_infer` is the grounding authority, not a coercion consumer. The
 `canonical_grounding_admits_infer_facts` admission gate uses `well_formed` not `find_witness`.
-If a call-arg type-compatibility check (enforcement AIM, see memory) ever lands in infer,
-it _should_ call `find_witness` (or `coercion_fold`) to check assignability — that is the
-remaining adoption gap. Currently blocked on enforcement AIM operator GO.
+If the direct-call arg-compatibility check tracked in `ROADMAP.md` (`PD-3-DOGFOOD` row)
+ever lands in infer, it _should_ call `find_witness` (or `coercion_fold`) to check
+assignability — that is the remaining adoption gap.
 
 ---
 
