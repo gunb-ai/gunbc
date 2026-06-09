@@ -8,8 +8,8 @@
 
 | artifact | before | after |
 | -------- | ------ | ----- |
-| `src/v4/std/verification.dag` | `TestClaim` coproduct only | + `BoolWitness`, `TestClaimTransportMode`, `UnifiedTestClaimModality`, `UnifiedTestClaim` (both arms), modality + accessor fns |
-| `src/v4/test/claim/workflow/v4_roster_pilot.dag` | `V4RosterPilotClaimRunRow` list only | + `bool_witness_from_roster_row` mechanical projection |
+| `src/v4/std/verification.dag` | `TestClaim` coproduct only | + `BoolWitness` (`function: Symbol`), `TestClaimTransportMode`, `UnifiedTestClaimModality`, `UnifiedTestClaim` (both arms, dissolution receipts), `unified_test_claim_bool_witness` fail-closed `Outcome` projection |
+| `src/v4/test/claim/workflow/v4_roster_pilot.dag` | `V4RosterPilotClaimRunRow` list only | + `function_symbol: Symbol` pins per row, `bool_witness_from_roster_row` mechanical projection (`function` String retained for shell transport) |
 | `src/v4/test/claim/workflow/unified_test_claim_substrate_equivalence.dag` | absent | Phase 1 compile-time equivalence tranche (`substrate_equivalence_holds`) |
 
 ## Explicit non-changes (this PR)
