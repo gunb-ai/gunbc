@@ -52,14 +52,18 @@ fn substrate_equivalence_roster_projection_preserves_entry_function() -> Bool {
 
 
 fn substrate_equivalence_bool_modality_discriminates() -> Bool {
-  unified_test_claim_modality(c: substrate_equivalence_sample_bool_unified_claim())
-    == UnifiedBoolWitnessModality
+  match unified_test_claim_modality(c: substrate_equivalence_sample_bool_unified_claim()) {
+    UnifiedBoolWitnessModality => true
+    UnifiedNodeCorpusModality => false
+  }
 }
 
 
 fn substrate_equivalence_node_corpus_modality_discriminates() -> Bool {
-  unified_test_claim_modality(c: substrate_equivalence_sample_node_corpus_claim())
-    == UnifiedNodeCorpusModality
+  match unified_test_claim_modality(c: substrate_equivalence_sample_node_corpus_claim()) {
+    UnifiedNodeCorpusModality => true
+    UnifiedBoolWitnessModality => false
+  }
 }
 
 
