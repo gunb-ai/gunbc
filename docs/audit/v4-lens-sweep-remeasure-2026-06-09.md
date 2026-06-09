@@ -24,6 +24,16 @@ host gate:
   (`affected_testgen_claim_run_rows`,
   `affected_testgen_claim_run_row_count = "6"`)
 
+For the affected-testgen half specifically, the host command above projects and
+checks the six rows through `scripts/v4-affected-set-node-frontier-gate.sh`:
+`list_affected_testgen_row_members` reads `affected_testgen_claim_run_rows`,
+`project_affected_testgen_row` resolves `affected_testgen_gate_entry` to
+`src/v4/test/claim/workflow/affected_testgen_ci_runner.dag`, each projected
+`function` is executed with `gunbc run --claim-run`, `--perturb-check` rewrites
+that same function body to `false`, and the script compares the projected count
+to `affected_testgen_claim_run_row_count` before printing
+`::notice title=affected-testgen::6 discriminating witness(es) passed`.
+
 Raw local logs were captured at:
 
 - `/tmp/bright-pike-883-v4-compile.log`
