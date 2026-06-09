@@ -35,8 +35,14 @@ type SchedulerDependencyEndpointSide
 
 type SchedulerMissingDependencyEndpointRecord {
   dependency: DependencyView
-  endpoint: Node
   side: SchedulerDependencyEndpointSide
+}
+
+fn scheduler_missing_dependency_endpoint_node(record: SchedulerMissingDependencyEndpointRecord) -> Node {
+  match record.side {
+    SchedulerDependencySourceEndpoint {} => record.dependency.source
+    SchedulerDependencyDependentEndpoint {} => record.dependency.dependent
+  }
 }
 
 // 🟡 coproduct dissolution — feature:scheduler-blocked-evidence-kind — consumer:scheduler_plan_from_state
@@ -125,7 +131,6 @@ fn scheduler_append_missing_dependency_source(
       xs: endpoints,
       item: SchedulerMissingDependencyEndpointRecord {
         dependency: dependency,
-        endpoint: dependency.source,
         side: SchedulerDependencySourceEndpoint {}
       }
     )
@@ -144,7 +149,6 @@ fn scheduler_append_missing_dependency_dependent(
       xs: endpoints,
       item: SchedulerMissingDependencyEndpointRecord {
         dependency: dependency,
-        endpoint: dependency.dependent,
         side: SchedulerDependencyDependentEndpoint {}
       }
     )

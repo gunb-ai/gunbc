@@ -28,6 +28,7 @@ import v4.workflow.scheduler {
   runnable_frontier_from_dependencies,
   scheduler_plan,
   scheduler_plan_from_dependencies,
+  scheduler_missing_dependency_endpoint_node,
   scheduler_step_plan_from_dependencies
 }
 
@@ -147,6 +148,21 @@ data scheduler_missing_dependent_dependencies: List<DependencyView> = [
   scheduler_build_to_emit_dependency
 ]
 
+data scheduler_missing_source_endpoint_record: SchedulerMissingDependencyEndpointRecord = SchedulerMissingDependencyEndpointRecord {
+  dependency: DependencyView {
+    source: scheduler_emit_node,
+    dependent: scheduler_build_node,
+    kind: DataDependsOn,
+    usage_site: scheduler_build_node
+  },
+  side: SchedulerDependencySourceEndpoint {}
+}
+
+data scheduler_missing_dependent_endpoint_record: SchedulerMissingDependencyEndpointRecord = SchedulerMissingDependencyEndpointRecord {
+  dependency: scheduler_build_to_emit_dependency,
+  side: SchedulerDependencyDependentEndpoint {}
+}
+
 fn scheduler_initial_frontier() -> RunnableFrontier {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
@@ -215,18 +231,7 @@ fn scheduler_missing_prerequisite_blocks_with_evidence() -> Bool {
   ) {
     SchedulerPlanComplete { layers: _, scheduled: _ } => false
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerMissingDependencyEndpoint { endpoints: endpoints }, scheduled: scheduled, remaining: remaining, layers: layers } => endpoints == [
-      SchedulerMissingDependencyEndpointRecord {
-        dependency: DependencyView {
-          source: scheduler_emit_node,
-          dependent: scheduler_build_node,
-          kind: DataDependsOn,
-          usage_site: scheduler_build_node
-        },
-        endpoint: scheduler_emit_node,
-        side: SchedulerDependencySourceEndpoint {}
-      }
-    ] && scheduled == [] && remaining == [scheduler_build_node] && layers == []
+    SchedulerPlanBlocked { evidence: SchedulerMissingDependencyEndpoint { endpoints: endpoints }, scheduled: scheduled, remaining: remaining, layers: layers } => endpoints == [scheduler_missing_source_endpoint_record] && scheduler_missing_dependency_endpoint_node(record: scheduler_missing_source_endpoint_record) == scheduler_emit_node && scheduled == [] && remaining == [scheduler_build_node] && layers == []
   }
 }
 
@@ -238,13 +243,7 @@ fn scheduler_missing_dependent_endpoint_blocks_instead_of_completing() -> Bool {
   ) {
     SchedulerPlanComplete { layers: _, scheduled: _ } => false
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerMissingDependencyEndpoint { endpoints: endpoints }, scheduled: scheduled, remaining: remaining, layers: layers } => endpoints == [
-      SchedulerMissingDependencyEndpointRecord {
-        dependency: scheduler_build_to_emit_dependency,
-        endpoint: scheduler_emit_node,
-        side: SchedulerDependencyDependentEndpoint {}
-      }
-    ] && scheduled == [] && remaining == [scheduler_build_node] && layers == []
+    SchedulerPlanBlocked { evidence: SchedulerMissingDependencyEndpoint { endpoints: endpoints }, scheduled: scheduled, remaining: remaining, layers: layers } => endpoints == [scheduler_missing_dependent_endpoint_record] && scheduler_missing_dependency_endpoint_node(record: scheduler_missing_dependent_endpoint_record) == scheduler_emit_node && scheduled == [] && remaining == [scheduler_build_node] && layers == []
   }
 }
 
