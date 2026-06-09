@@ -224,6 +224,7 @@ type TargetAtomRealization {
 }
 
 data target_atom_realization_lookup_miss: Symbol = target_atom_realization_lookup_miss
+data target_atom_realization_catalog_row_decode_invalid: Symbol = target_atom_realization_catalog_row_decode_invalid
 
 data target_model_edge_value_expression: Symbol = target_model_edge_value_expression
 
@@ -878,7 +879,7 @@ fn target_atom_realization_catalog_row_decode_invalid_diagnostic(
   source_carrier: Node
 ) -> Diagnostic {
   Diagnostic {
-    reason: ^target_atom_realization_catalog_row_decode_invalid,
+    reason: target_atom_realization_catalog_row_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1167,6 +1168,8 @@ fn target_atom_realization_lookup_in_catalog_node(
 
 
 data target_function_signature_realization_lookup_miss: Symbol = target_function_signature_realization_lookup_miss
+data target_function_signature_realization_row_decode_invalid: Symbol = target_function_signature_realization_row_decode_invalid
+data target_function_boundary_site_decode_invalid: Symbol = target_function_boundary_site_decode_invalid
 
 // 🟢 terminal coproduct — fn entry/exit site discriminator. The Arrow connective has exactly two
 // boundary roles (domain = Param, codomain = Return); the axis is closed by Arrow's shape, so there
@@ -1217,7 +1220,7 @@ fn target_function_signature_realization_lookup_ambiguous_diagnostic(source_carr
 
 fn target_function_signature_realization_row_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: ^target_function_signature_realization_row_decode_invalid,
+    reason: target_function_signature_realization_row_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1233,7 +1236,7 @@ fn target_function_signature_realization_target_model_bundle_mismatch_diagnostic
 
 fn target_function_boundary_site_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
-    reason: ^target_function_boundary_site_decode_invalid,
+    reason: target_function_boundary_site_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
