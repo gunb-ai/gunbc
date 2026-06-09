@@ -29,11 +29,7 @@ type QualifiedName
   | QnCons { head: Symbol, tail: QualifiedName }
 
 // T-8 gate receipt marker — consumed by the 🟡 comment on qualified_name_from_module_node in extdeps/languages/dag.dag; emitted as Diagnostic.reason when segment identity is unavailable pre-T-8.
-data qualified_name_projection_gated: Symbol = qualified_name_projection_gated
 // Emitted in Diagnostic.reason when a node's structure doesn't match the expected fold_list_node shape.
-data qualified_name_structure_invalid: Symbol = qualified_name_structure_invalid
-
-
 // 🟡 gated — free-monoid-alias bootstrap-limitation interim — feature: free-monoid-qualified-name-alias — bind feature:free-monoid-entry-generic-inference — dissolve-on: QualifiedName becomes FreeMonoid<Symbol> — replace with FreeMonoid singleton (Cons { head: sym, tail: Empty }); forbidden: treating this as permanent API separate from FreeMonoid<Symbol>.
 fn qualified_name_singleton(sym: Symbol) -> QualifiedName {
   QnCons { head: sym, tail: QnEmpty }
@@ -82,7 +78,7 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
         QnFoldInit
       } else {
         QnFoldError { diag: Diagnostic {
-          reason: qualified_name_structure_invalid,
+          reason: ^qualified_name_structure_invalid,
           at: node_locus(node: n),
           correction: Unavailable { reason: ExternalContractUnknown }
         }}
@@ -92,14 +88,14 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
         QnFoldDone { qn: QnCons { head: sym, tail: QnEmpty } }
       } else {
         QnFoldError { diag: Diagnostic {
-          reason: qualified_name_structure_invalid,
+          reason: ^qualified_name_structure_invalid,
           at: node_locus(node: n),
           correction: Unavailable { reason: ExternalContractUnknown }
         }}
       }
     _ =>
       QnFoldError { diag: Diagnostic {
-        reason: qualified_name_structure_invalid,
+        reason: ^qualified_name_structure_invalid,
         at: node_locus(node: n),
         correction: Unavailable { reason: ExternalContractUnknown }
       }}
@@ -124,19 +120,19 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                           QnFoldInit => QnFoldHeadSeen { sym: sym }
                           QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: QnCons { head: sym, tail: tail_qn } }
                           _ => QnFoldError { diag: Diagnostic {
-                            reason: qualified_name_structure_invalid,
+                            reason: ^qualified_name_structure_invalid,
                             at: node_locus(node: edge.target),
                             correction: Unavailable { reason: ExternalContractUnknown }
                           }}
                         }
                       _ => QnFoldError { diag: Diagnostic {
-                        reason: qualified_name_structure_invalid,
+                        reason: ^qualified_name_structure_invalid,
                         at: node_locus(node: edge.target),
                         correction: Unavailable { reason: ExternalContractUnknown }
                       }}
                     }
                   _ => QnFoldError { diag: Diagnostic {
-                    reason: qualified_name_structure_invalid,
+                    reason: ^qualified_name_structure_invalid,
                     at: node_locus(node: edge.target),
                     correction: Unavailable { reason: ExternalContractUnknown }
                   }}
@@ -148,32 +144,32 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                       QnFoldInit => QnFoldTailSeen { tail: child_qn }
                       QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: QnCons { head: sym, tail: child_qn } }
                       _ => QnFoldError { diag: Diagnostic {
-                        reason: qualified_name_structure_invalid,
+                        reason: ^qualified_name_structure_invalid,
                         at: node_locus(node: edge.target),
                         correction: Unavailable { reason: ExternalContractUnknown }
                       }}
                     }
                   _ => QnFoldError { diag: Diagnostic {
-                    reason: qualified_name_structure_invalid,
+                    reason: ^qualified_name_structure_invalid,
                     at: node_locus(node: edge.target),
                     correction: Unavailable { reason: ExternalContractUnknown }
                   }}
                 }
               } else {
                 QnFoldError { diag: Diagnostic {
-                  reason: qualified_name_structure_invalid,
+                  reason: ^qualified_name_structure_invalid,
                   at: node_locus(node: edge.target),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 }}
               }
             _ => QnFoldError { diag: Diagnostic {
-              reason: qualified_name_structure_invalid,
+              reason: ^qualified_name_structure_invalid,
               at: node_locus(node: edge.target),
               correction: Unavailable { reason: ExternalContractUnknown }
             }}
           }
         _ => QnFoldError { diag: Diagnostic {
-          reason: qualified_name_structure_invalid,
+          reason: ^qualified_name_structure_invalid,
           at: node_locus(node: edge.target),
           correction: Unavailable { reason: ExternalContractUnknown }
         }}
@@ -193,13 +189,13 @@ fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
         QnFoldDone { qn: qn } => outcome_accepted(value: qn)
         QnFoldError { diag: d } => outcome_rejected(d: d)
         _ => outcome_rejected(d: Diagnostic {
-          reason: qualified_name_structure_invalid,
+          reason: ^qualified_name_structure_invalid,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
         })
       }
     _ => outcome_rejected(d: Diagnostic {
-      reason: qualified_name_structure_invalid,
+      reason: ^qualified_name_structure_invalid,
       at: node_locus(node: root),
       correction: Unavailable { reason: ExternalContractUnknown }
     })

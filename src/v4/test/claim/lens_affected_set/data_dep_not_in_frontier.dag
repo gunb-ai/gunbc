@@ -17,10 +17,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data data_dep_root_symbol: Symbol = data_dep_root_symbol
-data data_dep_child_symbol: Symbol = data_dep_child_symbol
-
 fn data_dep_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -28,13 +24,13 @@ fn data_dep_node(s: Symbol) -> Node {
   }
 }
 
-data data_dep_root: Node = data_dep_node(s: data_dep_root_symbol)
+data data_dep_root: Node = data_dep_node(s: ^data_dep_root_symbol)
 
 data data_dep_dependency: DependencyView = DependencyView {
   source: data_dep_root,
-  dependent: data_dep_node(s: data_dep_child_symbol),
+  dependent: data_dep_node(s: ^data_dep_child_symbol),
   kind: DataDependsOn,
-  usage_site: data_dep_node(s: data_dep_child_symbol)
+  usage_site: data_dep_node(s: ^data_dep_child_symbol)
 }
 
 fn data_dep_not_in_frontier_claim_holds() -> Bool {

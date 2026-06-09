@@ -40,11 +40,8 @@ import v4.test.claim.algebra_laws.nat_semiring {
 
 // Fixture roster anchor: rung × target labels encode (fixture=phase1/nat_semiring, rung, target)
 // per ladder rung specs §2.4 verdict reporting shape and §2.5 worker brief triple.
-
-data phase1_nat_semiring_rung_subject_symbol: Symbol = phase1_nat_semiring_rung_subject_symbol
-
 data phase1_nat_semiring_rung_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: phase1_nat_semiring_rung_subject_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^phase1_nat_semiring_rung_subject_symbol } },
   children: []
 }
 

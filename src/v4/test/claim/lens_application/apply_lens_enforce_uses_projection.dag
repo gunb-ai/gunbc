@@ -26,24 +26,16 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data projection_test_symbol: Symbol = projection_test_symbol
-data projection_section_step: Symbol = projection_section_step
-data projection_section_symbol: Symbol = projection_section_symbol
-data projection_projected_symbol: Symbol = projection_projected_symbol
-data projection_budget_ok: Symbol = projection_budget_ok
-data projection_budget_fail: Symbol = projection_budget_fail
-
 data projection_test_section: Node = Node {
-  kind: TypeNode { connective: Atom { identity: projection_section_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^projection_section_symbol } },
   children: []
 }
 
 data projection_test_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: projection_test_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^projection_test_symbol } },
   children: [
     Edge {
-      label: Named { name: projection_section_step },
+      label: Named { name: ^projection_section_step },
       target: projection_test_section
     }
   ]
@@ -52,19 +44,19 @@ data projection_test_root: Node = Node {
 fn projection_test_read(root: Node) -> Outcome<Symbol> {
   match root.kind {
     TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
-    TypeNode { connective: Conj } => outcome_accepted(value: projection_test_symbol)
-    ComputationNode { behavior: _ } => outcome_accepted(value: projection_test_symbol)
+    TypeNode { connective: Conj } => outcome_accepted(value: ^projection_test_symbol)
+    ComputationNode { behavior: _ } => outcome_accepted(value: ^projection_test_symbol)
   }
 }
 
 data projection_test_lens: Lens<Symbol> = Lens { read: projection_test_read }
 
 fn projection_test_project(output: Symbol) -> Symbol {
-  projection_projected_symbol
+  ^projection_projected_symbol
 }
 
 fn projection_test_violates(output: Symbol, declared: Symbol) -> Bool {
-  output == projection_budget_fail && declared == projection_budget_fail
+  output == ^projection_budget_fail && declared == ^projection_budget_fail
 }
 
 data projection_test_enforcement: LensEnforcement<Symbol, Symbol, Symbol> = LensEnforcement {
@@ -78,7 +70,7 @@ data projection_test_enforceable: EnforceableLens<Symbol, Symbol, Symbol> = Enfo
 }
 
 data projection_test_declaration: DeclarationId = DeclarationId {
-  path: Path { steps: [projection_section_step] }
+  path: Path { steps: [^projection_section_step] }
 }
 
 fn apply_lens_enforce_projection_claim_holds() -> Bool {
@@ -86,11 +78,11 @@ fn apply_lens_enforce_projection_claim_holds() -> Bool {
     enforceable: projection_test_enforceable,
     section: DeclarationScope { declaration: projection_test_declaration },
     root: projection_test_root,
-    budget: projection_budget_ok,
+    budget: ^projection_budget_ok,
     diagnostic_severity: SeverityError {}
   ) {
     Accepted { value: result, diagnostics: _ } =>
-      result.output == projection_section_symbol && result.projected == projection_projected_symbol
+      result.output == ^projection_section_symbol && result.projected == ^projection_projected_symbol
     Rejected { diagnostics: _ } => false
   }
 }

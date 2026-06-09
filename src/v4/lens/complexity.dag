@@ -73,13 +73,6 @@ import v4.std.refinement {
   refined_vacuous_stub_pack
 }
 import v4.std.witness { Holds, Violates, Witness }
-
-
-data complexity_reason_unmodeled_cost_projection: Symbol = complexity_reason_unmodeled_cost_projection
-data complexity_projection_virtual_file: Symbol = complexity_projection_virtual_file
-data complexity_variables_invalid: Symbol = complexity_variables_invalid
-
-
 // Intentionally trivial: routes lens-internal SizeVariable lists through refine (T-12 placeholder).
 // 🟡 gated — feature:complexity-variables-refine-placeholder — bind T-12-COMPLEXITY-PROJECTION — dissolve-on-arrival: replace admits=true with a real SizeVariable-list predicate or remove the refine wrapper once complexity projection no longer needs a Refined carrier; forbidden: permanent vacuous refinement without a dissolution receipt.
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
@@ -88,7 +81,7 @@ fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
 
 
 data complexity_variables_validation: Validation<List<SizeVariable>> = Validation {
-  reason: complexity_variables_invalid,
+  reason: ^complexity_variables_invalid,
   admits: complexity_variables_admits
 }
 
@@ -96,13 +89,13 @@ data complexity_variables_validation: Validation<List<SizeVariable>> = Validatio
 // 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-12-COMPLEXITY-PROJECTION
 // with testgen (T-19); dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
 data complexity_variables_vacuous_validation: VacuousValidation<List<SizeVariable>> = VacuousValidation {
-  reason: complexity_variables_invalid,
+  reason: ^complexity_variables_invalid,
   vacuous: vacuous_admits_marker
 }
 
 
 fn complexity_projection_locus() -> Locus {
-  Textual { file: complexity_projection_virtual_file, extent: WholeFile }
+  Textual { file: ^complexity_projection_virtual_file, extent: WholeFile }
 }
 
 
@@ -303,8 +296,8 @@ fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
 
 fn complexity_projection_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: complexity_reason_unmodeled_cost_projection,
-    at: Textual { file: complexity_projection_virtual_file, extent: WholeFile },
+    reason: ^complexity_reason_unmodeled_cost_projection,
+    at: Textual { file: ^complexity_projection_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

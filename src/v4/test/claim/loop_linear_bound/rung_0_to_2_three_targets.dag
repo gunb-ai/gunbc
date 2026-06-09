@@ -26,13 +26,8 @@ import v4.test.claim.computation_shapes.loop_linear_bound {
   claim_loop_linear_bound_well_formed,
   loop_linear_bound_subject
 }
-
-
-data phase4_loop_linear_bound_rung_subject_symbol: Symbol = phase4_loop_linear_bound_rung_subject_symbol
-
-
 data phase4_loop_linear_bound_rung_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: phase4_loop_linear_bound_rung_subject_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^phase4_loop_linear_bound_rung_subject_symbol } },
   children: []
 }
 

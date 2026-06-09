@@ -30,10 +30,6 @@ import v4.std.verification {
 }
 import v4.std.witness { Witness }
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
-
-data rejecting_lens_claim_symbol: Symbol = rejecting_lens_claim_symbol
-data rejecting_lens_gate_at: Symbol = rejecting_lens_gate_at
-
 data rejecting_lens_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
@@ -43,13 +39,13 @@ data rejecting_lens_target_model_stub: TargetModel = TargetModel {
 }
 
 data rejecting_lens_authority_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: rejecting_lens_claim_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^rejecting_lens_claim_symbol } },
   children: []
 }
 
 fn rejecting_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
-    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: rejecting_lens_gate_at })
+    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: ^rejecting_lens_gate_at })
   )
 }
 

@@ -17,20 +17,13 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data depth_three_step_a: Symbol = depth_three_step_a
-data depth_three_step_b: Symbol = depth_three_step_b
-data depth_three_step_c: Symbol = depth_three_step_c
-data depth_three_original_leaf_symbol: Symbol = depth_three_original_leaf_symbol
-data depth_three_replacement_leaf_symbol: Symbol = depth_three_replacement_leaf_symbol
-
 data depth_three_original_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: depth_three_original_leaf_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^depth_three_original_leaf_symbol } },
   children: []
 }
 
 data depth_three_replacement_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: depth_three_replacement_leaf_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^depth_three_replacement_leaf_symbol } },
   children: []
 }
 
@@ -38,7 +31,7 @@ data depth_three_inner: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: depth_three_step_c },
+      label: Named { name: ^depth_three_step_c },
       target: depth_three_original_leaf
     }
   ]
@@ -48,7 +41,7 @@ data depth_three_middle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: depth_three_step_b },
+      label: Named { name: ^depth_three_step_b },
       target: depth_three_inner
     }
   ]
@@ -58,7 +51,7 @@ data depth_three_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: depth_three_step_a },
+      label: Named { name: ^depth_three_step_a },
       target: depth_three_middle
     }
   ]
@@ -68,17 +61,17 @@ data depth_three_expected_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: depth_three_step_a },
+      label: Named { name: ^depth_three_step_a },
       target: Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: depth_three_step_b },
+            label: Named { name: ^depth_three_step_b },
             target: Node {
               kind: TypeNode { connective: Conj },
               children: [
                 Edge {
-                  label: Named { name: depth_three_step_c },
+                  label: Named { name: ^depth_three_step_c },
                   target: depth_three_replacement_leaf
                 }
               ]
@@ -94,7 +87,7 @@ fn substitute_at_depth_three_claim_holds() -> Bool {
   match substitute_at(
     root: depth_three_root,
     path: Path {
-      steps: [depth_three_step_a, depth_three_step_b, depth_three_step_c]
+      steps: [^depth_three_step_a, ^depth_three_step_b, ^depth_three_step_c]
     },
     replacement: depth_three_replacement_leaf
   ) {

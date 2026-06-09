@@ -27,16 +27,8 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-
-data fact_bundle_cl_symbol: Symbol = fact_bundle_cl_symbol
-data fact_bundle_cl_field_name: Symbol = fact_bundle_cl_field_name
-data fact_bundle_cl_child_symbol: Symbol = fact_bundle_cl_child_symbol
-data fact_bundle_cl_type_sym: Symbol = fact_bundle_cl_type_sym
-data fact_bundle_cl_algebra_sym: Symbol = fact_bundle_cl_algebra_sym
-data fact_bundle_cl_descent_sym: Symbol = fact_bundle_cl_descent_sym
-
 data fact_bundle_cl_child: Node = Node {
-  kind: TypeNode { connective: Atom { identity: fact_bundle_cl_child_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^fact_bundle_cl_child_symbol } },
   children: []
 }
 
@@ -44,21 +36,21 @@ data fact_bundle_cl_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: fact_bundle_cl_field_name },
+      label: Named { name: ^fact_bundle_cl_field_name },
       target: fact_bundle_cl_child
     }
   ]
 }
 
-data fact_bundle_cl_authority: Node = claim_atom_node(s: fact_bundle_cl_symbol)
+data fact_bundle_cl_authority: Node = claim_atom_node(s: ^fact_bundle_cl_symbol)
 
 fn fact_bundle_cl_tree() -> InferredTree {
   claim_inferred_tree(
     root: fact_bundle_cl_root,
     facts: claim_inferred_facts(
-      type_symbol: fact_bundle_cl_type_sym,
-      algebra_symbol: fact_bundle_cl_algebra_sym,
-      descent_symbol: fact_bundle_cl_descent_sym
+      type_symbol: ^fact_bundle_cl_type_sym,
+      algebra_symbol: ^fact_bundle_cl_algebra_sym,
+      descent_symbol: ^fact_bundle_cl_descent_sym
     )
   )
 }

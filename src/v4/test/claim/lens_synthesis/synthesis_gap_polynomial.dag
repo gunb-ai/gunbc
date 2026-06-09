@@ -37,12 +37,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data synthesis_gap_poly_atom_symbol: Symbol = synthesis_gap_poly_atom_symbol
-data synthesis_gap_poly_sentinel_symbol: Symbol = synthesis_gap_poly_sentinel_symbol
-
 data synthesis_gap_poly_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: synthesis_gap_poly_atom_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^synthesis_gap_poly_atom_symbol } },
   children: []
 }
 
@@ -69,7 +65,7 @@ data synthesis_gap_poly_input: Node = Node {
 }
 
 data synthesis_gap_poly_sentinel: Node = Node {
-  kind: TypeNode { connective: Atom { identity: synthesis_gap_poly_sentinel_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^synthesis_gap_poly_sentinel_symbol } },
   children: []
 }
 
