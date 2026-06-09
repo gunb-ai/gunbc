@@ -17,10 +17,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data verified_by_root_symbol: Symbol = verified_by_root_symbol
-data verified_by_child_symbol: Symbol = verified_by_child_symbol
-
 fn verified_by_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -28,13 +24,13 @@ fn verified_by_node(s: Symbol) -> Node {
   }
 }
 
-data verified_by_root: Node = verified_by_node(s: verified_by_root_symbol)
+data verified_by_root: Node = verified_by_node(s: ^verified_by_root_symbol)
 
 data verified_by_dependency: DependencyView = DependencyView {
   source: verified_by_root,
-  dependent: verified_by_node(s: verified_by_child_symbol),
+  dependent: verified_by_node(s: ^verified_by_child_symbol),
   kind: VerifiedBy,
-  usage_site: verified_by_node(s: verified_by_child_symbol)
+  usage_site: verified_by_node(s: ^verified_by_child_symbol)
 }
 
 fn verified_by_in_frontier_claim_holds() -> Bool {

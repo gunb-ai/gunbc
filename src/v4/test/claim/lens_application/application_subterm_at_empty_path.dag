@@ -17,11 +17,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data application_subterm_symbol: Symbol = application_subterm_symbol
-
 data application_subterm_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: application_subterm_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^application_subterm_symbol } },
   children: []
 }
 

@@ -39,12 +39,9 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds, Violates }
-
-data model_core_wave1_payload_fail_atom: Symbol = model_core_wave1_payload_fail_atom
-
 fn model_core_wave1_payload_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: model_core_wave1_payload_fail_atom } },
+    kind: TypeNode { connective: Atom { identity: ^model_core_wave1_payload_fail_atom } },
     children: []
   }
 }

@@ -33,21 +33,13 @@ import v4.std.verification {
   EqualsClaim,
   manual_claim_anchor
 }
-
-
-data loop_linear_bound_body_sym: Symbol = loop_linear_bound_body_sym
-data loop_linear_bound_measure_sym: Symbol = loop_linear_bound_measure_sym
-data loop_linear_bound_pass_sym: Symbol = loop_linear_bound_pass_sym
-data loop_linear_bound_fail_sym: Symbol = loop_linear_bound_fail_sym
-
-
 fn loop_linear_bound_leaf(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
 
 
-data loop_linear_bound_body_leaf: Node = loop_linear_bound_leaf(s: loop_linear_bound_body_sym)
-data loop_linear_bound_measure_leaf: Node = loop_linear_bound_leaf(s: loop_linear_bound_measure_sym)
+data loop_linear_bound_body_leaf: Node = loop_linear_bound_leaf(s: ^loop_linear_bound_body_sym)
+data loop_linear_bound_measure_leaf: Node = loop_linear_bound_leaf(s: ^loop_linear_bound_measure_sym)
 
 
 data loop_linear_bound_body: Node = Node {
@@ -68,12 +60,12 @@ data loop_linear_bound_subject: Node = Node {
 
 
 fn loop_linear_bound_pass_node() -> Node {
-  loop_linear_bound_leaf(s: loop_linear_bound_pass_sym)
+  loop_linear_bound_leaf(s: ^loop_linear_bound_pass_sym)
 }
 
 
 fn loop_linear_bound_fail_node() -> Node {
-  loop_linear_bound_leaf(s: loop_linear_bound_fail_sym)
+  loop_linear_bound_leaf(s: ^loop_linear_bound_fail_sym)
 }
 
 

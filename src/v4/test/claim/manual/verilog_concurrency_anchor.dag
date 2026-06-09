@@ -24,9 +24,6 @@ import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 
 type verilog_anchor_module = VerilogModule
-
-data verilog_anchor_clk: Symbol = verilog_anchor_clk
-data verilog_anchor_q: Symbol = verilog_anchor_q
 data verilog_anchor_comb_assign: NetAssignment = NetAssignment {
   lhs_lexeme: "wire_out",
   rhs_lexeme: "wire_in & enable"
@@ -51,7 +48,7 @@ data verilog_anchor_cost: VerilogCost = VerilogCost {
 data verilog_anchor_module_wave0: verilog_anchor_module = NoPortListModule {
   attributes: NoAttributeInstances,
   module_keyword: ModuleKw,
-  name: verilog_anchor_q,
+  name: ^verilog_anchor_q,
   parameter_port_list: NoModuleParameterPortList,
   items: [
     ContinuousAssignItem {

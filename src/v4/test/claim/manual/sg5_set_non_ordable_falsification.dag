@@ -27,20 +27,16 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data sg5_pass_sym: Symbol = sg5_pass_sym
-data sg5_fail_sym: Symbol = sg5_fail_sym
-
 fn sg5_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg5_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg5_pass_sym } },
     children: []
   }
 }
 
 fn sg5_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg5_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg5_fail_sym } },
     children: []
   }
 }

@@ -46,22 +46,6 @@ import v4.std.verification {
   Boundary,
   manual_claim_anchor
 }
-
-
-data english_ingest_boundary_symbol: Symbol = english_ingest_boundary_symbol
-data english_arbitrary_prose_symbol: Symbol = english_arbitrary_prose_symbol
-data english_shape_b_docs_symbol: Symbol = english_shape_b_docs_symbol
-data english_typed_value_symbol: Symbol = english_typed_value_symbol
-data english_doc_walker_symbol: Symbol = english_doc_walker_symbol
-data english_prose_output_symbol: Symbol = english_prose_output_symbol
-data english_ingest_not_in_lossless_core_reason: Symbol = english_ingest_not_in_lossless_core_reason
-data english_boundary_field: Symbol = english_boundary_field
-data english_payload_field: Symbol = english_payload_field
-data english_typed_value_field: Symbol = english_typed_value_field
-data english_walker_field: Symbol = english_walker_field
-data english_output_field: Symbol = english_output_field
-
-
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
@@ -71,12 +55,12 @@ data arbitrary_english_prose_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: english_boundary_field },
-      target: atom_node(s: english_ingest_boundary_symbol)
+      label: Named { name: ^english_boundary_field },
+      target: atom_node(s: ^english_ingest_boundary_symbol)
     },
     Edge {
-      label: Named { name: english_payload_field },
-      target: atom_node(s: english_arbitrary_prose_symbol)
+      label: Named { name: ^english_payload_field },
+      target: atom_node(s: ^english_arbitrary_prose_symbol)
     },
   ]
 }
@@ -86,12 +70,12 @@ data english_shape_b_docs_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: english_typed_value_field },
-      target: atom_node(s: english_typed_value_symbol)
+      label: Named { name: ^english_typed_value_field },
+      target: atom_node(s: ^english_typed_value_symbol)
     },
     Edge {
-      label: Named { name: english_walker_field },
-      target: atom_node(s: english_doc_walker_symbol)
+      label: Named { name: ^english_walker_field },
+      target: atom_node(s: ^english_doc_walker_symbol)
     },
   ]
 }
@@ -101,12 +85,12 @@ data english_shape_b_docs_output: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: english_typed_value_field },
-      target: atom_node(s: english_typed_value_symbol)
+      label: Named { name: ^english_typed_value_field },
+      target: atom_node(s: ^english_typed_value_symbol)
     },
     Edge {
-      label: Named { name: english_output_field },
-      target: atom_node(s: english_prose_output_symbol)
+      label: Named { name: ^english_output_field },
+      target: atom_node(s: ^english_prose_output_symbol)
     },
   ]
 }
@@ -118,7 +102,7 @@ data test_english_prose_ingest_is_diagnostic: TestClaim = DiagnosticClaim {
   input: arbitrary_english_prose_input,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: english_ingest_not_in_lossless_core_reason,
+        reason: ^english_ingest_not_in_lossless_core_reason,
         at: node_locus(node: arbitrary_english_prose_input),
         correction: Unavailable { reason: AmbiguousIntent }
       }

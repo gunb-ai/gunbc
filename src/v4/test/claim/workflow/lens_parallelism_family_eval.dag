@@ -1,0 +1,47 @@
+// src/v4/test/claim/workflow/lens_parallelism_family_eval.dag
+// Scope: T-38B family CI receipt — lens_parallelism run_test_claim rows gate green over eval_mvp2 wedge.
+// Status: T-22 eval → TestClaimRun → CorpusEvalReport → VerdictTally; host transport via v4_roster_pilot.dag.
+
+module v4.test.claim.workflow.lens_parallelism_family_eval
+
+
+import v4.std.algebra { is_empty }
+import v4.std.logic { Bool }
+import v4.std.nat { Zero }
+import v4.test.claim.lens_parallelism.family_receipt {
+  lens_parallelism_runtime_value_rows
+}
+import v4.test.claim.workflow.testclaim_corpus_runner {
+  CorpusEvalReport,
+  corpus_entries_from_node_runtime_value_runs,
+  corpus_report_tally
+}
+
+
+fn run_lens_parallelism_family_eval() -> CorpusEvalReport {
+  CorpusEvalReport {
+    entries: corpus_entries_from_node_runtime_value_runs(
+      runs: lens_parallelism_runtime_value_rows
+    )
+  }
+}
+
+
+fn lens_parallelism_family_all_pass(report: CorpusEvalReport) -> Bool {
+  let tally = corpus_report_tally(r: report)
+  (tally.fail == Zero) && (tally.deferred == Zero)
+}
+
+
+fn lens_parallelism_family_gate(report: CorpusEvalReport) -> Bool {
+  if is_empty(xs: report.entries) {
+    false
+  } else {
+    lens_parallelism_family_all_pass(report: report)
+  }
+}
+
+
+data witness_lens_parallelism_family_gate_closed: Bool = lens_parallelism_family_gate(
+  report: run_lens_parallelism_family_eval()
+)
