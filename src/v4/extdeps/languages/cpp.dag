@@ -1506,6 +1506,16 @@ fn cpp_sg2_type_expr_lex() -> LexRules {
   ModeledLexRules { root: cpp_sg2_type_expr_lex_rules() }
 }
 
+// SG-2 lex closure — row vocabulary plus every token_class in cpp_sg2_type_expr_lex_rules.
+fn cpp_sg2_type_expr_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      cpp_sg2_type_expr_symbol_authority(sym: sym) ||
+        lex_rule_set_token_class_member(rules: cpp_sg2_type_expr_lex_rules(), token_class: sym)
+    }
+  }
+}
+
 data cpp_sg2_type_alias_text: String = "using Sg2Probe = std::shared_ptr<FooBar<X, Y>>;"
 
 fn cpp_sg2_type_expr_target_model_node(target_profile: Node) -> Node {
