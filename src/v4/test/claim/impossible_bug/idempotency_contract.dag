@@ -46,16 +46,6 @@ import v4.std.verification {
   impossible_bug_reason_idempotency_violation,
   manual_claim_anchor
 }
-
-
-data idempotent_position_symbol: Symbol = idempotent_position_symbol
-data idempotent_effect_symbol: Symbol = idempotent_effect_symbol
-data non_idempotent_effect_symbol: Symbol = non_idempotent_effect_symbol
-data repeated_append_effect_symbol: Symbol = repeated_append_effect_symbol
-data idempotency_position_field: Symbol = idempotency_position_field
-data idempotency_body_field: Symbol = idempotency_body_field
-
-
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
@@ -65,20 +55,20 @@ fn idempotency_contract(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: idempotency_position_field }, target: atom_node(s: idempotent_position_symbol) },
-      Edge { label: Named { name: idempotency_body_field }, target: body },
+      Edge { label: Named { name: ^idempotency_position_field }, target: atom_node(s: ^idempotent_position_symbol) },
+      Edge { label: Named { name: ^idempotency_body_field }, target: body },
     ]
   }
 }
 
 
-data idempotent_inhabitant_input: Node = idempotency_contract(body: atom_node(s: idempotent_effect_symbol))
+data idempotent_inhabitant_input: Node = idempotency_contract(body: atom_node(s: ^idempotent_effect_symbol))
 
 
-data falsification_nonidempotent_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: non_idempotent_effect_symbol))
+data falsification_nonidempotent_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: ^non_idempotent_effect_symbol))
 
 
-data falsification_repeated_append_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: repeated_append_effect_symbol))
+data falsification_repeated_append_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: ^repeated_append_effect_symbol))
 
 
 data claim_idempotent_inhabitant_passes: TestClaim = CompilesClaim {

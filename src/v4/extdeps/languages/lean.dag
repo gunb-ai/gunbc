@@ -267,140 +267,67 @@ type LeanLanguageModel {
   canonical_symbols: Set<Symbol>
   core: ModelCore
 }
-
-
-data lean_language_model_surface_id: Symbol = lean_language_model_surface_id
-
-data lean_surface_spelling_int8: Symbol = lean_surface_spelling_int8
-data lean_surface_spelling_int16: Symbol = lean_surface_spelling_int16
-data lean_surface_spelling_int32: Symbol = lean_surface_spelling_int32
-data lean_surface_spelling_int64: Symbol = lean_surface_spelling_int64
-data lean_surface_spelling_uint8: Symbol = lean_surface_spelling_uint8
-data lean_surface_spelling_uint16: Symbol = lean_surface_spelling_uint16
-data lean_surface_spelling_uint32: Symbol = lean_surface_spelling_uint32
-data lean_surface_spelling_uint64: Symbol = lean_surface_spelling_uint64
-data lean_surface_spelling_usize: Symbol = lean_surface_spelling_usize
-data lean_surface_spelling_bool: Symbol = lean_surface_spelling_bool
-
-data lean_repr_fixed_precision_integer: Symbol = lean_repr_fixed_precision_integer
-data lean_repr_usize_platform_word: Symbol = lean_repr_usize_platform_word
-data lean_repr_bool_inductive: Symbol = lean_repr_bool_inductive
-
-data lean_inhabitant_int8: Symbol = lean_inhabitant_int8
-data lean_inhabitant_int16: Symbol = lean_inhabitant_int16
-data lean_inhabitant_int32: Symbol = lean_inhabitant_int32
-data lean_inhabitant_int64: Symbol = lean_inhabitant_int64
-data lean_inhabitant_uint8: Symbol = lean_inhabitant_uint8
-data lean_inhabitant_uint16: Symbol = lean_inhabitant_uint16
-data lean_inhabitant_uint32: Symbol = lean_inhabitant_uint32
-data lean_inhabitant_uint64: Symbol = lean_inhabitant_uint64
-data lean_inhabitant_usize: Symbol = lean_inhabitant_usize
-data lean_inhabitant_bool: Symbol = lean_inhabitant_bool
-
-data lean_inhabitant_field_atom: Symbol = lean_inhabitant_field_atom
-data lean_inhabitant_field_facts: Symbol = lean_inhabitant_field_facts
-
-data lean_facts_field_surface_spelling: Symbol = lean_facts_field_surface_spelling
-data lean_facts_field_scalar_classifier: Symbol = lean_facts_field_scalar_classifier
-data lean_facts_field_representation: Symbol = lean_facts_field_representation
-
-data lean_scalar_field_classifier: Symbol = lean_scalar_field_classifier
-data lean_scalar_field_kind: Symbol = lean_scalar_field_kind
-data lean_scalar_field_width: Symbol = lean_scalar_field_width
-
-data lean_tag_signed: Symbol = lean_tag_signed
-data lean_tag_unsigned: Symbol = lean_tag_unsigned
-data lean_tag_bits8: Symbol = lean_tag_bits8
-data lean_tag_bits16: Symbol = lean_tag_bits16
-data lean_tag_bits32: Symbol = lean_tag_bits32
-data lean_tag_bits64: Symbol = lean_tag_bits64
-data lean_tag_pointer: Symbol = lean_tag_pointer
-data lean_tag_scalar_int: Symbol = lean_tag_scalar_int
-data lean_tag_scalar_bool: Symbol = lean_tag_scalar_bool
-
 data lean_facts_int8: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_int8,
+  surface_spelling: ^lean_surface_spelling_int8,
   scalar: IntScalar { kind: Signed, width: Bits8 },
-  representation: lean_repr_fixed_precision_integer
+  representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_int16: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_int16,
+  surface_spelling: ^lean_surface_spelling_int16,
   scalar: IntScalar { kind: Signed, width: Bits16 },
-  representation: lean_repr_fixed_precision_integer
+  representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_int32: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_int32,
+  surface_spelling: ^lean_surface_spelling_int32,
   scalar: IntScalar { kind: Signed, width: Bits32 },
-  representation: lean_repr_fixed_precision_integer
+  representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_int64: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_int64,
+  surface_spelling: ^lean_surface_spelling_int64,
   scalar: IntScalar { kind: Signed, width: Bits64 },
-  representation: lean_repr_fixed_precision_integer
+  representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_uint8: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_uint8,
+  surface_spelling: ^lean_surface_spelling_uint8,
   scalar: IntScalar { kind: Unsigned, width: Bits8 },
-  representation: lean_repr_fixed_precision_integer
+  representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_uint16: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_uint16,
+  surface_spelling: ^lean_surface_spelling_uint16,
   scalar: IntScalar { kind: Unsigned, width: Bits16 },
-  representation: lean_repr_fixed_precision_integer
+  representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_uint32: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_uint32,
+  surface_spelling: ^lean_surface_spelling_uint32,
   scalar: IntScalar { kind: Unsigned, width: Bits32 },
-  representation: lean_repr_fixed_precision_integer
+  representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_uint64: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_uint64,
+  surface_spelling: ^lean_surface_spelling_uint64,
   scalar: IntScalar { kind: Unsigned, width: Bits64 },
-  representation: lean_repr_fixed_precision_integer
+  representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_usize: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_usize,
+  surface_spelling: ^lean_surface_spelling_usize,
   scalar: IntScalar { kind: Unsigned, width: Pointer },
-  representation: lean_repr_usize_platform_word
+  representation: ^lean_repr_usize_platform_word
 }
 
 data lean_facts_bool: LeanPrimitiveFacts = LeanPrimitiveFacts {
-  surface_spelling: lean_surface_spelling_bool,
+  surface_spelling: ^lean_surface_spelling_bool,
   scalar: BoolScalar,
-  representation: lean_repr_bool_inductive
+  representation: ^lean_repr_bool_inductive
 }
-
-data lean_token_kw_def: Symbol = lean_token_kw_def
-data lean_token_name_dec: Symbol = lean_token_name_dec
-data lean_token_name_n: Symbol = lean_token_name_n
-data lean_token_type_int32: Symbol = lean_token_type_int32
-data lean_token_numeric_literal: Symbol = lean_token_numeric_literal
-data lean_token_lparen: Symbol = lean_token_lparen
-data lean_token_colon: Symbol = lean_token_colon
-data lean_token_rparen: Symbol = lean_token_rparen
-data lean_token_assign: Symbol = lean_token_assign
-data lean_token_minus: Symbol = lean_token_minus
-data lean_token_kw_termination_by: Symbol = lean_token_kw_termination_by
-
-data lean_production_mvp1_def_dec: Symbol = lean_production_mvp1_def_dec
-
-data lean_surface_def_item: Symbol = lean_surface_def_item
-
-data lean_mvp1_source_literal: Symbol = lean_mvp1_source_literal
-
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
 data lean_mvp1_source_text: String = "def dec (n : Int32) : Int32 := n - 1\n  termination_by n"
-
-data lean_mvp1_parse_fixture_file: Symbol = lean_mvp1_source_literal
-
 data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_int8,
   lean_facts_int16,
@@ -413,14 +340,6 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_usize,
   lean_facts_bool
 ]
-
-
-data lean_witness_integer_commutative_ring: Symbol = lean_witness_integer_commutative_ring
-data lean_witness_bool_boolean_algebra: Symbol = lean_witness_bool_boolean_algebra
-data lean_witness_field_representation: Symbol = lean_witness_field_representation
-data lean_witness_field_signedness: Symbol = lean_witness_field_signedness
-data lean_witness_field_width: Symbol = lean_witness_field_width
-
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Booleans/
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
@@ -441,19 +360,19 @@ fn lean_named_edge(name: Symbol, target: Node) -> Edge {
 
 fn lean_int_kind_node(kind: LeanIntKind) -> Node {
   match kind {
-    Signed => lean_inhabitant_atom(id: lean_tag_signed)
-    Unsigned => lean_inhabitant_atom(id: lean_tag_unsigned)
+    Signed => lean_inhabitant_atom(id: ^lean_tag_signed)
+    Unsigned => lean_inhabitant_atom(id: ^lean_tag_unsigned)
   }
 }
 
 
 fn lean_int_width_node(width: LeanIntWidth) -> Node {
   match width {
-    Bits8 => lean_inhabitant_atom(id: lean_tag_bits8)
-    Bits16 => lean_inhabitant_atom(id: lean_tag_bits16)
-    Bits32 => lean_inhabitant_atom(id: lean_tag_bits32)
-    Bits64 => lean_inhabitant_atom(id: lean_tag_bits64)
-    Pointer => lean_inhabitant_atom(id: lean_tag_pointer)
+    Bits8 => lean_inhabitant_atom(id: ^lean_tag_bits8)
+    Bits16 => lean_inhabitant_atom(id: ^lean_tag_bits16)
+    Bits32 => lean_inhabitant_atom(id: ^lean_tag_bits32)
+    Bits64 => lean_inhabitant_atom(id: ^lean_tag_bits64)
+    Pointer => lean_inhabitant_atom(id: ^lean_tag_pointer)
   }
 }
 
@@ -464,14 +383,14 @@ fn lean_scalar_node(scalar: LeanScalar) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         lean_named_edge(
-          name: lean_scalar_field_classifier,
-          target: lean_inhabitant_atom(id: lean_tag_scalar_int)
+          name: ^lean_scalar_field_classifier,
+          target: lean_inhabitant_atom(id: ^lean_tag_scalar_int)
         ),
-        lean_named_edge(name: lean_scalar_field_kind, target: lean_int_kind_node(kind: kind)),
-        lean_named_edge(name: lean_scalar_field_width, target: lean_int_width_node(width: width))
+        lean_named_edge(name: ^lean_scalar_field_kind, target: lean_int_kind_node(kind: kind)),
+        lean_named_edge(name: ^lean_scalar_field_width, target: lean_int_width_node(width: width))
       ]
     }
-    BoolScalar => lean_inhabitant_atom(id: lean_tag_scalar_bool)
+    BoolScalar => lean_inhabitant_atom(id: ^lean_tag_scalar_bool)
   }
 }
 
@@ -481,15 +400,15 @@ fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       lean_named_edge(
-        name: lean_facts_field_surface_spelling,
+        name: ^lean_facts_field_surface_spelling,
         target: lean_inhabitant_atom(id: facts.surface_spelling)
       ),
       lean_named_edge(
-        name: lean_facts_field_scalar_classifier,
+        name: ^lean_facts_field_scalar_classifier,
         target: lean_scalar_node(scalar: facts.scalar)
       ),
       lean_named_edge(
-        name: lean_facts_field_representation,
+        name: ^lean_facts_field_representation,
         target: lean_inhabitant_atom(id: facts.representation)
       )
     ]
@@ -501,9 +420,9 @@ fn lean_primitive_inhabitant_node(id: Symbol, facts: LeanPrimitiveFacts) -> Node
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      lean_named_edge(name: lean_inhabitant_field_atom, target: lean_inhabitant_atom(id: id)),
+      lean_named_edge(name: ^lean_inhabitant_field_atom, target: lean_inhabitant_atom(id: id)),
       lean_named_edge(
-        name: lean_inhabitant_field_facts,
+        name: ^lean_inhabitant_field_facts,
         target: lean_primitive_facts_node(facts: facts)
       )
     ]
@@ -512,7 +431,7 @@ fn lean_primitive_inhabitant_node(id: Symbol, facts: LeanPrimitiveFacts) -> Node
 
 
 fn lean_inhabitant_int32_node() -> Node {
-  lean_primitive_inhabitant_node(id: lean_inhabitant_int32, facts: lean_facts_int32)
+  lean_primitive_inhabitant_node(id: ^lean_inhabitant_int32, facts: lean_facts_int32)
 }
 
 
@@ -603,34 +522,29 @@ fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 
 // MVP uses position-distinct literal token classes (not ident+binding) so token-sequence
 // probes match the fixture without claiming parse-stage binding projection.
-
-
-data lean_mvp1_token_class_head: Symbol = lean_token_kw_def
-
-
 fn lean_mvp1_token_class_tail() -> List<Symbol> {
   [
-    lean_token_name_dec,
-    lean_token_lparen,
-    lean_token_name_n,
-    lean_token_colon,
-    lean_token_type_int32,
-    lean_token_rparen,
-    lean_token_colon,
-    lean_token_type_int32,
-    lean_token_assign,
-    lean_token_name_n,
-    lean_token_minus,
-    lean_token_numeric_literal,
-    lean_token_kw_termination_by,
-    lean_token_name_n
+    ^lean_token_name_dec,
+    ^lean_token_lparen,
+    ^lean_token_name_n,
+    ^lean_token_colon,
+    ^lean_token_type_int32,
+    ^lean_token_rparen,
+    ^lean_token_colon,
+    ^lean_token_type_int32,
+    ^lean_token_assign,
+    ^lean_token_name_n,
+    ^lean_token_minus,
+    ^lean_token_numeric_literal,
+    ^lean_token_kw_termination_by,
+    ^lean_token_name_n
   ]
 }
 
 
 fn lean_mvp1_formal_token_classes() -> List<Symbol> {
   Cons {
-    head: lean_mvp1_token_class_head,
+    head: ^lean_token_kw_def,
     tail: lean_mvp1_token_class_tail()
   }
 }
@@ -652,7 +566,7 @@ fn lean_formal_rhs_from_token_classes(classes: List<Symbol>) -> List<FormalGramm
 
 fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: lean_production_mvp1_def_dec),
+    lhs: grammar_formal_nonterminal(identity: ^lean_production_mvp1_def_dec),
     rhs: lean_formal_rhs_from_token_classes(classes: lean_mvp1_formal_token_classes())
   }
 }
@@ -683,7 +597,7 @@ fn lean_grammar_sequence_from_nonempty(
 
 fn lean_mvp1_def_dec_parse_expr() -> GrammarExpr {
   lean_grammar_sequence_from_nonempty(
-    head: lean_mvp1_token_class_head,
+    head: ^lean_token_kw_def,
     tail: lean_mvp1_token_class_tail()
   )
 }
@@ -699,7 +613,7 @@ fn lean_lex_rule(token_class: Symbol, text: String) -> LexRule {
 
 fn lean_numeric_literal_lex_rule() -> LexRule {
   TokenRule {
-    token_class: lean_token_numeric_literal,
+    token_class: ^lean_token_numeric_literal,
     pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
   }
 }
@@ -710,17 +624,17 @@ fn lean_numeric_literal_lex_rule() -> LexRule {
 fn lean_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      lean_lex_rule(token_class: lean_token_kw_termination_by, text: "\n  termination_by "),
-      lean_lex_rule(token_class: lean_token_assign, text: " := "),
-      lean_lex_rule(token_class: lean_token_minus, text: " - "),
-      lean_lex_rule(token_class: lean_token_kw_def, text: "def "),
-      lean_lex_rule(token_class: lean_token_type_int32, text: "Int32"),
-      lean_lex_rule(token_class: lean_token_name_dec, text: "dec "),
+      lean_lex_rule(token_class: ^lean_token_kw_termination_by, text: "\n  termination_by "),
+      lean_lex_rule(token_class: ^lean_token_assign, text: " := "),
+      lean_lex_rule(token_class: ^lean_token_minus, text: " - "),
+      lean_lex_rule(token_class: ^lean_token_kw_def, text: "def "),
+      lean_lex_rule(token_class: ^lean_token_type_int32, text: "Int32"),
+      lean_lex_rule(token_class: ^lean_token_name_dec, text: "dec "),
       lean_numeric_literal_lex_rule(),
-      lean_lex_rule(token_class: lean_token_name_n, text: "n"),
-      lean_lex_rule(token_class: lean_token_lparen, text: "("),
-      lean_lex_rule(token_class: lean_token_colon, text: " : "),
-      lean_lex_rule(token_class: lean_token_rparen, text: ")")
+      lean_lex_rule(token_class: ^lean_token_name_n, text: "n"),
+      lean_lex_rule(token_class: ^lean_token_lparen, text: "("),
+      lean_lex_rule(token_class: ^lean_token_colon, text: " : "),
+      lean_lex_rule(token_class: ^lean_token_rparen, text: ")")
     ]
   }
 }
@@ -741,12 +655,12 @@ fn lean_wave1_lex_token_symbol(sym: Symbol) -> Bool {
 
 fn lean_wave1_grammar_root() -> GrammarRoot {
   let start = GrammarProduction {
-    name: lean_production_mvp1_def_dec,
+    name: ^lean_production_mvp1_def_dec,
     expression: lean_mvp1_def_dec_parse_expr(),
-    emitted: grammar_atom(identity: lean_surface_def_item)
+    emitted: grammar_atom(identity: ^lean_surface_def_item)
   }
   GrammarRoot {
-    start: lean_production_mvp1_def_dec,
+    start: ^lean_production_mvp1_def_dec,
     productions: [start],
     sync_tokens: grammar_empty_sync_tokens()
   }
@@ -772,7 +686,7 @@ fn lean_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     probe: GrammarSchemaProbe {
       fixture: lean_mvp1_source_text,
       production: lean_mvp1_def_dec_formal_production(),
-      expected_parse_surface: grammar_atom(identity: lean_surface_def_item)
+      expected_parse_surface: grammar_atom(identity: ^lean_surface_def_item)
     }
   }
 }
@@ -787,7 +701,7 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
       lean_catalog_surface_symbol(sym: sym) ||
         lean_wave1_lex_token_symbol(sym: sym) ||
         grammar_carries_symbol(grammar: lean_wave1_grammar(), sym: sym) ||
-        sym == lean_mvp1_source_literal
+        sym == ^lean_mvp1_source_literal
     }
   }
 }
@@ -798,19 +712,19 @@ fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKin
     kind: TypeNode { connective: Conj },
     children: [
       lean_named_edge(
-        name: lean_witness_integer_commutative_ring,
-        target: lean_inhabitant_atom(id: lean_witness_integer_commutative_ring)
+        name: ^lean_witness_integer_commutative_ring,
+        target: lean_inhabitant_atom(id: ^lean_witness_integer_commutative_ring)
       ),
       lean_named_edge(
-        name: lean_witness_field_representation,
+        name: ^lean_witness_field_representation,
         target: lean_inhabitant_atom(id: facts.representation)
       ),
       lean_named_edge(
-        name: lean_witness_field_signedness,
+        name: ^lean_witness_field_signedness,
         target: lean_int_kind_node(kind: kind)
       ),
       lean_named_edge(
-        name: lean_witness_field_width,
+        name: ^lean_witness_field_width,
         target: lean_int_width_node(width: width)
       )
     ]
@@ -822,12 +736,12 @@ fn lean_bool_algebra_witness_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       lean_named_edge(
-        name: lean_witness_bool_boolean_algebra,
-        target: lean_inhabitant_atom(id: lean_witness_bool_boolean_algebra)
+        name: ^lean_witness_bool_boolean_algebra,
+        target: lean_inhabitant_atom(id: ^lean_witness_bool_boolean_algebra)
       ),
       lean_named_edge(
-        name: lean_witness_field_representation,
-        target: lean_inhabitant_atom(id: lean_repr_bool_inductive)
+        name: ^lean_witness_field_representation,
+        target: lean_inhabitant_atom(id: ^lean_repr_bool_inductive)
       )
     ]
   }
@@ -879,7 +793,7 @@ fn lean_language_model_wave1() -> LeanLanguageModel {
   LeanLanguageModel {
     lex: lean_wave1_lex(),
     grammar: lean_wave1_grammar(),
-    language_identity: lean_language_model_surface_id,
+    language_identity: ^lean_language_model_surface_id,
     canonical_symbols: lean_language_model_canonical_symbols(),
     core: lean_model_core_wave1()
   }

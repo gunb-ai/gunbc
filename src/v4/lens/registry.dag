@@ -27,11 +27,8 @@ type LensOwnedFnV0 {
   fn_name: Symbol
   owner_module_path: String
 }
-
-data symbol_llvm_instruction_cost: Symbol = symbol_llvm_instruction_cost
-
 data lens_owned_fn_llvm_instruction_cost: LensOwnedFnV0 = {
-  fn_name: symbol_llvm_instruction_cost,
+  fn_name: ^symbol_llvm_instruction_cost,
   owner_module_path: "v4.lens.cost"
 }
 

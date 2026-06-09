@@ -145,33 +145,6 @@ data release_published_artifact_names: List<String> = release_matrix_row_artifac
 // `release_pipeline_jobs_cover_matrix` + `release_matrix_upload_jobs_present` +
 // `release_publish_job_drains_matrix_uploads` + `release_build_commands_use_matrix_targets_only`
 // fail-closed against drift.
-data release_build_musl_x86: Symbol = release_build_musl_x86
-data release_build_musl_aarch64: Symbol = release_build_musl_aarch64
-data release_build_darwin_x86: Symbol = release_build_darwin_x86
-data release_build_darwin_aarch64: Symbol = release_build_darwin_aarch64
-data release_build_windows_x86: Symbol = release_build_windows_x86
-data release_build_windows_aarch64: Symbol = release_build_windows_aarch64
-data release_upload_musl_x86: Symbol = release_upload_musl_x86
-data release_upload_musl_aarch64: Symbol = release_upload_musl_aarch64
-data release_upload_darwin_x86: Symbol = release_upload_darwin_x86
-data release_upload_darwin_aarch64: Symbol = release_upload_darwin_aarch64
-data release_upload_windows_x86: Symbol = release_upload_windows_x86
-data release_upload_windows_aarch64: Symbol = release_upload_windows_aarch64
-data release_publish_execution: Symbol = release_publish_execution
-data release_build_musl_x86_signal: Symbol = release_build_musl_x86_signal
-data release_build_musl_aarch64_signal: Symbol = release_build_musl_aarch64_signal
-data release_build_darwin_x86_signal: Symbol = release_build_darwin_x86_signal
-data release_build_darwin_aarch64_signal: Symbol = release_build_darwin_aarch64_signal
-data release_build_windows_x86_signal: Symbol = release_build_windows_x86_signal
-data release_build_windows_aarch64_signal: Symbol = release_build_windows_aarch64_signal
-data release_upload_musl_x86_signal: Symbol = release_upload_musl_x86_signal
-data release_upload_musl_aarch64_signal: Symbol = release_upload_musl_aarch64_signal
-data release_upload_darwin_x86_signal: Symbol = release_upload_darwin_x86_signal
-data release_upload_darwin_aarch64_signal: Symbol = release_upload_darwin_aarch64_signal
-data release_upload_windows_x86_signal: Symbol = release_upload_windows_x86_signal
-data release_upload_windows_aarch64_signal: Symbol = release_upload_windows_aarch64_signal
-data release_publish_signal: Symbol = release_publish_signal
-
 data release_live_workflow_signal: ReleaseLiveWorkflowSignal = {
   workflow_name: "release"
   tag_pattern: "v*"
@@ -191,114 +164,101 @@ data release_live_workflow_signal: ReleaseLiveWorkflowSignal = {
 data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p: ReleasePipeline {
   jobs: [
     ReleaseJob {
-      id: release_build_musl_x86,
+      id: ^release_build_musl_x86,
       command: CrossMuslGunbcBuild { target: "x86_64-unknown-linux-musl" },
       needs: []
     },
     ReleaseJob {
-      id: release_build_musl_aarch64,
+      id: ^release_build_musl_aarch64,
       command: CrossMuslGunbcBuild { target: "aarch64-unknown-linux-musl" },
       needs: []
     },
     ReleaseJob {
-      id: release_build_darwin_x86,
+      id: ^release_build_darwin_x86,
       command: NativeDarwinGunbcBuild { target: "x86_64-apple-darwin" },
       needs: []
     },
     ReleaseJob {
-      id: release_build_darwin_aarch64,
+      id: ^release_build_darwin_aarch64,
       command: NativeDarwinGunbcBuild { target: "aarch64-apple-darwin" },
       needs: []
     },
     ReleaseJob {
-      id: release_build_windows_x86,
+      id: ^release_build_windows_x86,
       command: NativeWindowsGunbcBuild { target: "x86_64-pc-windows-msvc" },
       needs: []
     },
     ReleaseJob {
-      id: release_build_windows_aarch64,
+      id: ^release_build_windows_aarch64,
       command: NativeWindowsGunbcBuild { target: "aarch64-pc-windows-msvc" },
       needs: []
     },
     ReleaseJob {
-      id: release_upload_musl_x86,
+      id: ^release_upload_musl_x86,
       command: UploadGunbcMatrixArtifact,
-      needs: [release_build_musl_x86]
+      needs: [^release_build_musl_x86]
     },
     ReleaseJob {
-      id: release_upload_musl_aarch64,
+      id: ^release_upload_musl_aarch64,
       command: UploadGunbcMatrixArtifact,
-      needs: [release_build_musl_aarch64]
+      needs: [^release_build_musl_aarch64]
     },
     ReleaseJob {
-      id: release_upload_darwin_x86,
+      id: ^release_upload_darwin_x86,
       command: UploadGunbcMatrixArtifact,
-      needs: [release_build_darwin_x86]
+      needs: [^release_build_darwin_x86]
     },
     ReleaseJob {
-      id: release_upload_darwin_aarch64,
+      id: ^release_upload_darwin_aarch64,
       command: UploadGunbcMatrixArtifact,
-      needs: [release_build_darwin_aarch64]
+      needs: [^release_build_darwin_aarch64]
     },
     ReleaseJob {
-      id: release_upload_windows_x86,
+      id: ^release_upload_windows_x86,
       command: UploadGunbcMatrixArtifact,
-      needs: [release_build_windows_x86]
+      needs: [^release_build_windows_x86]
     },
     ReleaseJob {
-      id: release_upload_windows_aarch64,
+      id: ^release_upload_windows_aarch64,
       command: UploadGunbcMatrixArtifact,
-      needs: [release_build_windows_aarch64]
+      needs: [^release_build_windows_aarch64]
     },
     ReleaseJob {
-      id: release_publish_execution,
+      id: ^release_publish_execution,
       command: PublishGitHubRelease,
       needs: [
-        release_upload_musl_x86,
-        release_upload_musl_aarch64,
-        release_upload_darwin_x86,
-        release_upload_darwin_aarch64,
-        release_upload_windows_x86,
-        release_upload_windows_aarch64
+        ^release_upload_musl_x86,
+        ^release_upload_musl_aarch64,
+        ^release_upload_darwin_x86,
+        ^release_upload_darwin_aarch64,
+        ^release_upload_windows_x86,
+        ^release_upload_windows_aarch64
       ]
     }
   ],
   gates: [
-    ReleaseGate { id: release_build_musl_x86_signal, job: release_build_musl_x86 },
-    ReleaseGate { id: release_build_musl_aarch64_signal, job: release_build_musl_aarch64 },
-    ReleaseGate { id: release_build_darwin_x86_signal, job: release_build_darwin_x86 },
-    ReleaseGate { id: release_build_darwin_aarch64_signal, job: release_build_darwin_aarch64 },
-    ReleaseGate { id: release_build_windows_x86_signal, job: release_build_windows_x86 },
-    ReleaseGate { id: release_build_windows_aarch64_signal, job: release_build_windows_aarch64 },
-    ReleaseGate { id: release_upload_musl_x86_signal, job: release_upload_musl_x86 },
-    ReleaseGate { id: release_upload_musl_aarch64_signal, job: release_upload_musl_aarch64 },
-    ReleaseGate { id: release_upload_darwin_x86_signal, job: release_upload_darwin_x86 },
-    ReleaseGate { id: release_upload_darwin_aarch64_signal, job: release_upload_darwin_aarch64 },
-    ReleaseGate { id: release_upload_windows_x86_signal, job: release_upload_windows_x86 },
-    ReleaseGate { id: release_upload_windows_aarch64_signal, job: release_upload_windows_aarch64 },
-    ReleaseGate { id: release_publish_signal, job: release_publish_execution }
+    ReleaseGate { id: ^release_build_musl_x86_signal, job: ^release_build_musl_x86 },
+    ReleaseGate { id: ^release_build_musl_aarch64_signal, job: ^release_build_musl_aarch64 },
+    ReleaseGate { id: ^release_build_darwin_x86_signal, job: ^release_build_darwin_x86 },
+    ReleaseGate { id: ^release_build_darwin_aarch64_signal, job: ^release_build_darwin_aarch64 },
+    ReleaseGate { id: ^release_build_windows_x86_signal, job: ^release_build_windows_x86 },
+    ReleaseGate { id: ^release_build_windows_aarch64_signal, job: ^release_build_windows_aarch64 },
+    ReleaseGate { id: ^release_upload_musl_x86_signal, job: ^release_upload_musl_x86 },
+    ReleaseGate { id: ^release_upload_musl_aarch64_signal, job: ^release_upload_musl_aarch64 },
+    ReleaseGate { id: ^release_upload_darwin_x86_signal, job: ^release_upload_darwin_x86 },
+    ReleaseGate { id: ^release_upload_darwin_aarch64_signal, job: ^release_upload_darwin_aarch64 },
+    ReleaseGate { id: ^release_upload_windows_x86_signal, job: ^release_upload_windows_x86 },
+    ReleaseGate { id: ^release_upload_windows_aarch64_signal, job: ^release_upload_windows_aarch64 },
+    ReleaseGate { id: ^release_publish_signal, job: ^release_publish_execution }
   ]
 })
 
 // Path prefix for `ci.dag` `ci_changed_path_affects_workflow_policy` when T-24 (#3853) lands.
 data release_workflow_policy_path_prefix: String = "src/v4/workflow/release"
-
-data release_duplicate_job_id: Symbol = release_duplicate_job_id
-data release_duplicate_gate_id: Symbol = release_duplicate_gate_id
-data release_dangling_reference: Symbol = release_dangling_reference
-data release_dependency_cycle: Symbol = release_dependency_cycle
-data release_matrix_invalid: Symbol = release_matrix_invalid
-data release_matrix_build_coverage_gap: Symbol = release_matrix_build_coverage_gap
-data release_matrix_build_target_drift_gap: Symbol = release_matrix_build_target_drift_gap
-data release_matrix_upload_drain_gap: Symbol = release_matrix_upload_drain_gap
-data release_publish_drain_gap: Symbol = release_publish_drain_gap
-data release_command_authority_violation: Symbol = release_command_authority_violation
-data release_workflow_file: Symbol = release_workflow_file
-
 fn release_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: Textual { file: release_workflow_file, extent: WholeFile },
+    at: Textual { file: ^release_workflow_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -630,36 +590,36 @@ fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> 
                       if release_publish_job_drains_matrix_uploads(jobs: p.jobs, rows: release_build_matrix) {
                         Accepted { value: p, diagnostics: None }
                       } else {
-                        Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_publish_drain_gap)) }
+                        Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_publish_drain_gap)) }
                       }
                     } else {
-                      Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_upload_drain_gap)) }
+                      Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_matrix_upload_drain_gap)) }
                     }
                   } else {
-                    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_build_target_drift_gap)) }
+                    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_matrix_build_target_drift_gap)) }
                   }
                 } else {
-                  Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_build_coverage_gap)) }
+                  Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_matrix_build_coverage_gap)) }
                 }
               } else {
-                Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_invalid)) }
+                Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_matrix_invalid)) }
               }
             } else {
-              Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_command_authority_violation)) }
+              Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_command_authority_violation)) }
             }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_dependency_cycle)) }
+            Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_dependency_cycle)) }
           }
         } else {
-          Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_dangling_reference)) }
+          Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_dangling_reference)) }
         }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_dangling_reference)) }
+        Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_dangling_reference)) }
       }
     } else {
-      Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_duplicate_gate_id)) }
+      Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_duplicate_gate_id)) }
     }
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_duplicate_job_id)) }
+    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: ^release_duplicate_job_id)) }
   }
 }

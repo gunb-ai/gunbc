@@ -26,13 +26,8 @@ import v4.test.claim.computation_shapes.branch_dispatch {
   claim_branch_dispatch_equals_refl,
   claim_branch_dispatch_well_formed
 }
-
-
-data phase4_branch_dispatch_rung_subject_symbol: Symbol = phase4_branch_dispatch_rung_subject_symbol
-
-
 data phase4_branch_dispatch_rung_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: phase4_branch_dispatch_rung_subject_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^phase4_branch_dispatch_rung_subject_symbol } },
   children: []
 }
 

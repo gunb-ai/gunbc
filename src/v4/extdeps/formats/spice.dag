@@ -78,11 +78,6 @@ type SpiceApproxVoltage {
 
 // 🟡 needs-more-work — feature:spice-exact-voltage-gap — dissolve-on: std/ exact-real / Dimension substrate (T-3) · ledger: T-4
 type SpiceExactVoltageGap {}
-
-data spice_unit_volt: Symbol = spice_unit_volt
-data spice_exact_voltage_missing_carrier: Symbol = spice_exact_voltage_missing_carrier
-
-
 type Parameter {
   name: Symbol
   value: SpiceValue
@@ -235,13 +230,6 @@ type SpiceIoContract {
   parse: SpiceParse
   emit: SpiceEmit
 }
-
-data spice_token_ident: Symbol = spice_token_ident
-data spice_token_value: Symbol = spice_token_value
-data spice_production_resistor_statement: Symbol = spice_production_resistor_statement
-data spice_surface_resistor_statement: Symbol = spice_surface_resistor_statement
-
-
 fn spice_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
@@ -275,8 +263,8 @@ fn spice_wave1_lex() -> LexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        spice_lex_token(token_class: spice_token_ident, pattern: spice_identifier_pattern()),
-        spice_lex_token(token_class: spice_token_value, pattern: spice_value_pattern())
+        spice_lex_token(token_class: ^spice_token_ident, pattern: spice_identifier_pattern()),
+        spice_lex_token(token_class: ^spice_token_value, pattern: spice_value_pattern())
       ]
     }
   }
@@ -285,12 +273,12 @@ fn spice_wave1_lex() -> LexRules {
 
 fn spice_resistor_statement_expr() -> GrammarExpr {
   spice_grammar_sequence(
-    left: spice_grammar_terminal(token_class: spice_token_ident),
+    left: spice_grammar_terminal(token_class: ^spice_token_ident),
     right: spice_grammar_sequence(
-      left: spice_grammar_terminal(token_class: spice_token_ident),
+      left: spice_grammar_terminal(token_class: ^spice_token_ident),
       right: spice_grammar_sequence(
-        left: spice_grammar_terminal(token_class: spice_token_ident),
-        right: spice_grammar_terminal(token_class: spice_token_value)
+        left: spice_grammar_terminal(token_class: ^spice_token_ident),
+        right: spice_grammar_terminal(token_class: ^spice_token_value)
       )
     )
   )
@@ -299,13 +287,13 @@ fn spice_resistor_statement_expr() -> GrammarExpr {
 
 fn spice_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
-    name: spice_production_resistor_statement,
+    name: ^spice_production_resistor_statement,
     expression: spice_resistor_statement_expr(),
-    emitted: grammar_atom(identity: spice_surface_resistor_statement)
+    emitted: grammar_atom(identity: ^spice_surface_resistor_statement)
   }
   ModeledGrammar {
     root: GrammarRoot {
-      start: spice_production_resistor_statement,
+      start: ^spice_production_resistor_statement,
       productions: [start],
       sync_tokens: grammar_empty_sync_tokens()
     }
@@ -315,12 +303,12 @@ fn spice_wave1_grammar() -> ParseGrammar {
 
 fn spice_resistor_statement_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: spice_production_resistor_statement),
+    lhs: grammar_formal_nonterminal(identity: ^spice_production_resistor_statement),
     rhs: [
-      grammar_formal_terminal(identity: spice_token_ident),
-      grammar_formal_terminal(identity: spice_token_ident),
-      grammar_formal_terminal(identity: spice_token_ident),
-      grammar_formal_terminal(identity: spice_token_value)
+      grammar_formal_terminal(identity: ^spice_token_ident),
+      grammar_formal_terminal(identity: ^spice_token_ident),
+      grammar_formal_terminal(identity: ^spice_token_ident),
+      grammar_formal_terminal(identity: ^spice_token_value)
     ]
   }
 }
@@ -340,7 +328,7 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
     probe: GrammarSchemaProbe {
       fixture: "R1 n1 n2 1",
       production: spice_resistor_statement_formal_production(),
-      expected_parse_surface: grammar_atom(identity: spice_surface_resistor_statement)
+      expected_parse_surface: grammar_atom(identity: ^spice_surface_resistor_statement)
     }
   }
 }

@@ -15,12 +15,6 @@ import v4.std.find_witness {
 import v4.std.verification { TestClaim }
 import v4.lens.testgen { testgen_emit_witness_validity_claim }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj, stub_empty_disj }
-
-
-data witness_validity_unrealized_rule: Symbol = witness_validity_unrealized_rule
-
-
-
 data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: constraint-satisfaction holds (positive)",
     source_facts: stub_empty_conj,
@@ -45,7 +39,7 @@ data row_witness_validity_property_symbol_mismatch: Outcome<TestClaim> = testgen
       preservation_rule: preservation_rule_constraint_satisfaction,
     },
     witness: StructuralPropertyWitness {
-      property: witness_validity_unrealized_rule,
+      property: ^witness_validity_unrealized_rule,
       evidence: stub_empty_conj,
     }
   )
@@ -72,10 +66,10 @@ data row_witness_validity_rule_not_realized: Outcome<TestClaim> = testgen_emit_w
     candidate: stub_empty_conj,
     predicate: PreservationPredicate {
       algebra: stub_empty_conj,
-      preservation_rule: witness_validity_unrealized_rule,
+      preservation_rule: ^witness_validity_unrealized_rule,
     },
     witness: StructuralPropertyWitness {
-      property: witness_validity_unrealized_rule,
+      property: ^witness_validity_unrealized_rule,
       evidence: stub_empty_conj,
     }
   )

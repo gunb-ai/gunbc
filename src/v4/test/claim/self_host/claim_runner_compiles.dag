@@ -21,13 +21,8 @@ import v4.std.verification {
   RoundTripClaim,
   manual_claim_anchor
 }
-
-
-data runner_compiles_subject_symbol: Symbol = runner_compiles_subject_symbol
-
-
 data runner_compiles_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: runner_compiles_subject_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^runner_compiles_subject_symbol } },
   children: []
 }
 
