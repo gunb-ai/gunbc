@@ -3562,13 +3562,11 @@ fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
 
 // SG-2 fold — edge-discipline DATA per connective (connective_edge_discipline authority; no LoopBound).
 fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> Node {
-  let d = connective_edge_discipline(c: connective)
-  if d == NoEdges {
-    target_type_expr_symbol_atom(id: target_type_expr_discipline_no_edges)
-  } else if d == LabeledEdges {
-    target_type_expr_symbol_atom(id: target_type_expr_discipline_labeled)
-  } else {
-    target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
+  match connective_edge_discipline(c: connective) {
+    NoEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_no_edges)
+    LabeledEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_labeled)
+    PositionalEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
+    LoopBoundEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
   }
 }
 
