@@ -20,11 +20,6 @@ import v4.std.verification {
   Integration,
   manual_claim_anchor
 }
-
-data ts_wave2a_file: Symbol = ts_wave2a_file
-data ts_wave2a_bool_true: Symbol = ts_wave2a_bool_true
-data ts_wave2a_bool_false: Symbol = ts_wave2a_bool_false
-
 // 🟡 feature:ts-wave2a-whitespace-trivia owner:cool-moth-495 lane:node://adhoc-ece453af-47e tracker:#3900 dissolve-on: substrate lex moves punctuation literals to a whitespace-trivia model.
 // Round-trip target from task_manager_demo.dag Task — exercises type_alias_decl
 // (kw_type, ident, eq, type_annotation→record_type, semicolon), record_fields
@@ -50,8 +45,8 @@ data ts_wave2a_union_minimal_source: String = "const bit: 'On' | 'Off' = bit;"
 
 fn ts_wave2a_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ts_wave2a_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: ts_wave2a_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^ts_wave2a_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^ts_wave2a_bool_false } }, children: [] }
   }
 }
 
@@ -66,7 +61,7 @@ fn ts_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
 fn ts_wave2a_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
   match tokenize(
     text: text,
-    file: ts_wave2a_file,
+    file: ^ts_wave2a_file,
     rules: ts_wave2a_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }

@@ -4,7 +4,6 @@
 
 module v4.test.claim.manual.eval_runtime_mvp
 
-
 import v4.compiler.eval {
   EvalContext,
   Inputs,
@@ -23,10 +22,7 @@ import v4.compiler.infer {
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map, empty_map, list_nth }
-import v4.std.constraints {
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
+
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -99,41 +95,23 @@ import v4.std.witness {
   Violates,
   Witness
 }
-
-
-data eval_mvp2_i64_symbol: Symbol = eval_mvp2_i64_symbol
-data eval_mvp2_algebra_symbol: Symbol = eval_mvp2_algebra_symbol
-data eval_mvp2_witness_symbol: Symbol = eval_mvp2_witness_symbol
-data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
-data eval_mvp2_args_not_two_literals: Symbol = eval_mvp2_args_not_two_literals
-data eval_mvp2_descent_dimension: Symbol = eval_mvp2_descent_dimension
-data eval_mvp2_interpretation_pin: Symbol = eval_mvp2_interpretation_pin
-data eval_mvp2_evaluator_pin: Symbol = eval_mvp2_evaluator_pin
-data eval_mvp2_allocate_literal_sym: Symbol = eval_mvp2_allocate_literal_sym
-data eval_mvp2_call_primitive_sym: Symbol = eval_mvp2_call_primitive_sym
-data eval_mvp2_choose_branch_sym: Symbol = eval_mvp2_choose_branch_sym
-data eval_mvp2_step_loop_sym: Symbol = eval_mvp2_step_loop_sym
-data eval_mvp2_bind_value_sym: Symbol = eval_mvp2_bind_value_sym
 fn eval_mvp2_byte() -> Byte {
   Byte { bits: [true] }
 }
 
-
 fn eval_mvp2_i64_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: eval_mvp2_i64_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^eval_mvp2_i64_symbol } },
     children: []
   }
 }
-
 
 fn eval_mvp2_algebra_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: eval_mvp2_algebra_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^eval_mvp2_algebra_symbol } },
     children: []
   }
 }
-
 
 // Well-formed Value leaves (node.dag: Value => count(children) == 0). Per-node
 // InferredFacts: grounding.node == subject under evaluation; resolved value type is
@@ -155,7 +133,6 @@ fn eval_mvp2_add_subgraph() -> Node {
   eval_mvp2_add_subgraph_node
 }
 
-
 fn eval_mvp2_runtime_value(bytes: List<Byte>) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
@@ -165,11 +142,9 @@ fn eval_mvp2_runtime_value(bytes: List<Byte>) -> RuntimeValue {
   }
 }
 
-
 fn eval_mvp2_two_value() -> RuntimeValue {
   eval_mvp2_runtime_value(bytes: [eval_mvp2_byte(), eval_mvp2_byte()])
 }
-
 
 fn eval_mvp2_five_value() -> RuntimeValue {
   eval_mvp2_runtime_value(
@@ -183,11 +158,9 @@ fn eval_mvp2_five_value() -> RuntimeValue {
   )
 }
 
-
 fn eval_mvp2_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   Accepted { value: eval_mvp2_two_value(), diagnostics: None }
 }
-
 
 fn eval_mvp2_arg_is_two_literal(value: RuntimeValue) -> Bool {
   match value {
@@ -197,9 +170,8 @@ fn eval_mvp2_arg_is_two_literal(value: RuntimeValue) -> Bool {
   }
 }
 
-
 fn eval_mvp2_args_absent_diagnostic() -> Diagnostic {
-  eval_diagnostic(reason: eval_mvp2_args_not_two_literals, node: eval_mvp2_add_subgraph_node)
+  eval_diagnostic(reason: ^eval_mvp2_args_not_two_literals, node: eval_mvp2_add_subgraph_node)
 }
 
 fn eval_mvp2_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
@@ -219,7 +191,6 @@ fn eval_mvp2_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
   }
 }
 
-
 fn eval_mvp2_call_primitive(
   _node: Node,
   args: List<RuntimeValue>,
@@ -230,22 +201,19 @@ fn eval_mvp2_call_primitive(
   } else {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: eval_diagnostic(reason: eval_mvp2_args_not_two_literals, node: _node)
+        d: eval_diagnostic(reason: ^eval_mvp2_args_not_two_literals, node: _node)
       )
     }
   }
 }
 
-
 fn eval_mvp2_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
   Accepted { value: eval_mvp2_add_subgraph(), diagnostics: None }
 }
 
-
 fn eval_mvp2_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
   Accepted { value: Continue { value: eval_mvp2_five_value() }, diagnostics: None }
 }
-
 
 fn eval_mvp2_bind_value(
   _key: EnvironmentBindingKey,
@@ -255,31 +223,25 @@ fn eval_mvp2_bind_value(
   Accepted { value: env, diagnostics: None }
 }
 
-
 fn eval_mvp2_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
-
 
 fn eval_mvp2_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-
 fn eval_mvp2_call(_call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
   Accepted { value: Return { value: eval_mvp2_five_value() }, diagnostics: None }
 }
-
 
 fn eval_mvp2_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
-
 fn eval_mvp2_transfer(_control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   Accepted { value: frame, diagnostics: None }
 }
-
 
 fn eval_mvp2_interpretation_algebra() -> InterpretationAlgebra {
   InterpretationAlgebra {
@@ -301,19 +263,16 @@ fn eval_mvp2_interpretation_algebra() -> InterpretationAlgebra {
   }
 }
 
-
 fn eval_mvp2_diagnostic(n: Node) -> Diagnostic {
-  eval_diagnostic(reason: eval_mvp2_descent_not_derived, node: n)
+  eval_diagnostic(reason: ^eval_mvp2_descent_not_derived, node: n)
 }
-
 
 fn eval_mvp2_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: eval_mvp2_descent_dimension }
+    strict: RankingDimension { measured: ^eval_mvp2_descent_dimension }
   }
 }
-
 
 fn eval_mvp2_facts_for_node(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
@@ -330,11 +289,10 @@ fn eval_mvp2_fact_lookup(node: Node) -> Witness<InferredFacts> {
     Holds { value: eval_mvp2_facts_for_node(node: eval_mvp2_add_subgraph_node) }
   } else {
     Violates {
-      diagnostic: eval_diagnostic(reason: eval_mvp2_descent_not_derived, node: node)
+      diagnostic: eval_diagnostic(reason: ^eval_mvp2_descent_not_derived, node: node)
     }
   }
 }
-
 
 fn eval_mvp2_inferred_tree() -> InferredTree {
   InferredTree {
@@ -345,7 +303,6 @@ fn eval_mvp2_inferred_tree() -> InferredTree {
   }
 }
 
-
 fn eval_mvp2_actual() -> Outcome<RuntimeValue> {
   eval(
     tree: eval_mvp2_inferred_tree(),
@@ -354,20 +311,17 @@ fn eval_mvp2_actual() -> Outcome<RuntimeValue> {
   )
 }
 
-
 fn eval_mvp2_empty_environment() -> EvaluationEnvironment {
   EvaluationEnvironment {
     bindings: empty_map()
   }
 }
 
-
 data witness_eval_mvp2_add_accepts_five: Bool = match eval_mvp2_actual() {
   Accepted { value: RuntimePrimitive { value: p }, diagnostics: None } =>
     (p.primitive_type == eval_mvp2_i64_node()) && (count(p.bytes) == 5)
   _ => false
 }
-
 
 data witness_eval_mvp2_call_primitive_rejects_bad_args: Bool = match eval_mvp2_call_primitive(
   _node: eval_mvp2_add_subgraph_node,
@@ -378,25 +332,23 @@ data witness_eval_mvp2_call_primitive_rejects_bad_args: Bool = match eval_mvp2_c
   _ => false
 }
 
-
 fn eval_mvp2_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: eval_mvp2_allocate_literal_sym,
-    call_primitive: eval_mvp2_call_primitive_sym,
-    choose_branch: eval_mvp2_choose_branch_sym,
-    step_loop: eval_mvp2_step_loop_sym,
-    bind_value: eval_mvp2_bind_value_sym
+    allocate_literal: ^eval_mvp2_allocate_literal_sym,
+    call_primitive: ^eval_mvp2_call_primitive_sym,
+    choose_branch: ^eval_mvp2_choose_branch_sym,
+    step_loop: ^eval_mvp2_step_loop_sym,
+    bind_value: ^eval_mvp2_bind_value_sym
   }
 }
 
 fn eval_mvp2_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: eval_mvp2_interpretation_pin,
+    runtime_identity: ^eval_mvp2_interpretation_pin,
     interpretation: eval_mvp2_interpretation_algebra(),
     structure_witness: eval_mvp2_interpretation_structure_witness()
   )
 }
-
 
 data claim_eval_mvp2_test_claim_route: TestClaim = EqualsClaim {
   label: "eval routes TestClaim through runtime interpretation",
@@ -406,14 +358,12 @@ data claim_eval_mvp2_test_claim_route: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data subject_eval_mvp2_test_claim_route: TestClaimEvalSubject<Node> = eval_test_claim_subject(
   claim: claim_eval_mvp2_test_claim_route,
   context: eval_mvp2_context(),
   tree: eval_mvp2_inferred_tree(),
-  evaluator_pin: eval_mvp2_evaluator_pin
+  evaluator_pin: ^eval_mvp2_evaluator_pin
 )
-
 
 data run_eval_mvp2_test_claim_route: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_eval_mvp2_test_claim_route

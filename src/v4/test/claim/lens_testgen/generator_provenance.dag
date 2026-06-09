@@ -18,12 +18,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-
-data lens_testgen_generator_provenance_ok: Symbol = lens_testgen_generator_provenance_ok
-data lens_testgen_generator_provenance_failed: Symbol = lens_testgen_generator_provenance_failed
-
-
 fn lens_testgen_generator_provenance_marker_node(marker: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: marker } },
@@ -34,9 +28,9 @@ fn lens_testgen_generator_provenance_marker_node(marker: Symbol) -> Node {
 
 fn lens_testgen_generator_provenance_rhs() -> Node {
   if scheduled_generators_carry_provenance() {
-    lens_testgen_generator_provenance_marker_node(marker: lens_testgen_generator_provenance_ok)
+    lens_testgen_generator_provenance_marker_node(marker: ^lens_testgen_generator_provenance_ok)
   } else {
-    lens_testgen_generator_provenance_marker_node(marker: lens_testgen_generator_provenance_failed)
+    lens_testgen_generator_provenance_marker_node(marker: ^lens_testgen_generator_provenance_failed)
   }
 }
 
@@ -44,7 +38,7 @@ fn lens_testgen_generator_provenance_rhs() -> Node {
 data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = EqualsClaim {
   label: "lens_testgen/generator_provenance: scheduled generators carry consistent provenance + profile metadata",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: lens_testgen_generator_provenance_marker_node(marker: lens_testgen_generator_provenance_ok),
+  lhs: lens_testgen_generator_provenance_marker_node(marker: ^lens_testgen_generator_provenance_ok),
   rhs: lens_testgen_generator_provenance_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

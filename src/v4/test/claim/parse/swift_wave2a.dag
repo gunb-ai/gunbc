@@ -23,17 +23,12 @@ import v4.std.verification {
   Integration,
   manual_claim_anchor
 }
-
-data swift_wave2a_file: Symbol = swift_wave2a_file
-data swift_wave2a_bool_true: Symbol = swift_wave2a_bool_true
-data swift_wave2a_bool_false: Symbol = swift_wave2a_bool_false
-
 data swift_wave2a_non_mvp_source: String = "func choose(x: Int) -> Int { let y = x + 1\nif y > 0 { return y }\nreturn 0 }"
 
 fn swift_wave2a_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: swift_wave2a_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: swift_wave2a_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^swift_wave2a_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^swift_wave2a_bool_false } }, children: [] }
   }
 }
 
@@ -47,7 +42,7 @@ fn swift_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
 fn swift_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
   match tokenize(
     text: swift_wave2a_non_mvp_source,
-    file: swift_wave2a_file,
+    file: ^swift_wave2a_file,
     rules: swift_wave1_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }

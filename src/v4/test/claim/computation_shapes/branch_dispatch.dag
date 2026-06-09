@@ -31,14 +31,6 @@ import v4.std.verification {
   EqualsClaim,
   manual_claim_anchor
 }
-
-
-data branch_dispatch_arm_then_sym: Symbol = branch_dispatch_arm_then_sym
-data branch_dispatch_arm_else_sym: Symbol = branch_dispatch_arm_else_sym
-data branch_dispatch_pass_sym: Symbol = branch_dispatch_pass_sym
-data branch_dispatch_fail_sym: Symbol = branch_dispatch_fail_sym
-
-
 fn branch_dispatch_leaf(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
@@ -54,8 +46,8 @@ fn branch_dispatch_arm(s: Symbol) -> Node {
 }
 
 
-data branch_dispatch_arm_then: Node = branch_dispatch_arm(s: branch_dispatch_arm_then_sym)
-data branch_dispatch_arm_else: Node = branch_dispatch_arm(s: branch_dispatch_arm_else_sym)
+data branch_dispatch_arm_then: Node = branch_dispatch_arm(s: ^branch_dispatch_arm_then_sym)
+data branch_dispatch_arm_else: Node = branch_dispatch_arm(s: ^branch_dispatch_arm_else_sym)
 
 
 data branch_dispatch_subject: Node = Node {
@@ -68,12 +60,12 @@ data branch_dispatch_subject: Node = Node {
 
 
 fn branch_dispatch_pass_node() -> Node {
-  branch_dispatch_leaf(s: branch_dispatch_pass_sym)
+  branch_dispatch_leaf(s: ^branch_dispatch_pass_sym)
 }
 
 
 fn branch_dispatch_fail_node() -> Node {
-  branch_dispatch_leaf(s: branch_dispatch_fail_sym)
+  branch_dispatch_leaf(s: ^branch_dispatch_fail_sym)
 }
 
 
