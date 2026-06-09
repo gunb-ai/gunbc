@@ -11,9 +11,10 @@ Now that `find_witness` (#4585) and `fold_node` exist as first-class v4 std prim
 report measures HOW CLOSE each v4 pipeline stage is to consuming them vs hand-rolling coercion
 or tree-traversal logic.
 
-**Verdict:** `06_translate` is the only stage that has crossed the threshold. All upstream stages
-(02–05) are structurally pre-coercion — by design for some (parse, normalize), by gap for others
-(04_infer, 03_resolve).
+**Verdict:** `06_translate` is the only stage that has crossed the coercion threshold. Upstream
+stages are structurally pre-coercion — by design for some (parse, normalize, eval), by gap for
+others (04_infer, 03_resolve). `05_eval` has partial `fold_node` adoption (2 call sites) but no
+coercion role.
 
 ---
 
@@ -90,6 +91,16 @@ coercion or node-traversal logic in scope. Downstream of translate's coercion.
 
 ---
 
+### 05_eval.dag (1936L) — PARTIAL for fold_node; N/A for coercion 🟡
+
+**find_witness:** 0 (N/A — evaluator interprets inferred tree, no coercion decisions)  
+**fold_node:** 2 call sites (L783, L1570 — excludes 1 import line)  
+**Gap:** No coercion gap; eval is a runtime interpreter consuming `InferredTree`. The two
+`fold_node` call sites drive structural evaluation traversals. Full fold adoption for remaining
+node-kind matches is Q4-gated (Outcome-bearing fold algebra).
+
+---
+
 ### emit_host.dag — ORCHESTRATOR ⬜
 
 **find_witness:** 0  
@@ -116,6 +127,7 @@ seed, get-off-v3 goal).
 | 03_resolve | ⬜ N/A (name resolution) | 🟡 1 site | none | partial (Q4 gate) |
 | 03_normalize | ⬜ N/A (sugar dissolution) | ⬜ 0 sites | none | partial (Q4 gate) |
 | 02_parse | ⬜ N/A | ⬜ 0 sites | none | none |
+| 05_eval | ⬜ N/A (interpreter) | 🟡 2 sites | none | partial (Q4 gate) |
 | 05_emit | ⬜ N/A | ⬜ 0 sites | none | none |
 | v2/\* | ⬜ frozen bootstrap | ⬜ frozen | unblockable until v4 migration | same |
 
