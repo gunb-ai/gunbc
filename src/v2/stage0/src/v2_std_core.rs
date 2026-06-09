@@ -1218,6 +1218,32 @@ pub fn declaration_id_equal(left: Rc<Node>, right: Rc<Node>) -> bool {
     }
 }
 
+pub fn with_declaration_identity_from(source: Rc<Node>, node: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        name: node.name.clone(),
+        ident: match source.ident.clone() {
+            Some(id) => Some(id.clone()),
+            None => node.ident.clone(),
+        },
+        span: node.span.clone(),
+        ident_span: node.ident_span.clone(),
+        children: node.children.clone(),
+        connective: node.connective.clone(),
+        params: node.params.clone(),
+        inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
+        uses: node.uses.clone(),
+        body: node.body.clone(),
+        transport: node.transport.clone(),
+        properties: node.properties.clone(),
+        type_annotation: node.type_annotation.clone(),
+        is_self_recursive: node.is_self_recursive.clone(),
+        has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+        match_pattern: node.match_pattern.clone(),
+        expr_data: node.expr_data.clone(),
+    })
+}
+
 pub fn find_child_named(
     n: Rc<Node>,
     name: String,

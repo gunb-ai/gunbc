@@ -55,7 +55,7 @@ pub use crate::v2_std_core::{
     transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
     transport_path_template_key, transport_query_key, transport_response_format_key,
     transport_stdin_key, transport_url_key, variant_node_fields, variant_node_name_at,
-    with_required_cardinality,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -4856,36 +4856,14 @@ pub fn maybe_optional(
     start_span: Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
     match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectQuestion))).clone() {
-        EatResult::EatConsumed { tokens: __ec, .. } => {
-            let ote = Rc::new(Node {
-                name: te.name.clone(),
-                span: te.span.clone(),
-                ident_span: te.ident_span.clone(),
-                children: te.children.clone(),
-                connective: te.connective.clone(),
-                params: te.params.clone(),
-                inferred: te.inferred.clone(),
-                return_cardinality: Cardinality::CardOptional,
-                uses: te.uses.clone(),
-                body: te.body.clone(),
-                transport: te.transport.clone(),
-                properties: te.properties.clone(),
-                type_annotation: te.type_annotation.clone(),
-                is_self_recursive: te.is_self_recursive.clone(),
-                has_non_tail_self_call: te.has_non_tail_self_call.clone(),
-                match_pattern: te.match_pattern.clone(),
-                expr_data: te.expr_data.clone(),
-                ident: None,
-            });
-            Rc::new(TypeResult {
-                type_expr: ote,
-                tokens: __ec.clone(),
-                ctx: ctx,
-                err: None,
-            })
-        }
+        EatResult::EatConsumed { tokens: __ec, .. } => Rc::new(TypeResult {
+            type_expr: with_optional_cardinality(te),
+            tokens: __ec.clone(),
+            ctx: ctx,
+            err: None,
+        }),
         EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(TypeResult {
-            type_expr: te.clone(),
+            type_expr: te,
             tokens: tokens.clone(),
             ctx: ctx,
             err: None,
@@ -5836,6 +5814,7 @@ pub fn parse_uses_entry(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc
                 }
                 let res_node = Rc::new(Node {
                     name: r3.type_expr.clone().name.clone(),
+                    ident: r3.type_expr.clone().ident.clone(),
                     span: r3.type_expr.clone().span.clone(),
                     ident_span: r3.type_expr.clone().ident_span.clone(),
                     children: r3.type_expr.clone().children.clone(),
@@ -5852,7 +5831,6 @@ pub fn parse_uses_entry(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc
                     has_non_tail_self_call: r3.type_expr.clone().has_non_tail_self_call.clone(),
                     match_pattern: r3.type_expr.clone().match_pattern.clone(),
                     expr_data: r3.type_expr.clone().expr_data.clone(),
-                    ident: None,
                 });
                 let ru = make_resource_use_node(name, res_node, start_span.clone(), r.span.clone());
                 Rc::new(ResUseResult {
