@@ -131,6 +131,7 @@ import v2.compiler.infer_patterns {
   lookup_variant_in_type, lookup_field_in_variant,
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
+  optional_match_variant_canonical_name, optional_match_variant_legacy_name,
   check_match_exhaustiveness
 }
 import v2.compiler.infer_lookup {
