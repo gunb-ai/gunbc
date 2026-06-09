@@ -3628,19 +3628,57 @@ fn type_expr_projection_substrate_facts(
   node: Node,
   projected_positional: List<Node>
 ) -> Node {
-  Node {
-    kind: node.kind,
-    children: fold_list_right(
-      xs: projected_positional,
-      empty: Empty,
-      snoc: fn(acc, child) {
-        list_snoc_item(
-          xs: acc,
-          item: Edge { label: Positional, target: child }
+  match node.kind {
+    TypeNode { connective: Conj } | TypeNode { connective: Disj } =>
+      Node {
+        kind: node.kind,
+        children: node.children
+      }
+    _ =>
+      Node {
+        kind: node.kind,
+        children: fold_list_right(
+          xs: projected_positional,
+          empty: Empty,
+          snoc: fn(acc, child) {
+            list_snoc_item(
+              xs: acc,
+              item: Edge { label: Positional, target: child }
+            )
+          }
         )
       }
-    )
   }
+}
+
+// SG-2 fold checkpoint 3b — graft substrate facts into per-connective row slot shape.
+fn type_expr_projection_encode_substrate_in_row_slot(
+  projection: TargetTypeExpressionProjection,
+  connective: Connective,
+  node: Node,
+  projected_positional: List<Node>
+) -> Outcome<Node> {
+  let facts = type_expr_projection_substrate_facts(
+    node: node,
+    projected_positional: projected_positional
+  )
+  bind_outcome(
+    o: type_expr_projection_shape_for_connective(
+      projection: projection,
+      connective: connective
+    ),
+    f: fn(slot_shape) {
+      outcome_accepted(
+        Node {
+          kind: slot_shape.kind,
+          children: list_append(
+            left: slot_shape.children,
+            right: facts.children
+          )
+        }
+      )
+    }
+  )
 }
 
 // SG-2 fold — zip-fold row witness gate (checkpoint 3 entry; source_facts authority).
