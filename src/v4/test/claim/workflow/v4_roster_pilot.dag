@@ -32,6 +32,7 @@ data lens_affected_set_irt1_empty_diff_frontier_holds: Symbol = lens_affected_se
 data lens_affected_set_irt1_fail_closed_absorption_holds: Symbol = lens_affected_set_irt1_fail_closed_absorption_holds
 data lens_affected_set_irt1_fail_closed_pending_escalation_holds: Symbol = lens_affected_set_irt1_fail_closed_pending_escalation_holds
 data lens_application_introspect_advisory_holds: Symbol = lens_application_introspect_advisory_holds
+data lens_application_synthesis_gap_enforce_rejection_holds: Symbol = lens_application_synthesis_gap_enforce_rejection_holds
 data lens_application_synthesis_gap_polynomial_holds: Symbol = lens_application_synthesis_gap_polynomial_holds
 data lens_idempotency_write_effect_holds: Symbol = lens_idempotency_write_effect_holds
 data lens_identical_variant_payload_unrealized_scaffold_holds: Symbol = lens_identical_variant_payload_unrealized_scaffold_holds
@@ -107,7 +108,8 @@ fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
   let m34 = map_insert(m33, parse_table_token_position_indices_no_extra_append_holds, "parse_table_token_position_indices_no_extra_append_holds")
   let m35 = map_insert(m34, lens_application_introspect_advisory_holds, "lens_application_introspect_advisory_holds")
   let m36 = map_insert(m35, lens_application_synthesis_gap_polynomial_holds, "lens_application_synthesis_gap_polynomial_holds")
-  let m37 = map_insert(m36, lens_idempotency_write_effect_holds, "lens_idempotency_write_effect_holds")
+  let m37 = map_insert(m36, lens_application_synthesis_gap_enforce_rejection_holds, "lens_application_synthesis_gap_enforce_rejection_holds")
+  let m38 = map_insert(m37, lens_idempotency_write_effect_holds, "lens_idempotency_write_effect_holds")
   let m38 = map_insert(m37, lens_identical_variant_payload_unrealized_scaffold_holds, "lens_identical_variant_payload_unrealized_scaffold_holds")
   let m39 = map_insert(m38, lens_affected_set_irt1_boundary_prune_holds, "lens_affected_set_irt1_boundary_prune_holds")
   let m40 = map_insert(m39, lens_affected_set_irt1_fail_closed_pending_escalation_holds, "lens_affected_set_irt1_fail_closed_pending_escalation_holds")
