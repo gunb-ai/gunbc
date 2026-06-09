@@ -684,7 +684,11 @@ fn cpp_sg2_type_expr_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn cpp_sg2_type_expr_binding_symbol(sym: Symbol) -> Bool {
-  sym == ^cpp_binding_sg2_x || sym == ^cpp_binding_sg2_y
+  sym == ^cpp_binding_sg2_foobar
+    || sym == ^cpp_binding_sg2_rc
+    || sym == ^cpp_binding_sg2_set
+    || sym == ^cpp_binding_sg2_x
+    || sym == ^cpp_binding_sg2_y
 }
 
 // SG-2 type-expression row vocabulary — declare before projection row / lex / binding consumers.
