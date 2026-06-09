@@ -5,11 +5,10 @@
 
 module v4.workflow.scheduler
 
-import v4.std.collection { List, ListAtFound, ListAtLookup, ListAtMissing }
+import v4.std.collection { List, list_at_optional, optional_present_witness }
 import v4.std.algebra {
   contains,
   filter,
-  fold_list,
   for_all,
   is_empty,
   list_append,
@@ -24,6 +23,7 @@ import v4.std.dependency {
   topological_layers
 }
 import v4.std.node { Node }
+import v4.std.witness { Holds, Violates, Witness }
 
 type RunnableFrontier {
   ready: List<Node>
@@ -326,28 +326,16 @@ fn scheduler_plan_for_layers(layers: List<ReadinessLayer>, blocked: List<Node>) 
   }
 }
 
-fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> ListAtLookup<ReadinessLayer> {
-  fold_list(
-    xs: layers,
-    empty: ListAtMissing { remaining: 0 },
-    cons: fn(acc, layer) {
-      match acc {
-        ListAtFound { value: _ } => acc
-        ListAtMissing { remaining: remaining } =>
-          if remaining == 0 {
-            ListAtFound { value: layer }
-          } else {
-            ListAtMissing { remaining: remaining - 1 }
-          }
-      }
-    }
+fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> Witness<ReadinessLayer> {
+  optional_present_witness(
+    opt: list_at_optional(xs: layers, index: 0)
   )
 }
 
 fn runnable_frontier_from_layers(layers: List<ReadinessLayer>) -> RunnableFrontier {
   match scheduler_first_readiness_layer(layers: layers) {
-    ListAtFound { value: layer } => RunnableFrontier { ready: layer.ready }
-    ListAtMissing { remaining: _ } => RunnableFrontier { ready: [] }
+    Holds { value: layer } => RunnableFrontier { ready: layer.ready }
+    Violates { diagnostic: _ } => RunnableFrontier { ready: [] }
   }
 }
 
