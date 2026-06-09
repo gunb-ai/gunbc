@@ -457,6 +457,14 @@ fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
   }
 }
 
+data claim_sg2_fold_row_delimiter_discriminates: TestClaim = CompilesClaim {
+  label: "manual/sg2: row witness gate rejects wrong arrow delimiter row (fold discrimination)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(ok: witness_sg2_fold_row_delimiter_discriminates_holds()),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
 fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
   match type_expr_projection_bundle_shape_for_connective(
     bundle: rust_type_expression_projection_bundle_node(),

@@ -1457,7 +1457,7 @@ fn cpp_sg2_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^cpp_binding_sg2_foobar, "FooBar")
   let m1 = map_insert(m0, ^cpp_binding_sg2_x, "X")
   let m2 = map_insert(m1, ^cpp_binding_sg2_y, "Y")
-  let m3 = map_insert(m2, ^cpp_binding_sg2_rc, "shared_ptr")
+  let m3 = map_insert(m2, ^cpp_binding_sg2_rc, "std::shared_ptr")
   map_insert(m3, ^cpp_binding_sg2_set, "set")
 }
 

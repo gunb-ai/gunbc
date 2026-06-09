@@ -87,6 +87,8 @@ data witness_lens_parallelism_family_gate_closed: Symbol = witness_lens_parallel
 data witness_model_core_bool_fact_lookup_discriminates: Symbol = witness_model_core_bool_fact_lookup_discriminates
 data witness_sg2_arrow_holds: Symbol = witness_sg2_arrow_holds
 data witness_sg2_projection_falsification_holds: Symbol = witness_sg2_projection_falsification_holds
+data witness_sg2_fold_row_delimiter_discriminates_holds: Symbol =
+  witness_sg2_fold_row_delimiter_discriminates_holds
 
 
 fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
