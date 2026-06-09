@@ -264,8 +264,6 @@ fn integer_interval_spec_contains_decoded_node(container: IntegerIntervalSpec, c
 fn integer_interval_spec_node_contains(container: Node, contained: Node) -> Bool {
   if container == integer_interval_spec_node(spec: int128_interval_spec()) {
     integer_interval_spec_contains_decoded_node(container: int128_interval_spec(), contained: contained)
-  } else if container == integer_interval_spec_node(spec: int128_interval_spec()) {
-    integer_interval_spec_contains_decoded_node(container: int128_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: int64_interval_spec()) {
     integer_interval_spec_contains_decoded_node(container: int64_interval_spec(), contained: contained)
   } else if container == integer_interval_spec_node(spec: int32_interval_spec()) {

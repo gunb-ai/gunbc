@@ -19,6 +19,7 @@ import v4.std.find_witness {
   UniqueOnly,
   find_witness,
   find_witness_derives,
+  find_witness_reason_ambiguous_candidate,
   preservation_rule_constraint_satisfaction,
   preservation_rule_exact_structural_equality_zip_fold,
   preservation_rule_refinement_widening
@@ -26,6 +27,7 @@ import v4.std.find_witness {
 import v4.std.integer {
   int16_interval_spec,
   int32_interval_spec,
+  uint8_interval_spec,
   integer_interval_spec_node
 }
 import v4.std.integer_value_set {
@@ -103,6 +105,16 @@ data witness_project_to_core_real_dispatch_rejects_wrong_core: Bool = match find
   Rejected { diagnostics: _ } => true
 }
 
+data witness_project_to_core_derives_preserves_ambiguity: Bool = match find_witness_derives(
+  source_facts: task_id_api_inhabitant_node(),
+  candidates: control_candidate_set(candidates: [task_id_db_inhabitant_node(), task_id_wire_inhabitant_node()], closedness_evidence: task_id_wire_inhabitant_node()),
+  derivation_algebra: task_id_api_inhabitant_node(),
+  multiplicity_policy: UniqueOnly
+) {
+  Accepted { value: _, diagnostics: _ } => false
+  Rejected { diagnostics: r } => r.head.reason == find_witness_reason_ambiguous_candidate
+}
+
 fn surface_only_node(surface: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -133,6 +145,10 @@ fn i16_value_set() -> Node {
   integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int16_interval_spec()))
 }
 
+fn u8_value_set() -> Node {
+  integer_interval_value_set_node(interval: integer_interval_spec_node(spec: uint8_interval_spec()))
+}
+
 fn python_int_value_set() -> Node {
   integer_unbounded_value_set_node()
 }
@@ -140,6 +156,8 @@ fn python_int_value_set() -> Node {
 data witness_integer_value_set_accepts_i32_subset_python_int: Bool = integer_value_set_contains(container: python_int_value_set(), contained: i32_value_set())
 
 data witness_integer_value_set_accepts_i16_subset_i32: Bool = integer_value_set_contains(container: i32_value_set(), contained: i16_value_set())
+
+data witness_integer_value_set_accepts_u8_subset_i16: Bool = integer_value_set_contains(container: i16_value_set(), contained: u8_value_set())
 
 fn integer_value_set_reverse_is_strict_coarsening_control() -> Bool {
   let strict = integer_value_set_strictly_contains(container: python_int_value_set(), contained: i32_value_set())
