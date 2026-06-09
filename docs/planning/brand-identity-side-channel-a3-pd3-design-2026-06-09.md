@@ -388,7 +388,8 @@ sides stamped; fall back to `source_name_at` string equality. Container kind com
 ### 5.4 Reference nodes
 
 `nominal_ref_node` should accept optional `binding_id: BindingId?`. Parse-time refs start with
-`binding_id: none`; infer stamps after env bind. Spelling `ident` (if any) remains independent.
+`binding_id: none`; infer/resolve propagates `resolved.binding_id` after lookup — it never
+originates a stamp. Spelling `ident` (if any) remains independent.
 
 ### 5.5 Class sweep — all `binding_id` feed paths (Amendment 4)
 
