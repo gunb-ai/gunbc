@@ -148,20 +148,12 @@ type InstallChannel
 // src/v4/release/release.dag lands `release_published_target_triples` (per parent-session
 // guidance 2026-05-29); install.dag imports from there rather than redeclaring the published
 // subset.
-
-data x86_64_unknown_linux_musl_asset: Symbol = x86_64_unknown_linux_musl_asset
-data aarch64_unknown_linux_musl_asset: Symbol = aarch64_unknown_linux_musl_asset
-data x86_64_apple_darwin_asset: Symbol = x86_64_apple_darwin_asset
-data aarch64_apple_darwin_asset: Symbol = aarch64_apple_darwin_asset
-data x86_64_pc_windows_msvc_asset: Symbol = x86_64_pc_windows_msvc_asset
-data aarch64_pc_windows_msvc_asset: Symbol = aarch64_pc_windows_msvc_asset
-
 data install_target_x86_64_linux_musl: InstallTarget = InstallTarget {
   triple: tier2_linux_x86_64_musl,
   archive_extension: TarGz,
   install_prefix: PosixUsrLocalBin,
   env_path_policy: NoPathMutation,
-  asset_identity: x86_64_unknown_linux_musl_asset
+  asset_identity: ^x86_64_unknown_linux_musl_asset
 }
 
 data install_target_aarch64_linux_musl: InstallTarget = InstallTarget {
@@ -169,7 +161,7 @@ data install_target_aarch64_linux_musl: InstallTarget = InstallTarget {
   archive_extension: TarGz,
   install_prefix: PosixUsrLocalBin,
   env_path_policy: NoPathMutation,
-  asset_identity: aarch64_unknown_linux_musl_asset
+  asset_identity: ^aarch64_unknown_linux_musl_asset
 }
 
 data install_target_x86_64_macos: InstallTarget = InstallTarget {
@@ -177,7 +169,7 @@ data install_target_x86_64_macos: InstallTarget = InstallTarget {
   archive_extension: TarGz,
   install_prefix: PosixUsrLocalBin,
   env_path_policy: NoPathMutation,
-  asset_identity: x86_64_apple_darwin_asset
+  asset_identity: ^x86_64_apple_darwin_asset
 }
 
 data install_target_aarch64_macos: InstallTarget = InstallTarget {
@@ -185,7 +177,7 @@ data install_target_aarch64_macos: InstallTarget = InstallTarget {
   archive_extension: TarGz,
   install_prefix: PosixUsrLocalBin,
   env_path_policy: NoPathMutation,
-  asset_identity: aarch64_apple_darwin_asset
+  asset_identity: ^aarch64_apple_darwin_asset
 }
 
 data install_target_x86_64_windows_msvc: InstallTarget = InstallTarget {
@@ -193,7 +185,7 @@ data install_target_x86_64_windows_msvc: InstallTarget = InstallTarget {
   archive_extension: Zip,
   install_prefix: WindowsLocalAppDataPrograms,
   env_path_policy: AppendToUserPath,
-  asset_identity: x86_64_pc_windows_msvc_asset
+  asset_identity: ^x86_64_pc_windows_msvc_asset
 }
 
 data install_target_aarch64_windows_msvc: InstallTarget = InstallTarget {
@@ -201,7 +193,7 @@ data install_target_aarch64_windows_msvc: InstallTarget = InstallTarget {
   archive_extension: Zip,
   install_prefix: WindowsLocalAppDataPrograms,
   env_path_policy: AppendToUserPath,
-  asset_identity: aarch64_pc_windows_msvc_asset
+  asset_identity: ^aarch64_pc_windows_msvc_asset
 }
 
 
@@ -222,20 +214,15 @@ data release_published_targets: List<InstallTarget> = [
 // Channel inhabitants. Channels whose hosting / registry identity is not yet pinned (apt repo
 // root, crates.io registry symbol, release tag) carry slot Symbols that resolve when infra
 // lands.
-data gunbc_release_tag_v0_1_0: Symbol = gunbc_release_tag_v0_1_0
-data gunbc_homebrew_tap_repo: Symbol = gunbc_homebrew_tap_repo
-data gunbc_apt_repo_root: Symbol = gunbc_apt_repo_root
-data crates_io_registry: Symbol = crates_io_registry
-
 data github_release_tarball_channel: InstallChannel = GitHubReleaseTarball {
-  release_tag_authority: gunbc_release_tag_v0_1_0,
+  release_tag_authority: ^gunbc_release_tag_v0_1_0,
   install_script_posix_name: "install.sh",
   install_script_powershell_name: "install.ps1",
   targets: release_published_targets
 }
 
 data homebrew_formula_channel: InstallChannel = HomebrewFormula {
-  tap_repo_identity: gunbc_homebrew_tap_repo,
+  tap_repo_identity: ^gunbc_homebrew_tap_repo,
   formula_class_name: "Gunbc",
   formula_homepage: "https://github.com/gunb-ai/gunbc",
   targets: [
@@ -256,14 +243,14 @@ data deb_package_channel: InstallChannel = DebPackage {
 }
 
 data apt_repository_channel: InstallChannel = AptRepository {
-  repo_root_authority: gunbc_apt_repo_root,
+  repo_root_authority: ^gunbc_apt_repo_root,
   suite_name: "stable",
   component_name: "main"
 }
 
 data cargo_install_channel: InstallChannel = CargoInstall {
   crate_name: "gunbc",
-  registry_authority: crates_io_registry
+  registry_authority: ^crates_io_registry
 }
 
 

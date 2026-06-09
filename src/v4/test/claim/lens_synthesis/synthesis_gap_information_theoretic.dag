@@ -38,12 +38,8 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds, Violates }
-
-data synthesis_gap_it_atom_symbol: Symbol = synthesis_gap_it_atom_symbol
-data synthesis_gap_it_sentinel_symbol: Symbol = synthesis_gap_it_sentinel_symbol
-
 data synthesis_gap_it_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: synthesis_gap_it_atom_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_atom_symbol } },
   children: []
 }
 
@@ -70,7 +66,7 @@ data synthesis_gap_it_input: Node = Node {
 }
 
 data synthesis_gap_it_sentinel: Node = Node {
-  kind: TypeNode { connective: Atom { identity: synthesis_gap_it_sentinel_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_sentinel_symbol } },
   children: []
 }
 

@@ -24,11 +24,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data conj_positional_only_child_symbol: Symbol = conj_positional_only_child_symbol
-
 data conj_positional_only_child: Node = Node {
-  kind: TypeNode { connective: Atom { identity: conj_positional_only_child_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^conj_positional_only_child_symbol } },
   children: []
 }
 

@@ -2,17 +2,12 @@
 // Scope: POSIX process numeric refinement regression witnesses.
 // Status: T-25-core process refinement consumer acceptance witness; eval T-22.
 
-
 module v4.test.claim.manual.process_numeric_refinements
 
-
 import v4.extdeps.posix {
-  exit_code_out_of_range,
   make_exit_code,
   make_process_id,
-  make_signal_num,
-  process_id_out_of_range,
-  signal_num_out_of_range
+  make_signal_num
 }
 import v4.std.diagnostic {
   Accepted,
@@ -34,25 +29,24 @@ import v4.test.claim.manual.connective_anchors {
   stub_empty_disj
 }
 
-
 fn witness_exit_code_256_rejects() -> Bool {
   match make_exit_code(value: 256, at: node_locus(node: stub_empty_conj)) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == exit_code_out_of_range
+    Rejected { diagnostics } => diagnostics.head.reason == ^exit_code_out_of_range
   }
 }
 
 fn witness_process_id_zero_rejects() -> Bool {
   match make_process_id(value: 0, at: node_locus(node: stub_empty_conj)) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == process_id_out_of_range
+    Rejected { diagnostics } => diagnostics.head.reason == ^process_id_out_of_range
   }
 }
 
 fn witness_signal_num_zero_rejects() -> Bool {
   match make_signal_num(value: 0, at: node_locus(node: stub_empty_conj)) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == signal_num_out_of_range
+    Rejected { diagnostics } => diagnostics.head.reason == ^signal_num_out_of_range
   }
 }
 

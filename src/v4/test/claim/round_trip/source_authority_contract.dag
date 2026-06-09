@@ -30,16 +30,11 @@ import v4.std.verification {
   Integration,
   manual_claim_anchor
 }
-
-
-data source_authority_contract_subject_symbol: Symbol = source_authority_contract_subject_symbol
-data source_authority_contract_pass_symbol: Symbol = source_authority_contract_pass_symbol
-data source_authority_contract_fail_symbol: Symbol = source_authority_contract_fail_symbol
 data source_authority_contract_source: DagSource = ""
 
 
 data source_authority_contract_subject: Node = Node {
-  kind: TypeNode { connective: Atom { identity: source_authority_contract_subject_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^source_authority_contract_subject_symbol } },
   children: []
 }
 
@@ -52,14 +47,14 @@ data source_authority_contract_target_model: TargetModel = TargetModel {
 
 fn source_authority_contract_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: source_authority_contract_pass_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^source_authority_contract_pass_symbol } },
     children: []
   }
 }
 
 fn source_authority_contract_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: source_authority_contract_fail_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^source_authority_contract_fail_symbol } },
     children: []
   }
 }

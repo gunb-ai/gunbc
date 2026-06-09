@@ -24,11 +24,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data synthesis_fact_x_symbol: Symbol = synthesis_fact_x_symbol
-
 data synthesis_fact_x: Node = Node {
-  kind: TypeNode { connective: Atom { identity: synthesis_fact_x_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^synthesis_fact_x_symbol } },
   children: []
 }
 

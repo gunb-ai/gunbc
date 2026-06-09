@@ -33,28 +33,22 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-
-data apply_lens_mode_symbol: Symbol = apply_lens_mode_symbol
-data apply_lens_mode_gate_at: Symbol = apply_lens_mode_gate_at
-data apply_lens_mode_type_symbol: Symbol = apply_lens_mode_type_symbol
-data apply_lens_mode_algebra_symbol: Symbol = apply_lens_mode_algebra_symbol
-data apply_lens_mode_descent_symbol: Symbol = apply_lens_mode_descent_symbol
-data apply_lens_mode_root: Node = claim_atom_node(s: apply_lens_mode_symbol)
+data apply_lens_mode_root: Node = claim_atom_node(s: ^apply_lens_mode_symbol)
 
 fn apply_lens_mode_tree() -> InferredTree {
   claim_inferred_tree(
     root: apply_lens_mode_root,
     facts: claim_inferred_facts(
-      type_symbol: apply_lens_mode_type_symbol,
-      algebra_symbol: apply_lens_mode_algebra_symbol,
-      descent_symbol: apply_lens_mode_descent_symbol,
+      type_symbol: ^apply_lens_mode_type_symbol,
+      algebra_symbol: ^apply_lens_mode_algebra_symbol,
+      descent_symbol: ^apply_lens_mode_descent_symbol,
     )
   )
 }
 
 fn apply_lens_mode_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
-    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: apply_lens_mode_gate_at })
+    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: ^apply_lens_mode_gate_at })
   )
 }
 

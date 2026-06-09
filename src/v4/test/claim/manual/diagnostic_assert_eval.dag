@@ -39,12 +39,6 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
-
-
-data diag_assert_reason: Symbol = diag_assert_reason
-data diag_assert_other: Symbol = diag_assert_other
-
-
 fn diag_assert_node() -> Node {
   stub_empty_conj
 }
@@ -52,7 +46,7 @@ fn diag_assert_node() -> Node {
 
 fn diag_assert_d() -> Diagnostic {
   Diagnostic {
-    reason: diag_assert_reason,
+    reason: ^diag_assert_reason,
     at: node_locus(node: diag_assert_node()),
     correction: Unavailable { reason: AmbiguousIntent }
   }
@@ -61,7 +55,7 @@ fn diag_assert_d() -> Diagnostic {
 
 fn diag_assert_other_d() -> Diagnostic {
   Diagnostic {
-    reason: diag_assert_other,
+    reason: ^diag_assert_other,
     at: node_locus(node: diag_assert_node()),
     correction: Unavailable { reason: AmbiguousIntent }
   }
@@ -163,7 +157,7 @@ data witness_aggregate_empty_fail: Bool = match aggregate_verdicts(rs: empty_nod
 fn deferred_verdict() -> Verdict<TestClaimEvalSubject<Node>, Node> {
   Deferred {
     actual: rejected_same,
-    diagnostic: eval_diagnostic(reason: diag_assert_reason, node: diag_assert_node())
+    diagnostic: eval_diagnostic(reason: ^diag_assert_reason, node: diag_assert_node())
   }
 }
 
