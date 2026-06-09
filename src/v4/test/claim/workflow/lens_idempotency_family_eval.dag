@@ -1,6 +1,6 @@
 // src/v4/test/claim/workflow/lens_idempotency_family_eval.dag
 // Scope: T-38B family CI receipt — lens_idempotency run_test_claim rows gate green over eval_mvp2 wedge.
-// Status: T-22 eval → TestClaimRun → CorpusEvalReport → VerdictTally (authoring-time witness).
+// Status: T-22 eval → TestClaimRun → CorpusEvalReport → VerdictTally; host transport via v4_roster_pilot.dag.
 
 module v4.test.claim.workflow.lens_idempotency_family_eval
 
