@@ -27,11 +27,6 @@ type ExitCode {
 type SignalNum {
   refined: Refined<Int>
 }
-
-data process_id_out_of_range: Symbol = process_id_out_of_range
-data exit_code_out_of_range: Symbol = exit_code_out_of_range
-data signal_num_out_of_range: Symbol = signal_num_out_of_range
-
 fn process_id_admits(value: Int) -> Bool {
   value > 0
 }
@@ -46,17 +41,17 @@ fn signal_num_admits(value: Int) -> Bool {
 }
 
 data process_id_validation: Validation<Int> = Validation {
-  reason: process_id_out_of_range,
+  reason: ^process_id_out_of_range,
   admits: process_id_admits
 }
 
 data exit_code_validation: Validation<Int> = Validation {
-  reason: exit_code_out_of_range,
+  reason: ^exit_code_out_of_range,
   admits: exit_code_admits
 }
 
 data signal_num_validation: Validation<Int> = Validation {
-  reason: signal_num_out_of_range,
+  reason: ^signal_num_out_of_range,
   admits: signal_num_admits
 }
 

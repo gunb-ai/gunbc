@@ -648,37 +648,16 @@ type LlvmFloatPrimitiveFacts {
   kind: LlvmWave1FloatKind
   std_projection: Symbol
 }
-
-data llvm_surface_spelling_i32: Symbol = llvm_surface_spelling_i32
-data llvm_surface_spelling_i64: Symbol = llvm_surface_spelling_i64
-data llvm_surface_spelling_half: Symbol = llvm_surface_spelling_half
-data llvm_surface_spelling_float: Symbol = llvm_surface_spelling_float
-data llvm_surface_spelling_double: Symbol = llvm_surface_spelling_double
-data llvm_std_projection_i32: Symbol = llvm_std_projection_i32
-data llvm_std_projection_i64: Symbol = llvm_std_projection_i64
-data llvm_std_projection_half: Symbol = llvm_std_projection_half
-data llvm_std_projection_float: Symbol = llvm_std_projection_float
-data llvm_std_projection_double: Symbol = llvm_std_projection_double
-data llvm_repr_sign_agnostic_integer: Symbol = llvm_repr_sign_agnostic_integer
-data llvm_repr_ieee754_float_kind: Symbol = llvm_repr_ieee754_float_kind
-
-data llvm_tag_width_bits32: Symbol = llvm_tag_width_bits32
-data llvm_tag_width_bits64: Symbol = llvm_tag_width_bits64
-data llvm_tag_float_kind_half: Symbol = llvm_tag_float_kind_half
-data llvm_tag_float_kind_single: Symbol = llvm_tag_float_kind_single
-data llvm_tag_float_kind_double: Symbol = llvm_tag_float_kind_double
-data llvm_facts_field_std_projection: Symbol = llvm_facts_field_std_projection
-
 data llvm_facts_i32: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
-  surface_spelling: llvm_surface_spelling_i32,
+  surface_spelling: ^llvm_surface_spelling_i32,
   wave1_bits: Wave1Bits32,
-  std_projection: llvm_std_projection_i32,
+  std_projection: ^llvm_std_projection_i32,
 }
 
 data llvm_facts_i64: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
-  surface_spelling: llvm_surface_spelling_i64,
+  surface_spelling: ^llvm_surface_spelling_i64,
   wave1_bits: Wave1Bits64,
-  std_projection: llvm_std_projection_i64,
+  std_projection: ^llvm_std_projection_i64,
 }
 
 data llvm_integer_facts_catalog: List<LlvmIntegerPrimitiveFacts> = [
@@ -687,21 +666,21 @@ data llvm_integer_facts_catalog: List<LlvmIntegerPrimitiveFacts> = [
 ]
 
 data llvm_facts_half: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
-  surface_spelling: llvm_surface_spelling_half,
+  surface_spelling: ^llvm_surface_spelling_half,
   kind: Wave1HalfFloat,
-  std_projection: llvm_std_projection_half,
+  std_projection: ^llvm_std_projection_half,
 }
 
 data llvm_facts_float: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
-  surface_spelling: llvm_surface_spelling_float,
+  surface_spelling: ^llvm_surface_spelling_float,
   kind: Wave1SingleFloat,
-  std_projection: llvm_std_projection_float,
+  std_projection: ^llvm_std_projection_float,
 }
 
 data llvm_facts_double: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
-  surface_spelling: llvm_surface_spelling_double,
+  surface_spelling: ^llvm_surface_spelling_double,
   kind: Wave1DoubleFloat,
-  std_projection: llvm_std_projection_double,
+  std_projection: ^llvm_std_projection_double,
 }
 
 data llvm_float_facts_catalog: List<LlvmFloatPrimitiveFacts> = [
@@ -719,16 +698,16 @@ fn llvm_inhabitant_atom(id: Symbol) -> Node {
 
 fn llvm_wave1_integer_bits_node(wave1_bits: LlvmWave1IntegerBits) -> Node {
   match wave1_bits {
-    Wave1Bits32 => llvm_inhabitant_atom(id: llvm_tag_width_bits32)
-    Wave1Bits64 => llvm_inhabitant_atom(id: llvm_tag_width_bits64)
+    Wave1Bits32 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits32)
+    Wave1Bits64 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits64)
   }
 }
 
 fn llvm_wave1_float_kind_node(kind: LlvmWave1FloatKind) -> Node {
   match kind {
-    Wave1HalfFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_half)
-    Wave1SingleFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_single)
-    Wave1DoubleFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_double)
+    Wave1HalfFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_half)
+    Wave1SingleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_single)
+    Wave1DoubleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_double)
   }
 }
 
@@ -746,10 +725,10 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
       },
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: llvm_inhabitant_atom(id: llvm_repr_sign_agnostic_integer)
+        target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
       },
       Edge {
-        label: Named { name: llvm_facts_field_std_projection },
+        label: Named { name: ^llvm_facts_field_std_projection },
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ]
@@ -769,7 +748,7 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
         target: llvm_wave1_float_kind_node(kind: facts.kind)
       },
       Edge {
-        label: Named { name: llvm_facts_field_std_projection },
+        label: Named { name: ^llvm_facts_field_std_projection },
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ]
@@ -784,7 +763,7 @@ fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           Holds { value: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: llvm_inhabitant_atom(id: llvm_repr_sign_agnostic_integer) }
+          Holds { value: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer) }
       } else {
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
@@ -866,20 +845,6 @@ fn llvm_ir_model_core_wave1() -> ModelCore {
     partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
-
-
-data llvm_token_kw_define: Symbol = llvm_token_kw_define
-data llvm_token_kw_void: Symbol = llvm_token_kw_void
-data llvm_token_global_ident: Symbol = llvm_token_global_ident
-data llvm_token_lparen: Symbol = llvm_token_lparen
-data llvm_token_rparen: Symbol = llvm_token_rparen
-data llvm_token_lbrace: Symbol = llvm_token_lbrace
-data llvm_token_rbrace: Symbol = llvm_token_rbrace
-data llvm_token_kw_ret: Symbol = llvm_token_kw_ret
-data llvm_production_void_function: Symbol = llvm_production_void_function
-data llvm_surface_void_function: Symbol = llvm_surface_void_function
-
-
 fn llvm_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
@@ -911,14 +876,14 @@ fn llvm_wave1_lex() -> LexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        llvm_lex_token(token_class: llvm_token_global_ident, pattern: llvm_global_ident_pattern()),
-        llvm_lex_token(token_class: llvm_token_kw_define, pattern: KeywordPattern { text: "define" }),
-        llvm_lex_token(token_class: llvm_token_kw_void, pattern: KeywordPattern { text: "void" }),
-        llvm_lex_token(token_class: llvm_token_kw_ret, pattern: KeywordPattern { text: "ret" }),
-        llvm_lex_token(token_class: llvm_token_lparen, pattern: LiteralPattern { text: "(" }),
-        llvm_lex_token(token_class: llvm_token_rparen, pattern: LiteralPattern { text: ")" }),
-        llvm_lex_token(token_class: llvm_token_lbrace, pattern: LiteralPattern { text: "{" }),
-        llvm_lex_token(token_class: llvm_token_rbrace, pattern: LiteralPattern { text: "}" })
+        llvm_lex_token(token_class: ^llvm_token_global_ident, pattern: llvm_global_ident_pattern()),
+        llvm_lex_token(token_class: ^llvm_token_kw_define, pattern: KeywordPattern { text: "define" }),
+        llvm_lex_token(token_class: ^llvm_token_kw_void, pattern: KeywordPattern { text: "void" }),
+        llvm_lex_token(token_class: ^llvm_token_kw_ret, pattern: KeywordPattern { text: "ret" }),
+        llvm_lex_token(token_class: ^llvm_token_lparen, pattern: LiteralPattern { text: "(" }),
+        llvm_lex_token(token_class: ^llvm_token_rparen, pattern: LiteralPattern { text: ")" }),
+        llvm_lex_token(token_class: ^llvm_token_lbrace, pattern: LiteralPattern { text: "{" }),
+        llvm_lex_token(token_class: ^llvm_token_rbrace, pattern: LiteralPattern { text: "}" })
       ]
     }
   }
@@ -927,22 +892,22 @@ fn llvm_wave1_lex() -> LexRules {
 
 fn llvm_void_function_expr() -> GrammarExpr {
   llvm_grammar_sequence(
-    left: llvm_grammar_terminal(token_class: llvm_token_kw_define),
+    left: llvm_grammar_terminal(token_class: ^llvm_token_kw_define),
     right: llvm_grammar_sequence(
-      left: llvm_grammar_terminal(token_class: llvm_token_kw_void),
+      left: llvm_grammar_terminal(token_class: ^llvm_token_kw_void),
       right: llvm_grammar_sequence(
-        left: llvm_grammar_terminal(token_class: llvm_token_global_ident),
+        left: llvm_grammar_terminal(token_class: ^llvm_token_global_ident),
         right: llvm_grammar_sequence(
-          left: llvm_grammar_terminal(token_class: llvm_token_lparen),
+          left: llvm_grammar_terminal(token_class: ^llvm_token_lparen),
           right: llvm_grammar_sequence(
-            left: llvm_grammar_terminal(token_class: llvm_token_rparen),
+            left: llvm_grammar_terminal(token_class: ^llvm_token_rparen),
             right: llvm_grammar_sequence(
-              left: llvm_grammar_terminal(token_class: llvm_token_lbrace),
+              left: llvm_grammar_terminal(token_class: ^llvm_token_lbrace),
               right: llvm_grammar_sequence(
-                left: llvm_grammar_terminal(token_class: llvm_token_kw_ret),
+                left: llvm_grammar_terminal(token_class: ^llvm_token_kw_ret),
                 right: llvm_grammar_sequence(
-                  left: llvm_grammar_terminal(token_class: llvm_token_kw_void),
-                  right: llvm_grammar_terminal(token_class: llvm_token_rbrace)
+                  left: llvm_grammar_terminal(token_class: ^llvm_token_kw_void),
+                  right: llvm_grammar_terminal(token_class: ^llvm_token_rbrace)
                 )
               )
             )
@@ -956,13 +921,13 @@ fn llvm_void_function_expr() -> GrammarExpr {
 
 fn llvm_ir_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
-    name: llvm_production_void_function,
+    name: ^llvm_production_void_function,
     expression: llvm_void_function_expr(),
-    emitted: grammar_atom(identity: llvm_surface_void_function)
+    emitted: grammar_atom(identity: ^llvm_surface_void_function)
   }
   ModeledGrammar {
     root: GrammarRoot {
-      start: llvm_production_void_function,
+      start: ^llvm_production_void_function,
       productions: [start],
       sync_tokens: grammar_empty_sync_tokens()
     }
@@ -972,17 +937,17 @@ fn llvm_ir_wave1_grammar() -> ParseGrammar {
 
 fn llvm_void_function_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: llvm_production_void_function),
+    lhs: grammar_formal_nonterminal(identity: ^llvm_production_void_function),
     rhs: [
-      grammar_formal_terminal(identity: llvm_token_kw_define),
-      grammar_formal_terminal(identity: llvm_token_kw_void),
-      grammar_formal_terminal(identity: llvm_token_global_ident),
-      grammar_formal_terminal(identity: llvm_token_lparen),
-      grammar_formal_terminal(identity: llvm_token_rparen),
-      grammar_formal_terminal(identity: llvm_token_lbrace),
-      grammar_formal_terminal(identity: llvm_token_kw_ret),
-      grammar_formal_terminal(identity: llvm_token_kw_void),
-      grammar_formal_terminal(identity: llvm_token_rbrace)
+      grammar_formal_terminal(identity: ^llvm_token_kw_define),
+      grammar_formal_terminal(identity: ^llvm_token_kw_void),
+      grammar_formal_terminal(identity: ^llvm_token_global_ident),
+      grammar_formal_terminal(identity: ^llvm_token_lparen),
+      grammar_formal_terminal(identity: ^llvm_token_rparen),
+      grammar_formal_terminal(identity: ^llvm_token_lbrace),
+      grammar_formal_terminal(identity: ^llvm_token_kw_ret),
+      grammar_formal_terminal(identity: ^llvm_token_kw_void),
+      grammar_formal_terminal(identity: ^llvm_token_rbrace)
     ]
   }
 }
@@ -1002,7 +967,7 @@ fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     probe: GrammarSchemaProbe {
       fixture: "define void @f() { ret void }",
       production: llvm_void_function_formal_production(),
-      expected_parse_surface: grammar_atom(identity: llvm_surface_void_function)
+      expected_parse_surface: grammar_atom(identity: ^llvm_surface_void_function)
     }
   }
 }

@@ -268,23 +268,10 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
 fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
   [ProjectionDependsOn, VerifiedBy, Contains]
 }
-
-
-data affected_set_default_dimension: Symbol = affected_set_default_dimension
-data affected_set_boundary_pure_receipt_edge: Symbol = affected_set_boundary_pure_receipt_edge
-data affected_set_boundary_pure_receipt_payload: Symbol = affected_set_boundary_pure_receipt_payload
-data affected_set_dimension_not_read_receipt_edge: Symbol = affected_set_dimension_not_read_receipt_edge
-data affected_set_reason_boundary_path_unresolved: Symbol = affected_set_reason_boundary_path_unresolved
-data affected_set_reason_boundary_purity_unproven: Symbol = affected_set_reason_boundary_purity_unproven
-data affected_set_reason_changed_dimension_unresolved: Symbol = affected_set_reason_changed_dimension_unresolved
-data affected_set_reason_frontier_path_unresolved: Symbol = affected_set_reason_frontier_path_unresolved
-data affected_set_reason_frontier_ancestor_unresolved: Symbol = affected_set_reason_frontier_ancestor_unresolved
-
-
 // 🟡 receipt-node scaffold — feature:affected-set-boundary-exclusion-proof-carrier — bind T-21 — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace boundary atom target.
 fn affected_set_boundary_pure_receipt_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: affected_set_boundary_pure_receipt_payload } },
+    kind: TypeNode { connective: Atom { identity: ^affected_set_boundary_pure_receipt_payload } },
     children: []
   }
 }
@@ -1071,7 +1058,7 @@ fn re_exec_frontier_from_diff(
 
 
 fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt {
-  match find_child_by_name(root: node, name: affected_set_boundary_pure_receipt_edge) {
+  match find_child_by_name(root: node, name: ^affected_set_boundary_pure_receipt_edge) {
     Accepted { value: receipt, diagnostics: _ } =>
       if receipt == affected_set_boundary_pure_receipt_node() {
         BoundaryPruned {
@@ -1080,10 +1067,10 @@ fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt 
           }
         }
       } else {
-        BoundaryUnknown { reason: affected_set_reason_boundary_purity_unproven }
+        BoundaryUnknown { reason: ^affected_set_reason_boundary_purity_unproven }
       }
     Rejected { diagnostics: _ } =>
-      BoundaryUnknown { reason: affected_set_reason_boundary_purity_unproven }
+      BoundaryUnknown { reason: ^affected_set_reason_boundary_purity_unproven }
   }
 }
 
@@ -1104,14 +1091,14 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
         HashChanged
       }
     Rejected { diagnostics: _ } =>
-      HashUnknown { reason: affected_set_reason_boundary_path_unresolved }
+      HashUnknown { reason: ^affected_set_reason_boundary_path_unresolved }
   }
 }
 
 
 // 🟡 canonical-read scaffold — feature:affected-set-dimension-delta-receipt-carrier — bind T-21/T-24 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions.
 fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
-  ChangedDimensionsUnknown { reason: affected_set_reason_changed_dimension_unresolved }
+  ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
 }
 
 
@@ -1132,7 +1119,7 @@ fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceip
         ]
       }
     Rejected { diagnostics: _ } =>
-      FrontierUnknown { reason: affected_set_reason_frontier_ancestor_unresolved }
+      FrontierUnknown { reason: ^affected_set_reason_frontier_ancestor_unresolved }
   }
 }
 
@@ -1209,7 +1196,7 @@ fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> Fro
     Accepted { value: walk, diagnostics: _ } =>
       canonical_region_dependencies(dag: dag, walk: walk)
     Rejected { diagnostics: _ } =>
-      FrontierUnknown { reason: affected_set_reason_frontier_path_unresolved }
+      FrontierUnknown { reason: ^affected_set_reason_frontier_path_unresolved }
   }
 }
 
@@ -1222,7 +1209,7 @@ fn canonical_propagation_receipt(
   if dependency_in_lens_frontier(dependency: dependency) {
     Propagates
   } else {
-    match find_child_by_name(root: dependency.usage_site, name: affected_set_dimension_not_read_receipt_edge) {
+    match find_child_by_name(root: dependency.usage_site, name: ^affected_set_dimension_not_read_receipt_edge) {
       Accepted { value: receipt, diagnostics: _ } =>
         if receipt == affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension) {
           DoesNotPropagate {

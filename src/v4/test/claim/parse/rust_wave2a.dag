@@ -20,11 +20,6 @@ import v4.std.verification {
   Integration,
   manual_claim_anchor
 }
-
-data rust_wave2a_file: Symbol = rust_wave2a_file
-data rust_wave2a_bool_true: Symbol = rust_wave2a_bool_true
-data rust_wave2a_bool_false: Symbol = rust_wave2a_bool_false
-
 data rust_wave2a_non_mvp_source: String = "fn choose(x: i32, y: i32) -> i32 { let z = x + 1;\nif z > 0 { return z }\nreturn 0 }"
 
 data rust_wave2a_return_semi_source: String = "fn r() -> i32 { return; }"
@@ -33,8 +28,8 @@ data rust_wave2a_layout_tight_source: String = "fn choose(x: i32, y: i32) -> i32
 
 fn rust_wave2a_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: rust_wave2a_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: rust_wave2a_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^rust_wave2a_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^rust_wave2a_bool_false } }, children: [] }
   }
 }
 
@@ -48,7 +43,7 @@ fn rust_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
 fn rust_wave2a_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
   match tokenize(
     text: text,
-    file: rust_wave2a_file,
+    file: ^rust_wave2a_file,
     rules: rust_wave2_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }

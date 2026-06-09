@@ -23,16 +23,9 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data content_hash_order_leaf_sym: Symbol = content_hash_order_leaf_sym
-data content_hash_order_field_a: Symbol = content_hash_order_field_a
-data content_hash_order_field_b: Symbol = content_hash_order_field_b
-data content_hash_order_pass_sym: Symbol = content_hash_order_pass_sym
-data content_hash_order_fail_sym: Symbol = content_hash_order_fail_sym
-
 fn content_hash_order_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_order_leaf_sym } },
+    kind: TypeNode { connective: Atom { identity: ^content_hash_order_leaf_sym } },
     children: []
   }
 }
@@ -42,11 +35,11 @@ fn content_hash_order_conj_ab() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: content_hash_order_field_a },
+        label: Named { name: ^content_hash_order_field_a },
         target: content_hash_order_leaf()
       },
       Edge {
-        label: Named { name: content_hash_order_field_b },
+        label: Named { name: ^content_hash_order_field_b },
         target: content_hash_order_leaf()
       }
     ]
@@ -58,11 +51,11 @@ fn content_hash_order_conj_ba() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: content_hash_order_field_b },
+        label: Named { name: ^content_hash_order_field_b },
         target: content_hash_order_leaf()
       },
       Edge {
-        label: Named { name: content_hash_order_field_a },
+        label: Named { name: ^content_hash_order_field_a },
         target: content_hash_order_leaf()
       }
     ]
@@ -71,14 +64,14 @@ fn content_hash_order_conj_ba() -> Node {
 
 fn content_hash_order_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_order_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^content_hash_order_pass_sym } },
     children: []
   }
 }
 
 fn content_hash_order_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: content_hash_order_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^content_hash_order_fail_sym } },
     children: []
   }
 }
@@ -93,7 +86,7 @@ fn content_hash_nested_conj_ab() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: content_hash_order_field_a },
+        label: Named { name: ^content_hash_order_field_a },
         target: content_hash_order_conj_ab()
       }
     ]
@@ -105,7 +98,7 @@ fn content_hash_nested_conj_ba() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: content_hash_order_field_a },
+        label: Named { name: ^content_hash_order_field_a },
         target: content_hash_order_conj_ba()
       }
     ]

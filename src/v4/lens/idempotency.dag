@@ -32,10 +32,6 @@ import v4.std.diagnostic {
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
-
-data idempotency_reason_unresolved_projection: Symbol = idempotency_reason_unresolved_projection
-data idempotency_projection_virtual_file: Symbol = idempotency_projection_virtual_file
-
 // 🟢 lens classification — dependency-edge alone never proves the positive
 // algebraic law, so `RequiresAlgebraWitness` is the fail-closed default;
 // `AlgebraicIdempotenceProven` carries the typed law witness on the row.
@@ -112,8 +108,8 @@ fn idempotency_fact_unresolved(fact: IdempotencyFact) -> Bool {
 
 fn idempotency_witness_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: idempotency_reason_unresolved_projection,
-    at: Textual { file: idempotency_projection_virtual_file, extent: WholeFile },
+    reason: ^idempotency_reason_unresolved_projection,
+    at: Textual { file: ^idempotency_projection_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
