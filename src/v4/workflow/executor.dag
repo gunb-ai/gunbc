@@ -36,6 +36,8 @@ type ExecutorBlockedEvidence
   = ExecutorSchedulerBlocked { evidence: SchedulerBlockedEvidence }
   | ExecutorEmptyFrontier {}
 
+// 🟡 coproduct dissolution — feature:executor-host-run-result — consumer:parallel_executor_plan
+// dissolve-on-arrival: host transport returns typed run results for ExecutorBatch, replacing plan-only complete/blocked projection.
 type ExecutorRunPlan
   = ExecutorRunComplete {
       batches: List<ExecutorBatch>,
