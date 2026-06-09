@@ -5,7 +5,7 @@ module v2.compiler.infer_resolve
 import std.types { SourceSpan, container_param_name }
 import v2.std.core {
   Node,
-  authored_name_at, NewlineIndex,
+  authored_name_at, brand_name_at, NewlineIndex,
   make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
   generic_param_name_at,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
@@ -31,7 +31,7 @@ import v2.std.core {
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
-  default_ident_span, kernel_span, node_name_span, intern
+  default_ident_span, kernel_span, node_name_span, intern, InternTable
 }
 import v2.compiler.infer_types {
   resolved_type, child_type_node, node_is_keyed_collection, is_declared_container_alias_spelling
@@ -48,12 +48,17 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
-// When peeling a one-level type alias to its structural target, keep the
-// declaration/reference ident_span so authored_name_at still reports the brand
-// name (UserId vs AccountId) instead of the shared carrier (Refined).
-fn with_authored_identity(identity: Node, structural: Node) -> Node {
+// Preserve reference-site declaration identity on the resolved structural carrier.
+// ident_span stays honest (structural source location only).
+fn with_preserved_declaration_identity(identity: Node, structural: Node) -> Node {
+  let preserved_ident = match identity.ident {
+    Some { value: id } => Some { value: id }
+    None => structural.ident
+  }
   Node {
-    name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
+    name: structural.name,
+    ident: preserved_ident,
+    span: structural.span, ident_span: structural.ident_span,
     children: structural.children, connective: structural.connective, params: structural.params,
     inferred: structural.inferred, return_cardinality: structural.return_cardinality,
     uses: structural.uses, body: structural.body, transport: structural.transport,
@@ -68,11 +73,13 @@ fn preserve_nominal_brand_on_resolve(
   identity: Node,
   structural: Node,
   brand_name: String,
+  intern_table: InternTable,
   source_indices: Map<String, NewlineIndex>
 ) -> Node {
-  if brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
+  if identity.ident != none && brand_name != ""
+    && brand_name != brand_name_at(node: structural, intern_table: intern_table, source_indices: source_indices)
     && !is_declared_container_alias_spelling(name: brand_name) {
-    with_authored_identity(identity: identity, structural: structural)
+    with_preserved_declaration_identity(identity: identity, structural: structural)
   } else { structural }
 }
 
@@ -80,7 +87,8 @@ fn preserve_nominal_brand_on_resolve(
 // reference-site brand identity (bounded A3 — not a full re-resolve).
 fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
   let source_indices = env.source_indices
-  let brand = authored_name_at(source_indices: source_indices, node: n)
+  let intern_table = env.intern_table
+  let brand = brand_name_at(node: n, intern_table: intern_table, source_indices: source_indices)
   match lookup_type_for(env: env, node: n) {
     Some { value: resolved } =>
       let structural = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
@@ -92,14 +100,15 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       } else {
         resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0).resolved
       }
-      if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
+      let structural_brand = brand_name_at(node: structural, intern_table: intern_table, source_indices: source_indices)
+      if n.ident != none && brand != "" && brand != structural_brand
         && !is_declared_container_alias_spelling(name: brand) {
-        with_authored_identity(identity: n, structural: structural)
+        with_preserved_declaration_identity(identity: n, structural: structural)
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Some { value: Resolved { node: target } } =>
             let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
-            with_authored_identity(identity: n, structural: target_resolved)
+            with_preserved_declaration_identity(identity: n, structural: target_resolved)
           _ => resolved
         }
       } else { resolved }

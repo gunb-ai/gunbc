@@ -560,6 +560,36 @@ fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> St
   }
 }
 
+// Source-location-only name text (diagnostics, parse span tests). Brand/declaration
+// identity uses declaration_identity_at + brand_name_at (A3/PD-3 side-channel).
+fn source_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> String {
+  authored_name_at(source_indices: source_indices, node: node)
+}
+
+fn declaration_identity_at(node: Node) -> Int? {
+  node.ident
+}
+
+fn brand_name_at(node: Node, intern_table: InternTable, source_indices: Map<String, NewlineIndex>) -> String {
+  match node.ident {
+    Some { value: id } =>
+      let s = intern_str(table: intern_table, id: id)
+      if s == "" { source_name_at(source_indices: source_indices, node: node) } else { s }
+    None => source_name_at(source_indices: source_indices, node: node)
+  }
+}
+
+fn declaration_id_equal(left: Node, right: Node) -> Bool {
+  match left.ident {
+    Some { value: l } =>
+      match right.ident {
+        Some { value: r } => l == r
+        None => false
+      }
+    None => false
+  }
+}
+
 // BRIDGE DEBT (M4 Lane 2): child lookup by authored string name.
 // Deletion point: when Node.name is removed, replace all call sites
 // with positional access (children[i]) or structural field identity.

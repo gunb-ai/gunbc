@@ -1248,7 +1248,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
         let tokens = skip_newlines(tokens: __ec)
         parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
       EatUnchanged { tokens: __eu } =>
-        let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: leaf_type_ref_node(name: name, span: name_span, intern_table: ctx.intern_table) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
     }
   }
@@ -1599,10 +1599,10 @@ fn finish_type_expr_from_name(tokens: List<Token>, ctx: ParseContext, type_name:
     if has_err(err: type_args.err) { return TypeResult { type_expr: dummy_te, tokens: type_args.tokens, ctx: type_args.ctx, err: type_args.err } }
     let r3 = expect(tokens: type_args.tokens, expected: ExpectGt)
     if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, tokens: r3.tokens, ctx: type_args.ctx, err: r3.err } }
-    let te = Node { name: type_name, span: start_span, ident_span: Some { value: start_span }, children: type_args.args, connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let te = Node { name: type_name, ident: type_ref_ident(intern_table: ctx.intern_table, name: type_name), span: start_span, ident_span: Some { value: start_span }, children: type_args.args, connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     maybe_optional(tokens: r3.tokens, ctx: type_args.ctx, te: te, start_span: start_span)
   EatUnchanged { tokens: __eu } =>
-    let te = leaf_type_node(name: type_name, span: start_span)
+    let te = leaf_type_ref_node(name: type_name, span: start_span, intern_table: ctx.intern_table)
     maybe_optional(tokens: tokens, ctx: ctx, te: te, start_span: start_span)
   }
 }
@@ -1628,7 +1628,7 @@ fn collect_type_param_names(tokens: List<Token>, ctx: ParseContext, params: List
   if tok_is_ident(tok: tokens |> first) {
     let r = expect_ident(tokens: tokens)
     let span = r.span
-    let param = make_param_node(name: r.name, type_expr: leaf_type_node(name: r.name, span: span), default_value: none, span: span, name_span: span)
+    let param = make_param_node(name: r.name, type_expr: leaf_type_ref_node(name: r.name, span: span, intern_table: ctx.intern_table), default_value: none, span: span, name_span: span)
     let next_params = list_push(params, param)
     match eat(tokens: r.tokens, expected: ExpectComma) {
     EatConsumed { token: _, tokens: __ec } =>

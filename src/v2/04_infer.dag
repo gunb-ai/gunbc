@@ -7,7 +7,7 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
   intern, intern_str,
-  authored_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
+  authored_name_at, brand_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all,
   make_param_node, param_node_name_at, param_node_type_expr,
   field_node_type_expr, field_node_name_at,
@@ -439,9 +439,9 @@ fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Set<String
   )
 }
 
-fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
+fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?, ident: Int?) -> Node {
   Node {
-    name: name, span: span, ident_span: ident_span, children: [],
+    name: name, ident: ident, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [],
     inferred: Some { value: Resolved { node: nominal_leaf_type(name: name) } },
     return_cardinality: Required,
@@ -636,19 +636,38 @@ fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
   is_v4 || is_compiler_substrate
 }
 
+fn nominal_call_arg_brand_mismatch_core(
+  formal: Node,
+  actual: Node,
+  formal_name: String,
+  actual_name: String,
+  same_carrier: Bool,
+  not_alias_pair: Bool
+) -> Bool {
+  let fallback = formal_name != "" && actual_name != "" && formal_name != actual_name && same_carrier && not_alias_pair
+  match formal.ident {
+    Some { value: f } =>
+      match actual.ident {
+        Some { value: a } => f != a && same_carrier && not_alias_pair
+        None => fallback
+      }
+    None => fallback
+  }
+}
+
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
 // that share a structural carrier (UserId vs AccountId over Refined<String>)
 // without widening to every !node_type_compatible pair (e.g. fn vs Bool).
-fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let formal_name = authored_name_at(source_indices: source_indices, node: formal)
-  let actual_name = authored_name_at(source_indices: source_indices, node: actual)
-  formal.connective != Arrow && actual.connective != Arrow
-    && formal_name != ""
-    && actual_name != ""
-    && formal_name != actual_name
-    && structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
-    && !is_declared_container_alias_spelling(name: formal_name)
-    && !is_declared_container_alias_spelling(name: actual_name)
+fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let intern_table = type_env.intern_table
+  let formal_name = brand_name_at(node: formal, intern_table: intern_table, source_indices: source_indices)
+  let actual_name = brand_name_at(node: actual, intern_table: intern_table, source_indices: source_indices)
+  let same_carrier = structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
+  let not_alias_pair = !is_declared_container_alias_spelling(name: formal_name) && !is_declared_container_alias_spelling(name: actual_name)
+  let callable = formal.connective == Arrow || actual.connective == Arrow
+  !callable && nominal_call_arg_brand_mismatch_core(
+    formal: formal, actual: actual, formal_name: formal_name, actual_name: actual_name,
+    same_carrier: same_carrier, not_alias_pair: not_alias_pair)
 }
 
 // Same container spelling (List<T> vs List<U>): recurse into element types for
@@ -671,7 +690,7 @@ fn container_element_nominal_brand_mismatch(
               n: child_type_node(ch: formal_ch), env: type_env, module_name: module_name)
             let actual_el = peel_nominal_alias_identity(
               n: child_type_node(ch: actual_ch), env: type_env, module_name: module_name)
-            nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, source_indices: source_indices)
+            nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, type_env: type_env, source_indices: source_indices)
           None => false
         }
       None => false
@@ -691,7 +710,7 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
-    nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
   }
@@ -5194,7 +5213,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     let has_structure = item.connective != NoConnective
     if has_structure {
       let type_node = Node {
-        name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
+        name: item.name, ident: Some { value: item_ident }, span: item.span, ident_span: item.ident_span, children: item.children,
         connective: item.connective, params: item.params, inferred: none,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
@@ -5203,7 +5222,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
       let alias_node = Node {
-        name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+        name: item.name, ident: Some { value: item_ident }, span: item.span, ident_span: item.ident_span, children: [],
         connective: NoConnective, params: [], inferred: item.inferred,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
@@ -5211,7 +5230,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
-      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span, ident: Some { value: item_ident })
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown })
     } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
       // Parameterized type declaration (e.g., type List<element> = FreeMonoid<element>).
@@ -5219,7 +5238,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       // Preserve .inferred so alias chains (List → FreeMonoid) survive into the
       // TypeEnv for structural resolution (Phase 2 alias following).
       let bare_node = Node {
-        name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+        name: item.name, ident: Some { value: item_ident }, span: item.span, ident_span: item.ident_span, children: [],
         connective: NoConnective, params: item.params, inferred: item.inferred,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
@@ -5339,13 +5358,13 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
-      let type_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let type_node = Node { name: item.name, ident: Some { value: item_ident }, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-      let alias_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let alias_node = Node { name: item.name, ident: Some { value: item_ident }, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
-      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span, ident: Some { value: item_ident })
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
@@ -5741,7 +5760,8 @@ fn topo_resolve_types(
           let pre = binding.resolved
           let result = resolve_node(n: pre, env: env, module_name: module_name)
           let resolved = preserve_nominal_brand_on_resolve(
-            identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
+            identity: pre, structural: result.resolved, brand_name: binding.name,
+            intern_table: env.intern_table, source_indices: env.source_indices)
           BindingsAccum {
             bindings: map_insert(acc.bindings, ident, TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }),
             diagnostics: concat(acc.diagnostics, result.diagnostics)
@@ -5762,7 +5782,8 @@ fn topo_resolve_types(
         let pre = binding.resolved
         let result = resolve_node(n: pre, env: env, module_name: module_name)
         let resolved = preserve_nominal_brand_on_resolve(
-          identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
+          identity: pre, structural: result.resolved, brand_name: binding.name,
+          intern_table: env.intern_table, source_indices: env.source_indices)
         BindingsAccum {
           bindings: map_insert(acc.bindings, ident, TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }),
           diagnostics: concat(acc.diagnostics, result.diagnostics)
