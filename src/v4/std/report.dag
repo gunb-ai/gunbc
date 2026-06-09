@@ -18,6 +18,10 @@ type Report {
   at: Locus
 }
 
+fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
+  discriminant(v: reason)
+}
+
 type ReportSuggestion {
   report: Report
   detail: Symbol
