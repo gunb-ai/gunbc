@@ -64,6 +64,10 @@ fn project_to_core_node(n: Node) -> Node {
   fold_node(n: n, algebra: project_to_core_algebra())
 }
 
+fn project_to_core_has_core_fact(n: Node) -> Bool {
+  count(project_to_core_node(n: n).children) > 0
+}
+
 fn project_to_core_preservation_holds(
   source_facts: Node,
   candidate: Node,
@@ -72,6 +76,8 @@ fn project_to_core_preservation_holds(
   well_formed(n: source_facts)
     && well_formed(n: candidate)
     && well_formed(n: algebra)
+    && project_to_core_has_core_fact(n: source_facts)
+    && project_to_core_has_core_fact(n: candidate)
     && exact_structural_equality_zip_fold(
       source_facts: project_to_core_node(n: source_facts),
       candidate: project_to_core_node(n: candidate)

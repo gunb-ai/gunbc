@@ -8,6 +8,7 @@ module v4.std.integer_value_set
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.node_query { find_named_child }
 import v4.std.diagnostic { Accepted, None, Rejected }
+import v4.std.integer { integer_interval_spec_node_contains }
 
 data integer_value_set_field_kind: Symbol = integer_value_set_field_kind
 data integer_value_set_field_interval: Symbol = integer_value_set_field_interval
@@ -65,7 +66,7 @@ fn integer_value_set_contains(container: Node, contained: Node) -> Bool {
       Accepted { value: container_interval, diagnostics: None } =>
         match find_named_child(root: contained, name: integer_value_set_field_interval) {
           Accepted { value: contained_interval, diagnostics: None } =>
-            container_interval == contained_interval
+            integer_interval_spec_node_contains(container: container_interval, contained: contained_interval)
           Rejected { diagnostics: _ } => false
         }
       Rejected { diagnostics: _ } => false

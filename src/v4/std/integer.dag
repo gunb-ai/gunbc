@@ -15,6 +15,7 @@ import v4.std.algebra {
   Empty,
   fold_list_node,
   Group,
+  length,
   Magma,
   Monoid,
   OrderedRing,
@@ -124,12 +125,149 @@ type IntegerIntervalSpec {
   inclusive_min: IntegerIntervalBound
   inclusive_max: IntegerIntervalBound
 }
+
+fn decimal_digit_value(d: DecimalDigit) -> Int {
+  match d {
+    D0 => 0
+    D1 => 1
+    D2 => 2
+    D3 => 3
+    D4 => 4
+    D5 => 5
+    D6 => 6
+    D7 => 7
+    D8 => 8
+    D9 => 9
+  }
+}
+
+fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> Ordering {
+  int_compare(a: decimal_digit_value(d: left), b: decimal_digit_value(d: right))
+}
+
+fn decimal_digit_list_compare(left: List<DecimalDigit>, right: List<DecimalDigit>) -> Ordering {
+  match left {
+    Empty => match right {
+      Empty => Equal
+      Cons { head: _, tail: _ } => Less
+    }
+    Cons { head: left_head, tail: left_tail } => match right {
+      Empty => Greater
+      Cons { head: right_head, tail: right_tail } =>
+        match decimal_digit_compare(left: left_head, right: right_head) {
+          Equal => decimal_digit_list_compare(left: left_tail, right: right_tail)
+          Less => Less
+          Greater => Greater
+        }
+    }
+  }
+}
+
+fn decimal_nonzero_magnitude_compare(left: DecimalNonZeroMagnitude, right: DecimalNonZeroMagnitude) -> Ordering {
+  let left_len = 1 + length(xs: left.tail)
+  let right_len = 1 + length(xs: right.tail)
+  if left_len < right_len {
+    Less
+  } else if left_len > right_len {
+    Greater
+  } else {
+    match decimal_digit_compare(left: left.lead, right: right.lead) {
+      Equal => decimal_digit_list_compare(left: left.tail, right: right.tail)
+      Less => Less
+      Greater => Greater
+    }
+  }
+}
+
+fn integer_interval_bound_compare(left: IntegerIntervalBound, right: IntegerIntervalBound) -> Ordering {
+  match left {
+    IntegerConcreteZero => match right {
+      IntegerConcreteZero => Equal
+      IntegerConcreteBound { sign, magnitude: _ } => match sign {
+        IntegerBoundNegative => Greater
+        IntegerBoundNonNegative => Less
+      }
+      IntegerPointerWidthBound { signedness: _, endpoint: _ } =>
+        if left == right { Equal } else { Less }
+    }
+    IntegerConcreteBound { sign: left_sign, magnitude: left_magnitude } => match right {
+      IntegerConcreteZero => match left_sign {
+        IntegerBoundNegative => Less
+        IntegerBoundNonNegative => Greater
+      }
+      IntegerConcreteBound { sign: right_sign, magnitude: right_magnitude } => match left_sign {
+        IntegerBoundNegative => match right_sign {
+          IntegerBoundNegative => match decimal_nonzero_magnitude_compare(left: left_magnitude, right: right_magnitude) {
+            Equal => Equal
+            Less => Greater
+            Greater => Less
+          }
+          IntegerBoundNonNegative => Less
+        }
+        IntegerBoundNonNegative => match right_sign {
+          IntegerBoundNegative => Greater
+          IntegerBoundNonNegative => decimal_nonzero_magnitude_compare(left: left_magnitude, right: right_magnitude)
+        }
+      }
+      IntegerPointerWidthBound { signedness: _, endpoint: _ } =>
+        if left == right { Equal } else { Less }
+    }
+    IntegerPointerWidthBound { signedness: _, endpoint: _ } =>
+      if left == right { Equal } else { Greater }
+  }
+}
+
+fn integer_interval_bound_less_or_equal(left: IntegerIntervalBound, right: IntegerIntervalBound) -> Bool {
+  match integer_interval_bound_compare(left: left, right: right) {
+    Less => true
+    Equal => true
+    Greater => false
+  }
+}
+
 fn integer_interval_spec_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
-  container == contained
+  integer_interval_bound_less_or_equal(left: container.inclusive_min, right: contained.inclusive_min)
+    && integer_interval_bound_less_or_equal(left: contained.inclusive_max, right: container.inclusive_max)
 }
 fn integer_interval_spec_strictly_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
   integer_interval_spec_contains(container: container, contained: contained)
     && !integer_interval_spec_contains(container: contained, contained: container)
+}
+
+fn integer_interval_spec_node_contains(container: Node, contained: Node) -> Bool {
+  if container == contained {
+    true
+  } else if container == integer_interval_spec_node(spec: int128_interval_spec()) {
+    (contained == integer_interval_spec_node(spec: int64_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: int32_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: int16_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: int8_interval_spec()))
+  } else if container == integer_interval_spec_node(spec: int64_interval_spec()) {
+    (contained == integer_interval_spec_node(spec: int32_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: int16_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: int8_interval_spec()))
+  } else if container == integer_interval_spec_node(spec: int32_interval_spec()) {
+    (contained == integer_interval_spec_node(spec: int16_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: int8_interval_spec()))
+  } else if container == integer_interval_spec_node(spec: int16_interval_spec()) {
+    contained == integer_interval_spec_node(spec: int8_interval_spec())
+  } else if container == integer_interval_spec_node(spec: uint128_interval_spec()) {
+    (contained == integer_interval_spec_node(spec: uint64_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: uint32_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: uint16_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: uint8_interval_spec()))
+  } else if container == integer_interval_spec_node(spec: uint64_interval_spec()) {
+    (contained == integer_interval_spec_node(spec: uint32_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: uint16_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: uint8_interval_spec()))
+  } else if container == integer_interval_spec_node(spec: uint32_interval_spec()) {
+    (contained == integer_interval_spec_node(spec: uint16_interval_spec()))
+      || (contained == integer_interval_spec_node(spec: uint8_interval_spec()))
+  } else if container == integer_interval_spec_node(spec: uint16_interval_spec()) {
+    contained == integer_interval_spec_node(spec: uint8_interval_spec())
+  } else {
+    false
+  }
 }
 fn integer_interval(
   inclusive_min: IntegerIntervalBound,
