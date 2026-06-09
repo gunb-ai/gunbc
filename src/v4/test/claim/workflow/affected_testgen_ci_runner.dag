@@ -17,11 +17,18 @@ import v4.lens.edit_locus {
   affected_set_reading_from_git_diff_provenance
 }
 import v4.std.algebra { fold_list, length }
-import v4.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
-import v4.std.collection { List }
+import v4.std.artifact {
+  Artifact,
+  SourceFile,
+  SourceTreeEdge,
+  SourceTreeNode,
+  source_tree_node_artifact_provenance,
+  source_tree_to_node_graph
+}
+import v4.std.collection { Absent, List, Present }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.runtime { RuntimeValue }
 import v4.std.text { String }
 import v4.std.verdict { Deferred, Fail, Pass }
@@ -63,34 +70,6 @@ data affected_testgen_path_unrelated: RepoPath = "src/v4/test/claim/generated/un
 data affected_testgen_generated_claim_label: String = "witness-validity: constraint-satisfaction holds (positive)"
 
 
-data affected_testgen_generated_claim_input: Node = Node {
-  kind: TypeNode { connective: Atom { identity: affected_testgen_generated_input_symbol } },
-  children: []
-}
-
-
-data affected_testgen_source_dependency: Node = Node {
-  kind: TypeNode { connective: Atom { identity: affected_testgen_source_dependency_symbol } },
-  children: [
-    Edge {
-      label: Named { name: affected_testgen_source_dependency_edge_symbol },
-      target: affected_testgen_generated_claim_input
-    }
-  ]
-}
-
-
-data affected_testgen_graph_root: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: [
-    Edge {
-      label: Named { name: affected_testgen_graph_edge_symbol },
-      target: affected_testgen_source_dependency
-    }
-  ]
-}
-
-
 data affected_testgen_generated_claim_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: affected_testgen_generated_claim_artifact_id,
@@ -105,16 +84,50 @@ data affected_testgen_source_dependency_artifact: Artifact = Artifact {
 }
 
 
-data affected_testgen_generated_claim_provenance: NodeArtifactProvenance = NodeArtifactProvenance {
-  node: affected_testgen_generated_claim_input,
-  artifact: affected_testgen_generated_claim_artifact
+data affected_testgen_generated_claim_source_tree: SourceTreeNode = SourceTreeNode {
+  kind: TypeNode { connective: Atom { identity: affected_testgen_generated_input_symbol } },
+  artifact: Present { value: affected_testgen_generated_claim_artifact },
+  children: []
 }
 
 
-data affected_testgen_source_dependency_provenance: NodeArtifactProvenance = NodeArtifactProvenance {
-  node: affected_testgen_source_dependency,
-  artifact: affected_testgen_source_dependency_artifact
+data affected_testgen_source_dependency_tree: SourceTreeNode = SourceTreeNode {
+  kind: TypeNode { connective: Atom { identity: affected_testgen_source_dependency_symbol } },
+  artifact: Present { value: affected_testgen_source_dependency_artifact },
+  children: [
+    SourceTreeEdge {
+      label: affected_testgen_source_dependency_edge_symbol,
+      target: affected_testgen_generated_claim_source_tree
+    }
+  ]
 }
+
+
+data affected_testgen_source_tree: SourceTreeNode = SourceTreeNode {
+  kind: TypeNode { connective: Conj },
+  artifact: Absent,
+  children: [
+    SourceTreeEdge {
+      label: affected_testgen_graph_edge_symbol,
+      target: affected_testgen_source_dependency_tree
+    }
+  ]
+}
+
+
+data affected_testgen_generated_claim_input: Node = source_tree_to_node_graph(
+  tree: affected_testgen_generated_claim_source_tree
+)
+
+
+data affected_testgen_source_dependency: Node = source_tree_to_node_graph(
+  tree: affected_testgen_source_dependency_tree
+)
+
+
+data affected_testgen_graph_root: Node = source_tree_to_node_graph(
+  tree: affected_testgen_source_tree
+)
 
 
 data affected_testgen_git_diff: GitDiffNameOnly = GitDiffNameOnly {
@@ -150,10 +163,7 @@ fn affected_testgen_reading_from_fixture_diff(
   affected_set_reading_from_git_diff_provenance(
     graph: affected_testgen_claim_tree(),
     git_diff: git_diff,
-    provenance: [
-      affected_testgen_generated_claim_provenance,
-      affected_testgen_source_dependency_provenance
-    ]
+    provenance: source_tree_node_artifact_provenance(tree: affected_testgen_source_tree)
   )
 }
 
