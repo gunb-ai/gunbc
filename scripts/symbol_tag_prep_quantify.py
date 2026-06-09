@@ -37,6 +37,18 @@ def brace_body(text: str, open_idx: int) -> str:
     return text[open_idx:]
 
 
+def resolve_corpus_root(root: str) -> str:
+    path = os.path.abspath(root)
+    if not os.path.isdir(path):
+        print(
+            f"error: corpus root is not an existing directory: {root!r} "
+            f"(resolved: {path!r}, cwd: {os.getcwd()!r})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return path
+
+
 def iter_dag_files(root: str):
     for dirpath, _, files in os.walk(root):
         for fn in files:
@@ -65,14 +77,14 @@ def find_bridges(text: str) -> list[dict]:
 
 
 def main() -> None:
-    os.makedirs(OUT_DIR, exist_ok=True)
+    root = resolve_corpus_root(ROOT)
 
     tautological: list[dict] = []
     aliased: list[dict] = []
     file_text: dict[str, str] = {}
     decl_lines: dict[str, set[int]] = defaultdict(set)
 
-    for rel, text in iter_dag_files(ROOT):
+    for rel, text in iter_dag_files(root):
         file_text[rel] = text
         for m in TAG_RE.finditer(text):
             name, rhs = m.group(1), m.group(2)
@@ -89,6 +101,16 @@ def main() -> None:
                 tautological.append(entry)
             else:
                 aliased.append(entry)
+
+    if not file_text:
+        print(
+            f"error: no .dag files under corpus root {ROOT!r} "
+            f"(resolved: {root!r}, cwd: {os.getcwd()!r})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    os.makedirs(OUT_DIR, exist_ok=True)
 
     bridge_targets: dict[str, list[tuple[str, str]]] = defaultdict(list)
     census_bridge_files: list[str] = []
@@ -187,7 +209,7 @@ def main() -> None:
         key=lambda x: x[1],
     )
 
-  # Batch grouping: std/, lens/, extdeps/languages/, test/, workflow/, rest
+    # Batch grouping: std/, lens/, extdeps/languages/, test/, workflow/, rest
     def batch_bucket(file: str) -> str:
         if file.startswith("std/"):
             return "batch_std"
