@@ -3547,6 +3547,7 @@ fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
   }
 }
 
+// P2 row-shape authority — consumed by *type_expression_projection_bundle_node in language targets.
 fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
