@@ -1535,6 +1535,7 @@ pub fn direct_call_product_field_names_match(
 pub fn direct_call_structural_pd3_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
+    env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -1565,7 +1566,13 @@ pub fn direct_call_structural_pd3_mismatch(
                 actual.clone(),
                 source_indices.clone(),
             ));
-        (((both_declared_identity || both_element_carriers) || record_twin_carriers)
+        ((((both_declared_identity || both_element_carriers) || record_twin_carriers)
+            && !direct_call_transparent_alias_pair(
+                env,
+                formal.clone(),
+                actual.clone(),
+                source_indices.clone(),
+            ))
             && !node_type_compatible(formal.clone(), actual.clone(), source_indices.clone()))
     }
 }
@@ -1583,6 +1590,7 @@ pub fn direct_call_arg_type_mismatch(
         (((direct_call_structural_pd3_mismatch(
             formal.clone(),
             actual.clone(),
+            type_env.clone(),
             source_indices.clone(),
         ) || direct_call_plain_kernel_leaf_mismatch(
             formal.clone(),
@@ -1595,7 +1603,7 @@ pub fn direct_call_arg_type_mismatch(
         )) || container_element_nominal_brand_mismatch(
             formal.clone(),
             actual.clone(),
-            type_env,
+            type_env.clone(),
             module_name,
             source_indices.clone(),
         ))
@@ -1684,28 +1692,43 @@ pub fn direct_call_arg_mismatch_diags(
                                 {
                                     Rc::new(vec![])
                                 } else {
-                                    if (direct_call_decl_identity_mismatch(
+                                    if direct_call_transparent_alias_pair(
+                                        type_env.clone(),
                                         formal_identity.clone(),
                                         actual_identity.clone(),
-                                        formal.clone(),
-                                        actual.clone(),
-                                        type_env.clone(),
                                         source_indices.clone(),
-                                    ) || direct_call_arg_type_mismatch(
-                                        formal.clone(),
-                                        actual.clone(),
-                                        type_env.clone(),
-                                        module_name.clone(),
-                                        source_indices.clone(),
-                                    )) {
-                                        Rc::new(vec![type_mismatch_error(
-                                            node_type_shape(formal.clone(), source_indices.clone()),
-                                            node_type_shape(actual.clone(), source_indices.clone()),
-                                            arg_span.clone(),
-                                            module_name.clone(),
-                                        )])
-                                    } else {
+                                    ) {
                                         Rc::new(vec![])
+                                    } else {
+                                        if (direct_call_decl_identity_mismatch(
+                                            formal_identity.clone(),
+                                            actual_identity.clone(),
+                                            formal.clone(),
+                                            actual.clone(),
+                                            type_env.clone(),
+                                            source_indices.clone(),
+                                        ) || direct_call_arg_type_mismatch(
+                                            formal.clone(),
+                                            actual.clone(),
+                                            type_env.clone(),
+                                            module_name.clone(),
+                                            source_indices.clone(),
+                                        )) {
+                                            Rc::new(vec![type_mismatch_error(
+                                                node_type_shape(
+                                                    formal.clone(),
+                                                    source_indices.clone(),
+                                                ),
+                                                node_type_shape(
+                                                    actual.clone(),
+                                                    source_indices.clone(),
+                                                ),
+                                                arg_span.clone(),
+                                                module_name.clone(),
+                                            )])
+                                        } else {
+                                            Rc::new(vec![])
+                                        }
                                     }
                                 }
                             }

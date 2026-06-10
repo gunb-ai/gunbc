@@ -1004,6 +1004,8 @@ fn direct_call_arg_mismatch_diags(
             || node_contains_generic_name(n: formal_subst, generic_names: generic_names, source_indices: source_indices)
             || node_contains_generic_name(n: actual_raw, generic_names: generic_names, source_indices: source_indices) {
             []
+          } else if direct_call_transparent_alias_pair(env: type_env, left: formal_identity, right: actual_identity, source_indices: source_indices) {
+            []
           } else if direct_call_decl_identity_mismatch(
             formal_identity: formal_identity,
             actual_identity: actual_identity,
