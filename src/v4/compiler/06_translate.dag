@@ -4390,15 +4390,21 @@ fn translate_type_expression_tree(
       }
     ),
     f: fn(n) {
-      // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
-      // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
-      // node grammar match -> pre-baked concrete tokens (the full source, e.g. the mvp1
-      // add fn). Nodes WITHOUT a grammar row fall through to the existing projection /
-      // mode-2 (SG-2) path, UNTOUCHED — they carry the type-expression projection wrapping.
-      match translate_grammar_relation_row_match(target: target, emitted: n) {
-        Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
-        Rejected { diagnostics: _ } =>
-          project_type_expression_node(node: n, target: target, projection: projection)
+      // T6 bodied-arrow: producer-rooted Arrow.body bypasses SG-2 projection; serialize
+      // derives body tokens via value-expression fold (design-value-emit-schema.md §4.5).
+      if arrow_has_transform_body(arrow: n) {
+        outcome_accepted(n)
+      } else {
+        // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
+        // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
+        // node grammar match -> pre-baked concrete tokens (the full source, e.g. the mvp1
+        // add fn). Nodes WITHOUT a grammar row fall through to the existing projection /
+        // mode-2 (SG-2) path, UNTOUCHED — they carry the type-expression projection wrapping.
+        match translate_grammar_relation_row_match(target: target, emitted: n) {
+          Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
+          Rejected { diagnostics: _ } =>
+            project_type_expression_node(node: n, target: target, projection: projection)
+        }
       }
     }
   )

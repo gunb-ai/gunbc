@@ -86,51 +86,77 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
 }
 
 // MVP add body: Transform(+) with positional param references (body-scope resolve follows).
+data mvp1_add_binary_body_node: Node = node_unanchored(
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge {
+      label: Positional,
+      target: type_atom_node(identity: ^dag_token_plus)
+    },
+    Edge {
+      label: Positional,
+      target: computation_param_ref_node(identity: ^dag_binding_param_x)
+    },
+    Edge {
+      label: Positional,
+      target: computation_param_ref_node(identity: ^dag_binding_param_y)
+    }
+  ]
+)
+
 fn produce_mvp1_add_binary_body() -> Node {
-  node_unanchored(
-    kind: ComputationNode { behavior: Transform },
-    children: [
-      Edge {
-        label: Positional,
-        target: type_atom_node(identity: ^dag_token_plus)
-      },
-      Edge {
-        label: Positional,
-        target: computation_param_ref_node(identity: ^dag_binding_param_x)
-      },
-      Edge {
-        label: Positional,
-        target: computation_param_ref_node(identity: ^dag_binding_param_y)
-      }
-    ]
-  )
+  mvp1_add_binary_body_node
 }
 
+data mvp1_add_arrow_signature_node: Node = node_unanchored(
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge {
+      label: Positional,
+      target: type_atom_node(identity: ^dag_binding_type_int)
+    },
+    Edge {
+      label: Positional,
+      target: type_atom_node(identity: ^dag_binding_type_int)
+    },
+    Edge {
+      label: Positional,
+      target: type_atom_node(identity: ^dag_binding_type_int)
+    }
+  ]
+)
+
 fn produce_mvp1_add_arrow_signature() -> Node {
-  node_unanchored(
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge {
-        label: Positional,
-        target: type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: type_atom_node(identity: ^dag_binding_type_int)
-      }
-    ]
-  )
+  mvp1_add_arrow_signature_node
 }
+
+data mvp1_add_arrow_with_body_node: Node = node_unanchored(
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge {
+      label: Positional,
+      target: type_atom_node(identity: ^dag_binding_type_int)
+    },
+    Edge {
+      label: Positional,
+      target: type_atom_node(identity: ^dag_binding_type_int)
+    },
+    Edge {
+      label: Positional,
+      target: type_atom_node(identity: ^dag_binding_type_int)
+    },
+    Edge {
+      label: Named { name: arrow_body_edge },
+      target: mvp1_add_binary_body_node
+    }
+  ]
+)
 
 fn produce_mvp1_add_arrow_with_body() -> Outcome<Node> {
   bind_outcome(
     o: attach_arrow_body(
-      arrow: produce_mvp1_add_arrow_signature(),
-      body: produce_mvp1_add_binary_body()
+      arrow: mvp1_add_arrow_signature_node,
+      body: mvp1_add_binary_body_node
     ),
     f: fn(arrow_with_body) {
       if well_formed(n: arrow_with_body) {
