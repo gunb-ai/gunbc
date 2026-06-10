@@ -435,43 +435,12 @@ fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol)
 }
 
 fn projection_bundle_child(bundle: Node, name: Symbol) -> Outcome<Node> {
-  match bundle.kind {
-    TypeNode { connective: Conj } =>
-      match fold(
-        bundle.children,
-        init: Absent,
-        f: fn(acc, e) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match e.label {
-                Named { name: n } =>
-                  if n == name {
-                    optional_present(value: e.target)
-                  } else {
-                    acc
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        Present { value: child } => outcome_accepted(child)
-        Absent =>
-          outcome_rejected(
-            target_value_projection_field_missing_diagnostic(bundle: bundle, field: name)
-          )
-      }
-    _ =>
-      outcome_rejected(
-        target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
-      )
-  }
+  find_named_child(root: bundle, name: name)
 }
 
 fn projection_bundle_symbol_field(bundle: Node, field: Symbol) -> Outcome<Symbol> {
   bind_outcome(
-    o: projection_bundle_child(bundle: bundle, name: field),
+    o: find_named_child(root: bundle, name: field),
     f: fn(child) {
       match child.kind {
         TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
@@ -625,22 +594,7 @@ fn decode_value_expression_projection_bundle(
 }
 
 fn concrete_syntax_token_list_to_node(tokens: List<ConcreteSyntaxToken>) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: fold_list(
-      xs: tokens,
-      empty: Empty,
-      cons: fn(acc, tok) {
-        Cons {
-          head: Edge {
-            label: Positional,
-            target: concrete_syntax_token_to_node(token: tok)
-          },
-          tail: acc
-        }
-      }
-    )
-  }
+  fold_list_node(xs: tokens, item_node: concrete_syntax_token_to_node)
 }
 
 fn bodied_arrow_statement_scaffold_bundle_node(
@@ -772,11 +726,42 @@ fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxTo
   )
 }
 
-fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
-  match list_node.kind {
+fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List<Node>> {
+  match node.kind {
     TypeNode { connective: Conj } =>
+      if is_empty(xs: node.children) {
+        outcome_accepted(Empty)
+      } else {
+        bind_outcome(
+          o: find_named_child(root: node, name: fold_list_node_head),
+          f: fn(head) {
+            bind_outcome(
+              o: find_named_child(root: node, name: fold_list_node_tail),
+              f: fn(tail) {
+                bind_outcome(
+                  o: concrete_syntax_token_node_targets_from_list_node(node: tail),
+                  f: fn(rest) {
+                    outcome_accepted(Cons { head: head, tail: rest })
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node)
+      )
+  }
+}
+
+fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
+    f: fn(token_nodes) {
       fold_list(
-        xs: node_positional_child_targets(node: list_node),
+        xs: token_nodes,
         empty: Accepted { value: Empty, diagnostics: None },
         cons: fn(acc, token_node) {
           match acc {
@@ -793,11 +778,8 @@ fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<Concret
           }
         }
       )
-    _ =>
-      outcome_rejected(
-        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: list_node)
-      )
-  }
+    }
+  )
 }
 
 fn target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {

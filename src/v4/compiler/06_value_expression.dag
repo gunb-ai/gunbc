@@ -43,6 +43,7 @@ import v4.std.node {
 }
 import v4.std.node_query {
   find_arrow_body_child,
+  find_named_child,
   node_positional_child_targets
 }
 import v4.std.target_model {
