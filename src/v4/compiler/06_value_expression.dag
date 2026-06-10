@@ -69,6 +69,7 @@ import v4.std.target_model {
   target_value_expr_field_operation,
   target_value_expr_field_operand,
   target_value_expr_primitive_apply_operand_bindings,
+  target_value_expr_primitive_apply_wire_schema_valid,
   target_value_expression_binding_ref,
   target_value_expression_primitive_apply
 }
@@ -77,6 +78,7 @@ data value_expr_reason_surface_op_unmapped: Symbol = value_expr_reason_surface_o
 data value_expr_reason_operator_catalog_miss: Symbol = value_expr_reason_operator_catalog_miss
 data value_expr_reason_operator_catalog_ambiguous: Symbol = value_expr_reason_operator_catalog_ambiguous
 data value_expr_reason_transform_shape_invalid: Symbol = value_expr_reason_transform_shape_invalid
+data value_expr_reason_body_scope_binding_invalid: Symbol = value_expr_reason_body_scope_binding_invalid
 data value_expr_reason_projection_bundle_missing: Symbol = value_expr_reason_projection_bundle_missing
 
 fn value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -146,44 +148,127 @@ fn transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   transform_positional_operand_binding(node: node, index: 0)
 }
 
-fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpression> {
-  match node.kind {
+fn value_expr_positional_child_atom_is(node: Node, index: Int, sym: Symbol) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: index) {
+    Present { value: child } =>
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } => id == sym
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// 🟡 gated — COMPREP wave-1 body-scope binding authority (E-9) — dissolve-on: Arrow signature
+// carries declared param bindings and body projection consumes that authority instead of a
+// literal Int,Int→Int add-shape gate; forbidden: unscoped Atom binding refs in body projection.
+fn value_expr_wave1_add_signature_matches(arrow: Node) -> Bool {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      value_expr_positional_child_atom_is(
+        node: arrow,
+        index: 0,
+        sym: ^dag_binding_type_int
+      )
+      && value_expr_positional_child_atom_is(
+        node: arrow,
+        index: 1,
+        sym: ^dag_binding_type_int
+      )
+      && value_expr_positional_child_atom_is(
+        node: arrow,
+        index: 2,
+        sym: ^dag_binding_type_int
+      )
+    _ => false
+  }
+}
+
+fn value_expr_arrow_body_scope_binding_valid(arrow: Node, binding: Symbol) -> Bool {
+  value_expr_wave1_add_signature_matches(arrow: arrow)
+    && (binding == ^dag_binding_param_x || binding == ^dag_binding_param_y)
+}
+
+fn value_expr_arrow_body_scope_binding(
+  arrow: Node,
+  body: Node,
+  binding: Symbol
+) -> Outcome<Symbol> {
+  if value_expr_arrow_body_scope_binding_valid(arrow: arrow, binding: binding) {
+    outcome_accepted(binding)
+  } else {
+    outcome_rejected(
+      value_expr_diagnostic(
+        reason: value_expr_reason_body_scope_binding_invalid,
+        node: body
+      )
+    )
+  }
+}
+
+fn project_transform_primitive_apply_in_arrow_scope(
+  arrow: Node,
+  body: Node
+) -> Outcome<TargetValueExpression> {
+  match body.kind {
     ComputationNode { behavior: Transform } =>
-      if !all_edges_positional(children: node.children)
-        || length(xs: node_positional_child_targets(node: node)) != 3 {
+      if !all_edges_positional(children: body.children)
+        || length(xs: node_positional_child_targets(node: body)) != 3 {
         outcome_rejected(
           value_expr_diagnostic(
             reason: value_expr_reason_transform_shape_invalid,
-            node: node
+            node: body
           )
         )
       } else {
       bind_outcome(
-        o: transform_surface_op_atom(node: node),
+        o: transform_surface_op_atom(node: body),
         f: fn(op_atom) {
           match surface_op_atom_to_canonical(op_atom: op_atom) {
             Absent =>
               outcome_rejected(
                 value_expr_diagnostic(
                   reason: value_expr_reason_surface_op_unmapped,
-                  node: node
+                  node: body
                 )
               )
             Present { value: canonical_op } =>
               bind_outcome(
-                o: transform_positional_operand_binding(node: node, index: 1),
+                o: transform_positional_operand_binding(node: body, index: 1),
                 f: fn(left_binding) {
                   bind_outcome(
-                    o: transform_positional_operand_binding(node: node, index: 2),
-                    f: fn(right_binding) {
-                      outcome_accepted(
-                        target_value_expression_primitive_apply(
-                          operation: canonical_op,
-                          operands: [
-                            target_value_expression_binding_ref(binding: left_binding),
-                            target_value_expression_binding_ref(binding: right_binding)
-                          ]
-                        )
+                    o: value_expr_arrow_body_scope_binding(
+                      arrow: arrow,
+                      body: body,
+                      binding: left_binding
+                    ),
+                    f: fn(scoped_left_binding) {
+                      bind_outcome(
+                        o: transform_positional_operand_binding(node: body, index: 2),
+                        f: fn(right_binding) {
+                          bind_outcome(
+                            o: value_expr_arrow_body_scope_binding(
+                              arrow: arrow,
+                              body: body,
+                              binding: right_binding
+                            ),
+                            f: fn(scoped_right_binding) {
+                              outcome_accepted(
+                                target_value_expression_primitive_apply(
+                                  operation: canonical_op,
+                                  operands: [
+                                    target_value_expression_binding_ref(
+                                      binding: scoped_left_binding
+                                    ),
+                                    target_value_expression_binding_ref(
+                                      binding: scoped_right_binding
+                                    )
+                                  ]
+                                )
+                              )
+                            }
+                          )
+                        }
                       )
                     }
                   )
@@ -197,7 +282,7 @@ fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpressio
       outcome_rejected(
         value_expr_diagnostic(
           reason: value_expr_reason_transform_shape_invalid,
-          node: node
+          node: body
         )
       )
   }
@@ -206,7 +291,12 @@ fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpressio
 fn project_computation_to_value_expression(node: Node) -> Outcome<TargetValueExpression> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      project_transform_primitive_apply(node: node)
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_transform_shape_invalid,
+          node: node
+        )
+      )
     _ =>
       outcome_rejected(
         value_expr_diagnostic(
@@ -368,36 +458,41 @@ fn primitive_apply_operand_binding_from_operand_node(operand_node: Node) -> Opti
 fn primitive_apply_operation_from_expr(expr: TargetValueExpression) -> Outcome<CanonicalOperation> {
   match expr.kind {
     TargetValueExprPrimitiveApply =>
-      match fold(
-        expr.node.children,
-        init: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: value_expr_diagnostic(
-              reason: value_expr_reason_transform_shape_invalid,
-              node: expr.node
-            )
-          )
-        },
-        f: fn(acc, e) {
-          match acc {
-            Accepted { value: _, diagnostics: _ } => acc
-            Rejected { diagnostics: _ } =>
-              match e.label {
-                Named { name: n } =>
-                  if n == target_value_expr_field_operation {
-                    canonical_operation_from_wire_node(wire: e.target)
-                  } else {
-                    acc
+      bind_outcome(
+        o: target_value_expr_primitive_apply_wire_schema_valid(wire: expr.node),
+        f: fn(_) {
+          match fold(
+            expr.node.children,
+            init: Rejected {
+              diagnostics: diagnostics_singleton(
+                d: value_expr_diagnostic(
+                  reason: value_expr_reason_transform_shape_invalid,
+                  node: expr.node
+                )
+              )
+            },
+            f: fn(acc, e) {
+              match acc {
+                Accepted { value: _, diagnostics: _ } => acc
+                Rejected { diagnostics: _ } =>
+                  match e.label {
+                    Named { name: n } =>
+                      if n == target_value_expr_field_operation {
+                        canonical_operation_from_wire_node(wire: e.target)
+                      } else {
+                        acc
+                      }
+                    Positional => acc
                   }
-                Positional => acc
               }
+            }
+          ) {
+            Accepted { value: canonical_op, diagnostics: d } =>
+              Accepted { value: canonical_op, diagnostics: d }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
           }
         }
-      ) {
-        Accepted { value: canonical_op, diagnostics: d } =>
-          Accepted { value: canonical_op, diagnostics: d }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
+      )
     _ =>
       outcome_rejected(
         value_expr_diagnostic(
@@ -536,7 +631,7 @@ fn arrow_has_transform_body(arrow: Node) -> Bool {
 fn project_arrow_body_to_value_expression(arrow: Node) -> Outcome<TargetValueExpression> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
-      project_computation_to_value_expression(node: body)
+      project_transform_primitive_apply_in_arrow_scope(arrow: arrow, body: body)
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }

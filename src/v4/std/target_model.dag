@@ -1614,11 +1614,15 @@ fn target_value_expr_operand_wire_binding(operand_wire: Node) -> Outcome<Symbol>
 
 fn target_value_expr_primitive_apply_wire_schema_valid(wire: Node) -> Outcome<Bool> {
   match wire.kind {
-    TypeNode { connective: Atom { identity: _ } } =>
-      if name_occurrences(
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_primitive_apply_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
         name: target_value_expr_field_operation,
         children: wire.children
-      ) > 1 {
+      ) != 1 {
         outcome_rejected(
           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
         )
