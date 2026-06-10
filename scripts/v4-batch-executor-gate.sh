@@ -82,39 +82,45 @@ fi
 echo "authority OK (model drives batching)"
 
 echo "== perturb/fail-closed: a false batch-1 gating claim must stop before batch 2 =="
-# The claim entry path inside batch_runner.dag is repo-relative, so the host runs
-# the real affected_set file. Perturb it in place and restore unconditionally.
-gating_file="src/v4/test/claim/workflow/affected_set_ci_runner.dag"
-cp "$gating_file" "$tmp/gating.orig"
-restore_gating() { cp "$tmp/gating.orig" "$gating_file"; }
-trap 'restore_gating; rm -rf "$tmp"' EXIT
-python3 - "$gating_file" <<'PY'
+# Hermetic like the other two perturbs: work entirely in a tmp/v4 copy. The
+# claim entry inside batch_runner.dag is repo-relative, so we also repoint
+# bre_suite_entry at the tmp copy — then the host resolves the perturbed file,
+# never the tracked one (no in-place mutation of the working tree).
+rm -rf "$tmp/v4"
+cp -r src/v4 "$tmp/v4"
+tmp_gating="$tmp/v4/test/claim/workflow/affected_set_ci_runner.dag"
+python3 - "$tmp/v4/test/claim/workflow/batch_runner.dag" "$tmp_gating" <<'PY'
 import sys
-p = sys.argv[1]
+br, gating = sys.argv[1], sys.argv[2]
+# Repoint the suite entry at the tmp copy.
+s = open(br).read()
+needle = 'data bre_suite_entry: String = "src/v4/test/claim/workflow/affected_set_ci_runner.dag"'
+if needle not in s:
+    raise SystemExit("perturb: bre_suite_entry anchor not found")
+open(br, "w").write(s.replace(needle, f'data bre_suite_entry: String = "{gating}"'))
+# Rewrite the gating witness body to `false` in the tmp copy.
 fn = "ci_runner_narrow_selection_holds"
-s = open(p).read()
-start = s.find(f"fn {fn}(")
+g = open(gating).read()
+start = g.find(f"fn {fn}(")
 if start < 0:
     raise SystemExit(f"perturb: function {fn} not found")
-brace = s.find("{", start)
+brace = g.find("{", start)
 depth = 0
 i = brace
-while i < len(s):
-    if s[i] == "{":
+while i < len(g):
+    if g[i] == "{":
         depth += 1
-    elif s[i] == "}":
+    elif g[i] == "}":
         depth -= 1
         if depth == 0:
             break
     i += 1
-open(p, "w").write(s[:brace] + "{\n  false\n}" + s[i + 1:])
+open(gating, "w").write(g[:brace] + "{\n  false\n}" + g[i + 1:])
 PY
 set +e
-out_fc="$("$bin" --source-root src/v4 --plan-entry "$plan_entry" 2>&1)"
+out_fc="$("$bin" --source-root "$tmp/v4" --plan-entry "$tmp/v4/test/claim/workflow/batch_runner.dag" 2>&1)"
 code=$?
 set -e
-restore_gating
-trap 'rm -rf "$tmp"' EXIT
 echo "$out_fc"
 if [[ "$code" -eq 0 ]]; then
   echo "FAIL: a false gating claim still exited 0" >&2
