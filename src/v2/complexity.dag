@@ -278,24 +278,24 @@ type SccEdgeBlockAcc {
 // rather than string-matching method names.
 fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } } => true
+    Present { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } } => true
     _ => false
   }
 }
 
 fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffect? {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } } => se
+    Present { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } } => se
     _ => none
   }
 }
 
 fn method_callback_element_position(method_semantics: MethodSemantics?) -> Int? {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } } =>
+    Present { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } } =>
       match at {
-        Some { value: template } => template.callback_element_position
-        None => none
+        Present { value: template } => template.callback_element_position
+        Absent => none
       }
     _ => none
   }
@@ -310,8 +310,8 @@ fn method_callback_element_position(method_semantics: MethodSemantics?) -> Int? 
 fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node, si: Map<String, NewlineIndex>) -> String? {
   let params = lambda_param_names_at(texpr: lambda, source_indices: si)
   match method_callback_element_position(method_semantics: method_semantics) {
-    Some { value: pos } => params |> skip(pos) |> first
-    None => none
+    Present { value: pos } => params |> skip(pos) |> first
+    Absent => none
   }
 }
 
@@ -360,7 +360,7 @@ fn parser_state_param(params: List<Node>, si: Map<String, NewlineIndex>) -> Pars
       let idx = pair.first
       let param = pair.second
       if authored_name_at(source_indices: si, node: param_node_type_expr(n: param)) == "ParserState" {
-        Some { value: ParserStateParam { name: param_node_name_at(n: param, source_indices: si), index: idx } }
+        Present { value: ParserStateParam { name: param_node_name_at(n: param, source_indices: si), index: idx } }
       } else {
         none
       }
@@ -372,12 +372,12 @@ fn parser_state_base_var(expr: Node, si: Map<String, NewlineIndex>) -> String? {
   match expr.expr_data {
     ExprFieldAccess =>
       match expr.children |> first {
-        Some { value: base } =>
+        Present { value: base } =>
           match base.expr_data {
-            ExprVar { binding_kind: _ } => Some { value: expr_var_name_at(texpr: base, source_indices: si) }
+            ExprVar { binding_kind: _ } => Present { value: expr_var_name_at(texpr: base, source_indices: si) }
             _ => none
           }
-        None => none
+        Absent => none
       }
     _ => none
   }
@@ -417,7 +417,7 @@ fn parser_state_arg_expr(call_node: Node, state_param: ParserStateParam, si: Map
         idx == state_param.index
       }
       if matches_state {
-        Some { value: arg_value(n: arg_node) }
+        Present { value: arg_value(n: arg_node) }
       } else {
         none
       }
@@ -433,26 +433,26 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         NonIncreasing
       } else {
         match map_get(env.state_aliases, name) {
-          Some { value: progress } => progress
-          None => DescentUnknown
+          Present { value: progress } => progress
+          Absent => DescentUnknown
         }
       }
 
     ExprFieldAccess =>
       if field_access_field_at(texpr: expr, source_indices: si) == "state" {
         match parser_state_base_var(expr: expr, si: si) {
-          Some { value: result_name } =>
+          Present { value: result_name } =>
             match map_get(env.result_sources, result_name) {
-              Some { value: source } =>
+              Present { value: source } =>
                 parser_result_state_progress(
                   source: source,
                   parser_always_advancing: parser_always_advancing,
                   consumed_true_set: consumed_true_set,
                   result_name: result_name
                 )
-              None => DescentUnknown
+              Absent => DescentUnknown
             }
-          None => DescentUnknown
+          Absent => DescentUnknown
         }
       } else {
         DescentUnknown
@@ -460,7 +460,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
 
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       match parser_passthrough_state_expr(expr: expr, source_indices: si) {
-        Some { value: state_expr } =>
+        Present { value: state_expr } =>
           parser_state_expr_progress(
             expr: state_expr,
             state_param: state_param,
@@ -468,14 +468,14 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
 
     ExprIf =>
       let cond = if_condition(texpr: expr)
       let then_consumed = match parser_progress_flag_var(expr: cond, source_indices: si) {
-        Some { value: name } => map_insert(consumed_true_set, name, true)
-        None => consumed_true_set
+        Present { value: name } => map_insert(consumed_true_set, name, true)
+        Absent => consumed_true_set
       }
       let then_progress = parser_state_expr_progress(
         expr: if_then_branch(texpr: expr),
@@ -485,7 +485,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         consumed_true_set: then_consumed,
       si: si)
       let else_progress = match if_else_branch(texpr: expr) {
-        Some { value: eb } =>
+        Present { value: eb } =>
           parser_state_expr_progress(
             expr: eb,
             state_param: state_param,
@@ -493,7 +493,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
       descent_evidence_lattice_meet(a: then_progress, b: else_progress)
 
@@ -507,7 +507,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         consumed_true_set: consumed_true_set,
       si: si)
       match let_body(texpr: expr) {
-        Some { value: body } =>
+        Present { value: body } =>
           parser_state_expr_progress(
             expr: body,
             state_param: state_param,
@@ -515,7 +515,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
 
     ExprMatch =>
@@ -529,11 +529,11 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         si: si)
       )
       match arm_progresses |> first {
-        Some { value: initial } =>
+        Present { value: initial } =>
           arm_progresses |> fold(init: initial, f: (acc, p) =>
             descent_evidence_lattice_meet(a: acc, b: p)
           )
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
 
     ExprBlock =>
@@ -551,14 +551,14 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
 
 fn parser_block_state_progress(stmts: List<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> DescentEvidence {
   match stmts |> last {
-    None => DescentUnknown
-    Some { value: last_stmt } =>
+    Absent => DescentUnknown
+    Present { value: last_stmt } =>
       let leading = stmts |> take(n: (stmts |> count) - 1)
       let final_env = leading |> fold(init: env, f: (acc_env, stmt) =>
         match stmt.expr_data {
           ExprLet =>
             match let_body(texpr: stmt) {
-              None =>
+              Absent =>
                 parser_env_with_binding(
                   name: let_binding_name_at(texpr: stmt, source_indices: si),
                   value_expr: let_value(texpr: stmt),
@@ -567,7 +567,7 @@ fn parser_block_state_progress(stmts: List<Node>, state_param: ParserStateParam,
                   parser_always_advancing: parser_always_advancing,
                   consumed_true_set: consumed_true_set,
                 si: si)
-              Some { value: _ } => acc_env
+              Present { value: _ } => acc_env
             }
           _ => acc_env
         }
@@ -586,7 +586,7 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let input_progress = match parser_state_arg_expr(call_node: expr, state_param: state_param, si: si) {
-        Some { value: state_expr } =>
+        Present { value: state_expr } =>
           parser_state_expr_progress(
             expr: state_expr,
             state_param: state_param,
@@ -594,7 +594,7 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
       match parser_result_witness(expr: expr, source_indices: si) {
         ParserWitnessAdvance => ParserResultAdvance { input: input_progress }
@@ -649,7 +649,7 @@ fn parser_env_with_binding(name: String, value_expr: Node, env: ParserProgressEn
 
 fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> DescentEvidence {
   match parser_state_arg_expr(call_node: call_node, state_param: state_param, si: si) {
-    Some { value: state_expr } =>
+    Present { value: state_expr } =>
       let input_progress = parser_state_expr_progress(
         expr: state_expr,
         state_param: state_param,
@@ -662,7 +662,7 @@ fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env
       } else {
         input_progress
       }
-    None => DescentUnknown
+    Absent => DescentUnknown
   }
 }
 
@@ -671,7 +671,7 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
     match stmt.expr_data {
       ExprLet =>
         match let_body(texpr: stmt) {
-          None =>
+          Absent =>
             let value_expr = let_value(texpr: stmt)
             let value_edges = collect_parser_progress_edges(
               caller: caller,
@@ -691,7 +691,7 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
               consumed_true_set: consumed_true_set,
             si: si)
             ParserProgressAcc { edges: concat(acc.edges, value_edges), env: next_env }
-          Some { value: _ } =>
+          Present { value: _ } =>
             let stmt_edges = collect_parser_progress_edges(
               caller: caller,
               body: stmt,
@@ -762,8 +762,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         consumed_true_set: consumed_true_set,
       si: si)
       let then_consumed = match parser_progress_flag_var(expr: cond, source_indices: si) {
-        Some { value: name } => map_insert(consumed_true_set, name, true)
-        None => consumed_true_set
+        Present { value: name } => map_insert(consumed_true_set, name, true)
+        Absent => consumed_true_set
       }
       let then_edges = collect_parser_progress_edges(
         caller: caller,
@@ -775,7 +775,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         consumed_true_set: then_consumed,
       si: si)
       let else_edges = match if_else_branch(texpr: body) {
-        Some { value: eb } =>
+        Present { value: eb } =>
           collect_parser_progress_edges(
             caller: caller,
             body: eb,
@@ -785,7 +785,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => []
+        Absent => []
       }
       concat(cond_edges, then_edges, else_edges)
 
@@ -809,7 +809,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         consumed_true_set: consumed_true_set,
       si: si)
       let body_edges = match let_body(texpr: body) {
-        Some { value: b } =>
+        Present { value: b } =>
           collect_parser_progress_edges(
             caller: caller,
             body: b,
@@ -819,7 +819,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => []
+        Absent => []
       }
       concat(value_edges, body_edges)
 
@@ -896,14 +896,14 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
 
     ExprVar { binding_kind: _ } =>
       match map_get(env.result_sources, expr_var_name_at(texpr: expr, source_indices: si)) {
-        Some { value: source } =>
+        Present { value: source } =>
           parser_result_state_progress(
             source: source,
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
             result_name: expr_var_name_at(texpr: expr, source_indices: si)
           )
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
 
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -922,10 +922,10 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
 
     ExprRecordLit { parent_enum: _ } =>
       match parser_record_field_value(expr: expr, field_name: "err", si: si) {
-        Some { value: err_expr } =>
+        Present { value: err_expr } =>
           if parser_expr_is_none(expr: err_expr) {
             match parser_record_field_value(expr: expr, field_name: "state", si: si) {
-              Some { value: state_expr } =>
+              Present { value: state_expr } =>
                 parser_state_expr_progress(
                   expr: state_expr,
                   state_param: state_param,
@@ -933,19 +933,19 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
                   parser_always_advancing: parser_always_advancing,
                   consumed_true_set: consumed_true_set,
                 si: si)
-              None => DescentUnknown
+              Absent => DescentUnknown
             }
           } else {
             DescentUnknown
           }
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
 
     ExprIf =>
       let cond = if_condition(texpr: expr)
       let then_consumed = match parser_progress_flag_var(expr: cond, source_indices: si) {
-        Some { value: name } => map_insert(consumed_true_set, name, true)
-        None => consumed_true_set
+        Present { value: name } => map_insert(consumed_true_set, name, true)
+        Absent => consumed_true_set
       }
       let then_progress = parser_success_progress(
         expr: if_then_branch(texpr: expr),
@@ -955,7 +955,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
         consumed_true_set: then_consumed,
       si: si)
       let else_progress = match if_else_branch(texpr: expr) {
-        Some { value: eb } =>
+        Present { value: eb } =>
           parser_success_progress(
             expr: eb,
             state_param: state_param,
@@ -963,7 +963,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
       descent_evidence_lattice_meet(a: then_progress, b: else_progress)
 
@@ -977,7 +977,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
         consumed_true_set: consumed_true_set,
       si: si)
       match let_body(texpr: expr) {
-        Some { value: body } =>
+        Present { value: body } =>
           parser_success_progress(
             expr: body,
             state_param: state_param,
@@ -985,7 +985,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
 
     ExprBlock =>
@@ -994,7 +994,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
         match stmt.expr_data {
           ExprLet =>
             match let_body(texpr: stmt) {
-              None =>
+              Absent =>
                 let next_env = parser_env_with_binding(
                   name: let_binding_name_at(texpr: stmt, source_indices: si),
                   value_expr: let_value(texpr: stmt),
@@ -1004,13 +1004,13 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
                   consumed_true_set: consumed_true_set,
                 si: si)
                 ParserProgressAcc { edges: acc.edges, env: next_env }
-              Some { value: _ } => acc
+              Present { value: _ } => acc
             }
           _ => acc
         }
       )
       match expr.children |> last {
-        Some { value: last_stmt } =>
+        Present { value: last_stmt } =>
           parser_success_progress(
             expr: last_stmt,
             state_param: state_param,
@@ -1018,7 +1018,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => DescentUnknown
+        Absent => DescentUnknown
       }
 
     _ => DescentUnknown
@@ -1027,7 +1027,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
 
 fn parser_member_is_always_advancing(entry: FuncEntry, parser_name_set: Map<String, Bool>, proven: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Bool {
   match parser_state_param(params: entry.params, si: si) {
-    Some { value: state_param } =>
+    Present { value: state_param } =>
       let edges = collect_parser_progress_edges(
         caller: entry.name,
         body: entry.body,
@@ -1048,13 +1048,13 @@ fn parser_member_is_always_advancing(entry: FuncEntry, parser_name_set: Map<Stri
         parser_always_advancing: proven,
         consumed_true_set: empty_map(),
       si: si) == Strict
-    None => false
+    Absent => false
   }
 }
 
 fn infer_parser_always_advancing_members_worklist(queue: List<String>, func_index: Map<String, FuncEntry>, parser_name_set: Map<String, Bool>, reverse_graph: Map<String, List<String>>, proven: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Map<String, Bool> {
   match queue |> first {
-    Some { value: name } =>
+    Present { value: name } =>
       let rest = queue |> skip(1)
       if set_has(m: proven, key: name) {
         infer_parser_always_advancing_members_worklist(
@@ -1066,11 +1066,11 @@ fn infer_parser_always_advancing_members_worklist(queue: List<String>, func_inde
         si: si)
       } else {
         match map_get(func_index, name) {
-          Some { value: entry } =>
+          Present { value: entry } =>
             if parser_member_is_always_advancing(entry: entry, parser_name_set: parser_name_set, proven: proven, si: si) {
               let callers = match map_get(reverse_graph, name) {
-                Some { value: members } => members
-                None => []
+                Present { value: members } => members
+                Absent => []
               }
               infer_parser_always_advancing_members_worklist(
                 queue: deduplicate(items: concat(rest, callers)),
@@ -1088,7 +1088,7 @@ fn infer_parser_always_advancing_members_worklist(queue: List<String>, func_inde
                 proven: proven,
               si: si)
             }
-          None =>
+          Absent =>
             infer_parser_always_advancing_members_worklist(
               queue: rest,
               func_index: func_index,
@@ -1098,7 +1098,7 @@ fn infer_parser_always_advancing_members_worklist(queue: List<String>, func_inde
             si: si)
         }
       }
-    None => proven
+    Absent => proven
   }
 }
 
@@ -1108,8 +1108,8 @@ fn infer_parser_always_advancing_members(members: List<String>, func_index: Map<
   )
   let parser_entries = members |> flat_map(name =>
     match map_get(func_index, name) {
-      Some { value: entry } => [entry]
-      None => []
+      Present { value: entry } => [entry]
+      Absent => []
     }
   )
   let call_graph = build_call_graph(func_entries: parser_entries, si: si)
@@ -1126,8 +1126,8 @@ fn infer_parser_always_advancing_members(members: List<String>, func_index: Map<
 fn parser_function_names(func_index: Map<String, FuncEntry>, si: Map<String, NewlineIndex>) -> List<String> {
   map_keys(func_index) |> filter(name =>
     match map_get(func_index, name) {
-      Some { value: entry } => parser_state_param(params: entry.params, si: si) != none
-      None => false
+      Present { value: entry } => parser_state_param(params: entry.params, si: si) != none
+      Absent => false
     }
   )
 }
@@ -1179,8 +1179,8 @@ fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserPro
 fn collect_parser_edges_for_scc(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> List<ParserProgressEdge> {
   let all_have_state = members |> all(name =>
     match map_get(func_index, name) {
-      Some { value: entry } => parser_state_param(params: entry.params, si: si) != none
-      None => false
+      Present { value: entry } => parser_state_param(params: entry.params, si: si) != none
+      Absent => false
     }
   )
   if all_have_state == false {
@@ -1197,9 +1197,9 @@ fn collect_parser_edges_for_scc(members: List<String>, func_index: Map<String, F
     let parser_always_advancing = proven
     members |> flat_map(name =>
       match map_get(func_index, name) {
-        Some { value: entry } =>
+        Present { value: entry } =>
           match parser_state_param(params: entry.params, si: si) {
-            Some { value: state_param } =>
+            Present { value: state_param } =>
               collect_parser_progress_edges(
                 caller: name,
                 body: entry.body,
@@ -1209,9 +1209,9 @@ fn collect_parser_edges_for_scc(members: List<String>, func_index: Map<String, F
                 parser_always_advancing: parser_always_advancing,
                 consumed_true_set: empty_map(),
               si: si)
-            None => []
+            Absent => []
           }
-        None => []
+        Absent => []
       }
     )
   }
@@ -1227,7 +1227,7 @@ fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<
   } else {
     let all_known = edges |> all(edge => edge.progress != DescentUnknown)
     if all_known && same_progress_subgraph_has_cycle(members: members, edges: edges) == false {
-      Some { value: lower_call_pattern(pattern: ParserAdvanceCall { witness: "parser_state" }) }
+      Present { value: lower_call_pattern(pattern: ParserAdvanceCall { witness: "parser_state" }) }
     } else {
       none
     }
@@ -1285,8 +1285,8 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
       let cond_calls = max_path_self_calls_with_cont(body: if_condition(texpr: body), func_name: func_name, continue_calls: 0, si: si)
       let then_calls = max_path_self_calls_with_cont(body: if_then_branch(texpr: body), func_name: func_name, continue_calls: continue_calls, si: si)
       let else_calls = match if_else_branch(texpr: body) {
-        Some { value: eb } => max_path_self_calls_with_cont(body: eb, func_name: func_name, continue_calls: continue_calls, si: si)
-        None => continue_calls
+        Present { value: eb } => max_path_self_calls_with_cont(body: eb, func_name: func_name, continue_calls: continue_calls, si: si)
+        Absent => continue_calls
       }
       let branch_max = if then_calls > else_calls { then_calls } else { else_calls }
       cond_calls + branch_max
@@ -1307,8 +1307,8 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
     ExprLet =>
       let val_calls = max_path_self_calls_with_cont(body: let_value(texpr: body), func_name: func_name, continue_calls: 0, si: si)
       let body_calls = match let_body(texpr: body) {
-        Some { value: b } => max_path_self_calls_with_cont(body: b, func_name: func_name, continue_calls: continue_calls, si: si)
-        None => continue_calls
+        Present { value: b } => max_path_self_calls_with_cont(body: b, func_name: func_name, continue_calls: continue_calls, si: si)
+        Absent => continue_calls
       }
       val_calls + body_calls
 
@@ -1383,8 +1383,8 @@ fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, co
       let cond_calls = max_path_target_calls_with_cont(body: if_condition(texpr: body), target_set: target_set, continue_calls: 0, si: si)
       let then_calls = max_path_target_calls_with_cont(body: if_then_branch(texpr: body), target_set: target_set, continue_calls: continue_calls, si: si)
       let else_calls = match if_else_branch(texpr: body) {
-        Some { value: eb } => max_path_target_calls_with_cont(body: eb, target_set: target_set, continue_calls: continue_calls, si: si)
-        None => continue_calls
+        Present { value: eb } => max_path_target_calls_with_cont(body: eb, target_set: target_set, continue_calls: continue_calls, si: si)
+        Absent => continue_calls
       }
       let branch_max = if then_calls > else_calls { then_calls } else { else_calls }
       cond_calls + branch_max
@@ -1395,8 +1395,8 @@ fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, co
     ExprLet =>
       let val_calls = max_path_target_calls_with_cont(body: let_value(texpr: body), target_set: target_set, continue_calls: 0, si: si)
       let body_calls = match let_body(texpr: body) {
-        Some { value: b } => max_path_target_calls_with_cont(body: b, target_set: target_set, continue_calls: continue_calls, si: si)
-        None => continue_calls
+        Present { value: b } => max_path_target_calls_with_cont(body: b, target_set: target_set, continue_calls: continue_calls, si: si)
+        Absent => continue_calls
       }
       val_calls + body_calls
 
@@ -1429,9 +1429,9 @@ fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, co
 fn build_scc_measure_params(members: List<String>, func_index: Map<String, FuncEntry>, si: Map<String, NewlineIndex>) -> Map<String, Map<String, String>> {
   members |> fold(init: empty_map(), f: (acc, name) =>
     match map_get(func_index, name) {
-      Some { value: entry } =>
+      Present { value: entry } =>
         map_insert(acc, name, recursive_measure_param_names(body: entry.body, params: entry.params, si: si))
-      None => acc
+      Absent => acc
     }
   )
 }
@@ -1442,21 +1442,21 @@ fn target_call_has_arithmetic_descent(call_node: Node, target_set: Map<String, B
     true
   } else {
     match map_get(func_index, callee) {
-      Some { value: callee_entry } =>
+      Present { value: callee_entry } =>
         let callee_measure_params = match map_get(scc_measure_params, callee) {
-          Some { value: params } => params
-          None => empty_map()
+          Present { value: params } => params
+          Absent => empty_map()
         }
         call_node.children |> enumerate |> any(pair =>
           let arg_expr = arg_value(n: pair.second)
           max_path_target_calls(body: arg_expr, target_set: target_set, si: si) == 0
           && is_descending_expr(expr: arg_expr)
           && match recursive_param_name_for_arg(idx: pair.first, arg_node: pair.second, params: callee_entry.params, si: si) {
-            Some { value: param_name } => map_get(callee_measure_params, param_name) != none
-            None => false
+            Present { value: param_name } => map_get(callee_measure_params, param_name) != none
+            Absent => false
           }
         )
-      None => false
+      Absent => false
     }
   }
 }
@@ -1481,8 +1481,8 @@ fn descending_name_set_without_key(names: Map<String, String>, key: String) -> M
       acc
     } else {
       match map_get(names, name) {
-        Some { value: source } => map_insert(acc, name, source)
-        None => acc
+        Present { value: source } => map_insert(acc, name, source)
+        Absent => acc
       }
     }
   )
@@ -1530,8 +1530,8 @@ fn condition_param_names(expr: Node, param_set: Map<String, String>, si: Map<Str
     ExprVar { binding_kind: _ } =>
       let name = expr_var_name_at(texpr: expr, source_indices: si)
       match map_get(param_set, name) {
-        Some { value: _ } => seed_string_map(key: name, value: name)
-        None => empty_map()
+        Present { value: _ } => seed_string_map(key: name, value: name)
+        Absent => empty_map()
       }
     _ =>
       expr.children |> fold(init: empty_map(), f: (acc, child) =>
@@ -1548,8 +1548,8 @@ fn recursive_measure_param_names(body: Node, params: List<Node>, si: Map<String,
     ExprIf =>
       let then_names = recursive_measure_param_names(body: if_then_branch(texpr: body), params: params, si: si)
       let else_names = match if_else_branch(texpr: body) {
-        Some { value: eb } => recursive_measure_param_names(body: eb, params: params, si: si)
-        None => empty_map()
+        Present { value: eb } => recursive_measure_param_names(body: eb, params: params, si: si)
+        Absent => empty_map()
       }
       map_merge(map_merge(
         condition_param_names(expr: if_condition(texpr: body), param_set: param_set, si: si),
@@ -1563,8 +1563,8 @@ fn recursive_measure_param_names(body: Node, params: List<Node>, si: Map<String,
       map_merge(scrut_names, arm_names)
     ExprLet =>
       match let_body(texpr: body) {
-        Some { value: b } => recursive_measure_param_names(body: b, params: params, si: si)
-        None => empty_map()
+        Present { value: b } => recursive_measure_param_names(body: b, params: params, si: si)
+        Absent => empty_map()
       }
     ExprBlock =>
       body.children |> fold(init: empty_map(), f: (acc, stmt) =>
@@ -1579,8 +1579,8 @@ fn recursive_measure_param_names(body: Node, params: List<Node>, si: Map<String,
 
 fn recursive_param_name_for_arg(idx: Int, arg_node: Node, params: List<Node>, si: Map<String, NewlineIndex>) -> String? {
   match arg_name_at(n: arg_node, source_indices: si) {
-    Some { value: name } => Some { value: name }
-    None =>
+    Present { value: name } => Present { value: name }
+    Absent =>
       params |> enumerate |> filter(pair => pair.first == idx) |> map(pair => param_node_name_at(n: pair.second, source_indices: si)) |> first
   }
 }
@@ -1656,7 +1656,7 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>,
     ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name_at(texpr: expr, source_indices: si))
     ExprMethodCall { method_semantics: ms } =>
       match method_size_effect(method_semantics: ms) {
-        Some { value: ShrinkEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
+        Present { value: ShrinkEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
         _ => false
       }
     // CX-J: skip(param.children, N) function-call form is normalized to
@@ -1682,8 +1682,8 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
       }
     ExprMethodCall { method_semantics: ms } =>
       match method_size_effect(method_semantics: ms) {
-        Some { value: ShrinkEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
-        Some { value: IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
+        Present { value: ShrinkEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
+        Present { value: IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
         _ => false
       }
     // CX-J: skip(descent_var.children, N) function-call form is normalized to
@@ -1698,7 +1698,7 @@ fn is_child_descent_expr(expr: Node, param_name: String, vars: Map<String, Bool>
     match expr.expr_data {
       ExprMethodCall { method_semantics: ms } =>
         match method_size_effect(method_semantics: ms) {
-          Some { value: ProjectionEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
+          Present { value: ProjectionEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
           _ => false
         }
       _ => false
@@ -1721,8 +1721,8 @@ fn is_tree_size_preserving_wrapper(expr: Node, si: Map<String, NewlineIndex>) ->
 
 fn wrapper_inner_arg(expr: Node) -> Node {
   match expr.children |> first {
-    Some { value: arg_node } => arg_value(n: arg_node)
-    None => expr
+    Present { value: arg_node } => arg_value(n: arg_node)
+    Absent => expr
   }
 }
 
@@ -1742,8 +1742,8 @@ fn is_sub_value_extractor(expr: Node, si: Map<String, NewlineIndex>) -> Bool {
 
 fn extractor_inner_arg(expr: Node) -> Node {
   match expr.children |> first {
-    Some { value: arg_node } => arg_value(n: arg_node)
-    None => expr
+    Present { value: arg_node } => arg_value(n: arg_node)
+    Absent => expr
   }
 }
 
@@ -1751,7 +1751,7 @@ fn is_list_shrink_expr(expr: Node, param_name: String, si: Map<String, NewlineIn
   match expr.expr_data {
     ExprMethodCall { method_semantics: ms } =>
       let is_shrink = match method_size_effect(method_semantics: ms) {
-        Some { value: ShrinkEffect } => true
+        Present { value: ShrinkEffect } => true
         _ => false
       }
       is_shrink
@@ -1762,12 +1762,12 @@ fn is_list_shrink_expr(expr: Node, param_name: String, si: Map<String, NewlineIn
       // Verify skip amount is a positive integer literal (fail-closed: skip(0) or
       // non-literal skip amounts are not accepted as descent evidence).
       && match method_arg_nodes(texpr: expr) |> first {
-        Some { value: arg_node } =>
+        Present { value: arg_node } =>
           match arg_value(n: arg_node).expr_data {
             ExprLiteral { value: LitInt { value: n } } => n > 0
             _ => false
           }
-        None => false
+        Absent => false
       }
     _ => false
   }
@@ -1781,17 +1781,17 @@ fn is_generalized_shrink(expr: Node, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
     ExprMethodCall { method_semantics: ms } =>
       let is_shrink = match method_size_effect(method_semantics: ms) {
-        Some { value: ShrinkEffect } => true
+        Present { value: ShrinkEffect } => true
         _ => false
       }
       is_shrink
       && match method_arg_nodes(texpr: expr) |> first {
-        Some { value: arg_node } =>
+        Present { value: arg_node } =>
           match arg_value(n: arg_node).expr_data {
             ExprLiteral { value: LitInt { value: n } } => n > 0
             _ => false
           }
-        None => false
+        Absent => false
       }
     _ => false
   }
@@ -1827,8 +1827,8 @@ fn is_tokens_consuming_call(expr: Node, param_name: String, vars: Map<String, Bo
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       match consuming_tokens_arg(expr: expr, si: si) {
-        Some { value: tokens_arg } => is_tokens_input_expr(expr: tokens_arg, param_name: param_name, vars: vars, si: si)
-        None => false
+        Present { value: tokens_arg } => is_tokens_input_expr(expr: tokens_arg, param_name: param_name, vars: vars, si: si)
+        Absent => false
       }
     _ => false
   }
@@ -1838,13 +1838,13 @@ fn is_tokens_consuming_call(expr: Node, param_name: String, vars: Map<String, Bo
 fn consuming_tokens_arg(expr: Node, si: Map<String, NewlineIndex>) -> Node? {
   expr.children |> fold(init: none, f: (acc, child) =>
     match acc {
-      Some { value: _ } => acc
-      None =>
+      Present { value: _ } => acc
+      Absent =>
         match arg_name_at(n: child, source_indices: si) {
-          Some { value: name } =>
-            if name == "tokens" { Some { value: arg_value(n: child) } }
+          Present { value: name } =>
+            if name == "tokens" { Present { value: arg_value(n: child) } }
             else { none }
-          None => none
+          Absent => none
         }
     }
   )
@@ -1872,20 +1872,20 @@ fn is_tokens_input_expr(expr: Node, param_name: String, vars: Map<String, Bool>,
       }
     ExprMethodCall { method_semantics: ms } =>
       match method_size_effect(method_semantics: ms) {
-        Some { value: ShrinkEffect } =>
+        Present { value: ShrinkEffect } =>
           is_tokens_input_expr(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
         _ => false
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       if is_list_passthrough_call(expr: expr, si: si) {
         match list_passthrough_inner_arg(expr: expr, si: si) {
-          Some { value: inner } => is_tokens_input_expr(expr: inner, param_name: param_name, vars: vars, si: si)
-          None => false
+          Present { value: inner } => is_tokens_input_expr(expr: inner, param_name: param_name, vars: vars, si: si)
+          Absent => false
         }
       } else {
         match consuming_tokens_arg(expr: expr, si: si) {
-          Some { value: tokens_arg } => is_tokens_input_expr(expr: tokens_arg, param_name: param_name, vars: vars, si: si)
-          None => false
+          Present { value: tokens_arg } => is_tokens_input_expr(expr: tokens_arg, param_name: param_name, vars: vars, si: si)
+          Absent => false
         }
       }
     _ => false
@@ -1912,13 +1912,13 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
       ExprIf =>
         expr_contains_descent(expr: if_then_branch(texpr: expr), param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
         && match if_else_branch(texpr: expr) {
-          Some { value: eb } => expr_contains_descent(expr: eb, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
-          None => false
+          Present { value: eb } => expr_contains_descent(expr: eb, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+          Absent => false
         }
       ExprBlock =>
         match expr.children |> last {
-          Some { value: last_stmt } => expr_contains_descent(expr: last_stmt, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
-          None => false
+          Present { value: last_stmt } => expr_contains_descent(expr: last_stmt, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+          Absent => false
         }
       // CX-Q: bare param is NOT descent — only proper sub-values are.
       // param.field IS descent (field access reduces tree), but param alone
@@ -1943,10 +1943,10 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
       ExprMethodCall { method_semantics: ms } =>
         let receiver = method_receiver(texpr: expr)
         match method_size_effect(method_semantics: ms) {
-          Some { value: ShrinkEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
-          Some { value: ProjectionEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
-          Some { value: IdentityEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
-          None => false
+          Present { value: ShrinkEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+          Present { value: ProjectionEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+          Present { value: IdentityEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+          Absent => false
         }
       _ => false
     }
@@ -1988,13 +1988,13 @@ fn is_if_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, 
       let then_branch = if_then_branch(texpr: val)
       let then_has_descent = expr_contains_descent(expr: then_branch, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let else_is_none = match if_else_branch(texpr: val) {
-        Some { value: eb } =>
+        Present { value: eb } =>
           match eb.expr_data {
             ExprVar { binding_kind: _ } => expr_var_name_at(texpr: eb, source_indices: si) == "none"
             ExprLiteral { value: v } => match v { LitNull => true, _ => false }
             _ => false
           }
-        None => true
+        Absent => true
       }
       then_has_descent && else_is_none
     _ => false
@@ -2110,14 +2110,14 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
       // CX-R: pass-through call wrapping a descent expression
       let is_passthrough_descent = if is_list_passthrough_call(expr: val, si: si) {
         match list_passthrough_inner_arg(expr: val, si: si) {
-          Some { value: inner } =>
+          Present { value: inner } =>
             (check_child && is_child_descent_expr(expr: inner, param_name: param_name, vars: vars, si: si))
             || (check_list && is_list_shrink_expr(expr: inner, param_name: param_name, si: si))
             || match inner.expr_data {
               ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name_at(texpr: inner, source_indices: si))
               _ => false
             }
-          None => false
+          Absent => false
         }
       } else { false }
       // CX-R: tokens-consuming call (parser convention).
@@ -2134,8 +2134,8 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
       // let-value must NOT leak into the let-body scope — they are only
       // valid within their respective arms.
       match let_body(texpr: body) {
-        Some { value: b } => collect_descent_vars(body: b, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list, si: si)
-        None => next_vars
+        Present { value: b } => collect_descent_vars(body: b, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list, si: si)
+        Absent => next_vars
       }
     ExprMatch =>
       // If scrutinee is a descent expr, a descent var, or the parameter itself,
@@ -2174,8 +2174,8 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
       // must NOT contaminate the else-branch (they are branch-local).
       let then_vars = collect_descent_vars(body: if_then_branch(texpr: body), param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let else_vars = match if_else_branch(texpr: body) {
-        Some { value: eb } => collect_descent_vars(body: eb, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
-        None => vars
+        Present { value: eb } => collect_descent_vars(body: eb, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+        Absent => vars
       }
       map_merge(then_vars, else_vars)
     ExprBlock =>
@@ -2186,8 +2186,8 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
     // descent vars from match arms inside `return match ... { }` are visible.
     ExprReturn =>
       match body.children |> first {
-        Some { value: inner } => collect_descent_vars(body: inner, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
-        None => vars
+        Present { value: inner } => collect_descent_vars(body: inner, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+        Absent => vars
       }
     _ => vars
   }
@@ -2238,8 +2238,8 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
         map_insert(vars, let_binding_name_at(texpr: body, source_indices: si), true)
       } else { vars }
       let body_ok = match let_body(texpr: body) {
-        Some { value: b } => all_self_calls_descend_inc(body: b, func_name: func_name, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list, si: si)
-        None => true
+        Present { value: b } => all_self_calls_descend_inc(body: b, func_name: func_name, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list, si: si)
+        Absent => true
       }
       val_ok && body_ok
     ExprMatch =>
@@ -2273,8 +2273,8 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
       let cond_ok = all_self_calls_descend_inc(body: if_condition(texpr: body), func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let then_ok = all_self_calls_descend_inc(body: if_then_branch(texpr: body), func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let else_ok = match if_else_branch(texpr: body) {
-        Some { value: eb } => all_self_calls_descend_inc(body: eb, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
-        None => true
+        Present { value: eb } => all_self_calls_descend_inc(body: eb, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+        Absent => true
       }
       cond_ok && then_ok && else_ok
     ExprBlock =>
@@ -2291,7 +2291,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own_ok = if callee == func_name {
         body.children |> any(arg_node =>
-          let targets_param = arg_name_at(n: arg_node, source_indices: si) == Some { value: param_name }
+          let targets_param = arg_name_at(n: arg_node, source_indices: si) == Present { value: param_name }
           if targets_param == false { false }
           else {
             is_descent_arg(expr: arg_value(n: arg_node), param_name: param_name, descent_vars: vars, check_child: check_child, check_list: check_list, si: si)
@@ -2315,10 +2315,10 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
           match arg_val.expr_data {
             ExprLambda =>
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
-                Some { value: iter_name } =>
+                Present { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
                   all_self_calls_descend_inc(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list, si: si)
-                None => true
+                Absent => true
               }
             _ => all_self_calls_descend_inc(body: arg_val, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
           }
@@ -2338,16 +2338,16 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
 
 fn unwrap_to_match(body: Node) -> Node? {
   match body.expr_data {
-    ExprMatch => Some { value: body }
+    ExprMatch => Present { value: body }
     ExprLet =>
       match let_body(texpr: body) {
-        Some { value: b } => unwrap_to_match(body: b)
-        None => none
+        Present { value: b } => unwrap_to_match(body: b)
+        Absent => none
       }
     ExprBlock =>
       match body.children |> last {
-        Some { value: last_stmt } => unwrap_to_match(body: last_stmt)
-        None => none
+        Present { value: last_stmt } => unwrap_to_match(body: last_stmt)
+        Absent => none
       }
     _ => none
   }
@@ -2355,7 +2355,7 @@ fn unwrap_to_match(body: Node) -> Node? {
 
 fn matches_on_sub_value_field(body: Node, param_name: String, si: Map<String, NewlineIndex>) -> Bool {
   match unwrap_to_match(body: body) {
-    Some { value: m } =>
+    Present { value: m } =>
       let scrut = match_scrutinee(texpr: m)
       match scrut.expr_data {
         ExprFieldAccess =>
@@ -2368,7 +2368,7 @@ fn matches_on_sub_value_field(body: Node, param_name: String, si: Map<String, Ne
           }
         _ => false
       }
-    None => false
+    Absent => false
   }
 }
 
@@ -2442,9 +2442,9 @@ fn classify_self_call_evidence(arg_expr: Node, param_name: String, descent_vars:
         } else if is_list_passthrough_call(expr: arg_expr, si: si) {
           // CX-R: List-preserving pass-through (skip_newlines, etc.).
           match list_passthrough_inner_arg(expr: arg_expr, si: si) {
-            Some { value: inner } =>
+            Present { value: inner } =>
               classify_self_call_evidence(arg_expr: inner, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
-            None => DescentUnknown
+            Absent => DescentUnknown
           }
         } else { DescentUnknown }
       // CX-E: param.field or descent_var.field is a strict sub-value
@@ -2555,14 +2555,14 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
       // CX-R: pass-through call wrapping a descent expression
       let is_passthrough = if is_list_passthrough_call(expr: val, si: si) {
         match list_passthrough_inner_arg(expr: val, si: si) {
-          Some { value: inner } =>
+          Present { value: inner } =>
             (check_child && is_child_descent_expr(expr: inner, param_name: param_name, vars: vars, si: si))
             || (check_list && is_list_shrink_expr(expr: inner, param_name: param_name, si: si))
             || match inner.expr_data {
               ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name_at(texpr: inner, source_indices: si))
               _ => false
             }
-          None => false
+          Absent => false
         }
       } else { false }
       // CX-R: tokens-consuming call — result carries strict tokens
@@ -2571,8 +2571,8 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         map_insert(vars, let_binding_name_at(texpr: body, source_indices: si), true)
       } else { vars }
       let body_ev = match let_body(texpr: body) {
-        Some { value: b } => collect_evidence_incremental(body: b, func_name: func_name, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
-        None => none
+        Present { value: b } => collect_evidence_incremental(body: b, func_name: func_name, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
+        Absent => none
       }
       merge_optional_evidence(a: val_ev, b: body_ev)
     ExprMatch =>
@@ -2620,15 +2620,15 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
       let else_opt = if_else_branch(texpr: body)
       let then_path = if branching_only { max_path_self_calls(body: then_branch, func_name: func_name, si: si) } else { 0 }
       let else_path = if branching_only {
-        match else_opt { Some { value: eb } => max_path_self_calls(body: eb, func_name: func_name, si: si), None => 0 }
+        match else_opt { Present { value: eb } => max_path_self_calls(body: eb, func_name: func_name, si: si), Absent => 0 }
       } else { 0 }
       let then_ev = if branching_only && then_path == 0 { none }
         else { collect_evidence_incremental(body: then_branch, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si) }
       let else_ev = if branching_only && else_path == 0 { none }
         else {
           match else_opt {
-            Some { value: eb } => collect_evidence_incremental(body: eb, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
-            None => none
+            Present { value: eb } => collect_evidence_incremental(body: eb, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
+            Absent => none
           }
         }
       merge_optional_evidence(a: cond_ev, b: merge_optional_evidence(a: then_ev, b: else_ev))
@@ -2637,11 +2637,11 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
       let own_evidence = if callee == func_name {
         let arg_evidence = body.children |> fold(init: DescentUnknown, f: (acc, arg_node) =>
           let aname = arg_name_at(n: arg_node, source_indices: si)
-          if aname == Some { value: param_name } {
+          if aname == Present { value: param_name } {
             classify_self_call_evidence(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: vars, check_child: check_child, check_list: check_list, si: si)
           } else { acc }
         )
-        Some { value: arg_evidence }
+        Present { value: arg_evidence }
       } else { none }
       let child_evidence = body.children |> fold(init: none, f: (acc, child) =>
         let ce = collect_evidence_incremental(body: child, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
@@ -2668,10 +2668,10 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           let ev = match arg_val.expr_data {
             ExprLambda =>
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
-                Some { value: iter_name } =>
+                Present { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
                   collect_evidence_incremental(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
-                None => none
+                Absent => none
               }
             _ => collect_evidence_incremental(body: arg_val, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
           }
@@ -2696,17 +2696,17 @@ fn try_type_directed_dimension(body: Node, func_name: String, param_name: String
   match dim {
     TreeDescent =>
       match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: true, check_list: false, si: si) {
-        Some { value: Strict } => Some { value: TerminationProof { dimensions: [TreeSize { param: param_name }] } }
+        Present { value: Strict } => Present { value: TerminationProof { dimensions: [TreeSize { param: param_name }] } }
         _ => none
       }
     CollectionFold =>
       match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: false, check_list: true, si: si) {
-        Some { value: Strict } => Some { value: TerminationProof { dimensions: [ListLength { param: param_name }] } }
+        Present { value: Strict } => Present { value: TerminationProof { dimensions: [ListLength { param: param_name }] } }
         _ => none
       }
     ArithmeticRepeat =>
       match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: false, check_list: false, si: si) {
-        Some { value: Strict } => Some { value: TerminationProof { dimensions: [ArithmeticValue { param: param_name }] } }
+        Present { value: Strict } => Present { value: TerminationProof { dimensions: [ArithmeticValue { param: param_name }] } }
         _ => none
       }
   }
@@ -2715,28 +2715,28 @@ fn try_type_directed_dimension(body: Node, func_name: String, param_name: String
 fn construct_termination_proof(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>, si: Map<String, NewlineIndex>) -> TerminationProof? {
   let structural_proof = params |> fold(init: none, f: (best, p) =>
     match best {
-      Some { value: _ } => best
-      None =>
+      Present { value: _ } => best
+      Absent =>
         let pname = param_node_name_at(n: p, source_indices: si)
         let type_name = authored_name_at(source_indices: si, node: param_node_type_expr(n: p))
         match type_iteration_dimension(type_name: type_name) {
-          Some { value: dim } =>
+          Present { value: dim } =>
             try_type_directed_dimension(body: body, func_name: func_name, param_name: pname, dim: dim, si: si)
-          None =>
+          Absent =>
             let tree_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si)
             match tree_evidence {
-              Some { value: Strict } =>
-                Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
+              Present { value: Strict } =>
+                Present { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
               _ =>
                 let list_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true, si: si)
                 match list_evidence {
-                  Some { value: Strict } =>
-                    Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
+                  Present { value: Strict } =>
+                    Present { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
                   _ =>
                     let arith_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: false, si: si)
                     match arith_evidence {
-                      Some { value: Strict } =>
-                        Some { value: TerminationProof { dimensions: [ArithmeticValue { param: pname }] } }
+                      Present { value: Strict } =>
+                        Present { value: TerminationProof { dimensions: [ArithmeticValue { param: pname }] } }
                       _ => none
                     }
                 }
@@ -2745,10 +2745,10 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
     }
   )
   let single_dim_proof = match structural_proof {
-    Some { value: _ } => structural_proof
-    None =>
+    Present { value: _ } => structural_proof
+    Absent =>
       match parser_state_param(params: params, si: si) {
-        Some { value: state_param } =>
+        Present { value: state_param } =>
           let self_set = seed_bool_map(key: func_name)
           let edges = collect_parser_progress_edges(
             caller: func_name,
@@ -2760,14 +2760,14 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
             consumed_true_set: empty_map(),
           si: si)
           if (edges |> count) > 0 && (edges |> all(edge => edge.progress == Strict)) {
-            Some { value: TerminationProof { dimensions: [TokenPosition { param: state_param.name }] } }
+            Present { value: TerminationProof { dimensions: [TokenPosition { param: state_param.name }] } }
           } else { none }
-        None => none
+        Absent => none
       }
   }
   match single_dim_proof {
-    Some { value: _ } => single_dim_proof
-    None =>
+    Present { value: _ } => single_dim_proof
+    Absent =>
       let self_set = seed_bool_map(key: func_name)
       let func_entry = FuncEntry { name: func_name, body: body, params: params, span: body.span, is_tail_recursive: false }
       let func_index = seed_func_entry_map(key: func_name, value: func_entry)
@@ -2781,30 +2781,30 @@ fn construct_branching_termination_proof(func_name: String, body: Node, params: 
   // ArithmeticRepeat is skipped (unsafe for branching — exponential blowup).
   params |> fold(init: none, f: (best, p) =>
     match best {
-      Some { value: _ } => best
-      None =>
+      Present { value: _ } => best
+      Absent =>
         let pname = param_node_name_at(n: p, source_indices: si)
         let type_name = authored_name_at(source_indices: si, node: param_node_type_expr(n: p))
         match type_iteration_dimension(type_name: type_name) {
-          Some { value: TreeDescent } =>
+          Present { value: TreeDescent } =>
             match try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si) {
-              Some { value: Strict } => Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
+              Present { value: Strict } => Present { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
               _ => none
             }
-          Some { value: CollectionFold } =>
+          Present { value: CollectionFold } =>
             match try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true, si: si) {
-              Some { value: Strict } => Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
+              Present { value: Strict } => Present { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
               _ => none
             }
-          Some { value: ArithmeticRepeat } => none // unsafe for branching
-          None =>
+          Present { value: ArithmeticRepeat } => none // unsafe for branching
+          Absent =>
             let tree_ev = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si)
             match tree_ev {
-              Some { value: Strict } => Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
+              Present { value: Strict } => Present { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
               _ =>
                 let list_ev = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true, si: si)
                 match list_ev {
-                  Some { value: Strict } => Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
+                  Present { value: Strict } => Present { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
                   _ => none
                 }
             }
@@ -2818,14 +2818,14 @@ fn construct_branching_termination_proof(func_name: String, body: Node, params: 
 // are for lexicographic composition (handled by the proof validator).
 fn proof_to_call_pattern(proof: TerminationProof) -> CallPattern {
   match proof.dimensions |> first {
-    Some { value: dim } => match dim {
+    Present { value: dim } => match dim {
       TreeSize { param: p }        => ChildAccessorCall { accessor: p }
       ListLength { param: p }      => CollectionShrinkCall { amount: OneStep, collection: p }
       ArithmeticValue { param: p } => ArithmeticSubtractCall { steps: OneStep, ring_param: p }
       TokenPosition { param: p }   => ParserAdvanceCall { witness: p }
       SetCardinality { param: p }  => WorklistDrainCall { element: p }
     }
-    None => SameArgumentCall
+    Absent => SameArgumentCall
   }
 }
 
@@ -2833,8 +2833,8 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
   let path_calls = max_path_self_calls(body: body, func_name: func_name, si: si)
   if path_calls == 0 {
     let outer = match params |> first {
-      Some { value: p0 } => param_node_name_at(n: p0, source_indices: si)
-      None => "_fold_body"
+      Present { value: p0 } => param_node_name_at(n: p0, source_indices: si)
+      Absent => "_fold_body"
     }
     lower_call_pattern(pattern: FoldBodyCall { outer_collection: outer })
   } else {
@@ -2887,8 +2887,8 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
           call_ev |> filter(rel => match rel { StrictSubValue { field: _, factor: _ } => true  IteratedSubValue { field: _ } => true  _ => false })
         )
         match tree_rels |> first {
-          Some { value: _ } => tree_rels |> first
-          None => all_evidence |> flat_map(call_ev =>
+          Present { value: _ } => tree_rels |> first
+          Absent => all_evidence |> flat_map(call_ev =>
             call_ev |> filter(rel => match rel { ArithmeticDescent { param: _, factor: _ } => true  _ => false })
           ) |> first
         }
@@ -2897,26 +2897,26 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
       // is UNSOUND as O(n). Example: fib(n-1) + fib(n-2) = O(2^n), not O(n).
       // Tree descent with branching IS sound (bounded by tree size).
       let is_arithmetic_branching = match first_call {
-        Some { value: rel } =>
+        Present { value: rel } =>
           match rel { ArithmeticDescent { param: _, factor: _ } => path_calls > 1  _ => false }
-        None => false
+        Absent => false
       }
       if is_arithmetic_branching {
         lower_call_pattern(pattern: SameArgumentCall)
       } else {
       match first_call {
-        Some { value: rel } =>
+        Present { value: rel } =>
           match sub_value_to_lowering_target(relation: rel) {
-            Some { value: target } => target
-            None => lower_call_pattern(pattern: SameArgumentCall)
+            Present { value: target } => target
+            Absent => lower_call_pattern(pattern: SameArgumentCall)
           }
-        None => lower_call_pattern(pattern: SameArgumentCall)
+        Absent => lower_call_pattern(pattern: SameArgumentCall)
       }
       }
     } else {
       let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing, si: si)
       let proof_safe_for_branching = match proof {
-        Some { value: p } =>
+        Present { value: p } =>
           if p.dimensions |> count == 0 { false }
           else {
             p.dimensions |> all(dim =>
@@ -2927,13 +2927,13 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
               }
             )
           }
-        None => false
+        Absent => false
       }
       let branching_proof = if path_calls > 1 && !proof_safe_for_branching {
         construct_branching_termination_proof(func_name: func_name, body: body, params: params, si: si)
       } else { none }
       let branching_proof_safe = match branching_proof {
-        Some { value: bp } =>
+        Present { value: bp } =>
           if bp.dimensions |> count == 0 { false }
           else {
             bp.dimensions |> all(dim =>
@@ -2944,30 +2944,30 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
               }
             )
           }
-        None => false
+        Absent => false
       }
       match proof {
-        Some { value: p } =>
+        Present { value: p } =>
           if path_calls == 1 || proof_safe_for_branching {
             lower_call_pattern(pattern: proof_to_call_pattern(proof: p))
           } else if branching_proof_safe {
             match branching_proof {
-              Some { value: bp } => lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
-              None => lower_call_pattern(pattern: SameArgumentCall)
+              Present { value: bp } => lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
+              Absent => lower_call_pattern(pattern: SameArgumentCall)
             }
           } else {
             lower_call_pattern(pattern: SameArgumentCall)
           }
-        None =>
+        Absent =>
           if path_calls > 1 {
             match branching_proof {
-              Some { value: bp } =>
+              Present { value: bp } =>
                 if branching_proof_safe {
                   lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
                 } else {
                   lower_call_pattern(pattern: SameArgumentCall)
                 }
-              None => lower_call_pattern(pattern: SameArgumentCall)
+              Absent => lower_call_pattern(pattern: SameArgumentCall)
             }
           } else {
             lower_call_pattern(pattern: SameArgumentCall)
@@ -2980,10 +2980,10 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
 fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr, func_name: String) -> CostExpr {
   let p = size_bound_param(bound: target.bound)
   match p {
-    Some { value: v } =>
+    Present { value: v } =>
       let var = concat("n_", v)
       CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
-    None =>
+    Absent =>
       CostUnknown { reason: concat("same-argument recursion in ", func_name) }
   }
 }
@@ -2991,11 +2991,11 @@ fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr, func_name:
 fn bounded_scc_cost(target: LoweringTarget, per_iter: CostExpr, members: List<String>) -> CostExpr {
   let p = size_bound_param(bound: target.bound)
   match p {
-    Some { value: v } =>
+    Present { value: v } =>
       let var = concat("n_", v)
       CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
-    None =>
-      CostUnknown { reason: concat("same-argument mutual recursion in ", match members |> first { Some { value: n } => n, None => "scc" }) }
+    Absent =>
+      CostUnknown { reason: concat("same-argument mutual recursion in ", match members |> first { Present { value: n } => n, Absent => "scc" }) }
   }
 }
 
@@ -3052,8 +3052,8 @@ fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>
 
 fn scc_label(members: List<String>) -> String {
   match members |> first {
-    Some { value: name } => name
-    None => "scc"
+    Present { value: name } => name
+    Absent => "scc"
   }
 }
 
@@ -3087,9 +3087,9 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
           // CX-R: List-preserving pass-through (skip_newlines, etc.).
           // The call returns ≤ its input — reclassify the inner tokens argument.
           match list_passthrough_inner_arg(expr: arg_expr, si: si) {
-            Some { value: inner } =>
+            Present { value: inner } =>
               classify_scc_call_progress(arg_expr: inner, param_name: param_name, descent_vars: descent_vars, si: si)
-            None => DescentUnknown
+            Absent => DescentUnknown
           }
         } else { DescentUnknown }
       // CX-E: param.field or descent_var.field is a strict sub-value
@@ -3153,17 +3153,17 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         // is per-callee-param edge tracking — deferred because all current
         // .dag functions have at most one Node param driving recursion.
         let callee_params = match map_get(scc_measure_params, callee) {
-          Some { value: p } => p
-          None => empty_map()
+          Present { value: p } => p
+          Absent => empty_map()
         }
         let progress = body.children |> fold(init: DescentUnknown, f: (acc, arg_node) =>
           let targets_measure = match arg_name_at(n: arg_node, source_indices: si) {
-            Some { value: aname } =>
+            Present { value: aname } =>
               // Single authority: callee's measure params determine which
               // argument carries the ranking dimension. No fallback to
               // caller's param name (dual authority is unsound).
               map_get(callee_params, aname) != none
-            None => false
+            Absent => false
           }
           if targets_measure {
             let arg_progress = classify_scc_call_progress(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars, si: si)
@@ -3193,10 +3193,10 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           match arg_val.expr_data {
             ExprLambda =>
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
-                Some { value: iter_name } =>
+                Present { value: iter_name } =>
                   let ext_vars = map_insert(descent_vars, iter_name, true)
                   collect_scc_child_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, descent_vars: ext_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
-                None => []
+                Absent => []
               }
             _ => collect_scc_child_edges(body: arg_val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
           }
@@ -3259,14 +3259,14 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
       // CX-R: pass-through call wrapping a descent expression
       let is_passthrough = if is_list_passthrough_call(expr: val, si: si) {
         match list_passthrough_inner_arg(expr: val, si: si) {
-          Some { value: inner } =>
+          Present { value: inner } =>
             (check_child && is_child_descent_expr(expr: inner, param_name: param_name, vars: descent_vars, si: si))
             || (check_list && is_list_shrink_expr(expr: inner, param_name: param_name, si: si))
             || match inner.expr_data {
               ExprVar { binding_kind: _ } => set_has(m: descent_vars, key: expr_var_name_at(texpr: inner, source_indices: si))
               _ => false
             }
-          None => false
+          Absent => false
         }
       } else { false }
       // CX-R: tokens-consuming call — result carries strict tokens
@@ -3275,8 +3275,8 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         map_insert(descent_vars, let_binding_name_at(texpr: body, source_indices: si), true)
       } else { descent_vars }
       let body_edges = match let_body(texpr: body) {
-        Some { value: b } => collect_scc_child_edges(body: b, caller: caller, param_name: param_name, descent_vars: next_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
-        None => []
+        Present { value: b } => collect_scc_child_edges(body: b, caller: caller, param_name: param_name, descent_vars: next_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
+        Absent => []
       }
       concat(val_edges, body_edges)
     // Walk match arms. Pattern-binding promotion is NOT done here — it would
@@ -3306,8 +3306,8 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
       let else_opt = if_else_branch(texpr: body)
       let then_edges = collect_scc_child_edges(body: then_branch, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
       let else_edges = match else_opt {
-        Some { value: eb } => collect_scc_child_edges(body: eb, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
-        None => []
+        Present { value: eb } => collect_scc_child_edges(body: eb, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
+        Absent => []
       }
       concat(cond_edges, concat(then_edges, else_edges))
     _ =>
@@ -3325,7 +3325,7 @@ fn is_scc_container_child_descent(members: List<String>, func_index: Map<String,
   let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
   let edges = members |> flat_map(name =>
     match map_get(func_index, name) {
-      Some { value: entry } =>
+      Present { value: entry } =>
         let best_edges = entry.params |> fold(init: [], f: (best, p) =>
           let pname = param_node_name_at(n: p, source_indices: si)
           let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: true, si: si)
@@ -3341,7 +3341,7 @@ fn is_scc_container_child_descent(members: List<String>, func_index: Map<String,
           } else { best }
         )
         best_edges
-      None => []
+      Absent => []
     }
   )
   let unknown_edge_count = count_unknown_progress_edges(edges: edges)
@@ -3365,7 +3365,7 @@ fn count_unknown_progress_edges(edges: List<ParserProgressEdge>) -> Int {
 fn count_unknown_proof_edges(edges: List<ProofEdge>) -> Int {
   edges |> filter(e =>
     match e.evidence |> first {
-      Some { value: DescentUnknown } => true
+      Present { value: DescentUnknown } => true
       _ => false
     }
   ) |> count
@@ -3375,7 +3375,7 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
   let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
   members |> flat_map(name =>
     match map_get(func_index, name) {
-      Some { value: entry } =>
+      Present { value: entry } =>
         let best_map = entry.params |> fold(init: empty_map(), f: (best, p) =>
           let pname = param_node_name_at(n: p, source_indices: si)
           let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: check_child, check_list: check_list, si: si)
@@ -3384,10 +3384,10 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
           pick_best_param_edges(current: best, candidate: param_map)
         )
         map_keys(best_map) |> map(callee =>
-          let ev = match map_get(best_map, callee) { Some { value: e } => e   None => DescentUnknown }
+          let ev = match map_get(best_map, callee) { Present { value: e } => e   Absent => DescentUnknown }
           ProofEdge { caller: name, callee: callee, evidence: [ev] }
         )
-      None => []
+      Absent => []
     }
   )
 }
@@ -3398,7 +3398,7 @@ fn merge_edge_evidence(acc_map: Map<String, DescentEvidence>, pe: ParserProgress
 
 fn count_known_in_edge_map(m: Map<String, DescentEvidence>) -> Int {
   map_keys(m) |> filter(k =>
-    match map_get(m, k) { Some { value: DescentUnknown } => false  _ => true }
+    match map_get(m, k) { Present { value: DescentUnknown } => false  _ => true }
   ) |> count
 }
 
@@ -3416,7 +3416,7 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
   let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
   members |> flat_map(name =>
     match map_get(func_index, name) {
-      Some { value: entry } =>
+      Present { value: entry } =>
         let tree_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
           let pname = param_node_name_at(n: p, source_indices: si)
           let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false, si: si)
@@ -3437,11 +3437,11 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
         let all_keys = concat(map_keys(tree_edge_map), map_keys(list_edge_map))
         let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
         map_keys(unique_keys) |> map(callee =>
-          let tree_ev = match map_get(tree_edge_map, callee) { Some { value: ev } => ev   None => DescentUnknown }
-          let list_ev = match map_get(list_edge_map, callee) { Some { value: ev } => ev   None => DescentUnknown }
+          let tree_ev = match map_get(tree_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
+          let list_ev = match map_get(list_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
           ProofEdge { caller: name, callee: callee, evidence: [tree_ev, list_ev] }
         )
-      None => []
+      Absent => []
     }
   )
 }
@@ -3466,7 +3466,7 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
     let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
     members |> flat_map(name =>
       match map_get(func_index, name) {
-        Some { value: entry } =>
+        Present { value: entry } =>
           let tree_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
             let pname = param_node_name_at(n: p, source_indices: si)
             let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false, si: si)
@@ -3482,11 +3482,11 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
           let all_keys = concat(map_keys(tree_edge_map), map_keys(parser_edge_map))
           let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
           map_keys(unique_keys) |> map(callee =>
-            let tree_ev = match map_get(tree_edge_map, callee) { Some { value: ev } => ev   None => DescentUnknown }
-            let parser_ev = match map_get(parser_edge_map, callee) { Some { value: ev } => ev   None => DescentUnknown }
+            let tree_ev = match map_get(tree_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
+            let parser_ev = match map_get(parser_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
             ProofEdge { caller: name, callee: callee, evidence: [tree_ev, parser_ev] }
           )
-        None => []
+        Absent => []
       }
     )
   }
@@ -3499,7 +3499,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
   let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
   members |> flat_map(name =>
     match map_get(func_index, name) {
-      Some { value: entry } =>
+      Present { value: entry } =>
         // Self-edge: read CX-L2 descent_evidence from annotated self-calls
         let self_evidence = collect_self_call_evidence(body: entry.body, fn_name: name, si: si)
         let self_has_calls = self_evidence |> count > 0
@@ -3514,7 +3514,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
           )
         )
         let descending_param = match self_evidence |> first {
-          Some { value: call_ev } =>
+          Present { value: call_ev } =>
             call_ev |> fold(init: "", f: (found, rel) =>
               if found != "" { found }
               else {
@@ -3526,7 +3526,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
                 }
               }
             )
-          None => ""
+          Absent => ""
         }
         let self_edge = if self_has_calls {
           if self_all_structural {
@@ -3553,7 +3553,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
           } else { [] }
         )
         concat(self_edge, cross_edges)
-      None => []
+      Absent => []
     }
   )
 }
@@ -3564,10 +3564,10 @@ fn scc_descending_param(members: List<String>, func_index: Map<String, FuncEntry
     if found != "" { found }
     else {
       match map_get(func_index, name) {
-        Some { value: entry } =>
+        Present { value: entry } =>
           let evidence = collect_self_call_evidence(body: entry.body, fn_name: name, si: si)
           match evidence |> first {
-            Some { value: call_ev } =>
+            Present { value: call_ev } =>
               call_ev |> fold(init: "", f: (p, rel) =>
                 if p != "" { p }
                 else {
@@ -3579,9 +3579,9 @@ fn scc_descending_param(members: List<String>, func_index: Map<String, FuncEntry
                   }
                 }
               )
-            None => ""
+            Absent => ""
           }
-        None => ""
+        Absent => ""
       }
     }
   )
@@ -3592,48 +3592,48 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
   let cx_l2_edges = collect_scc_cx_l2_tree_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
   let cx_l2_all_known = cx_l2_edges |> all(e =>
     match e.evidence |> first {
-      Some { value: DescentUnknown } => false
+      Present { value: DescentUnknown } => false
       _ => true
     }
   )
   let cx_l2_param = scc_descending_param(members: members, func_index: func_index, si: si)
   let cx_l2_proof = TerminationProof { dimensions: [TreeSize { param: if cx_l2_param != "" { cx_l2_param } else { "scc" } }] }
   if cx_l2_all_known && (cx_l2_edges |> count) > 0 && proof_has_non_descending_cycle(proof: cx_l2_proof, members: members, edges: cx_l2_edges) == false {
-    Some { value: cx_l2_proof }
+    Present { value: cx_l2_proof }
   } else {
   let tree_edges = collect_scc_proof_edges_for_dim(members: members, func_index: func_index, scc_name_set: scc_name_set, check_child: true, check_list: false, si: si)
   let tree_all_known = tree_edges |> all(e =>
     match e.evidence |> first {
-      Some { value: DescentUnknown } => false
+      Present { value: DescentUnknown } => false
       _ => true
     }
   )
   let tree_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }] }
   if tree_all_known && (tree_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tree_proof, members: members, edges: tree_edges) == false {
-    Some { value: tree_proof }
+    Present { value: tree_proof }
   } else {
     let list_edges = collect_scc_proof_edges_for_dim(members: members, func_index: func_index, scc_name_set: scc_name_set, check_child: false, check_list: true, si: si)
     let list_all_known = list_edges |> all(e =>
       match e.evidence |> first {
-        Some { value: DescentUnknown } => false
+        Present { value: DescentUnknown } => false
         _ => true
       }
     )
     let list_proof = TerminationProof { dimensions: [ListLength { param: "scc" }] }
     if list_all_known && (list_edges |> count) > 0 && proof_has_non_descending_cycle(proof: list_proof, members: members, edges: list_edges) == false {
-      Some { value: list_proof }
+      Present { value: list_proof }
     } else {
       // CX-A: Try TokenPosition (parser state advance)
       let parser_edges = collect_scc_parser_proof_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
       let parser_all_known = parser_edges |> all(e =>
         match e.evidence |> first {
-          Some { value: DescentUnknown } => false
+          Present { value: DescentUnknown } => false
           _ => true
         }
       )
       let parser_proof = TerminationProof { dimensions: [TokenPosition { param: "scc" }] }
       if parser_all_known && (parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: parser_proof, members: members, edges: parser_edges) == false {
-        Some { value: parser_proof }
+        Present { value: parser_proof }
       } else {
         let lex_edges = collect_scc_independent_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
         // Lexicographic descent requires the LEADING dimension to be known.
@@ -3641,25 +3641,25 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
         // and must not pass — the primary measure could increase.
         let lex_all_known = lex_edges |> all(e =>
           match e.evidence |> first {
-            Some { value: ev } => match ev { DescentUnknown => false  _ => true }
-            None => false
+            Present { value: ev } => match ev { DescentUnknown => false  _ => true }
+            Absent => false
           }
         )
         let lex_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }, ListLength { param: "scc" }] }
         if lex_all_known && (lex_edges |> count) > 0 && proof_has_non_descending_cycle(proof: lex_proof, members: members, edges: lex_edges) == false {
-          Some { value: lex_proof }
+          Present { value: lex_proof }
         } else {
           // CX-A: Lexicographic [TreeSize, TokenPosition]
           let tree_parser_edges = collect_scc_tree_parser_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
           let tp_all_known = tree_parser_edges |> all(e =>
             match e.evidence |> first {
-              Some { value: ev } => match ev { DescentUnknown => false  _ => true }
-              None => false
+              Present { value: ev } => match ev { DescentUnknown => false  _ => true }
+              Absent => false
             }
           )
           let tp_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }, TokenPosition { param: "scc" }] }
           if tp_all_known && (tree_parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tp_proof, members: members, edges: tree_parser_edges) == false {
-            Some { value: tp_proof }
+            Present { value: tp_proof }
           } else {
             none
           }
@@ -3676,33 +3676,33 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
   )
   let proof = construct_scc_termination_proof(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
   match proof {
-    Some { value: p } =>
+    Present { value: p } =>
       lower_call_pattern(pattern: proof_to_call_pattern(proof: p))
-    None =>
+    Absent =>
       let scc_measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
       match classify_parser_scc_recursion_pattern(members: members, func_index: func_index, si: si) {
-        Some { value: parser_target } => parser_target
-        None =>
+        Present { value: parser_target } => parser_target
+        Absent =>
           let all_arithmetic = members |> all(name =>
             match map_get(func_index, name) {
-              Some { value: entry } =>
+              Present { value: entry } =>
                 max_path_target_calls(body: entry.body, target_set: scc_name_set, si: si) <= 1
                 && scc_calls_have_arithmetic_descent(body: entry.body, target_set: scc_name_set, func_index: func_index, scc_measure_params: scc_measure_params, si: si)
-              None => false
+              Absent => false
             }
           )
           if all_arithmetic {
             let ring_param = match members |> first {
-              Some { value: m0 } =>
+              Present { value: m0 } =>
                 match map_get(scc_measure_params, m0) {
-                  Some { value: pmap } =>
+                  Present { value: pmap } =>
                     match map_keys(pmap) |> first {
-                      Some { value: k } => k
-                      None => "_scc_arithmetic"
+                      Present { value: k } => k
+                      Absent => "_scc_arithmetic"
                     }
-                  None => "_scc_arithmetic"
+                  Absent => "_scc_arithmetic"
                 }
-              None => "_scc_arithmetic"
+              Absent => "_scc_arithmetic"
             }
             lower_call_pattern(pattern: ArithmeticSubtractCall { steps: OneStep, ring_param: ring_param })
           } else {
@@ -3813,8 +3813,8 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
     match method_semantics.value {
       AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } =>
         match se {
-          Some { value: ShrinkEffect } => true
-          Some { value: IdentityEffect } => true
+          Present { value: ShrinkEffect } => true
+          Present { value: IdentityEffect } => true
           _ => false
         }
       _ => false
@@ -3829,7 +3829,7 @@ fn receiver_size_var(recv: Node, si: Map<String, NewlineIndex>) -> SizeExpr {
     ExprFieldAccess =>
       SizeLen { collection: field_access_field_at(texpr: recv, source_indices: si) }
     ExprMethodCall { method_semantics: method_semantics } =>
-      let inner_recv = match recv.children |> first { Some { value: r } => r  None => recv }
+      let inner_recv = match recv.children |> first { Present { value: r } => r  Absent => recv }
       if method_preserves_collection_size(method_semantics: method_semantics) {
         receiver_size_var(recv: inner_recv, si: si)
       } else {
@@ -3855,27 +3855,27 @@ fn size_binder_name(size: SizeExpr) -> String {
 fn resolve_lambda_arg(mc_arg_nodes: List<Node>, si: Map<String, NewlineIndex>) -> Node? {
   let f_arg = mc_arg_nodes |> filter(a => authored_name_at(source_indices: si, node: a) == "f") |> first
   match f_arg {
-    Some { value: fa } => Some { value: arg_value(n: fa) }
-    None => mc_arg_nodes |> map(a => arg_value(n: a)) |> first
+    Present { value: fa } => Present { value: arg_value(n: fa) }
+    Absent => mc_arg_nodes |> map(a => arg_value(n: a)) |> first
   }
 }
 
 fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, parser_always_advancing: Map<String, Bool>, recursion_ctx: RecursionContext, si: Map<String, NewlineIndex>) -> SummaryResult {
   match lambda_arg {
-    Some { value: la } =>
+    Present { value: la } =>
       match la.expr_data {
         ExprVar =>
           let fn_ref = expr_var_name_at(texpr: la, source_indices: si)
           match map_get(func_index, fn_ref) {
-            Some { value: _ } =>
+            Present { value: _ } =>
               get_or_compute_summary(func_name: fn_ref, func_index: func_index, scc_index: scc_index, table: recv_r.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
-            None =>
+            Absent =>
               cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
           }
         _ =>
           cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
       }
-    None =>
+    Absent =>
       SummaryResult {
         summary: ComplexitySummary {
           work: CostConst { value: 1 },
@@ -3912,9 +3912,9 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
     ShapeSortBody =>
       let lambda_arg = resolve_lambda_arg(mc_arg_nodes: mc_args, si: si)
       let key_result = match lambda_arg {
-        Some { value: la } =>
+        Present { value: la } =>
           cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
-        None =>
+        Absent =>
           SummaryResult {
             summary: ComplexitySummary {
               work: CostConst { value: 1 },
@@ -4232,12 +4232,12 @@ fn build_legend(size_names: List<String>) -> Legend {
     Legend { substitution: empty_map(), suffix: "" }
   } else if unique |> count == 1 {
     match unique |> first {
-      Some { value: name } =>
+      Present { value: name } =>
         Legend {
           substitution: map_insert(empty_map(), name, "n"),
           suffix: ""
         }
-      None => Legend { substitution: empty_map(), suffix: "" }
+      Absent => Legend { substitution: empty_map(), suffix: "" }
     }
   } else {
     let indexed = unique |> fold(init: Legend { substitution: empty_map(), suffix: "" }, f: fn(acc, name) {
@@ -4260,13 +4260,13 @@ fn substitute_size(size: SizeExpr, legend: Map<String, String>) -> SizeExpr {
   match size {
     SizeLen { collection: c } =>
       match map_get(legend, c) {
-        Some { value: short } => SizeVar { name: short }
-        None => size
+        Present { value: short } => SizeVar { name: short }
+        Absent => size
       }
     SizeVar { name: n } =>
       match map_get(legend, n) {
-        Some { value: short } => SizeVar { name: short }
-        None => size
+        Present { value: short } => SizeVar { name: short }
+        Absent => size
       }
     SizeAdd { left: l, right: r } =>
       SizeAdd { left: substitute_size(size: l, legend: legend), right: substitute_size(size: r, legend: legend) }
@@ -4340,8 +4340,8 @@ type DeduplicateAcc {
 fn deduplicate(items: List<String>) -> List<String> {
   let result = items |> fold(init: DeduplicateAcc { seen: empty_map(), out: [] }, f: fn(acc, item) {
     match map_get(acc.seen, item) {
-      Some { value: _ } => acc
-      None => DeduplicateAcc {
+      Present { value: _ } => acc
+      Absent => DeduplicateAcc {
         seen: map_insert(acc.seen, item, true),
         out: list_push(acc.out, item)
       }
@@ -4456,9 +4456,9 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprCall =>
       let fname = expr_call_func_at(texpr: texpr, source_indices: si)
       let callee_result = match map_get(func_index, fname) {
-        Some { value: entry } =>
+        Present { value: entry } =>
           get_or_compute_summary(func_name: fname, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
-        None =>
+        Absent =>
           SummaryResult {
             summary: ComplexitySummary {
               work: CostConst { value: 1 },
@@ -4510,10 +4510,10 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
           AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: cs, algebra_template: _ } => {
             let pc = node_is_collection(n: resolved_type(n: texpr), source_indices: si)
             match cs {
-              Some { value: shape } =>
-                Some { value: cost_of_method_by_shape(shape: shape, produces_collection: pc, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si) }
-              None =>
-                Some { value: SummaryResult {
+              Present { value: shape } =>
+                Present { value: cost_of_method_by_shape(shape: shape, produces_collection: pc, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si) }
+              Absent =>
+                Present { value: SummaryResult {
                   summary: ComplexitySummary {
                     work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
                     span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
@@ -4528,7 +4528,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         }
       }
       match method_cost_result {
-        Some { value: result } => result
+        Present { value: result } => result
         _ =>
         let args_result = mc_args |> fold(init: SummaryResult {
           summary: ComplexitySummary {
@@ -4607,13 +4607,13 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       let c_r = cost_of_expr(texpr: c, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
       let t_r = cost_of_expr(texpr: t, func_index: func_index, scc_index: scc_index, table: c_r.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
       let e_result = match if_else_branch(texpr: texpr) {
-        Some { value: eb } =>
+        Present { value: eb } =>
           let er = cost_of_expr(texpr: eb, func_index: func_index, scc_index: scc_index, table: t_r.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
           SummaryResult {
             summary: er.summary,
             table: er.table
           }
-        None =>
+        Absent =>
           SummaryResult {
             summary: ComplexitySummary {
               work: CostConst { value: 0 },
@@ -4638,7 +4638,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       let v = let_value(texpr: texpr)
       let v_r = cost_of_expr(texpr: v, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
       match let_body(texpr: texpr) {
-        Some { value: b } =>
+        Present { value: b } =>
           let b_r = cost_of_expr(texpr: b, func_index: func_index, scc_index: scc_index, table: v_r.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
           SummaryResult {
             summary: ComplexitySummary {
@@ -4649,7 +4649,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
             },
             table: b_r.table
           }
-        None => v_r
+        Absent => v_r
       }
 
     ExprBlock =>
@@ -4748,14 +4748,14 @@ fn estimate_expr_size(texpr: Node, budget: Int) -> Int {
 
 fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, table: CostInternTable, parser_always_advancing: Map<String, Bool>, recursion_ctx: RecursionContext, si: Map<String, NewlineIndex>) -> SummaryResult {
   match lookup_summary(table: table, func_name: func_name) {
-    Some { value: cached } =>
+    Present { value: cached } =>
       SummaryResult { summary: cached, table: table }
-    None =>
+    Absent =>
       match map_get(func_index, func_name) {
-        Some { value: entry } =>
+        Present { value: entry } =>
           let target = match map_get(scc_index, func_name) {
-            Some { value: info } => Some { value: info.pattern }
-            None => none
+            Present { value: info } => Present { value: info.pattern }
+            Absent => none
           }
           let is_recursive = target != none
           let zero_placeholder = ComplexitySummary {
@@ -4769,12 +4769,12 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           } else { table }
           let result = cost_of_expr(texpr: entry.body, func_index: func_index, scc_index: scc_index, table: table_prepped, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
           let scc_members = match map_get(scc_index, func_name) {
-            Some { value: info } => info.members
-            None => []
+            Present { value: info } => info.members
+            Absent => []
           }
           let is_scc = scc_members |> count > 1
           let bounded = match target {
-            Some { value: t } =>
+            Present { value: t } =>
               if is_scc {
                 ComplexitySummary {
                   work: bounded_scc_cost(target: t, per_iter: result.summary.work, members: scc_members),
@@ -4790,7 +4790,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
                   certainty: Conservative
                 }
               }
-            None => result.summary
+            Absent => result.summary
           }
           let simplified = ComplexitySummary {
             work: simplify_cost(expr: bounded.work),
@@ -4800,7 +4800,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           }
           let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
           SummaryResult { summary: simplified, table: final_table }
-        None =>
+        Absent =>
           // Function not in func_index. Distinguish genuine externals
           // (Rust stdlib, runtime) from unexpected misses (internal function
           // lost from index — a bug that should not fail open).
@@ -4843,8 +4843,8 @@ fn collect_call_evidence(body: Node, target_set: Map<String, Bool>, si: Map<Stri
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own = if map_get(target_set, callee) != none {
         match de {
-          Some { value: evidence } => [evidence]
-          None => []
+          Present { value: evidence } => [evidence]
+          Absent => []
         }
       } else { [] }
       let from_children = body.children |> fold(init: [], f: (acc, child) =>
@@ -4886,8 +4886,8 @@ fn derive_edge_evidence(all_calls: List<List<SubValueRelation>>) -> DescentEvide
 fn merge_param_evidence(all_calls: List<List<SubValueRelation>>, param_index: Int) -> DescentEvidence {
   all_calls |> fold(init: Strict, f: (acc, call_evidence) =>
     match call_evidence |> skip(param_index) |> first {
-      Some { value: rel } => descent_evidence_lattice_meet(a: acc, b: sub_value_to_evidence(relation: rel))
-      None => acc
+      Present { value: rel } => descent_evidence_lattice_meet(a: acc, b: sub_value_to_evidence(relation: rel))
+      Absent => acc
     }
   )
 }
@@ -4895,26 +4895,26 @@ fn merge_param_evidence(all_calls: List<List<SubValueRelation>>, param_index: In
 // Extract the ShrinkFactor for a parameter across all self-call sites.
 // Fail-closed: mixed factors → none (no structural bound produced).
 fn extract_shrink_factor(all_calls: List<List<SubValueRelation>>, param_index: Int) -> ShrinkFactor? {
-  all_calls |> fold(init: Some { value: UnitShrink }, f: (acc, call_evidence) =>
+  all_calls |> fold(init: Present { value: UnitShrink }, f: (acc, call_evidence) =>
     match acc {
-      None => none
-      Some { value: prev } =>
+      Absent => none
+      Present { value: prev } =>
         match call_evidence |> skip(param_index) |> first {
-          Some { value: rel } =>
+          Present { value: rel } =>
             match rel {
               StrictSubValue { field: _, factor: f } =>
                 match prev {
-                  UnitShrink => Some { value: f }
+                  UnitShrink => Present { value: f }
                   _ => if prev == f { acc } else { none }
                 }
               ArithmeticDescent { param: _, factor: f } =>
                 match prev {
-                  UnitShrink => Some { value: f }
+                  UnitShrink => Present { value: f }
                   _ => if prev == f { acc } else { none }
                 }
               _ => acc
             }
-          None => acc
+          Absent => acc
         }
     }
   )
@@ -4926,18 +4926,18 @@ fn max_path_descending(body: Node, fn_name: String, param_index: Int, si: Map<St
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own = if callee == fn_name {
         match de {
-          Some { value: evidence } =>
+          Present { value: evidence } =>
             match evidence |> skip(param_index) |> first {
-              Some { value: rel } =>
+              Present { value: rel } =>
                 match rel {
                   StrictSubValue { field: _, factor: _ } => 1
                   IteratedSubValue { field: _ } => 1
                   ArithmeticDescent { param: _, factor: _ } => 1
                   _ => 0
                 }
-              None => 0
+              Absent => 0
             }
-          None => 0
+          Absent => 0
         }
       } else { 0 }
       let from_children = body.children |> fold(init: 0, f: (acc, child) =>
@@ -4949,8 +4949,8 @@ fn max_path_descending(body: Node, fn_name: String, param_index: Int, si: Map<St
       let then_count = max_path_descending(body: if_then_branch(texpr: body), fn_name: fn_name, param_index: param_index, si: si)
       let else_branch = if_else_branch(texpr: body)
       let else_count = match else_branch {
-        Some { value: eb } => max_path_descending(body: eb, fn_name: fn_name, param_index: param_index, si: si)
-        None => 0
+        Present { value: eb } => max_path_descending(body: eb, fn_name: fn_name, param_index: param_index, si: si)
+        Absent => 0
       }
       let branch_max = if then_count > else_count { then_count } else { else_count }
       cond_count + branch_max
@@ -4972,13 +4972,13 @@ fn max_path_descending(body: Node, fn_name: String, param_index: Int, si: Map<St
 fn distinct_descended_fields(all_calls: List<List<SubValueRelation>>, param_index: Int) -> Int {
   let field_set = all_calls |> fold(init: empty_map(), f: (acc, call_evidence) =>
     match call_evidence |> skip(param_index) |> first {
-      Some { value: rel } =>
+      Present { value: rel } =>
         match rel {
           StrictSubValue { field: f, factor: _ } => map_insert(acc, f.field_name, true)
           IteratedSubValue { field: f } => map_insert(acc, f.field_name, true)
           _ => acc
         }
-      None => acc
+      Absent => acc
     }
   )
   map_keys(field_set) |> count
@@ -4998,7 +4998,7 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>, si: Map<String, Newl
             let param_name = param_node_name_at(n: param_node, source_indices: si)
             let factor_opt = extract_shrink_factor(all_calls: all_calls, param_index: param_index)
             match factor_opt {
-              Some { value: factor } =>
+              Present { value: factor } =>
                 let branches = max_path_descending(body: entry.body, fn_name: entry.name, param_index: param_index, si: si)
                 let recurrence = match factor {
                   UnitShrink =>
@@ -5023,7 +5023,7 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>, si: Map<String, Newl
                   derive_bound(param: param_name, branches: 1, factor: factor, work_exponent: 0)
                 }
                 concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, recurrence_bound: recurrence, stack_bound: stack_bound, span: entry.span }])
-              None => pacc
+              Absent => pacc
             }
           _ => pacc
         }
@@ -5053,8 +5053,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let parser_always_advancing = infer_all_parser_always_advancing(func_index: func_index, si: si)
   let full_scc_index = func_entries |> fold(init: scc_result.index, f: (acc, entry) =>
     match map_get(acc, entry.name) {
-      Some { value: _ } => acc
-      None =>
+      Present { value: _ } => acc
+      Absent =>
         if max_path_self_calls(body: entry.body, func_name: entry.name, si: si) > 0 {
           let pattern = classify_recursion_pattern(
             func_name: entry.name,
@@ -5076,12 +5076,12 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let call_forward = forward_adjacency(names: func_entries |> map(entry => entry.name), graph: scc_result.call_graph)
   let fan_in = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
     let callees = match map_get(call_forward, entry.name) {
-      Some { value: cs } => cs
-      None => []
+      Present { value: cs } => cs
+      Absent => []
     }
     let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
     map_keys(unique_set) |> fold(init: acc, f: (inner, callee) =>
-      let current = match map_get(inner, callee) { Some { value: v } => v, None => 0 }
+      let current = match map_get(inner, callee) { Present { value: v } => v, Absent => 0 }
       map_insert(inner, callee, current + 1)
     )
   )
@@ -5098,7 +5098,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
     processed: empty_map()
   }, f: fn(acc, func_name) {
     match map_get(func_index, func_name) {
-      Some { value: entry } =>
+      Present { value: entry } =>
         let sr = get_or_compute_summary(func_name: func_name, func_index: func_index, scc_index: full_scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
         let class_str = classify_complexity(expr: sr.summary.work)
         let new_classes = map_insert(acc.classes, func_name, class_str)
@@ -5115,13 +5115,13 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
           }])
         } else { acc.violations }
         let callees = match map_get(call_forward, func_name) {
-          Some { value: cs } => cs
-          None => []
+          Present { value: cs } => cs
+          Absent => []
         }
         let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
         let unique_callees = map_keys(unique_set)
         let new_fan_in = unique_callees |> fold(init: acc.fan_in, f: (fi, callee) =>
-          let current = match map_get(fi, callee) { Some { value: v } => v, None => 0 }
+          let current = match map_get(fi, callee) { Present { value: v } => v, Absent => 0 }
           map_insert(fi, callee, current - 1)
         )
         // Evict summaries whose fan-in has reached 0, but ONLY if the
@@ -5130,18 +5130,18 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         // evicting them before their fold iteration would replace their
         // real summary with a fabricated placeholder.
         let evicted_table = unique_callees |> fold(init: sr.table, f: (t, callee) =>
-          let remaining = match map_get(new_fan_in, callee) { Some { value: v } => v, None => 0 }
+          let remaining = match map_get(new_fan_in, callee) { Present { value: v } => v, Absent => 0 }
           if remaining <= 0 && set_has(m: new_processed, key: callee) {
             evict_summary(table: t, func_name: callee)
           } else { t }
         )
         // Also evict this function if it has no callers (fan-in was 0 from the start)
-        let self_fan_in = match map_get(new_fan_in, func_name) { Some { value: v } => v, None => 0 }
+        let self_fan_in = match map_get(new_fan_in, func_name) { Present { value: v } => v, Absent => 0 }
         let final_table = if self_fan_in <= 0 {
           evict_summary(table: evicted_table, func_name: func_name)
         } else { evicted_table }
         TopoBuildAcc { table: final_table, classes: new_classes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
-      None => acc
+      Absent => acc
     }
   })
   // intern_table is transit-only — not exposed in the report.

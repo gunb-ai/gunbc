@@ -83,9 +83,9 @@ type FrontendPrepared {
 
 fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
   typed.modules
-    |> filter(m => m.items |> any(item => item.body != None))
+    |> filter(m => m.items |> any(item => item.body != Absent))
     |> flat_map(m =>
-      m.items |> filter(item => item.body != None) |> map(item =>
+      m.items |> filter(item => item.body != Absent) |> map(item =>
         FuncEntry {
           name: authored_name_at(source_indices: m.type_env.source_indices, node: item),
           body: item.body.value,
@@ -103,9 +103,9 @@ fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
 
 fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
   typed.modules
-    |> filter(m => m.items |> any(item => item.body != None))
+    |> filter(m => m.items |> any(item => item.body != Absent))
     |> flat_map(m =>
-      m.items |> filter(item => item.body != None) |> map(item =>
+      m.items |> filter(item => item.body != Absent) |> map(item =>
         analyze_ownership(func_name: authored_name_at(source_indices: m.type_env.source_indices, node: item), params: item.params, body: item.body.value, si: m.type_env.source_indices)
       )
     )
@@ -190,8 +190,8 @@ fn json_list(items: List<String>) -> String {
 
 fn json_optional_string(value: String?) -> String {
   match value {
-    Some { value: inner } => json_quote(s: inner)
-    None => "null"
+    Present { value: inner } => json_quote(s: inner)
+    Absent => "null"
   }
 }
 
@@ -219,8 +219,8 @@ fn dag_node_key(node: Node) -> String {
   concat(
     anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
     match anchor.ident {
-      Some { value: id } => concat(":", to_string(i: id))
-      None => ""
+      Present { value: id } => concat(":", to_string(i: id))
+      Absent => ""
     })
 }
 
@@ -234,7 +234,7 @@ fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
   match node.expr_data {
     NoExprData =>
       match node.inferred {
-        Some { value: Resolved { node: _ } } =>
+        Present { value: Resolved { node: _ } } =>
           // Type/import back-links only — never peel nodes that carry structure.
           node.body == none && node.transport == none
             && (node.children |> count) == 0 && (node.params |> count) == 0
@@ -247,7 +247,7 @@ fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
 fn dag_node_collection_anchor(node: Node) -> Node {
   if dag_node_is_resolved_identity_shell(node: node) {
     match node.inferred {
-      Some { value: Resolved { node: target } } => dag_node_collection_anchor(node: target)
+      Present { value: Resolved { node: target } } => dag_node_collection_anchor(node: target)
       _ => node
     }
   } else {
@@ -257,10 +257,10 @@ fn dag_node_collection_anchor(node: Node) -> Node {
 
 fn inferred_fingerprint(value: InferredNode?) -> String {
   match value {
-    None => "none"
-    Some { value: Resolved { node: _ } } => "Resolved"
-    Some { value: TypeVariable { id } } => concat("TypeVariable:", id)
-    Some { value: CompilerError { message: m } } => concat("CompilerError:", m)
+    Absent => "none"
+    Present { value: Resolved { node: _ } } => "Resolved"
+    Present { value: TypeVariable { id } } => concat("TypeVariable:", id)
+    Present { value: CompilerError { message: m } } => concat("CompilerError:", m)
   }
 }
 
@@ -335,21 +335,21 @@ fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
 
 fn dag_emit_check_ref_target(node: Node, key_to_id: Map<String, String>) -> List<ErrorNode> {
   match map_get(key_to_id, dag_node_key(node: node)) {
-    Some { value: _ } => []
-    None => [dag_node_missing_ref_error(node: node)]
+    Present { value: _ } => []
+    Absent => [dag_node_missing_ref_error(node: node)]
   }
 }
 
 fn dag_emit_check_optional_ref_target(value: Node?, key_to_id: Map<String, String>) -> List<ErrorNode> {
   match value {
-    Some { value: inner } => dag_emit_check_ref_target(node: inner, key_to_id: key_to_id)
-    None => []
+    Present { value: inner } => dag_emit_check_ref_target(node: inner, key_to_id: key_to_id)
+    Absent => []
   }
 }
 
 fn dag_emit_check_inferred_ref_target(value: InferredNode?, key_to_id: Map<String, String>) -> List<ErrorNode> {
   match value {
-    Some { value: Resolved { node: n } } => dag_emit_check_ref_target(node: n, key_to_id: key_to_id)
+    Present { value: Resolved { node: n } } => dag_emit_check_ref_target(node: n, key_to_id: key_to_id)
     _ => []
   }
 }
@@ -385,14 +385,14 @@ fn dag_collect_nodes_list(nodes: List<Node>, acc: DagCollectAcc) -> DagCollectAc
 
 fn dag_collect_optional_node(value: Node?, acc: DagCollectAcc) -> DagCollectAcc {
   match value {
-    Some { value: inner } => dag_collect_insert(node: inner, acc: acc)
-    None => acc
+    Present { value: inner } => dag_collect_insert(node: inner, acc: acc)
+    Absent => acc
   }
 }
 
 fn dag_collect_inferred(value: InferredNode?, acc: DagCollectAcc) -> DagCollectAcc {
   match value {
-    Some { value: Resolved { node: n } } => dag_collect_insert(node: n, acc: acc)
+    Present { value: Resolved { node: n } } => dag_collect_insert(node: n, acc: acc)
     _ => acc
   }
 }
@@ -421,8 +421,8 @@ fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   let acc = dag_collect_optional_node(value: node.type_annotation, acc: acc)
   let acc = dag_collect_inferred(value: node.inferred, acc: acc)
   match node.match_pattern {
-    Some { value: p } => dag_collect_match_pattern(pattern: p, acc: acc)
-    None => acc
+    Present { value: p } => dag_collect_match_pattern(pattern: p, acc: acc)
+    Absent => acc
   }
 }
 
@@ -431,7 +431,7 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   let key = dag_node_key(node: anchor)
   let fp = dag_node_fingerprint(node: anchor)
   match map_get(acc.seen, key) {
-    Some { value: prior } =>
+    Present { value: prior } =>
       if prior == fp {
         acc
       } else if anchor.span.start == 0 && anchor.span.end == 0 {
@@ -444,7 +444,7 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
         // Authored span: provisional key may alias; first canonical record wins until v4 content_hash.
         acc
       }
-    None => {
+    Absent => {
       [DagCollectPending { anchor: anchor, key: key, fp: fp }]
         |> fold(
           init: acc,
@@ -488,29 +488,29 @@ fn dag_graph_source_indices(typed: ResolvedGraph) -> Map<String, NewlineIndex> {
 // Only called after dag_emit_ref_errors passes (fail-closed preflight).
 fn serialize_node_ref(node: Node, key_to_id: Map<String, String>) -> String {
   match map_get(key_to_id, dag_node_key(node: node)) {
-    Some { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
-    None => "{\"$ref\": null}"
+    Present { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
+    Absent => "{\"$ref\": null}"
   }
 }
 
 fn json_optional_node_ref(value: Node?, key_to_id: Map<String, String>) -> String {
   match value {
-    Some { value: inner } => serialize_node_ref(node: inner, key_to_id: key_to_id)
-    None => "null"
+    Present { value: inner } => serialize_node_ref(node: inner, key_to_id: key_to_id)
+    Absent => "null"
   }
 }
 
 fn json_optional_inferred_node_ref(value: InferredNode?, key_to_id: Map<String, String>) -> String {
   match value {
-    Some { value: inner } => serialize_inferred_node_ref(inferred: inner, key_to_id: key_to_id)
-    None => "null"
+    Present { value: inner } => serialize_inferred_node_ref(inferred: inner, key_to_id: key_to_id)
+    Absent => "null"
   }
 }
 
 fn json_optional_span(value: SourceSpan?) -> String {
   match value {
-    Some { value: inner } => serialize_span(span: inner)
-    None => "null"
+    Present { value: inner } => serialize_span(span: inner)
+    Absent => "null"
   }
 }
 
@@ -703,17 +703,17 @@ fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIn
 
 fn serialize_call_semantics(value: CallSemantics?) -> String {
   match value {
-    Some { value: inner } =>
+    Present { value: inner } =>
       concat("{\"kind\": ", json_quote(s: call_semantics_name(value: inner)), "}")
-    None => "null"
+    Absent => "null"
   }
 }
 
 fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   match value {
-    Some { value: PlainMethodSemantics } =>
+    Present { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
-    Some { value: AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } } =>
+    Present { value: AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } } =>
       let mn = authored_name_at(source_indices: source_indices, node: method_def)
       concat(
         "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ",
@@ -721,14 +721,14 @@ fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<Strin
         ", \"fold_accumulator_type\": ",
         json_optional_node_ref(value: fold_accumulator_type, key_to_id: key_to_id),
         "}")
-    Some { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
+    Present { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
       concat(
         "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
         json_quote(s: service_name),
         ", \"op_params\": ",
         json_list(items: op_params |> map(p => serialize_param(param: p, source_indices: source_indices, key_to_id: key_to_id))),
         "}")
-    None => "null"
+    Absent => "null"
   }
 }
 
@@ -797,8 +797,8 @@ fn serialize_sub_value_relation(rel: SubValueRelation) -> String {
 
 fn serialize_descent_evidence(de: List<SubValueRelation>?) -> String {
   match de {
-    Some { value: evidence } => json_list(items: evidence |> map(rel => serialize_sub_value_relation(rel: rel)))
-    None => "null"
+    Present { value: evidence } => json_list(items: evidence |> map(rel => serialize_sub_value_relation(rel: rel)))
+    Absent => "null"
   }
 }
 
@@ -819,7 +819,7 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
         "{\"kind\": \"ExprVar\", \"name\": ", json_quote(s: name),
         ", \"binding_kind\": ",
         match binding_kind {
-          Some { value: inner } =>
+          Present { value: inner } =>
             concat("{\"kind\": ", json_quote(s: var_binding_kind_name(value: inner)),
               match inner {
                 VariantValueBinding { parent_enum: parent_enum } =>
@@ -827,7 +827,7 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
                 _ => ""
               },
             "}")
-          None => "null"
+          Absent => "null"
         },
         "}")
     ExprFieldAccess { summary: summary } =>
@@ -836,8 +836,8 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
         "{\"kind\": \"ExprFieldAccess\", \"field\": ", json_quote(s: field),
         ", \"summary\": ",
         match summary {
-          Some { value: inner } => serialize_field_summary(summary: inner)
-          None => "null"
+          Present { value: inner } => serialize_field_summary(summary: inner)
+          Absent => "null"
         },
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
@@ -859,7 +859,7 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
     ExprBinOp { op: op, algebra_field: af } =>
       concat(
         "{\"kind\": \"ExprBinOp\", \"op\": ", json_quote(s: bin_op_name(value: op)),
-        ", \"algebra_field\": ", match af { Some { value: f } => json_quote(s: algebra_field_kind_name(kind: f))  None => "null" },
+        ", \"algebra_field\": ", match af { Present { value: f } => json_quote(s: algebra_field_kind_name(kind: f))  Absent => "null" },
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprUnaryOp { op: op } =>
@@ -1075,7 +1075,7 @@ fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
     "{\"severity\": ", json_quote(s: severity),
     ", \"message\": ", json_quote(s: diagnostic_to_message(d: diagnostic.diagnostic)),
     ", \"span\": ", serialize_span(span: diagnostic_to_span(d: diagnostic.diagnostic)),
-    ", \"module_name\": ", json_optional_string(value: Some { value: diagnostic.module_name }),
+    ", \"module_name\": ", json_optional_string(value: Present { value: diagnostic.module_name }),
     ", \"category\": ", "null",
     "}")
 }
@@ -1144,8 +1144,8 @@ fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) ->
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
   fold(parse_results, init: [], f: (acc, pr) =>
     match pr.error {
-      Some { value: diag } => list_push(acc, diag)
-      None => acc
+      Present { value: diag } => list_push(acc, diag)
+      Absent => acc
     }
   )
 }
@@ -1168,7 +1168,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let parse_results = parsed.parse_results
   let newline_indices = parsed.newline_indices
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
-  let has_parse_errors = parse_results |> any(p => p.error != None)
+  let has_parse_errors = parse_results |> any(p => p.error != Absent)
   if has_parse_errors {
     FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: parsed.intern_table }
   } else {
@@ -1176,7 +1176,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
     let graph = resolve_modules(modules: modules, source_indices: source_indices)
     FrontendResult {
-      graph: Some { value: graph },
+      graph: Present { value: graph },
       diagnostics: concat(parse_diagnostics, graph.diagnostics),
       newline_indices: newline_indices,
       intern_table: parsed.intern_table
@@ -1228,7 +1228,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
   let frontend = front_end_sources(sources: sources)
   let newline_indices = frontend.newline_indices
   match frontend.graph {
-    None =>
+    Absent =>
       ResolvedPipelineResult {
         graph: none,
         diagnostics: frontend.diagnostics,
@@ -1237,7 +1237,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
         ownership: [],
         newline_indices: newline_indices
       }
-    Some { value: graph } => {
+    Present { value: graph } => {
       let graph_diags = graph.diagnostics
       let resolve_errors = graph_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
       if resolve_errors |> count > 0 {
@@ -1320,7 +1320,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
 
 fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
   match resolved.graph {
-    None =>
+    Absent =>
       PipelineResult {
         files: [],
         diagnostics: resolved.diagnostics,
@@ -1329,7 +1329,7 @@ fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarg
         artifact_plan: empty_artifact_plan(),
         newline_indices: resolved.newline_indices
       }
-    Some { value: typed } => {
+    Present { value: typed } => {
       let artifact_plan = default_artifact_plan(
         root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
         target: target

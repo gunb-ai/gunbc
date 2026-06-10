@@ -92,7 +92,7 @@ type InferredNode
 
 fn inferred_to_node(inferred: InferredNode) -> Node? {
   match inferred {
-    Resolved { node: n } => Some { value: n }
+    Resolved { node: n } => Present { value: n }
     CompilerError { message: _, span: _ } => none
     TypeVariable { id: _ } => none
   }
@@ -343,11 +343,11 @@ type Node {
 }
 
 fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
-  if name == "" { none } else { Some { value: span } }
+  if name == "" { none } else { Present { value: span } }
 }
 
 fn node_name_span(n: Node) -> SourceSpan {
-  match n.ident_span { Some { value: s } => s  None => n.span }
+  match n.ident_span { Present { value: s } => s  Absent => n.span }
 }
 
 // Construct a Node carrying expression data (P5.11 dissolved form).
@@ -382,7 +382,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
   Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
-    params: [], inferred: Some { value: CompilerError { message: message, span: span } },
+    params: [], inferred: Present { value: CompilerError { message: message, span: span } },
     return_cardinality: Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false,
@@ -399,7 +399,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 // =========================================================================
 
 fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
-  let arg_name = match name { Some { value: n } => n  None => "" }
+  let arg_name = match name { Present { value: n } => n  Absent => "" }
   Node {
     name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
 
@@ -411,14 +411,14 @@ fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: Source
 }
 
 fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
-  let children = match guard { Some { value: g } => [g, body]  None => [body] }
+  let children = match guard { Present { value: g } => [g, body]  Absent => [body] }
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: Some { value: pattern },
+    has_non_tail_self_call: false, match_pattern: Present { value: pattern },
     expr_data: NoExprData
   }
 }
@@ -438,8 +438,8 @@ fn resource_use_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> S
 
 fn resource_use_resource(n: Node) -> Node {
   match n.children |> first {
-    Some { value: v } => v
-    None => make_expr_error_node(kind: InternalExprError, message: "malformed resource-use: missing resource", span: n.span)
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed resource-use: missing resource", span: n.span)
   }
 }
 
@@ -461,14 +461,14 @@ fn make_field_binding_node(field_name: String, binding: MatchPattern, span: Sour
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: Some { value: binding }, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: Present { value: binding }, expr_data: NoExprData
   }
 }
 
 fn field_binding_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
 fn field_binding_pattern(n: Node) -> MatchPattern {
-  match n.match_pattern { Some { value: p } => p  None => Wildcard }
+  match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
 }
 
 fn make_text_part_node(text: String, span: SourceSpan) -> Node {
@@ -517,7 +517,7 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
 // =========================================================================
 
 fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan, name_span: SourceSpan) -> Node {
-  let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
+  let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -528,10 +528,10 @@ fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: So
 }
 
 fn make_resolved_param_node(name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
-  let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
+  let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
-    params: [], inferred: Some { value: Resolved { node: type_expr } }, return_cardinality: Required,
+    params: [], inferred: Present { value: Resolved { node: type_expr } }, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
@@ -544,19 +544,19 @@ fn generic_param_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> 
 
 fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> String {
   match node.ident_span {
-    Some { value: span } =>
+    Present { value: span } =>
       match map_get(source_indices, span.file) {
-        Some { value: index } =>
+        Present { value: index } =>
           let text = source_text_at(index: index, span: span)
           if text == "" { "" } else { text }
-        None =>
+        Absent =>
           if string_length(s: span.file) > 8 && substring(s: span.file, start: 0, end: 8) == "<kernel:" {
             substring(s: span.file, start: 8, end: string_length(s: span.file) - 1)
           } else {
             node.name
           }
       }
-    None => ""
+    Absent => ""
   }
 }
 
@@ -566,8 +566,8 @@ fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> St
 // Until then, routes through authored_name_at for source-derived names.
 fn find_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   match n.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == name) |> first {
-    Some { value: ch } => Some { value: ch }
-    None => none
+    Present { value: ch } => Present { value: ch }
+    Absent => none
   }
 }
 
@@ -577,8 +577,8 @@ fn has_child_named(n: Node, name: String, source_indices: Map<String, NewlineInd
 
 fn param_node_type_expr(n: Node) -> Node {
   match n.children |> first {
-    Some { value: v } => v
-    None => make_expr_error_node(kind: InternalExprError, message: "malformed param: missing type_expr", span: n.span)
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed param: missing type_expr", span: n.span)
   }
 }
 
@@ -591,10 +591,10 @@ fn param_node_default_value(n: Node) -> Node? {
 fn param_node_span(n: Node) -> SourceSpan { n.span }
 
 fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan, name_span: SourceSpan) -> Node {
-  let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
+  let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   let props = match from_key {
-    Some { value: fk } => [make_field_init_node(name: "from_key", value: Node { name: fk, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: fk, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))]
-    None => []
+    Present { value: fk } => [make_field_init_node(name: "from_key", value: Node { name: fk, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: fk, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))]
+    Absent => []
   }
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
@@ -609,8 +609,8 @@ fn field_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> Str
 
 fn field_node_type_expr(n: Node) -> Node {
   match n.children |> first {
-    Some { value: v } => v
-    None => make_expr_error_node(kind: InternalExprError, message: "malformed field: missing type_expr", span: n.span)
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed field: missing type_expr", span: n.span)
   }
 }
 
@@ -624,8 +624,8 @@ fn field_node_default_value(n: Node) -> Node? {
 
 fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match find_property(props: n.properties, prop_name: "from_key", source_indices: source_indices) {
-    Some { value: p } => Some { value: authored_name_at(source_indices: source_indices, node: p) }
-    None => none
+    Present { value: p } => Present { value: authored_name_at(source_indices: source_indices, node: p) }
+    Absent => none
   }
 }
 
@@ -734,7 +734,7 @@ fn is_child_accessor_in_model(name: String) -> Bool {
 // Returns None if the variant is not in the model (fail-closed: callers
 // must handle missing layout explicitly, not assume "no children").
 fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
-  lookup(expr_child_roles, key: variant_name)
+  map_get(expr_child_roles, variant_name)
 }
 
 // =========================================================================
@@ -756,15 +756,15 @@ data node_field_roles: Map<String, NodeFieldRole> = {
 
 fn is_children_list_field(field_name: String) -> Bool {
   match lookup(node_field_roles, key: field_name) {
-    Some { value: ChildrenListField } => true
+    Holds { value: ChildrenListField } => true
     _ => false
   }
 }
 
 fn is_sub_value_field(field_name: String) -> Bool {
   match lookup(node_field_roles, key: field_name) {
-    Some { value: SubValueField } => true
-    Some { value: ChildrenListField } => true
+    Holds { value: SubValueField } => true
+    Holds { value: ChildrenListField } => true
     _ => false
   }
 }
@@ -790,23 +790,32 @@ data function_size_effects: Map<String, FunctionSizeEffect> = {
 
 fn is_tree_size_preserving(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
-    Some { value: TreeSizePreserving } => true
-    Some { value: PropertyContraction { domain_size: _ } } => true
-    _ => false
+    Holds { value: effect } => match effect {
+      TreeSizePreserving => true
+      PropertyContraction { domain_size: _ } => true
+      _ => false
+    }
+    Violates { diagnostic: _ } => false
   }
 }
 
 fn is_tree_size_reducing(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
-    Some { value: TreeSizeReducing } => true
-    _ => false
+    Holds { value: effect } => match effect {
+      TreeSizeReducing => true
+      _ => false
+    }
+    Violates { diagnostic: _ } => false
   }
 }
 
 fn is_property_contraction(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
-    Some { value: PropertyContraction { domain_size: _ } } => true
-    _ => false
+    Holds { value: effect } => match effect {
+      PropertyContraction { domain_size: _ } => true
+      _ => false
+    }
+    Violates { diagnostic: _ } => false
   }
 }
 
@@ -823,26 +832,26 @@ fn is_property_contraction(func_name: String) -> Bool {
 
 fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
   match texpr.children |> skip(index) |> first {
-    Some { value: v } => v
-    None => make_expr_error_node(kind: InternalExprError, message: concat("malformed node: missing ", role), span: texpr.span)
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: concat("malformed node: missing ", role), span: texpr.span)
   }
 }
 
 
 fn arg_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   let name = authored_name_at(source_indices: source_indices, node: n)
-  if name == "" { none } else { Some { value: name } }
+  if name == "" { none } else { Present { value: name } }
 }
 
 fn arg_value(n: Node) -> Node {
   match n.children |> first {
-    Some { value: v } => v
-    None => make_expr_error_node(kind: InternalExprError, message: "malformed arg: missing value", span: n.span)
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed arg: missing value", span: n.span)
   }
 }
 
 fn arm_pattern(n: Node) -> MatchPattern {
-  match n.match_pattern { Some { value: p } => p  None => Wildcard }
+  match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
 }
 
 fn arm_guard(n: Node) -> Node? {
@@ -851,8 +860,8 @@ fn arm_guard(n: Node) -> Node? {
 
 fn arm_body(n: Node) -> Node {
   match n.children |> last {
-    Some { value: v } => v
-    None => make_expr_error_node(kind: InternalExprError, message: "malformed arm: missing body", span: n.span)
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed arm: missing body", span: n.span)
   }
 }
 
@@ -862,8 +871,8 @@ fn field_init_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -
 
 fn field_init_node_value(n: Node) -> Node {
   match n.children |> first {
-    Some { value: v } => v
-    None => make_expr_error_node(kind: InternalExprError, message: "malformed field-init: missing value", span: n.span)
+    Present { value: v } => v
+    Absent => make_expr_error_node(kind: InternalExprError, message: "malformed field-init: missing value", span: n.span)
   }
 }
 
@@ -938,7 +947,7 @@ fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
 // -- ExprRecordLit (D3: type_name dissolved into Node.name, parent_enum stays in ExprData) --
 fn record_lit_type_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   let name = authored_name_at(source_indices: source_indices, node: texpr)
-  if name == "" { none } else { Some { value: name } }
+  if name == "" { none } else { Present { value: name } }
 }
 
 
@@ -985,24 +994,24 @@ fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Nod
   let zero_span = make_span(start: 0, end: 0)
   let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: zero_span, name_span: zero_span)
   let method_props = match method {
-    Some { value: m } => [make_field_init_node(name: transport_method_key, value: m, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: m } => [make_field_init_node(name: transport_method_key, value: m, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let path_props = match path {
-    Some { value: p } => [make_field_init_node(name: transport_path_template_key, value: p, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: p } => [make_field_init_node(name: transport_path_template_key, value: p, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let query_props = match query {
-    Some { value: q } => [make_field_init_node(name: transport_query_key, value: q, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: q } => [make_field_init_node(name: transport_query_key, value: q, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let body_props = match request_body {
-    Some { value: b } => [make_field_init_node(name: transport_body_key, value: b, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: b } => [make_field_init_node(name: transport_body_key, value: b, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let rf_props = match response_format {
-    Some { value: rf } => [make_field_init_node(name: transport_response_format_key, value: rf, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: rf } => [make_field_init_node(name: transport_response_format_key, value: rf, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let props = concat([url_field], method_props, path_props, query_props, body_props, rf_props, auth_props, headers)
   make_transport_node(properties: props, children: [], body: none, span: span)
@@ -1012,14 +1021,14 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: S
   let shell_marker = Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let zero_span = make_span(start: 0, end: 0)
   let stdin_props = match stdin {
-    Some { value: s } => [make_field_init_node(name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: s } => [make_field_init_node(name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let all_props = concat(env, stdin_props)
   Node {
     name: "", span: span, ident_span: none, children: argv, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
-    uses: [], body: Some { value: shell_marker }, transport: none, properties: all_props,
+    uses: [], body: Present { value: shell_marker }, transport: none, properties: all_props,
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
@@ -1036,18 +1045,18 @@ fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
 
 fn find_property(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   match props |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == prop_name) |> first() {
-    Some { value: fi } => Some { value: field_init_node_value(n: fi) }
-    None => none
+    Present { value: fi } => Present { value: field_init_node_value(n: fi) }
+    Absent => none
   }
 }
 
 fn find_property_string(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
   match find_property(props: props, prop_name: prop_name, source_indices: source_indices) {
-    Some { value: n } => match n.expr_data {
-      ExprLiteral { value: LitStr { value: s } } => Some { value: s }
+    Present { value: n } => match n.expr_data {
+      ExprLiteral { value: LitStr { value: s } } => Present { value: s }
       _ => none
     }
-    None => none
+    Absent => none
   }
 }
 
@@ -1064,9 +1073,9 @@ fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Boo
 
 fn field_init_operation_modifier(field_init: Node, source_indices: Map<String, NewlineIndex>) -> OperationModifier? {
   let fi_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
-  if fi_name == "idempotent" { Some { value: Idempotent } }
-  else if fi_name == "readonly" { Some { value: Readonly } }
-  else if fi_name == "hermetic" { Some { value: Hermetic } }
+  if fi_name == "idempotent" { Present { value: Idempotent } }
+  else if fi_name == "readonly" { Present { value: Readonly } }
+  else if fi_name == "hermetic" { Present { value: Hermetic } }
   else { none }
 }
 
@@ -1092,8 +1101,8 @@ fn transport_auth_header_name(t: Node, source_indices: Map<String, NewlineIndex>
 
 fn transport_has_auth(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match find_property(props: t.properties, prop_name: transport_auth_token_key, source_indices: source_indices) {
-    Some { value: _ } => true
-    None => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -1192,7 +1201,7 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
     ExprIf =>
       let cond_bad = expr_has_non_tail_self_call(texpr: if_condition(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
       let then_bad = expr_has_non_tail_self_call(texpr: if_then_branch(texpr: texpr), fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)
-      let else_bad = match if_else_branch(texpr: texpr) { Some { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  None => false }
+      let else_bad = match if_else_branch(texpr: texpr) { Present { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  Absent => false }
       cond_bad || then_bad || else_bad
     ExprMatch =>
       let scrut_bad = expr_has_non_tail_self_call(texpr: match_scrutinee(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
@@ -1201,7 +1210,7 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
       scrut_bad || arms_bad
     ExprLet =>
       let val_bad = expr_has_non_tail_self_call(texpr: let_value(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
-      let body_bad = match let_body(texpr: texpr) { Some { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  None => false }
+      let body_bad = match let_body(texpr: texpr) { Present { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  Absent => false }
       val_bad || body_bad
     ExprBlock =>
       let ss = texpr.children
@@ -1212,9 +1221,9 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
           |> filter(p => p.first < ss_count - 1)
           |> any(p => expr_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false, source_indices: source_indices))
         let last_bad = match ss |> last {
-          Some { value: last_expr } =>
+          Present { value: last_expr } =>
             expr_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)
-          None => false
+          Absent => false
         }
         init_bad || last_bad
       }
@@ -1249,24 +1258,24 @@ fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, aut
   let zero_span = make_span(start: 0, end: 0)
   let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
-    Some { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let auth_input_prop = match auth_input {
-    Some { value: ai } => [make_field_init_node(name: "svc_auth_input", value: ai, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: ai } => [make_field_init_node(name: "svc_auth_input", value: ai, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let auth_source_prop = match auth_source {
-    Some { value: src } => [make_field_init_node(name: "svc_auth_source", value: src, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: src } => [make_field_init_node(name: "svc_auth_source", value: src, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let rate_prop = match rate_limit {
-    Some { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   let retry_prop = match retry {
-    Some { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span, name_span: zero_span)]
-    None => []
+    Present { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span, name_span: zero_span)]
+    Absent => []
   }
   concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop, retry_prop)
 }
@@ -1319,10 +1328,10 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
 
 fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   let wildcard_marker = if is_all {
-    Some { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
+    Present { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
   } else { none }
   Node {
-    name: module_path, span: span, ident_span: Some { value: name_span }, children: specific_names, connective: NoConnective,
+    name: module_path, span: span, ident_span: Present { value: name_span }, children: specific_names, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: wildcard_marker, transport: none, properties: [],
@@ -1359,15 +1368,15 @@ fn kernel_span(name: String) -> SourceSpan {
   SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
 }
 
-data unit_type: Node = Node { name: "Unit", span: kernel_span(name: "Unit"), ident_span: Some { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data bool_type: Node = Node { name: "Bool", span: kernel_span(name: "Bool"), ident_span: Some { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data string_type: Node = Node { name: "String", span: kernel_span(name: "String"), ident_span: Some { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data hash_type: Node = Node { name: "Hash", span: kernel_span(name: "Hash"), ident_span: Some { value: kernel_span(name: "Hash") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data int_type: Node = Node { name: "Int", span: kernel_span(name: "Int"), ident_span: Some { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data float_type: Node = Node { name: "Float", span: kernel_span(name: "Float"), ident_span: Some { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data none_type: Node = Node { name: "None", span: kernel_span(name: "None"), ident_span: Some { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data unit_type: Node = Node { name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data bool_type: Node = Node { name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data string_type: Node = Node { name: "String", span: kernel_span(name: "String"), ident_span: Present { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data hash_type: Node = Node { name: "Hash", span: kernel_span(name: "Hash"), ident_span: Present { value: kernel_span(name: "Hash") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data int_type: Node = Node { name: "Int", span: kernel_span(name: "Int"), ident_span: Present { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data float_type: Node = Node { name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data none_type: Node = Node { name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 data tuple_type_name: String = "Tuple"
-data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
+data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_span(start: Int, end: Int) -> SourceSpan {
   SourceSpan { file: "", start: start, end: end }
@@ -1410,8 +1419,8 @@ fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
   let line_start = if line <= 1 { 0 }
     else {
       match index.offsets |> skip(line - 2) |> first {
-        Some { value: o } => o + 1
-        None => 0
+        Present { value: o } => o + 1
+        Absent => 0
       }
     }
   let col = clamped - line_start + 1
@@ -1423,13 +1432,13 @@ fn source_line_at(index: NewlineIndex, line: Int) -> String {
   let line_start = if line <= 1 { 0 }
     else {
       match index.offsets |> skip(line - 2) |> first {
-        Some { value: o } => o + 1
-        None => src_len
+        Present { value: o } => o + 1
+        Absent => src_len
       }
     }
   let line_end = match index.offsets |> skip(line - 1) |> first {
-    Some { value: o } => o
-    None => src_len
+    Present { value: o } => o
+    Absent => src_len
   }
   chars_to_string(chars: index.char_codes, start: line_start, end: line_end)
 }
@@ -1462,8 +1471,8 @@ fn empty_intern_table() -> InternTable {
 
 fn intern(table: InternTable, s: String) -> InternResult {
   match map_get(table.index, s) {
-    Some { value: id } => InternResult { table: table, id: id }
-    None =>
+    Present { value: id } => InternResult { table: table, id: id }
+    Absent =>
       let id = table.next_id
       InternResult {
         table: InternTable {
@@ -1478,22 +1487,22 @@ fn intern(table: InternTable, s: String) -> InternResult {
 
 fn intern_str(table: InternTable, id: Int) -> String {
   match table.strings |> skip(id) |> first {
-    Some { value: s } => s
-    None => ""
+    Present { value: s } => s
+    Absent => ""
   }
 }
 
 fn intern_find(table: InternTable, s: String) -> Int? {
   match map_get(table.index, s) {
-    Some { value: id } => Some { value: id }
-    None => none
+    Present { value: id } => Present { value: id }
+    Absent => none
   }
 }
 
 fn intern_find_or_empty(table: InternTable, s: String) -> Int {
   match map_get(table.index, s) {
-    Some { value: id } => id
-    None => 0
+    Present { value: id } => id
+    Absent => 0
   }
 }
 

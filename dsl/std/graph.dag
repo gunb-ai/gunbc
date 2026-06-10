@@ -75,12 +75,12 @@ fn build_adjacency_views(names: List<String>, graph: CallGraph) -> CallGraphAdja
   let initial_reverse = seed_adjacency_map(names: names)
   graph.edges |> fold(init: CallGraphAdjacencyViews { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
     let forward_neighbors = match map_get(acc.forward, edge.caller) {
-      Some { value: ns } => concat(ns, [edge.callee])
-      None => [edge.callee]
+      Present { value: ns } => concat(ns, [edge.callee])
+      Absent => [edge.callee]
     }
     let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
-      Some { value: ns } => concat(ns, [edge.caller])
-      None => [edge.caller]
+      Present { value: ns } => concat(ns, [edge.caller])
+      Absent => [edge.caller]
     }
     CallGraphAdjacencyViews {
       forward: map_insert(acc.forward, edge.caller, forward_neighbors),
@@ -109,8 +109,8 @@ fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: Dfs
   } else {
     let next_visited = set_insert(acc.visited, node)
     let neighbors = match map_get(adjacency, node) {
-      Some { value: ns } => ns
-      None => []
+      Present { value: ns } => ns
+      Absent => []
     }
     let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
       dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
@@ -129,8 +129,8 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
     let next_visited = set_insert(acc.visited, node)
     let next_members = list_push(acc.members, node)
     let neighbors = match map_get(adjacency, node) {
-      Some { value: ns } => ns
-      None => []
+      Present { value: ns } => ns
+      Absent => []
     }
     neighbors |> fold(init: SccComponentAcc { visited: next_visited, members: next_members }, f: (inner, neighbor) =>
       dfs_collect_component(node: neighbor, adjacency: adjacency, acc: inner)
@@ -167,8 +167,8 @@ fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
 // first Strict dimension wins; all higher dimensions must be NonIncreasing.
 fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
   match evidence |> first {
-    None => false  // no dimensions = no proof
-    Some { value: e } =>
+    Absent => false  // no dimensions = no proof
+    Present { value: e } =>
       match e {
         Strict => true
         NonIncreasing => is_lexicographic_descent(evidence: evidence |> skip(1))

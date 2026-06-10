@@ -74,6 +74,8 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::LiteralValue::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1200,16 +1202,16 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
 pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target {
         RenderTarget::Rust => match v2_rt::lookup(&rust_keywords(), key.clone()) {
-            Some(kw) => kw.clone(),
-            None => key.clone(),
+            v2_rt::Witness::Holds { value: kw, .. } => kw.clone(),
+            v2_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
         },
         RenderTarget::Go => match v2_rt::lookup(&go_keywords(), key.clone()) {
-            Some(kw) => kw.clone(),
-            None => key.clone(),
+            v2_rt::Witness::Holds { value: kw, .. } => kw.clone(),
+            v2_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
         },
         RenderTarget::Python => match v2_rt::lookup(&python_keywords(), key.clone()) {
-            Some(kw) => kw.clone(),
-            None => key.clone(),
+            v2_rt::Witness::Holds { value: kw, .. } => kw.clone(),
+            v2_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
         },
         RenderTarget::Dag => key.clone(),
     }
