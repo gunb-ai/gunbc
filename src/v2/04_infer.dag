@@ -748,10 +748,6 @@ fn container_element_nominal_brand_mismatch(
   } else { false }
 }
 
-fn direct_call_plain_kernel_name(name: String) -> Bool {
-  name == "Bool" || name == "String" || name == "Int" || name == "Float"
-}
-
 fn direct_call_plain_kernel_leaf_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let formal_name = authored_name_at(source_indices: source_indices, node: formal)
   let actual_name = authored_name_at(source_indices: source_indices, node: actual)
@@ -763,8 +759,8 @@ fn direct_call_plain_kernel_leaf_mismatch(formal: Node, actual: Node, source_ind
     && actual.children |> count == 0
     && formal.return_cardinality == Required
     && actual.return_cardinality == Required
-    && direct_call_plain_kernel_name(name: formal_name)
-    && direct_call_plain_kernel_name(name: actual_name)
+    && is_kernel_type(name: formal_name)
+    && is_kernel_type(name: actual_name)
     && formal_name != actual_name
 }
 
@@ -5281,10 +5277,11 @@ fn import_allows_type_binding(imp: ResolvedImport, binding: TypeBinding, env: Ty
   if import_allows_binding_name(imp: imp, name: binding.name) {
     true
   } else {
-    binding.resolved.children |> any(child =>
-      let child_name = authored_name_at(source_indices: env.source_indices, node: child)
-      imp.specific_names |> any(n => n == child_name)
-    )
+    binding.resolved.connective == Disj
+      && binding.resolved.children |> any(child =>
+        let child_name = authored_name_at(source_indices: env.source_indices, node: child)
+        imp.specific_names |> any(n => n == child_name)
+      )
   }
 }
 

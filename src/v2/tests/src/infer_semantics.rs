@@ -9,8 +9,8 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, is_fully_resolved, make_container_type, make_map_type,
-    node_is_keyed_collection, node_type_compatible, resolved_type,
+    bare_map_node, is_fully_resolved, make_container_type, make_map_type, node_is_keyed_collection,
+    node_type_compatible, resolved_type,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::NewlineIndex;
@@ -383,8 +383,12 @@ type AccountId = Refined<String>
         "brand twins must have distinct binding_id before entering kernel containers"
     );
 
-    let list_user = make_container_type("List".to_string(), user_id.clone()).ty.clone();
-    let list_account = make_container_type("List".to_string(), account_id.clone()).ty.clone();
+    let list_user = make_container_type("List".to_string(), user_id.clone())
+        .ty
+        .clone();
+    let list_account = make_container_type("List".to_string(), account_id.clone())
+        .ty
+        .clone();
     assert_eq!(
         list_user.binding_id, None,
         "kernel List shell must stay brand-free; element carries declaration identity"
@@ -394,7 +398,11 @@ type AccountId = Refined<String>
         "kernel List shell must stay brand-free; element carries declaration identity"
     );
     assert!(
-        !node_type_compatible(list_user.clone(), list_account, result.source_indices.clone()),
+        !node_type_compatible(
+            list_user.clone(),
+            list_account,
+            result.source_indices.clone()
+        ),
         "List<UserId> vs List<AccountId> must reject by recursing to branded elements"
     );
     assert!(
@@ -402,9 +410,12 @@ type AccountId = Refined<String>
         "same kernel List shell with same branded element must accept"
     );
 
-    let map_user_key = make_map_type(user_id.clone(), leaf_node("String".to_string())).ty.clone();
-    let map_account_key =
-        make_map_type(account_id.clone(), leaf_node("String".to_string())).ty.clone();
+    let map_user_key = make_map_type(user_id.clone(), leaf_node("String".to_string()))
+        .ty
+        .clone();
+    let map_account_key = make_map_type(account_id.clone(), leaf_node("String".to_string()))
+        .ty
+        .clone();
     assert_eq!(
         map_user_key.binding_id, None,
         "kernel Map shell must stay brand-free; key/value children carry declaration identity"
@@ -422,7 +433,11 @@ type AccountId = Refined<String>
         "Map<UserId, String> vs Map<AccountId, String> must reject by recursing to branded keys"
     );
     assert!(
-        node_type_compatible(map_user_key.clone(), map_user_key, result.source_indices.clone()),
+        node_type_compatible(
+            map_user_key.clone(),
+            map_user_key,
+            result.source_indices.clone()
+        ),
         "same kernel Map shell with same branded key/value must accept"
     );
 }

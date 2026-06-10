@@ -1157,13 +1157,6 @@ pub fn container_element_nominal_brand_mismatch(
     }
 }
 
-pub fn direct_call_plain_kernel_name(name: String) -> bool {
-    ((((name.clone().as_str() == "Bool".to_string().as_str())
-        || (name.clone().as_str() == "String".to_string().as_str()))
-        || (name.clone().as_str() == "Int".to_string().as_str()))
-        || (name.clone().as_str() == "Float".to_string().as_str()))
-}
-
 pub fn direct_call_plain_kernel_leaf_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -1180,8 +1173,8 @@ pub fn direct_call_plain_kernel_leaf_mismatch(
             && ((actual.children.clone().len() as i64) == 0))
             && (formal.return_cardinality.clone() == Cardinality::Required))
             && (actual.return_cardinality.clone() == Cardinality::Required))
-            && direct_call_plain_kernel_name(formal_name.clone()))
-            && direct_call_plain_kernel_name(actual_name.clone()))
+            && is_kernel_type(formal_name.clone()))
+            && is_kernel_type(actual_name.clone()))
             && (formal_name.clone().as_str() != actual_name.clone().as_str()))
     }
 }
@@ -10913,7 +10906,7 @@ pub fn import_allows_type_binding(
     if import_allows_binding_name(imp.clone(), binding.name.clone()) {
         true
     } else {
-        {
+        ((binding.resolved.clone().connective.clone() == Connective::Disj) && {
             let mut __found = false;
             for child in binding.resolved.clone().children.clone().iter().cloned() {
                 if {
@@ -10934,7 +10927,7 @@ pub fn import_allows_type_binding(
                 }
             }
             __found
-        }
+        })
     }
 }
 
