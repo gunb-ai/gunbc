@@ -9,6 +9,9 @@ module v4.test.claim.impossible_bug.release_demos
 import v4.std.logic { Bool }
 import v4.std.diagnostic { Accepted, Diagnostic, Rejected }
 import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim,
   TransportTypeDrift,
   impossible_bug_class_from_diagnostic_reason,
   test_claim_input,
@@ -91,4 +94,13 @@ fn witness_impossible_bug_release_demos_are_v4_lens_caught() -> Bool {
   release_complexity_claims_are_lens_rejections() &&
     release_idempotency_claims_are_lens_rejections() &&
     release_transport_claims_are_lens_rejections()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_impossible_bug_release_demos_are_v4_lens_caught` so glob discovery finds the witness without the central roster.
+data unified_claim_impossible_bug_release_demos: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/impossible_bug/release_demos.dag",
+    function: witness_impossible_bug_release_demos_are_v4_lens_caught
+  }
 }
