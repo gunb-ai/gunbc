@@ -5236,6 +5236,26 @@ fn collect_parent_bindings_filtered(envs: List<TypeEnv>) -> Map<Int, TypeBinding
   )
 }
 
+fn import_allows_binding_name(imp: ResolvedImport, name: String) -> Bool {
+  imp.is_all || (imp.specific_names |> any(n => n == name))
+}
+
+fn collect_import_bindings_for_import(acc: Map<Int, TypeBinding>, imp: ResolvedImport, env: TypeEnv) -> Map<Int, TypeBinding> {
+  fold(map_keys(env.bindings), init: acc, f: (bacc, ident) =>
+    let name = intern_str(table: env.intern_table, id: ident)
+    if import_allows_binding_name(imp: imp, name: name) == false {
+      bacc
+    } else if imp.module_path == "std.types" && is_type_variable_name(name: name) {
+      bacc
+    } else {
+      match map_get(env.bindings, ident) {
+        Some { value: binding } => map_insert(bacc, ident, binding)
+        None => bacc
+      }
+    }
+  )
+}
+
 type TypeDeclRegistrationAccum {
   bindings: Map<Int, TypeBinding>
   decl_registry: Map<BindingId, TypeDeclBinding>
@@ -5326,19 +5346,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let std_import_bindings = collect_parent_bindings_filtered(envs: std_types_parent_env)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
-      Some { value: typed_parent } =>
-        if imp.module_path == "std.types" {
-          fold(map_keys(typed_parent.type_env.bindings), init: acc, f: (bacc, ident) =>
-            let name = intern_str(table: typed_parent.type_env.intern_table, id: ident)
-            if is_type_variable_name(name: name) { bacc }
-            else {
-              match map_get(typed_parent.type_env.bindings, ident) {
-                Some { value: binding } => map_insert(bacc, ident, binding)
-                None => bacc
-              }
-            }
-          )
-        } else { map_merge(acc, typed_parent.type_env.bindings) }
+      Some { value: typed_parent } => collect_import_bindings_for_import(acc: acc, imp: imp, env: typed_parent.type_env)
       None => acc
     }
   )
@@ -5485,19 +5493,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let std_import_bindings = collect_parent_bindings_filtered(envs: std_types_parent_env)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
-      Some { value: typed_parent } =>
-        if imp.module_path == "std.types" {
-          fold(map_keys(typed_parent.type_env.bindings), init: acc, f: (bacc, ident) =>
-            let name = intern_str(table: typed_parent.type_env.intern_table, id: ident)
-            if is_type_variable_name(name: name) { bacc }
-            else {
-              match map_get(typed_parent.type_env.bindings, ident) {
-                Some { value: binding } => map_insert(bacc, ident, binding)
-                None => bacc
-              }
-            }
-          )
-        } else { map_merge(acc, typed_parent.type_env.bindings) }
+      Some { value: typed_parent } => collect_import_bindings_for_import(acc: acc, imp: imp, env: typed_parent.type_env)
       None => acc
     }
   )

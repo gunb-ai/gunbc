@@ -4,6 +4,7 @@
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion};
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
 pub use crate::v2_std_core::{
     authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
@@ -38,9 +39,17 @@ pub struct TypeBinding {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeDeclBinding {
     pub binding_id: BindingId,
+    pub authority: Rc<TypeDeclAuthority>,
     pub binding_key: i64,
     pub name: String,
     pub provenance: Rc<SubValueRelation>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeDeclAuthority {
+    pub module_name: String,
+    pub decl_name: String,
+    pub decl_span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -85,9 +94,7 @@ pub fn merge_decl_registry_state(
         ) {
             Some(binding) => match v2_rt::map_get(&acc.decl_registry.clone(), binding_id.clone()) {
                 Some(existing) => {
-                    if ((existing.binding_key.clone() == binding.binding_key.clone())
-                        && (existing.name.clone().as_str() == binding.name.clone().as_str()))
-                    {
+                    if (existing.authority.clone() == binding.authority.clone()) {
                         acc.clone()
                     } else {
                         Rc::new(DeclRegistryMergeState {

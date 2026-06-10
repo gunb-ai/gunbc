@@ -11,6 +11,8 @@
 //!   (3) over-reject UserId-for-UserId (same brand must pass)
 //!   (4) suite regression (covered by running the full crate)
 
+use v2_compiler::v2_compiler_artifact::RenderTarget;
+use v2_compiler::v2_compiler_compile::SourceFile;
 use v2_compiler::v2_std_core::CompilerDiagnostic;
 
 fn has_type_mismatch(result: &v2_compiler::v2_compiler_compile::PipelineResult) -> bool {
@@ -18,6 +20,21 @@ fn has_type_mismatch(result: &v2_compiler::v2_compiler_compile::PipelineResult) 
         .diagnostics
         .iter()
         .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. }))
+}
+
+fn compile_sources(
+    files: &[(&str, &str)],
+) -> std::rc::Rc<v2_compiler::v2_compiler_compile::PipelineResult> {
+    let sources = files
+        .iter()
+        .map(|(path, content)| {
+            std::rc::Rc::new(SourceFile {
+                path: (*path).to_string(),
+                content: (*content).to_string(),
+            })
+        })
+        .collect();
+    v2_compiler::v2_compiler_compile::compile_sources(std::rc::Rc::new(sources), RenderTarget::Rust)
 }
 
 // ── (1) FALSE-ACCEPT brand-twin: harder variants than the basic positive ──
@@ -104,6 +121,89 @@ fn caller(uid: UserId) -> String {
         has_type_mismatch(&result),
         "PD-3 ADV: record twins must be rejected, got: {:?}",
         crate::helpers::diagnostic_messages(&result)
+    );
+}
+
+// Same spelling in different modules must not coalesce through binding_key/name.
+#[test]
+fn adv_same_named_decls_in_different_modules_must_stay_distinct() {
+    let mod_a = r#"
+module pd3adv.same_name.a
+
+type Id {
+  value: String
+}
+
+fn accept(id: Id) -> String {
+  id.value
+}
+
+fn same(id: Id) -> String {
+  accept(id)
+}
+"#;
+    let mod_b = r#"
+module pd3adv.same_name.b
+
+type Id {
+  value: String
+}
+
+fn accept(id: Id) -> String {
+  id.value
+}
+
+fn same(id: Id) -> String {
+  accept(id)
+}
+"#;
+    let use_a_from_b = r#"
+module pd3adv.same_name.use_a_from_b
+
+import pd3adv.same_name.a { accept }
+import pd3adv.same_name.b { Id }
+
+fn caller(id: Id) -> String {
+  accept(id)
+}
+"#;
+    let use_b_from_a = r#"
+module pd3adv.same_name.use_b_from_a
+
+import pd3adv.same_name.a { Id }
+import pd3adv.same_name.b { accept }
+
+fn caller(id: Id) -> String {
+  accept(id)
+}
+"#;
+
+    let same_a = compile_sources(&[("a.dag", mod_a)]);
+    crate::helpers::assert_no_diagnostics(&same_a);
+
+    let same_b = compile_sources(&[("b.dag", mod_b)]);
+    crate::helpers::assert_no_diagnostics(&same_b);
+
+    let reject_a_from_b = compile_sources(&[
+        ("a.dag", mod_a),
+        ("b.dag", mod_b),
+        ("use_a_from_b.dag", use_a_from_b),
+    ]);
+    assert!(
+        has_type_mismatch(&reject_a_from_b),
+        "PD-3 ADV: same-named Id from module b must not satisfy module a's Id, got: {:?}",
+        crate::helpers::diagnostic_messages(&reject_a_from_b)
+    );
+
+    let reject_b_from_a = compile_sources(&[
+        ("a.dag", mod_a),
+        ("b.dag", mod_b),
+        ("use_b_from_a.dag", use_b_from_a),
+    ]);
+    assert!(
+        has_type_mismatch(&reject_b_from_a),
+        "PD-3 ADV: same-named Id from module a must not satisfy module b's Id, got: {:?}",
+        crate::helpers::diagnostic_messages(&reject_b_from_a)
     );
 }
 
