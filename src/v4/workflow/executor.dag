@@ -1,6 +1,8 @@
 // src/v4/workflow/executor.dag
 // Scope: dependency-frontier executor plan over v4.workflow.scheduler.
-// Status: EXEC arc slice — modeled batches only; host process transport lands downstream.
+// Status: batching authority for the v4 claim suite. The host transport
+// (src/v2/stage0/src/bin/claim_executor.rs, via batch_runner.dag) consumes these
+// batches to run claims in CI; per-job typed run-results are the gated full version.
 
 module v4.workflow.executor
 
@@ -32,14 +34,18 @@ type ExecutorBatch {
   jobs: List<ExecutorJob>
 }
 
-// 🟡 coproduct dissolution — feature:executor-host-transport-status — consumer:parallel_executor_plan
-// dissolve-on-arrival: host transport returns per-job execution verdicts and consumes ExecutorBatch plans.
+// Host transport landed: src/v2/stage0/src/bin/claim_executor.rs consumes the
+// ExecutorBatch plans this module projects (via batch_runner.dag) and runs the
+// v4 claim suite batch-by-batch. This coproduct is genuine batching authority —
+// the host reads it to decide execution order, it is not a mirror of a schedule.
 type ExecutorBlockedEvidence
   = ExecutorSchedulerBlocked { evidence: SchedulerBlockedEvidence }
   | ExecutorEmptyFrontier {}
 
-// 🟡 coproduct dissolution — feature:executor-host-run-result — consumer:parallel_executor_plan
-// dissolve-on-arrival: host transport returns typed run results for ExecutorBatch, replacing plan-only complete/blocked projection.
+// Host transport (claim_executor) consumes this plan today: it evaluates a
+// ExecutorRunComplete and runs each ExecutorBatch in order. Returning typed
+// per-job run RESULTS back into the .dag is the gated full version (A4 command
+// authority) — the near-term dogfood keeps the run-result transport host-side.
 type ExecutorRunPlan
   = ExecutorRunComplete {
       batches: List<ExecutorBatch>,
