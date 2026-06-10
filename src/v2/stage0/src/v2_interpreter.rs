@@ -1232,7 +1232,7 @@ fn match_pattern(
                     // stored value, and a `-> Witness`-annotated `.lookup` consumer (e.g.
                     // parse_table_lookup / lookup_table) matches `Holds`/`Violates`, so a
                     // present coproduct value must satisfy the `Holds` arm. Same absent-arm
-                    // exclusions (`Violates`/`None`/`none` stay absent → the `Violates` arm);
+                    // exclusions (`Violates`/`Absent`/`none` stay absent -> the `Violates` arm);
                     // a genuine `Holds` is handled by nominal matching below.
                     if name == "Holds" && variant_name != "Holds" && variant_name != "Violates" {
                         let mut bindings = HashMap::new();
@@ -1398,7 +1398,7 @@ fn match_pattern(
                     _ => None,
                 },
                 // Bridge the native-map-miss sentinel (Value::Null) into the Witness
-                // coproduct, mirroring the Option `Null -> None` bridge below. A native
+                // coproduct, without reopening the deleted Optional Some/None bridge. A native
                 // `Value::Map` lookup returns Null on a missing key (raw_map_lookup), but
                 // the std contract is `Map.lookup: fn(K) -> Witness<V>` (v4.std.collection)
                 // and the record-form empty_map presents an absent key as `Violates`. When a
@@ -1443,10 +1443,10 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                // Symmetric to the `Some` bridge above, for a `-> Witness` match: a present
+                // Symmetric to the Witness value projection above: a present
                 // non-Variant value (e.g. a native-map `Int` lookup hit) bridges to
                 // `v2_rt::Witness::Holds { value: <self> }`. `Null` (a miss) does not match `Holds` — it
-                // falls through to the `Null → Violates` bridge above.
+                // falls through to the `Null -> Violates` projection above.
                 _ if name == "Holds" => {
                     if matches!(value, Value::Null) {
                         return None;
@@ -3301,9 +3301,9 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
-        // `lookup` is the low-level raw map probe (present -> value, missing -> Null); the
-        // pattern bridge (Null->None, value->Some) lets the std `map_get` (v4.std.collection,
-        // Outcome<Optional<V>>) wrap it. `map_get` is NOT handled here on purpose: the builtin
+        // `lookup` is the low-level raw map probe (present -> value, missing -> Null). The typed
+        // std `map_get` (v4.std.collection, Outcome<Optional<V>>) wraps that probe into the
+        // canonical Optional surface. `map_get` is NOT handled here on purpose: the builtin
         // arm previously SHADOWED the typed std map_get (eval_builtin wins over user fns at
         // eval_call), so `map_get(...)` returned the RAW value and any `match { Accepted; Rejected }`
         // consumer crashed non-exhaustively (B-LOOKUP-1). Dropping `map_get` here routes it to the
