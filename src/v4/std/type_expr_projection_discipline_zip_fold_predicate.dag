@@ -6,7 +6,7 @@
 
 module v4.std.type_expr_projection_discipline_zip_fold_predicate
 
-import v4.std.algebra { Cons, Empty, FreeMonoid, length }
+import v4.std.algebra { Cons, Empty, FreeMonoid, length, zip_eq }
 import v4.std.collection {
   Absent,
   List,
@@ -84,24 +84,11 @@ fn type_expr_projection_edges_exact_equal(
   left: List<Edge>,
   right: List<Edge>
 ) -> Bool {
-  (length(xs: left) == length(xs: right))
-    && type_expr_projection_edges_prefix_equal(prefix: left, full: right)
-}
-
-fn type_expr_projection_edges_prefix_equal(
-  prefix: FreeMonoid<Edge>,
-  full: FreeMonoid<Edge>
-) -> Bool {
-  match prefix {
-    Empty => true
-    Cons { head: ph, tail: pt } =>
-      match full {
-        Cons { head: fh, tail: ft } =>
-          type_expr_projection_edge_equal(left: ph, right: fh)
-            && type_expr_projection_edges_prefix_equal(prefix: pt, full: ft)
-        Empty => false
-      }
-  }
+  zip_eq(
+    a: left,
+    b: right,
+    eq: fn(l, r) { type_expr_projection_edge_equal(left: l, right: r) }
+  )
 }
 
 fn type_expr_projection_row_envelope_exact_equal(
