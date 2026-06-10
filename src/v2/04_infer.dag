@@ -5681,47 +5681,6 @@ fn add_imported_variant_child(
   } else { acc }
 }
 
-fn add_imported_variant_children(
-  acc: VariantFoldState,
-  parent_item: Node,
-  remaining: List<Node>,
-  imp: ResolvedImport,
-  source_indices: Map<String, NewlineIndex>,
-  module_name: String
-) -> VariantFoldState {
-  match remaining |> first {
-    Present { value: child } =>
-      add_imported_variant_children(
-        acc: add_imported_variant_child(acc: acc, parent_item: parent_item, child: child, imp: imp, source_indices: source_indices, module_name: module_name),
-        parent_item: parent_item,
-        remaining: remaining |> skip(1),
-        imp: imp,
-        source_indices: source_indices,
-        module_name: module_name
-      )
-    Absent => acc
-  }
-}
-
-fn add_imported_variant_parent(
-  acc: VariantFoldState,
-  parent_item: Node,
-  imp: ResolvedImport,
-  source_indices: Map<String, NewlineIndex>,
-  module_name: String
-) -> VariantFoldState {
-  if parent_item.connective == Disj {
-    add_imported_variant_children(
-      acc: acc,
-      parent_item: parent_item,
-      remaining: parent_item.children,
-      imp: imp,
-      source_indices: source_indices,
-      module_name: module_name
-    )
-  } else { acc }
-}
-
 fn collect_import_bindings_for_import(acc: Map<Int, TypeBinding>, imp: ResolvedImport, env: TypeEnv) -> Map<Int, TypeBinding> {
   fold(map_keys(env.bindings), init: acc, f: (bacc, ident) =>
     let name = intern_str(table: env.intern_table, id: ident)
@@ -6200,9 +6159,14 @@ fn build_module_context(contributions: List<ItemContribution>,
 	  let variant_fold = fold(resolved_imports, init: VariantFoldState { locals: empty_map(), collisions: empty_map() }, f: fn(acc, imp) {
 	    match map_get(parent_index, imp.module_path) {
 	      Present { value: typed_parent } =>
-	        fold(typed_parent.items, init: acc, f: (iacc, parent_item) =>
-	          add_imported_variant_parent(acc: iacc, parent_item: parent_item, imp: imp, source_indices: typed_parent.type_env.source_indices, module_name: module_name)
-	        )
+	        let parent_items = module_items(n: typed_parent.module)
+	        parent_items |> fold(init: acc, f: fn(iacc, parent_item) {
+	          if parent_item.connective == Disj {
+	            parent_item.children |> fold(init: iacc, f: (vacc, child) =>
+	              add_imported_variant_child(acc: vacc, parent_item: parent_item, child: child, imp: imp, source_indices: typed_parent.type_env.source_indices, module_name: module_name)
+	            )
+	          } else { iacc }
+	        })
 	      Absent => acc
 	    }
 	  })
