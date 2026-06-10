@@ -178,6 +178,7 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
         "Map".to_string(),
         "PartialFunction".to_string(),
         "Set".to_string(),
+        "Witness".to_string(),
     ])
 }
 
