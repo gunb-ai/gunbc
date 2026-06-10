@@ -822,7 +822,7 @@ data v4_roster_pilot_row_parallel_executor: V4RosterPilotClaimRunRow = V4RosterP
 data v4_roster_pilot_row_impossible_bug_release_demos: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "impossible-bug release demos are v4 lens-caught",
   entry: "src/v4/test/claim/impossible_bug/release_demos.dag",
-  function: "witness_impossible_bug_release_demos_are_v4_lens_caught"
+  function: "witness_impossible_bug_release_demos_are_v4_lens_caught",
   function_symbol: witness_impossible_bug_release_demos_are_v4_lens_caught
 }
 
