@@ -565,6 +565,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: Rc::new(TypeEnv {
             bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            carrier_bindings: v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
             decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
             duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),

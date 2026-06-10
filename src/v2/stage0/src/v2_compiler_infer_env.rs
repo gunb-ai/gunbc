@@ -20,6 +20,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
+    pub carrier_bindings: Rc<HashMap<BindingId, Rc<TypeBinding>>>,
     pub decl_registry: Rc<HashMap<BindingId, Rc<TypeDeclBinding>>>,
     pub duplicate_decl_ids: Rc<Vec<BindingId>>,
     pub recursive_types: Rc<Vec<i64>>,
@@ -148,14 +149,28 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     }
 }
 
+pub fn lookup_carrier_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
+    match node.binding_id.clone() {
+        Some(binding_id) => match v2_rt::map_get(&env.carrier_bindings.clone(), binding_id) {
+            Some(binding) => Some(binding.resolved.clone()),
+            None => None,
+        },
+        None => None,
+    }
+}
+
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
     authored_name_at(env.source_indices.clone(), node)
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
-    match node.ident.clone() {
+    let visible = match node.ident.clone() {
         Some(id) => lookup_type(env.clone(), id.clone()),
         None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
+    };
+    match visible {
+        Some(resolved) => Some(resolved),
+        None => lookup_carrier_type_for(env, node),
     }
 }
 
@@ -304,6 +319,12 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
                 v2_rt::rc_map_merge(acc, env.bindings.clone())
             },
         );
+        let merged_carrier_bindings = envs.clone().iter().cloned().fold(
+            v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
+            |acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>, env: Rc<TypeEnv>| {
+                v2_rt::rc_map_merge(acc, env.carrier_bindings.clone())
+            },
+        );
         let merged_decl_state = envs.clone().iter().cloned().fold(
             Rc::new(DeclRegistryMergeState {
                 decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
@@ -351,6 +372,7 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
         };
         Rc::new(TypeEnv {
             bindings: merged_bindings,
+            carrier_bindings: merged_carrier_bindings,
             decl_registry: merged_decl_state.decl_registry.clone(),
             duplicate_decl_ids: merged_decl_state.duplicate_decl_ids.clone(),
             recursive_types: merged_recursive,

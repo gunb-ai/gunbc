@@ -959,6 +959,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
         resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Some { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         provenance: SubValueUnknown
       }),
+      carrier_bindings: e.carrier_bindings,
       decl_registry: e.decl_registry,
       duplicate_decl_ids: e.duplicate_decl_ids,
       recursive_types: e.recursive_types,

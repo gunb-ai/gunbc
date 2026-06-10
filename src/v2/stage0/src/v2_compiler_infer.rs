@@ -381,13 +381,7 @@ pub fn merge_scope_from_imports(
                             } else {
                                 {
                                     let sig_params = rsig.params.clone();
-                                    let sig_rt = resolve_node(
-                                        rsig.inferred.clone(),
-                                        typed_parent.type_env.clone(),
-                                        imp.module_path.clone(),
-                                    )
-                                    .resolved
-                                    .clone();
+                                    let sig_rt = rsig.inferred.clone();
                                     let sig_async = rsig.is_async.clone();
                                     v2_rt::rc_map_insert(
                                         acc.clone(),
@@ -10880,6 +10874,24 @@ pub fn collect_parent_bindings_filtered(
     )
 }
 
+pub fn collect_parent_carrier_bindings(
+    envs: Rc<Vec<Rc<TypeEnv>>>,
+) -> Rc<HashMap<BindingId, Rc<TypeBinding>>> {
+    envs.iter().cloned().fold(
+        v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
+        |acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>, env: Rc<TypeEnv>| {
+            let with_existing = v2_rt::rc_map_merge(acc, env.carrier_bindings.clone());
+            Rc::new(v2_rt::map_values(&env.bindings.clone()))
+                .iter()
+                .cloned()
+                .fold(with_existing, |bacc, binding| match binding.resolved.binding_id.clone() {
+                    Some(binding_id) => v2_rt::rc_map_insert(bacc, binding_id, binding.clone()),
+                    None => bacc,
+                })
+        },
+    )
+}
+
 pub fn import_allows_binding_name(imp: Rc<ResolvedImport>, name: String) -> bool {
     ((imp.is_all.clone() || ((imp.specific_names.clone().len() as i64) == 0)) || {
         let mut __found = false;
@@ -11270,6 +11282,7 @@ pub fn build_type_env(
             );
         let kernel = Rc::new(TypeEnv {
             bindings: kernel_bindings.clone(),
+            carrier_bindings: v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
             decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
             duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: kernel_recursive_types,
@@ -11330,6 +11343,7 @@ pub fn build_type_env(
                 None => acc.clone(),
             },
         );
+        let import_carrier_bindings = collect_parent_carrier_bindings(parent_envs.clone());
         let import_recursive = parent_envs
             .clone()
             .iter()
@@ -11341,6 +11355,7 @@ pub fn build_type_env(
             parent_envs.clone().iter().cloned().fold(
                 Rc::new(TypeEnv {
                     bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                    carrier_bindings: v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
                     decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
                     duplicate_decl_ids: Rc::new(vec![]),
                     recursive_types: Rc::new(vec![]),
@@ -11354,6 +11369,7 @@ pub fn build_type_env(
                         acc,
                         Rc::new(TypeEnv {
                             bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                            carrier_bindings: v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
                             decl_registry: env.decl_registry.clone(),
                             duplicate_decl_ids: env.duplicate_decl_ids.clone(),
                             recursive_types: Rc::new(vec![]),
@@ -11382,6 +11398,7 @@ pub fn build_type_env(
         );
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
+            carrier_bindings: import_carrier_bindings,
             decl_registry: import_decl_state.decl_registry.clone(),
             duplicate_decl_ids: import_decl_state.duplicate_decl_ids.clone(),
             recursive_types: import_recursive,
@@ -11648,6 +11665,7 @@ pub fn build_type_env(
         let all_local_bindings = v2_rt::rc_map_merge(local_bindings.clone(), param_bindings);
         let pre_local_env = Rc::new(TypeEnv {
             bindings: all_local_bindings,
+            carrier_bindings: v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
             decl_registry: local_decl_registry,
             duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -11730,6 +11748,7 @@ pub fn build_type_env(
         });
         let unresolved_env = Rc::new(TypeEnv {
             bindings: merged.bindings.clone(),
+            carrier_bindings: merged.carrier_bindings.clone(),
             decl_registry: merged.decl_registry.clone(),
             duplicate_decl_ids: merged.duplicate_decl_ids.clone(),
             recursive_types: cycle_set,
@@ -11748,6 +11767,7 @@ pub fn build_type_env(
         let resolved_diags = resolved.diagnostics.clone();
         let final_env = Rc::new(TypeEnv {
             bindings: resolved_env_out.bindings.clone(),
+            carrier_bindings: resolved_env_out.carrier_bindings.clone(),
             decl_registry: resolved_env_out.decl_registry.clone(),
             duplicate_decl_ids: resolved_env_out.duplicate_decl_ids.clone(),
             recursive_types: resolved_env_out.recursive_types.clone(),
@@ -11902,6 +11922,7 @@ pub fn build_type_env_unresolved(
         );
         let kernel = Rc::new(TypeEnv {
             bindings: kernel_bindings.clone(),
+            carrier_bindings: v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
             decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
             duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -11962,6 +11983,7 @@ pub fn build_type_env_unresolved(
                 None => acc.clone(),
             },
         );
+        let import_carrier_bindings = collect_parent_carrier_bindings(parent_envs.clone());
         let import_recursive = parent_envs
             .clone()
             .iter()
@@ -11973,6 +11995,7 @@ pub fn build_type_env_unresolved(
             parent_envs.clone().iter().cloned().fold(
                 Rc::new(TypeEnv {
                     bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                    carrier_bindings: v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
                     decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
                     duplicate_decl_ids: Rc::new(vec![]),
                     recursive_types: Rc::new(vec![]),
@@ -11986,6 +12009,7 @@ pub fn build_type_env_unresolved(
                         acc,
                         Rc::new(TypeEnv {
                             bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                            carrier_bindings: v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
                             decl_registry: env.decl_registry.clone(),
                             duplicate_decl_ids: env.duplicate_decl_ids.clone(),
                             recursive_types: Rc::new(vec![]),
@@ -12014,6 +12038,7 @@ pub fn build_type_env_unresolved(
         );
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
+            carrier_bindings: import_carrier_bindings,
             decl_registry: import_decl_state.decl_registry.clone(),
             duplicate_decl_ids: import_decl_state.duplicate_decl_ids.clone(),
             recursive_types: import_recursive,
@@ -12150,6 +12175,7 @@ pub fn build_type_env_unresolved(
         );
         let pre_local_env = Rc::new(TypeEnv {
             bindings: local_bindings,
+            carrier_bindings: v2_rt::rc_empty_map::<BindingId, Rc<TypeBinding>>(),
             decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
             duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -12219,6 +12245,7 @@ pub fn build_type_env_unresolved(
             merge_inductive_fields(merged.inductive_fields.clone(), local_inductive_fields);
         let unresolved_env = Rc::new(TypeEnv {
             bindings: merged.bindings.clone(),
+            carrier_bindings: merged.carrier_bindings.clone(),
             decl_registry: merged.decl_registry.clone(),
             duplicate_decl_ids: merged.duplicate_decl_ids.clone(),
             recursive_types: cycle_set,
@@ -12944,6 +12971,7 @@ pub fn topo_resolve_types(
                 return Rc::new(EnvResolveResult {
                     env: Rc::new(TypeEnv {
                         bindings: stuck_accum.bindings.clone(),
+                        carrier_bindings: env.carrier_bindings.clone(),
                         decl_registry: env.decl_registry.clone(),
                         duplicate_decl_ids: env.duplicate_decl_ids.clone(),
                         recursive_types: env.recursive_types.clone(),
@@ -13015,6 +13043,7 @@ pub fn topo_resolve_types(
             let __tco_0 = next_remaining;
             let __tco_1 = Rc::new(TypeEnv {
                 bindings: ready_accum.bindings.clone(),
+                carrier_bindings: env.carrier_bindings.clone(),
                 decl_registry: env.decl_registry.clone(),
                 duplicate_decl_ids: env.duplicate_decl_ids.clone(),
                 recursive_types: env.recursive_types.clone(),

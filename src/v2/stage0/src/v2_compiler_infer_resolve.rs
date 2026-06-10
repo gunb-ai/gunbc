@@ -2917,6 +2917,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
                     ),
+                    carrier_bindings: e.carrier_bindings.clone(),
                     decl_registry: e.decl_registry.clone(),
                     duplicate_decl_ids: e.duplicate_decl_ids.clone(),
                     recursive_types: e.recursive_types.clone(),
