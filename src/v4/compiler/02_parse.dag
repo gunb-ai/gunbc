@@ -75,6 +75,10 @@ type ParseExprResult
   = ParseExprAccepted { remaining: List<Token>, captured: Node, diagnostics: List<Diagnostic> }
   | ParseExprRejected { diagnostics: List<Diagnostic> }
 
+
+// Token-threading parse step produced by the parse_expr fold catamorphism.
+type ParseExprStep = fn(List<Token>) -> ParseExprResult
+
 type ParseSyncState {
   found_sync: Bool
   result: List<Token>
@@ -408,42 +412,55 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
 }
 
 
-// v2 bootstrap compiler workaround: Empty literal has unknown element type in if/else context;
-// a typed wrapper anchors the type to List<Symbol> so branch unification succeeds.
-fn grammar_empty_corner_list() -> List<Symbol> {
-  Empty
+// Left-corner fold carrier: sequence combine needs nullable(left) to decide whether right
+// corners contribute; the catamorphism threads both facts per subtree.
+type LeftCornerFoldValue {
+  corners: List<Symbol>
+  nullable: Bool
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr left-corner query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-corner reachability morphism over GrammarExpr coproduct; forbidden: duplicating left-corner logic or inlining nullable check outside this function.
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr left-corner query substrate —
+// bind node://adhoc-2145db6b-69a — fold_grammar_expr consumer: direct left corners expressed
+// as a GrammarExprFold algebra over LeftCornerFoldValue; sequence nullable-guard lives in the
+// combine rather than a hand-written per-variant match.
 // expr_direct_left_corner_list: direct (non-transitive) left-corner nonterminals of expr.
-// Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
-// Sequence: when left is nullable, both left and right contribute left corners.
-// Note: Sequence arm uses list_append with the nullable-conditional inside right: to avoid
-// a top-level if/else type-unification failure in the v2 bootstrap compiler.
 fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
-  match expr {
-    Terminal { token_class: _ } => Empty
-    Nonterminal { production: name } => Cons { head: name, tail: Empty }
-    Sequence { left: left, right: right } =>
-      list_append(
-        left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
-        right: if expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) {
-          expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
-        } else {
-          grammar_empty_corner_list()
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_) {
+        LeftCornerFoldValue { corners: Empty, nullable: false }
+      },
+      nonterminal: fn(name) {
+        LeftCornerFoldValue {
+          corners: Cons { head: name, tail: Empty },
+          nullable: nullable_set.member(name)
         }
-      )
-    Choice { left: left, right: right } =>
-      list_append(
-        left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
-        right: expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
-      )
-    Optional { element: element } =>
-      expr_direct_left_corner_list(expr: element, nullable_set: nullable_set)
-    Repeat { element: element } =>
-      expr_direct_left_corner_list(expr: element, nullable_set: nullable_set)
-  }
+      },
+      sequence: fn(left_val, right_val) {
+        LeftCornerFoldValue {
+          corners: list_append(
+            left: left_val.corners,
+            right: if left_val.nullable { right_val.corners } else { Empty }
+          ),
+          nullable: left_val.nullable && right_val.nullable
+        }
+      },
+      choice: fn(left_val, right_val) {
+        LeftCornerFoldValue {
+          corners: list_append(left: left_val.corners, right: right_val.corners),
+          nullable: left_val.nullable || right_val.nullable
+        }
+      },
+      optional: fn(element_val) {
+        LeftCornerFoldValue { corners: element_val.corners, nullable: true }
+      },
+      repeat: fn(element_val) {
+        LeftCornerFoldValue { corners: element_val.corners, nullable: true }
+      }
+    }
+  ).corners
 }
 
 
@@ -510,28 +527,27 @@ fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr production-reference closure query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-nonterminal query morphism over GrammarExpr coproduct; forbidden: duplicating reference-closure logic outside this function.
-// Structural recursion on GrammarExpr (finite tree) — does NOT follow nonterminal
-// references into their productions, so it always terminates without a visited set.
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr production-reference closure query
+// substrate — bind node://adhoc-2145db6b-69a — fold_grammar_expr consumer: undefined-reference
+// scan expressed as a GrammarExprFold algebra over Bool. Does NOT follow nonterminal references
+// into their productions (nonterminal arm checks lookup only).
 fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool {
-  match expr {
-    Terminal { token_class: _ } => false
-    Nonterminal { production: p } =>
-      match grammar_lookup_production(root: root, name: p) {
-        Violates { diagnostic: _ } => true
-        Holds { value: _ } => false
-      }
-    Sequence { left: left, right: right } =>
-      expr_has_undefined_nonterminal(expr: left, root: root) ||
-      expr_has_undefined_nonterminal(expr: right, root: root)
-    Choice { left: left, right: right } =>
-      expr_has_undefined_nonterminal(expr: left, root: root) ||
-      expr_has_undefined_nonterminal(expr: right, root: root)
-    Optional { element: element } =>
-      expr_has_undefined_nonterminal(expr: element, root: root)
-    Repeat { element: element } =>
-      expr_has_undefined_nonterminal(expr: element, root: root)
-  }
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_) { false },
+      nonterminal: fn(p) {
+        match grammar_lookup_production(root: root, name: p) {
+          Violates { diagnostic: _ } => true
+          Holds { value: _ } => false
+        }
+      },
+      sequence: fn(left_undef, right_undef) { left_undef || right_undef },
+      choice: fn(left_undef, right_undef) { left_undef || right_undef },
+      optional: fn(element_undef) { element_undef },
+      repeat: fn(element_undef) { element_undef }
+    }
+  )
 }
 
 
@@ -676,8 +692,9 @@ fn parse_token_first(tokens: List<Token>) -> TokenPeek {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived recursive-descent parse morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating parse walk logic or adding new GrammarExpr arms outside this function.
-// parse_expr: recursive-descent parse walk.
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr structural morphism substrate —
+// bind node://adhoc-2145db6b-69a — fold_grammar_expr consumer: recursive-descent parse walk
+// expressed as a GrammarExprFold algebra over ParseExprStep (token-threading parser combinators).
 // Nonterminal arm: O(1) ParseTable lookup (built by build_parse_table) — no measure: Nat.
 // Left-recursive grammars are rejected by grammar_has_left_recursion before parse runs.
 fn parse_expr(
@@ -687,151 +704,172 @@ fn parse_expr(
   root: GrammarRoot,
   table: ParseTable
 ) -> ParseExprResult {
-  match expr {
-    Terminal { token_class: class } =>
-      match parse_token_first(tokens: tokens) {
-        TokenPeekAbsent => ParseExprRejected { diagnostics: [] }
-        TokenPeekFirst { value: tok } =>
-          match tok.class == class {
-            true =>
-              match list_tail(xs: tokens) {
-                TailFound { tail: remaining } =>
-                  match parse_node_span_from_token(tok: tok) {
+  let step = fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(class) {
+        fn(tokens) {
+          match parse_token_first(tokens: tokens) {
+            TokenPeekAbsent => ParseExprRejected { diagnostics: [] }
+            TokenPeekFirst { value: tok } =>
+              match tok.class == class {
+                true =>
+                  match list_tail(xs: tokens) {
+                    TailFound { tail: remaining } =>
+                      match parse_node_span_from_token(tok: tok) {
+                        Rejected { diagnostics: r } =>
+                          ParseExprRejected {
+                            diagnostics: parse_non_empty_diagnostics_to_list(ned: r)
+                          }
+                        Accepted { value: span, diagnostics: _ } =>
+                          ParseExprAccepted {
+                            remaining: remaining,
+                            captured: Node {
+                              kind: TypeNode { connective: Atom { identity: tok.class } },
+                              children: [],
+                              span: span
+                            },
+                            diagnostics: []
+                          }
+                      }
+                    TailAbsent => ParseExprRejected { diagnostics: [] }
+                  }
+                false => ParseExprRejected { diagnostics: [] }
+              }
+          }
+        }
+      },
+      nonterminal: fn(prod_name) {
+        fn(tokens) {
+          parse_nonterminal_from_table(
+            table: table,
+            all_tokens: all_tokens,
+            tokens: tokens,
+            root: root,
+            prod_name: prod_name
+          )
+        }
+      },
+      sequence: fn(left_step, right_step) {
+        fn(tokens) {
+          match left_step(tokens) {
+            ParseExprRejected { diagnostics: diags } =>
+              ParseExprRejected { diagnostics: diags }
+            ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1 } =>
+              match right_step(rest1) {
+                ParseExprRejected { diagnostics: diags2 } =>
+                  ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
+                ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
+                  match parse_merge_captured_spans(left: cap1, right: cap2) {
                     Rejected { diagnostics: r } =>
                       ParseExprRejected {
-                        diagnostics: parse_non_empty_diagnostics_to_list(ned: r)
+                        diagnostics: list_append(
+                          left: list_append(left: diags1, right: diags2),
+                          right: parse_non_empty_diagnostics_to_list(ned: r)
+                        )
                       }
                     Accepted { value: span, diagnostics: _ } =>
                       ParseExprAccepted {
-                        remaining: remaining,
+                        remaining: rest2,
                         captured: Node {
-                          kind: TypeNode { connective: Atom { identity: tok.class } },
-                          children: [],
+                          kind: TypeNode { connective: Conj },
+                          children: [
+                            grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
+                            grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
+                          ],
                           span: span
                         },
-                        diagnostics: []
+                        diagnostics: list_append(left: diags1, right: diags2)
                       }
-                  }
-                TailAbsent => ParseExprRejected { diagnostics: [] }
-              }
-            false => ParseExprRejected { diagnostics: [] }
-          }
-      }
-    Nonterminal { production: prod_name } =>
-      parse_nonterminal_from_table(
-        table: table,
-        all_tokens: all_tokens,
-        tokens: tokens,
-        root: root,
-        prod_name: prod_name
-      )
-    Sequence { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
-        ParseExprRejected { diagnostics: diags } =>
-          ParseExprRejected { diagnostics: diags }
-        ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1 } =>
-          match parse_expr(expr: right, tokens: rest1, all_tokens: all_tokens, root: root, table: table) {
-            ParseExprRejected { diagnostics: diags2 } =>
-              ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
-            ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
-              match parse_merge_captured_spans(left: cap1, right: cap2) {
-                Rejected { diagnostics: r } =>
-                  ParseExprRejected {
-                    diagnostics: list_append(
-                      left: list_append(left: diags1, right: diags2),
-                      right: parse_non_empty_diagnostics_to_list(ned: r)
-                    )
-                  }
-                Accepted { value: span, diagnostics: _ } =>
-                  ParseExprAccepted {
-                    remaining: rest2,
-                    captured: Node {
-                      kind: TypeNode { connective: Conj },
-                      children: [
-                        grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
-                        grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
-                      ],
-                      span: span
-                    },
-                    diagnostics: list_append(left: diags1, right: diags2)
                   }
               }
           }
-      }
-    Choice { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
-        ParseExprRejected { diagnostics: _ } =>
-          parse_expr(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table)
-      }
-    Optional { element: element } =>
-      match parse_expr(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
-        ParseExprRejected { diagnostics: _ } =>
-          ParseExprAccepted {
-            remaining: tokens,
-            captured: grammar_empty_node(),
-            diagnostics: []
+        }
+      },
+      choice: fn(left_step, right_step) {
+        fn(tokens) {
+          match left_step(tokens) {
+            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
+              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
+            ParseExprRejected { diagnostics: _ } => right_step(tokens)
           }
-      }
-    Repeat { element: element } =>
-      // fold_list bounds iterations to length(tokens); done: true short-circuits remaining steps.
-      // Each consuming iteration reduces acc.remaining; zero-progress or rejection sets done: true.
-      let init = ParseRepeatAcc { remaining: tokens, acc_nodes: [], acc_diags: [], done: false }
-      let result = fold_list(
-        xs: tokens,
-        empty: init,
-        cons: fn(acc, _) {
-          match acc.done {
-            true => acc
-            false =>
-              match parse_expr(expr: element, tokens: acc.remaining, all_tokens: all_tokens, root: root, table: table) {
-                ParseExprRejected { diagnostics: _ } =>
-                  ParseRepeatAcc {
-                    remaining: acc.remaining,
-                    acc_nodes: acc.acc_nodes,
-                    acc_diags: acc.acc_diags,
-                    done: true
-                  }
-                ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-                  match length(xs: rest) != length(xs: acc.remaining) {
-                    true =>
-                      ParseRepeatAcc {
-                        remaining: rest,
-                        acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
-                        acc_diags: list_append(left: acc.acc_diags, right: diags),
-                        done: false
-                      }
-                    false =>
+        }
+      },
+      optional: fn(element_step) {
+        fn(tokens) {
+          match element_step(tokens) {
+            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
+              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
+            ParseExprRejected { diagnostics: _ } =>
+              ParseExprAccepted {
+                remaining: tokens,
+                captured: grammar_empty_node(),
+                diagnostics: []
+              }
+          }
+        }
+      },
+      repeat: fn(element_step) {
+        fn(tokens) {
+          // fold_list bounds iterations to length(tokens); done: true short-circuits remaining steps.
+          // Each consuming iteration reduces acc.remaining; zero-progress or rejection sets done: true.
+          let init = ParseRepeatAcc { remaining: tokens, acc_nodes: [], acc_diags: [], done: false }
+          let result = fold_list(
+            xs: tokens,
+            empty: init,
+            cons: fn(acc, _) {
+              match acc.done {
+                true => acc
+                false =>
+                  match element_step(acc.remaining) {
+                    ParseExprRejected { diagnostics: _ } =>
                       ParseRepeatAcc {
                         remaining: acc.remaining,
                         acc_nodes: acc.acc_nodes,
                         acc_diags: acc.acc_diags,
                         done: true
                       }
+                    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
+                      match length(xs: rest) != length(xs: acc.remaining) {
+                        true =>
+                          ParseRepeatAcc {
+                            remaining: rest,
+                            acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
+                            acc_diags: list_append(left: acc.acc_diags, right: diags),
+                            done: false
+                          }
+                        false =>
+                          ParseRepeatAcc {
+                            remaining: acc.remaining,
+                            acc_nodes: acc.acc_nodes,
+                            acc_diags: acc.acc_diags,
+                            done: true
+                          }
+                      }
                   }
+              }
+            }
+          )
+          match parse_fold_node_spans(nodes: result.acc_nodes, acc: Unanchored) {
+            Rejected { diagnostics: r } =>
+              ParseExprRejected {
+                diagnostics: list_append(
+                  left: result.acc_diags,
+                  right: parse_non_empty_diagnostics_to_list(ned: r)
+                )
+              }
+            Accepted { value: span, diagnostics: _ } =>
+              ParseExprAccepted {
+                remaining: result.remaining,
+                captured: parse_repeat_captured_node(acc_nodes: result.acc_nodes, span: span),
+                diagnostics: result.acc_diags
               }
           }
         }
-      )
-      match parse_fold_node_spans(nodes: result.acc_nodes, acc: Unanchored) {
-        Rejected { diagnostics: r } =>
-          ParseExprRejected {
-            diagnostics: list_append(
-              left: result.acc_diags,
-              right: parse_non_empty_diagnostics_to_list(ned: r)
-            )
-          }
-        Accepted { value: span, diagnostics: _ } =>
-          ParseExprAccepted {
-            remaining: result.remaining,
-            captured: parse_repeat_captured_node(acc_nodes: result.acc_nodes, span: span),
-            diagnostics: result.acc_diags
-          }
       }
-  }
+    }
+  )
+  step(tokens)
 }
 
 
