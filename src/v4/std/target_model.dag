@@ -20,8 +20,7 @@ import v4.std.algebra {
   list_snoc_item,
   length,
   list_append,
-  fold_list_right,
-  ring_field_add
+  fold_list_right
 }
 import v4.std.collection {
   Absent,
@@ -260,12 +259,11 @@ type TargetValueTemplate {
 }
 
 // T6 — closed canonical operation vocabulary (substrate-owned; arms land with producers).
-// Q-V1 (design-value-emit-schema.md §7): each arm carries its algebra-field witness.
-type CanonicalOperation
-  = OpAdd { algebra_field: Symbol }
+// Q-V1 (design-value-emit-schema.md §7): OpAdd is the ring add fact by construction (M9).
+type CanonicalOperation = OpAdd
 
 fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd { algebra_field: ring_field_add }
+  OpAdd
 }
 
 // T6 — per-language operator spelling shape axis.
@@ -336,8 +334,9 @@ data target_value_expr_operand_wire_malformed: Symbol = target_value_expr_operan
 data target_operator_realization_field_operation: Symbol = target_operator_realization_field_operation
 data target_operator_realization_field_shape: Symbol = target_operator_realization_field_shape
 data target_operator_shape_field_token: Symbol = target_operator_shape_field_token
-data target_canonical_operation_field_algebra_field: Symbol = target_canonical_operation_field_algebra_field
 data target_canonical_operation_wire_malformed: Symbol = target_canonical_operation_wire_malformed
+data target_operator_shape_wire_malformed: Symbol = target_operator_shape_wire_malformed
+data target_operator_realization_wire_malformed: Symbol = target_operator_realization_wire_malformed
 
 fn target_model_type_atom_node(identity: Symbol) -> Node {
   Node {
@@ -363,46 +362,12 @@ fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> Diagnosti
   }
 }
 
-fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optional<Symbol> {
-  match fold(
-    wire.children,
-    init: optional_absent(),
-    f: fn(acc, edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match edge.label {
-            Named { name: n } =>
-              if n == target_canonical_operation_field_algebra_field {
-                match edge.target.kind {
-                  TypeNode { connective: Atom { identity: id } } =>
-                    optional_present(value: id)
-                  _ => acc
-                }
-              } else {
-                acc
-              }
-            Positional => acc
-          }
-      }
-    }
-  ) {
-    Present { value: field } => optional_present(value: field)
-    Absent => optional_absent()
-  }
-}
-
 fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
   match operation {
-    OpAdd { algebra_field: f } =>
+    OpAdd =>
       Node {
         kind: TypeNode { connective: Atom { identity: discriminant(v: OpAdd {}) } },
-        children: [
-          target_model_named_edge(
-            name: target_canonical_operation_field_algebra_field,
-            target: target_model_type_atom_node(identity: f)
-          )
-        ],
+        children: [],
         span: Unanchored
       }
   }
@@ -413,10 +378,7 @@ fn canonical_operation_equal(
   right: CanonicalOperation
 ) -> Bool {
   match left {
-    OpAdd { algebra_field: lf } =>
-      match right {
-        OpAdd { algebra_field: rf } => lf == rf
-      }
+    OpAdd => match right { OpAdd => true }
   }
 }
 
@@ -424,13 +386,12 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == discriminant(v: OpAdd {}) {
-        match target_model_canonical_operation_algebra_field_from_wire(wire: wire) {
-          Present { value: algebra_field } =>
-            outcome_accepted(OpAdd { algebra_field: algebra_field })
-          Absent =>
-            outcome_rejected(
-              target_canonical_operation_wire_malformed_diagnostic(wire: wire)
-            )
+        if is_empty(xs: wire.children) {
+          outcome_accepted(OpAdd)
+        } else {
+          outcome_rejected(
+            target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+          )
         }
       } else {
         outcome_rejected(
@@ -502,6 +463,167 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
         span: Unanchored
       }
   }
+}
+
+fn target_operator_shape_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_operator_shape_wire_malformed,
+    at: node_locus(node: wire),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_operator_shape_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      if name_occurrences(
+        name: target_operator_shape_field_token,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+      } else {
+        match fold(
+          wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } => n == target_operator_shape_field_token
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+        }
+      }
+    _ =>
+      outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+  }
+}
+
+fn target_operator_shape_from_wire_node(wire: Node) -> Outcome<TargetOperatorShape> {
+  bind_outcome(
+    o: target_operator_shape_wire_schema_valid(wire: wire),
+    f: fn(_) {
+      match wire.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          bind_outcome(
+            o: find_named_child(root: wire, name: target_operator_shape_field_token),
+            f: fn(token_node) {
+              match token_node.kind {
+                TypeNode { connective: Atom { identity: token } } =>
+                  if id == discriminant(v: InfixToken {}) {
+                    outcome_accepted(InfixToken { token: token })
+                  } else if id == discriminant(v: PrefixToken {}) {
+                    outcome_accepted(PrefixToken { token: token })
+                  } else if id == discriminant(v: CallIdent {}) {
+                    outcome_accepted(CallIdent { ident: token })
+                  } else if id == discriminant(v: MethodIdent {}) {
+                    outcome_accepted(MethodIdent { ident: token })
+                  } else {
+                    outcome_rejected(
+                      target_operator_shape_wire_malformed_diagnostic(wire: wire)
+                    )
+                  }
+                _ =>
+                  outcome_rejected(
+                    target_operator_shape_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+            }
+          )
+        _ =>
+          outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+      }
+    }
+  )
+}
+
+fn target_operator_realization_wire_malformed_diagnostic(row: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_operator_realization_wire_malformed,
+    at: node_locus(node: row),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool> {
+  match row.kind {
+    TypeNode { connective: Conj } =>
+      if name_occurrences(
+        name: target_operator_realization_field_operation,
+        children: row.children
+      ) != 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else if name_occurrences(
+        name: target_operator_realization_field_shape,
+        children: row.children
+      ) != 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else {
+        match fold(
+          row.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == target_operator_realization_field_operation
+                  || n == target_operator_realization_field_shape
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+        }
+      }
+    _ =>
+      outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+  }
+}
+
+fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperatorRealization> {
+  bind_outcome(
+    o: target_operator_realization_row_wire_schema_valid(row: row),
+    f: fn(_) {
+      bind_outcome(
+        o: find_named_child(root: row, name: target_operator_realization_field_operation),
+        f: fn(operation_wire) {
+          bind_outcome(
+            o: canonical_operation_from_wire_node(wire: operation_wire),
+            f: fn(operation) {
+              bind_outcome(
+                o: find_named_child(root: row, name: target_operator_realization_field_shape),
+                f: fn(shape_wire) {
+                  bind_outcome(
+                    o: target_operator_shape_from_wire_node(wire: shape_wire),
+                    f: fn(shape) {
+                      outcome_accepted(
+                        TargetOperatorRealization {
+                          operation: operation,
+                          shape: shape
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
 }
 
 fn target_operator_realization_node(
@@ -804,9 +926,92 @@ fn concrete_syntax_token_wire_malformed_diagnostic(token: Node) -> Diagnostic {
   }
 }
 
+fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
+  match token.kind {
+    TypeNode { connective: Conj } =>
+      if name_occurrences(
+        name: concrete_syntax_token_field_kind,
+        children: token.children
+      ) != 1 {
+        outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+      } else if name_occurrences(
+        name: concrete_syntax_token_field_class,
+        children: token.children
+      ) != 1 {
+        outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+      } else {
+        match fold(
+          token.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == concrete_syntax_token_field_kind
+                  || n == concrete_syntax_token_field_class
+                  || n == concrete_syntax_token_field_binding
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          false =>
+            outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+          true =>
+            bind_outcome(
+              o: find_named_child(root: token, name: concrete_syntax_token_field_kind),
+              f: fn(kind_node) {
+                match kind_node.kind {
+                  TypeNode { connective: Atom { identity: kind } } =>
+                    if kind == concrete_syntax_token_kind_fixed {
+                      if name_occurrences(
+                        name: concrete_syntax_token_field_binding,
+                        children: token.children
+                      ) == 0 {
+                        outcome_accepted(true)
+                      } else {
+                        outcome_rejected(
+                          concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                        )
+                      }
+                    } else if kind == concrete_syntax_token_kind_bound {
+                      if name_occurrences(
+                        name: concrete_syntax_token_field_binding,
+                        children: token.children
+                      ) == 1 {
+                        outcome_accepted(true)
+                      } else {
+                        outcome_rejected(
+                          concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                        )
+                      }
+                    } else {
+                      outcome_rejected(
+                        concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                      )
+                    }
+                  _ =>
+                    outcome_rejected(
+                      concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                    )
+                }
+              }
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+  }
+}
+
 fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
   bind_outcome(
-    o: projection_bundle_child(bundle: token, name: concrete_syntax_token_field_kind),
+    o: concrete_syntax_token_wire_schema_valid(token: token),
+    f: fn(_) {
+      bind_outcome(
+        o: projection_bundle_child(bundle: token, name: concrete_syntax_token_field_kind),
     f: fn(kind_node) {
       bind_outcome(
         o: projection_bundle_symbol_field(bundle: token, field: concrete_syntax_token_field_class),
