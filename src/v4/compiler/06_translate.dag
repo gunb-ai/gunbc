@@ -4540,7 +4540,13 @@ fn translate_mvp1_coerce_from_grounding_or_evidence(
               pending: None
             )
           } else {
-            // E-9: body-scope operator/param atoms — structural carrier, not target type coercion.
+            // 🟡 gated — feature:translate-mvp1-e9-structural-carry-no-grounding — consumer:
+            // translate_mvp1_coerce_from_grounding_or_evidence — bind: PR #4627 T6 bodied-arrow
+            // skeleton — owner: T6 value-expression skeleton — lane: compiler 06_translate —
+            // dissolve-on-arrival: body-scope operator/param refs ground via infer witness or
+            // bounded E-9 carrier with explicit dissolution trigger; forbidden: unconditional
+            // translate_type_fold_init when coerce_grounded_node rejects and grounding witness
+            // is present but not algebra-grounded, outside Arrow.body internal fold.
             translate_type_fold_init(node: node)
           }
         Rejected { diagnostics: _ } =>
