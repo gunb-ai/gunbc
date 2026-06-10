@@ -1,11 +1,10 @@
 # Design: Provenance Anchoring — Node Occurrence Identity + Span Index (PROV / T-8)
 
-> **Status: DESIGN — input to the HELD operator scoping decision** on PROV ("build the
-> producer vs keep the fixture"). This is the substrate-shape design the build would commit
-> to; it is deliberately written *before* the GO so the shape question doesn't get improvised
-> mid-build. Gated on T-8. Consumers: the three fixture-bound lanes — real-input affected-set
-> (AFF), write-axis "show the correct code" (WRITE), synthesis IR-edit handoff (SYN,
-> ctrl#1499 §7).
+> **Status: DESIGN — input to the dispatched PROV build** (operator GO 2026-06-09, #4592 —
+> the Mgr-SYNTH foundation lane; this doc was written while the lane was HELD and is the
+> substrate-shape input the build commits to). Gated on T-8. Consumers: the three
+> fixture-bound lanes — real-input affected-set (AFF), write-axis "show the correct code"
+> (WRITE), synthesis IR-edit handoff (SYN, ctrl#1499 §7).
 >
 > Path note: the Node declaration lives at `src/v4/std/node.dag:86` (briefs citing
 > `00_core.dag` are stale).
