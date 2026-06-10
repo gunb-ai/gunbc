@@ -2799,27 +2799,37 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let field_type_diags = match field_expected {
       Some { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
+        let expected_decl = lookup_type_for(env: scope.type_env, node: expected_node)
+        let expected_diag_node = match expected_decl {
+          Some { value: decl_node } => decl_node
+          None => expected_node
+        }
         let string_optional_reject = rejects_string_for_optional_coproduct_field(
           expected: expected_node,
           got: got_node,
           source_indices: scope.type_env.source_indices
         )
-        let incompatible_field = !node_type_compatible(
-          left: expected_node,
-          right: got_node,
-          source_indices: scope.type_env.source_indices
-        )
+        let got_name = authored_name_at(source_indices: scope.type_env.source_indices, node: got_node)
+        let got_is_string = got_name == "String"
+        let named_optional_coproduct_string_reject = match expected_node.return_cardinality {
+          CardOptional =>
+            match got_is_string {
+              true => expected_diag_node.connective == Disj
+              false => false
+            }
+          _ => false
+        }
         if string_optional_reject {
           [type_mismatch_error(
-            expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
+            expected: node_type_shape(n: expected_diag_node, source_indices: scope.type_env.source_indices),
             got: node_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
             span: ar_typed.span,
             module_name: scope.module_name
           )]
         } else {
-          if incompatible_field {
+          if named_optional_coproduct_string_reject {
             [type_mismatch_error(
-              expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
+              expected: node_type_shape(n: expected_diag_node, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
               span: ar_typed.span,
               module_name: scope.module_name
