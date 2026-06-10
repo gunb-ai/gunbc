@@ -628,10 +628,11 @@ fn record_lit_expected_fields(type_name: String?, scope: InferScope, expected: N
                         Absent => []
                       }
                   }
-              }
-      }
-    Absent => []
-  }
+	                  }
+	              }
+	      }
+	    Absent => []
+	  }
 }
 
 type KernelListTyDiag {
@@ -2018,13 +2019,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             ),
             diagnostics: concat(arg_diags, tier2b.kernel_diags)
           }
-	        } else {
-	          let callable_local = match map_get(scope.locals, func_name) {
-	            Present { value: binding } =>
-	              if binding.resolved.params |> count > 0 { Present { value: binding.resolved } }
-	              else { none }
-	            Absent => none
-	          }
+        } else {
+          let callable_local = match map_get(scope.locals, func_name) {
+            Present { value: binding } =>
+              if binding.resolved.params |> count > 0 { Present { value: binding.resolved } }
+              else { none }
+            Absent => none
+          }
           if callable_local != none {
             let callable_type = match callable_local {
               Present { value: ct } => ct
@@ -2041,16 +2042,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 	              ),
 	              diagnostics: arg_diags
 	            }
-	          } else {
-	            match map_get(scope.variant_collisions, func_name) {
-	              Present { value: collision } => variant_collision_result(name: func_name, span: span, collision: collision)
-	              Absent =>
-	                match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
-	                  Present { value: ctor_result } => ctor_result
-	                  Absent =>
-	              let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
-	              let resolved_type = match type_match {
-	                Present { value: tn } => tn
+          } else {
+            match map_get(scope.variant_collisions, func_name) {
+              Present { value: collision } => variant_collision_result(name: func_name, span: span, collision: collision)
+              Absent =>
+                match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
+                  Present { value: ctor_result } => ctor_result
+                  Absent =>
+                    let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
+                    let resolved_type = match type_match {
+                      Present { value: tn } => tn
                 Absent => error_type
               }
               let call_diags = match type_match {

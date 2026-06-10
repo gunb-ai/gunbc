@@ -11957,6 +11957,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let absent_variant = Rc::new(Node {
@@ -12659,6 +12660,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            binding_id: None,
             ident: None,
         });
         let absent_variant = Rc::new(Node {
