@@ -27,8 +27,8 @@ env:
   # it parses as the string "true" (an unquoted bare `true` is a YAML bool). Drop this once every
   # pinned action ships a Node24 default. Ref: github.blog/changelog/2025-09-19-deprecation-of-node-20.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor_stage0 + ci_floor_dag_parity (parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_ci_lens + v4_lens_ci_node_frontier (parallel) + doc_refs (doc-authority reference gate)
-# Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness (ci_floor_stage0), DAG parity (ci_floor_dag_parity), M1 rust+dag emit (ci_floor_emit), v4 lens witnesses (v4_lens_ci_lens + v4_lens_ci_node_frontier). doc_refs (touched-doc reference resolution) rolls into the `ci` aggregator.
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity, parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate (lens witnesses, parallel) + v4_lens_ci (node-frontier witnesses) + doc_refs (doc-authority reference gate)
+# Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness (ci_floor), DAG parity (ci_floor_parity), M1 rust+dag emit (ci_floor_emit), v4 lens witnesses (v4_lens_gate + v4_lens_ci). Branch protection names ci_floor + ci_floor_emit; new parallel jobs are enforced via the `ci` aggregator unless the operator adds them as required checks. doc_refs rolls into the `ci` aggregator.
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR -- authority: this workflow (.github/workflows/ci.yml) is the
   # direct hand-edited CI authority; the prior src/v4/workflow/ci.dag runner-isolation model was deleted.
@@ -255,12 +255,10 @@ jobs:
         name: affected-set-ci-receipt
         path: ${{ runner.temp }}/affected-set-ci-receipt.json
         if-no-files-found: warn
-  # §11.7.1 Class A safety floor (parallel lane) -- v2 stage0 freshness receipt. Split out of the
-  # monolithic `ci_floor` so stage0 (~400s) runs CONCURRENTLY with DAG parity in `ci_floor_dag_parity`.
-  # The M1 rust+dag emit probe runs in the parallel `ci_floor_emit` job (gunb-ai/ctrl#1458).
-  # Branch protection must add `ci_floor_stage0` + `ci_floor_dag_parity` as required checks (replacing
-  # `ci_floor`) in lockstep with this PR landing.
-  ci_floor_stage0:
+  # §11.7.1 Class A safety floor -- stage0 freshness receipt. DAG parity runs CONCURRENTLY in the
+  # parallel `ci_floor_parity` job; the M1 rust+dag emit probe runs in `ci_floor_emit` (gunb-ai/ctrl#1458).
+  # Job id `ci_floor` is unchanged for branch protection.
+  ci_floor:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
@@ -367,11 +365,13 @@ jobs:
     - name: v2 stage0 freshness receipt
       timeout-minutes: 30
       run: bash .github/ci-floor/with-sccache-retry.sh cargo run --release -p v2-compiler --bin regen_stage0 -- --verify
-  # §11.7.1 Class A safety floor (parallel lane) -- v2 DAG emit parity receipt. Split out of the
-  # monolithic `ci_floor` so it runs CONCURRENTLY with stage0 freshness in `ci_floor_stage0`.
-  # Branch protection must add `ci_floor_stage0` + `ci_floor_dag_parity` as required checks (replacing
-  # `ci_floor`) in lockstep with this PR landing.
-  ci_floor_dag_parity:
+  # §11.7.1 Class A safety floor (parallel lane) -- v2 DAG emit parity receipt. Split out of
+  # `ci_floor` so parity (~159s) runs CONCURRENTLY with stage0 freshness (~120s). The parity step
+  # formerly reused release v2-compiler artifacts built in-job by stage0; this job instead relies on
+  # the shared Cargo cache (target/ in the cache path) + gunbc-bin cache to restore release artifacts
+  # so the parity test compiles only v2-compiler-tests (~5s) rather than cold-compiling the closure
+  # (~64s+). Enforced via the `ci` aggregator; operator may add `ci_floor_parity` to branch protection.
+  ci_floor_parity:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
@@ -454,23 +454,23 @@ jobs:
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
-    # `--release` is load-bearing here, not cosmetic: the build step above compiles v2-compiler in
-    # the RELEASE profile. A debug `cargo test` lives in a different profile dir (target/debug vs
-    # target/release) and shares ZERO artifacts, so it re-compiles the whole v2-compiler closure from
-    # scratch (~64s/run, measured run 27021002250 step 11: 69s total, of which the test itself is
-    # 0.01s). Running the parity test in release makes the "shared closure" real within this job --
-    # it reuses the release v2-compiler already built above and only compiles the small
-    # v2-compiler-tests crate (~5s). The receipt is profile-invariant (emit parity, no
-    # debug_assert-dependent behavior), so this is observationally invisible + fail-closed (RR-L).
+    # `--release` is load-bearing here, not cosmetic: the build step above (or the restored target/
+    # from the Cargo cache) must provide release-profile v2-compiler artifacts. A debug `cargo test`
+    # lives in a different profile dir (target/debug vs target/release) and shares ZERO artifacts,
+    # so it re-compiles the whole v2-compiler closure from scratch (~64s/run, measured run 27021002250
+    # step 11: 69s total, of which the test itself is 0.01s). Running the parity test in release
+    # makes the "shared closure" real -- it reuses release v2-compiler from cache/build and only
+    # compiles the small v2-compiler-tests crate (~5s). The receipt is profile-invariant (emit
+    # parity, no debug_assert-dependent behavior), so this is observationally invisible +
+    # fail-closed (RR-L).
     - name: v2 DAG emit parity receipt (shared closure)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
-  # Split out of the monolithic `ci_floor` so it runs CONCURRENTLY with `ci_floor_stage0` and
-  # `ci_floor_dag_parity`: the probe (~510s, the v2 emitter's own runtime) is independent of the
-  # stage0 self-compile and DAG parity receipt, so serializing them only added wall-clock. This job
-  # needs only the `gunbc` binary (restored from the shared gunbc-bin cache, or cold-built on miss);
-  # it does NOT run stage0/parity. Required on every non-draft PR -- branch protection must add
-  # `ci_floor_emit` as a required check alongside `ci_floor_stage0` + `ci_floor_dag_parity`.
+  # Split out of `ci_floor` so it runs CONCURRENTLY with stage0 freshness + DAG parity: the probe
+  # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
+  # them only added wall-clock. This job needs only the `gunbc` binary (restored from the shared
+  # gunbc-bin cache, or cold-built on miss); it does NOT run stage0/parity. Required on every
+  # non-draft PR -- branch protection references `ci_floor_emit` by name (unchanged).
   # Authority/plan: gunb-ai/ctrl#1458 (Phase 3).
   ci_floor_emit:
     if: github.event.pull_request.draft != true
@@ -565,11 +565,10 @@ jobs:
       run: bash .github/ci-floor/v4-m1-rust-emit-probe.sh
   # Real lens-analysis CI gate (parallel lane). Each wired row is a Bool witness run through
   # `gunbc run --claim-run`, then perturbed to `false` in a temp source-root so the row proves
-  # red-under-mutation before CI treats the green as coverage. Split out of the monolithic
-  # `v4_lens_ci` so lens witnesses run CONCURRENTLY with node-frontier witnesses in
-  # `v4_lens_ci_node_frontier`. Branch protection must add `v4_lens_ci_lens` +
-  # `v4_lens_ci_node_frontier` as required checks (replacing `v4_lens_ci`) in lockstep with this PR.
-  v4_lens_ci_lens:
+  # red-under-mutation before CI treats the green as coverage. Split out of `v4_lens_ci` so the
+  # lens gate (~39s) runs CONCURRENTLY with node-frontier witnesses (~253s) left in `v4_lens_ci`.
+  # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
+  v4_lens_gate:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
@@ -626,11 +625,9 @@ jobs:
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
-  # Affected-set node-frontier selection CI gate (parallel lane). Split out of the monolithic
-  # `v4_lens_ci` so node-frontier witnesses run CONCURRENTLY with lens witnesses in
-  # `v4_lens_ci_lens`. Branch protection must add `v4_lens_ci_lens` + `v4_lens_ci_node_frontier`
-  # as required checks (replacing `v4_lens_ci`) in lockstep with this PR.
-  v4_lens_ci_node_frontier:
+  # Affected-set node-frontier selection CI gate. Lens witnesses run CONCURRENTLY in `v4_lens_gate`;
+  # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
+  v4_lens_ci:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
@@ -689,7 +686,7 @@ jobs:
       run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
-    needs: [affected, ci_floor_stage0, ci_floor_dag_parity, ci_floor_emit, v4_lens_ci_lens, v4_lens_ci_node_frontier, infra_isolation, doc_refs, layering_imports]
+    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, infra_isolation, doc_refs, layering_imports]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -700,24 +697,24 @@ jobs:
           echo "::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed."
           exit 1
         fi
-        if [[ "${{ needs.ci_floor_stage0.result }}" != "success" ]]; then
-          echo "::error::ci_floor_stage0 job did not succeed (result=${{ needs.ci_floor_stage0.result }}); ci aggregator fails closed."
+        if [[ "${{ needs.ci_floor.result }}" != "success" ]]; then
+          echo "::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed."
           exit 1
         fi
-        if [[ "${{ needs.ci_floor_dag_parity.result }}" != "success" ]]; then
-          echo "::error::ci_floor_dag_parity job did not succeed (result=${{ needs.ci_floor_dag_parity.result }}); ci aggregator fails closed."
+        if [[ "${{ needs.ci_floor_parity.result }}" != "success" ]]; then
+          echo "::error::ci_floor_parity job did not succeed (result=${{ needs.ci_floor_parity.result }}); ci aggregator fails closed."
           exit 1
         fi
         if [[ "${{ needs.ci_floor_emit.result }}" != "success" ]]; then
           echo "::error::ci_floor_emit job did not succeed (result=${{ needs.ci_floor_emit.result }}); ci aggregator fails closed."
           exit 1
         fi
-        if [[ "${{ needs.v4_lens_ci_lens.result }}" != "success" ]]; then
-          echo "::error::v4_lens_ci_lens job did not succeed (result=${{ needs.v4_lens_ci_lens.result }}); v4 lens analysis coverage unverified -- ci aggregator fails closed."
+        if [[ "${{ needs.v4_lens_gate.result }}" != "success" ]]; then
+          echo "::error::v4_lens_gate job did not succeed (result=${{ needs.v4_lens_gate.result }}); v4 lens analysis coverage unverified -- ci aggregator fails closed."
           exit 1
         fi
-        if [[ "${{ needs.v4_lens_ci_node_frontier.result }}" != "success" ]]; then
-          echo "::error::v4_lens_ci_node_frontier job did not succeed (result=${{ needs.v4_lens_ci_node_frontier.result }}); affected-set node-frontier coverage unverified -- ci aggregator fails closed."
+        if [[ "${{ needs.v4_lens_ci.result }}" != "success" ]]; then
+          echo "::error::v4_lens_ci job did not succeed (result=${{ needs.v4_lens_ci.result }}); affected-set node-frontier coverage unverified -- ci aggregator fails closed."
           exit 1
         fi
         if [[ "${{ needs.infra_isolation.result }}" != "success" ]]; then
@@ -732,7 +729,7 @@ jobs:
           echo "::error::layering_imports gate did not succeed (result=${{ needs.layering_imports.result }}); std/ or extdeps/ has a wrong-direction compiler import -- ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor_stage0 + DAG parity in ci_floor_dag_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_ci_lens + v4_lens_ci_node_frontier discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor + DAG parity in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + affected receipt + ci_floor_stage0 + ci_floor_dag_parity + ci_floor_emit (M1 rust+dag emit) + v4_lens_ci_lens + v4_lens_ci_node_frontier (discriminating v4 lens witnesses)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (discriminating v4 lens witnesses)"
