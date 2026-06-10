@@ -387,7 +387,11 @@ pub fn merge_scope_from_imports(
                                             __result.push(stamp_hidden_dependency_refs(
                                                 p.clone(),
                                                 typed_parent.type_env.clone(),
-                                                typed_parent.type_env.source_indices.clone(),
+                                                typed_parent
+                                                    .type_env
+                                                    .clone()
+                                                    .source_indices
+                                                    .clone(),
                                             ));
                                         }
                                         __result
@@ -395,7 +399,7 @@ pub fn merge_scope_from_imports(
                                     let sig_rt = stamp_hidden_dependency_refs(
                                         rsig.inferred.clone(),
                                         typed_parent.type_env.clone(),
-                                        typed_parent.type_env.source_indices.clone(),
+                                        typed_parent.type_env.clone().source_indices.clone(),
                                     );
                                     let sig_async = rsig.is_async.clone();
                                     v2_rt::rc_map_insert(
@@ -751,8 +755,8 @@ pub fn nominal_ref_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -803,6 +807,16 @@ pub fn ok_infer(texpr: Rc<Node>) -> Rc<InferResult> {
         typed: texpr,
         diagnostics: Rc::new(vec![]),
     })
+}
+
+pub fn infer_null_literal_node(expected: Option<Rc<Node>>) -> Rc<Node> {
+    match expected {
+        Some(exp) => match exp.return_cardinality.clone() {
+            Cardinality::CardOptional => exp.clone(),
+            _ => infer_literal_node(Rc::new(LiteralValue::LitNull)),
+        },
+        None => infer_literal_node(Rc::new(LiteralValue::LitNull)),
+    }
 }
 
 pub fn semantic_expr_error_node(message: String, span: Rc<SourceSpan>) -> Rc<Node> {
@@ -1073,10 +1087,10 @@ pub fn direct_call_arg_decl_identity(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> 
         Some(_) => n.clone(),
         None => match lookup_type_for(env, n.clone()) {
             Some(resolved) => {
-                if n.return_cardinality.clone() == Cardinality::CardOptional {
-                    with_optional_cardinality(resolved.clone())
-                } else {
-                    resolved.clone()
+                let resolved_with_cardinality = with_optional_cardinality(resolved.clone());
+                match n.return_cardinality.clone() {
+                    Cardinality::CardOptional => resolved_with_cardinality,
+                    _ => resolved.clone(),
                 }
             }
             None => n.clone(),
@@ -1885,8 +1899,8 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -2545,8 +2559,8 @@ pub fn infer_method_args_with_fold(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
                                     binding_id: None,
+                                    ident: None,
                                 });
                                 let lam_value = arg_value(a.clone());
                                 let prov_map = match (*elem_provenance.clone()).clone() {
@@ -2681,17 +2695,8 @@ pub fn infer_expr(
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: lit, .. } => {
                 let span = texpr.span.clone();
-                let inferred_lit = match (*lit).clone() {
-                    LitNull => match expected.clone() {
-                        Some(exp) => {
-                            if exp.return_cardinality == Cardinality::CardOptional {
-                                exp
-                            } else {
-                                infer_literal_node(lit.clone())
-                            }
-                        }
-                        None => infer_literal_node(lit.clone()),
-                    },
+                let inferred_lit = match (*lit.clone()).clone() {
+                    LiteralValue::LitNull => infer_null_literal_node(expected.clone()),
                     _ => infer_literal_node(lit.clone()),
                 };
                 ok_infer(make_expr_node(
@@ -3410,8 +3415,8 @@ pub fn infer_expr(
                                             .clone(),
                                         match_pattern: receiver.match_pattern.clone(),
                                         expr_data: receiver.expr_data.clone(),
-                                        ident: None,
                                         binding_id: None,
+                                        ident: None,
                                     })
                                 } else {
                                     receiver.clone()
@@ -4269,40 +4274,42 @@ match bare_s {
                         let else_compare_raw =
                             direct_call_arg_decl_identity(else_rt.clone(), scope.type_env.clone());
                         let then_compare_stamped = stamp_hidden_dependency_refs(
-                            then_compare_raw.clone(),
+                            then_compare_raw,
                             scope.type_env.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         );
                         let else_compare_stamped = stamp_hidden_dependency_refs(
-                            else_compare_raw.clone(),
+                            else_compare_raw,
                             scope.type_env.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         );
-                        let then_compare = if (else_is_none && !then_is_none) {
-                            with_optional_cardinality(then_compare_stamped.clone())
+                        let then_compare = if (else_is_none.clone() && !then_is_none.clone()) {
+                            with_optional_cardinality(then_compare_stamped)
                         } else {
-                            then_compare_stamped.clone()
+                            then_compare_stamped
                         };
-                        let else_compare = if (then_is_none && !else_is_none) {
-                            with_optional_cardinality(else_compare_stamped.clone())
+                        let else_compare = if (then_is_none.clone() && !else_is_none.clone()) {
+                            with_optional_cardinality(else_compare_stamped)
                         } else {
-                            else_compare_stamped.clone()
+                            else_compare_stamped
                         };
                         let unified_raw = prefer_specific_type(
                             then_rt.clone(),
                             else_rt.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         );
-                        let unified = if (then_is_none && !else_is_none) {
+                        let unified = if (then_is_none.clone() && !else_is_none.clone()) {
                             with_optional_cardinality(else_rt.clone())
-                        } else if (else_is_none && !then_is_none) {
-                            with_optional_cardinality(then_rt.clone())
                         } else {
-                            unified_raw.clone()
+                            if (else_is_none.clone() && !then_is_none.clone()) {
+                                with_optional_cardinality(then_rt.clone())
+                            } else {
+                                unified_raw
+                            }
                         };
                         let branch_diags = if node_type_compatible(
-                            then_compare.clone(),
-                            else_compare.clone(),
+                            then_compare,
+                            else_compare,
                             scope.type_env.clone().source_indices.clone(),
                         ) {
                             Rc::new(vec![])
@@ -5380,8 +5387,8 @@ pub fn infer_record_lit(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         }));
                     }
                     __result
@@ -5404,8 +5411,8 @@ pub fn infer_record_lit(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 });
                 let typed_field_nodes = typed_fields;
                 let texpr = make_expr_node(
@@ -6822,8 +6829,10 @@ pub fn classify_call_via_provenance(
         );
         Rc::new(v2_rt::map_keys(&param_map)).iter().cloned().fold(
             None,
-            |result: _, callee_pname: String| match v2_rt::map_get(&param_map, callee_pname.clone())
-            {
+            |result: Option<Rc<SubValueRelation>>, callee_pname: String| match v2_rt::map_get(
+                &param_map,
+                callee_pname.clone(),
+            ) {
                 Some(callee_rel) => match v2_rt::map_get(&arg_by_name, callee_pname.clone()) {
                     Some(arg_expr) => {
                         let arg_rel = classify_call_arg_provenance(arg_expr.clone(), ctx.clone());
@@ -7654,8 +7663,8 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                         call_semantics: cs.clone(),
                         descent_evidence: Some(evidence),
                     }),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 })
             }
             ExprData::ExprMatch => {
@@ -7945,8 +7954,8 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 })
             }
             ExprData::ExprLet => {
@@ -8054,8 +8063,8 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 })
             }
             ExprData::ExprBlock => {
@@ -8180,8 +8189,8 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 })
             }
             ExprData::ExprMethodCall {
@@ -8448,8 +8457,8 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                             has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                             match_pattern: body.match_pattern.clone(),
                             expr_data: body.expr_data.clone(),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         })
                     }
                 } else {
@@ -8518,8 +8527,8 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 })
             }
             _ => map_children(body.clone(), |child| {
@@ -10263,8 +10272,8 @@ pub fn infer_property_values(
                             has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                             match_pattern: p.match_pattern.clone(),
                             expr_data: p.expr_data.clone(),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         }),
                         val_result.diagnostics.clone(),
                     )
@@ -10329,8 +10338,8 @@ pub fn infer_auth_source_properties(
                                     has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                                     match_pattern: p.match_pattern.clone(),
                                     expr_data: p.expr_data.clone(),
-                                    ident: None,
                                     binding_id: None,
+                                    ident: None,
                                 }),
                                 val_result.diagnostics.clone(),
                             )
@@ -10391,8 +10400,8 @@ pub fn infer_transport_node(
                     has_non_tail_self_call: t.has_non_tail_self_call.clone(),
                     match_pattern: t.match_pattern.clone(),
                     expr_data: t.expr_data.clone(),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 })),
                 diagnostics: prop_result.diagnostics.clone(),
             })
@@ -10442,8 +10451,8 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 }),
                 diagnostics: v2_rt::concat(transport_diags, props_diags),
             })
@@ -10539,8 +10548,8 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             ),
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         }),
                         diagnostics: v2_rt::concat(
                             v2_rt::concat(transport_diags, props_diags),
@@ -10580,8 +10589,8 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                                 binding_id: None,
+                                ident: None,
                             }),
                             diagnostics: v2_rt::concat(
                                 v2_rt::concat(transport_diags, props_diags),
@@ -10630,8 +10639,8 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
                                     binding_id: None,
+                                    ident: None,
                                 }),
                                 diagnostics: v2_rt::concat(
                                     v2_rt::concat(transport_diags, props_diags),
@@ -10673,8 +10682,8 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
                                     binding_id: None,
+                                    ident: None,
                                 }),
                                 diagnostics: v2_rt::concat(transport_diags, props_diags),
                             })
@@ -10710,8 +10719,8 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
                                     binding_id: None,
+                                    ident: None,
                                 }),
                                 diagnostics: v2_rt::concat(transport_diags, props_diags),
                             })
@@ -10844,6 +10853,8 @@ pub fn substitute_generics(
                 } else {
                     Rc::new(Node {
                         name: n.name.clone(),
+                        ident: n.ident.clone(),
+                        binding_id: n.binding_id.clone(),
                         span: n.span.clone(),
                         ident_span: n.ident_span.clone(),
                         children: Rc::new({
@@ -10891,8 +10902,6 @@ pub fn substitute_generics(
                         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                         match_pattern: n.match_pattern.clone(),
                         expr_data: n.expr_data.clone(),
-                        ident: n.ident.clone(),
-                        binding_id: n.binding_id.clone(),
                     })
                 }
             }
@@ -10941,12 +10950,19 @@ pub fn collect_parent_carrier_bindings(
             Rc::new(v2_rt::map_values(&env.bindings.clone()))
                 .iter()
                 .cloned()
-                .fold(with_existing, |bacc, binding| {
-                    match binding.resolved.binding_id.clone() {
-                        Some(binding_id) => v2_rt::rc_map_insert(bacc, binding_id, binding.clone()),
-                        None => bacc,
-                    }
-                })
+                .fold(
+                    with_existing.clone(),
+                    |bacc: Rc<HashMap<BindingId, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
+                        match binding.resolved.clone().binding_id.clone() {
+                            Some(binding_id) => v2_rt::rc_map_insert(
+                                bacc.clone(),
+                                binding_id.clone(),
+                                binding.clone(),
+                            ),
+                            None => bacc.clone(),
+                        }
+                    },
+                )
         },
     )
 }
@@ -10955,13 +10971,22 @@ pub fn lookup_type_binding_by_name_in_env(
     env: Rc<TypeEnv>,
     name: String,
 ) -> Option<Rc<TypeBinding>> {
-    match Rc::new(v2_rt::map_values(&env.bindings.clone()))
-        .iter()
-        .cloned()
-        .filter(|binding| binding.name.clone().as_str() == name.clone().as_str())
-        .next()
+    match Rc::new({
+        let mut __result = Vec::new();
+        for binding in Rc::new(v2_rt::map_values(&env.bindings.clone()))
+            .iter()
+            .cloned()
+        {
+            if (binding.name.clone().as_str() == name.clone().as_str()) {
+                __result.push(binding);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
     {
-        Some(binding) => Some(binding),
+        Some(binding) => Some(binding.clone()),
         None => None,
     }
 }
@@ -10971,82 +10996,83 @@ pub fn stamp_hidden_dependency_refs(
     dep_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    let stamped_children = Rc::new({
-        let mut __result = Vec::new();
-        for child in n.children.clone().iter().cloned() {
-            __result.push(stamp_hidden_dependency_refs(
-                child.clone(),
-                dep_env.clone(),
-                source_indices.clone(),
-            ));
-        }
-        __result
-    });
-    let stamped_params = Rc::new({
-        let mut __result = Vec::new();
-        for param in n.params.clone().iter().cloned() {
-            __result.push(stamp_hidden_dependency_refs(
-                param.clone(),
-                dep_env.clone(),
-                source_indices.clone(),
-            ));
-        }
-        __result
-    });
-    let stamped_inferred = match n.inferred.clone() {
-        Some(inferred) => match &*inferred {
-            InferredNode::Resolved { node: rt } => Some(Rc::new(InferredNode::Resolved {
-                node: stamp_hidden_dependency_refs(
-                    rt.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let stamped_children = Rc::new({
+            let mut __result = Vec::new();
+            for child in n.children.clone().iter().cloned() {
+                __result.push(stamp_hidden_dependency_refs(
+                    child.clone(),
                     dep_env.clone(),
                     source_indices.clone(),
-                ),
-            })),
-            _ => n.inferred.clone(),
-        },
-        None => n.inferred.clone(),
-    };
-    let rebuilt = Rc::new(Node {
-        name: n.name.clone(),
-        ident: n.ident.clone(),
-        binding_id: n.binding_id.clone(),
-        span: n.span.clone(),
-        ident_span: n.ident_span.clone(),
-        children: stamped_children,
-        connective: n.connective.clone(),
-        params: stamped_params,
-        inferred: stamped_inferred,
-        return_cardinality: n.return_cardinality.clone(),
-        uses: n.uses.clone(),
-        body: n.body.clone(),
-        transport: n.transport.clone(),
-        properties: n.properties.clone(),
-        type_annotation: n.type_annotation.clone(),
-        is_self_recursive: n.is_self_recursive.clone(),
-        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-        match_pattern: n.match_pattern.clone(),
-        expr_data: n.expr_data.clone(),
-    });
-    let name = authored_name_at(source_indices.clone(), rebuilt.clone());
-    let bare_unbranded_ref = (((((rebuilt.binding_id.clone() == None)
-        && (rebuilt.connective.clone() == Connective::NoConnective))
-        && ((rebuilt.children.clone().len() as i64) == 0))
-        && ((rebuilt.params.clone().len() as i64) == 0))
-        && (name.clone().as_str() != "".to_string().as_str()));
-    if bare_unbranded_ref {
-        match lookup_type_binding_by_name_in_env(dep_env.clone(), name.clone()) {
-            Some(binding) => {
-                if binding.resolved.binding_id.clone() != None {
-                    node_with_preserved_binding_id(binding.resolved.clone(), rebuilt.clone())
-                } else {
-                    rebuilt
-                }
+                ));
             }
-            None => rebuilt,
+            __result
+        });
+        let stamped_params = Rc::new({
+            let mut __result = Vec::new();
+            for param in n.params.clone().iter().cloned() {
+                __result.push(stamp_hidden_dependency_refs(
+                    param.clone(),
+                    dep_env.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        let stamped_inferred = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                Some(Rc::new(InferredNode::Resolved {
+                    node: stamp_hidden_dependency_refs(
+                        rt.clone(),
+                        dep_env.clone(),
+                        source_indices.clone(),
+                    ),
+                }))
+            }
+            _ => n.inferred.clone(),
+        };
+        let rebuilt = Rc::new(Node {
+            name: n.name.clone(),
+            ident: n.ident.clone(),
+            binding_id: n.binding_id.clone(),
+            span: n.span.clone(),
+            ident_span: n.ident_span.clone(),
+            children: stamped_children,
+            connective: n.connective.clone(),
+            params: stamped_params,
+            inferred: stamped_inferred,
+            return_cardinality: n.return_cardinality.clone(),
+            uses: n.uses.clone(),
+            body: n.body.clone(),
+            transport: n.transport.clone(),
+            properties: n.properties.clone(),
+            type_annotation: n.type_annotation.clone(),
+            is_self_recursive: n.is_self_recursive.clone(),
+            has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+            match_pattern: n.match_pattern.clone(),
+            expr_data: n.expr_data.clone(),
+        });
+        let name = authored_name_at(source_indices.clone(), rebuilt.clone());
+        let bare_unbranded_ref = (((((rebuilt.binding_id.clone() == None)
+            && (rebuilt.connective.clone() == Connective::NoConnective))
+            && ((rebuilt.children.clone().len() as i64) == 0))
+            && ((rebuilt.params.clone().len() as i64) == 0))
+            && (name.clone().as_str() != "".to_string().as_str()));
+        if bare_unbranded_ref {
+            match lookup_type_binding_by_name_in_env(dep_env.clone(), name.clone()) {
+                Some(binding) => {
+                    if (binding.resolved.clone().binding_id.clone() != None) {
+                        node_with_preserved_binding_id(binding.resolved.clone(), rebuilt.clone())
+                    } else {
+                        rebuilt.clone()
+                    }
+                }
+                None => rebuilt.clone(),
+            }
+        } else {
+            rebuilt.clone()
         }
-    } else {
-        rebuilt
-    }
+    })
 }
 
 pub fn stamp_type_binding_dependency_refs(
@@ -11056,11 +11082,7 @@ pub fn stamp_type_binding_dependency_refs(
 ) -> Rc<TypeBinding> {
     Rc::new(TypeBinding {
         name: binding.name.clone(),
-        resolved: stamp_hidden_dependency_refs(
-            binding.resolved.clone(),
-            dep_env.clone(),
-            source_indices.clone(),
-        ),
+        resolved: stamp_hidden_dependency_refs(binding.resolved.clone(), dep_env, source_indices),
         provenance: binding.provenance.clone(),
     })
 }
@@ -11077,39 +11099,84 @@ pub fn add_type_binding_dependency_closure(
     dep_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CarrierClosureState> {
-    if v2_rt::map_contains_key(&state.seen_names, binding.name.clone()) {
-        state
-    } else {
-        let stamped = stamp_type_binding_dependency_refs(
-            binding.clone(),
-            dep_env.clone(),
-            source_indices.clone(),
-        );
-        let with_binding = match stamped.resolved.binding_id.clone() {
-            Some(binding_id) => Rc::new(CarrierClosureState {
-                carrier_bindings: v2_rt::rc_map_insert(
-                    state.carrier_bindings.clone(),
-                    binding_id,
-                    stamped.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if v2_rt::map_contains_key(&state.seen_names.clone(), binding.name.clone()) {
+            state.clone()
+        } else {
+            {
+                let stamped = stamp_type_binding_dependency_refs(
+                    binding.clone(),
+                    dep_env.clone(),
+                    source_indices.clone(),
+                );
+                let with_binding = match stamped.resolved.clone().binding_id.clone() {
+                    Some(binding_id) => Rc::new(CarrierClosureState {
+                        carrier_bindings: v2_rt::rc_map_insert(
+                            state.carrier_bindings.clone(),
+                            binding_id.clone(),
+                            stamped.clone(),
+                        ),
+                        seen_names: v2_rt::rc_map_insert(
+                            state.seen_names.clone(),
+                            stamped.name.clone(),
+                            true,
+                        ),
+                    }),
+                    None => Rc::new(CarrierClosureState {
+                        carrier_bindings: state.carrier_bindings.clone(),
+                        seen_names: v2_rt::rc_map_insert(
+                            state.seen_names.clone(),
+                            stamped.name.clone(),
+                            true,
+                        ),
+                    }),
+                };
+                let deps = node_type_deps(stamped.resolved.clone(), source_indices.clone());
+                deps.iter().cloned().fold(
+                    with_binding,
+                    |acc: Rc<CarrierClosureState>, dep_name: String| {
+                        match lookup_type_binding_by_name_in_env(dep_env.clone(), dep_name.clone())
+                        {
+                            Some(dep_binding) => add_type_binding_dependency_closure(
+                                acc.clone(),
+                                dep_binding.clone(),
+                                dep_env.clone(),
+                                source_indices.clone(),
+                            ),
+                            None => acc.clone(),
+                        }
+                    },
+                )
+            }
+        }
+    })
+}
+
+pub fn add_node_dependency_closure(
+    state: Rc<CarrierClosureState>,
+    n: Rc<Node>,
+    dep_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CarrierClosureState> {
+    {
+        let stamped = stamp_hidden_dependency_refs(n, dep_env.clone(), source_indices.clone());
+        let name = authored_name_at(source_indices.clone(), stamped.clone());
+        let with_self = if (name.clone().as_str() != "".to_string().as_str()) {
+            match lookup_type_binding_by_name_in_env(dep_env.clone(), name.clone()) {
+                Some(self_binding) => add_type_binding_dependency_closure(
+                    state,
+                    self_binding.clone(),
+                    dep_env.clone(),
+                    source_indices.clone(),
                 ),
-                seen_names: v2_rt::rc_map_insert(
-                    state.seen_names.clone(),
-                    stamped.name.clone(),
-                    true,
-                ),
-            }),
-            None => Rc::new(CarrierClosureState {
-                carrier_bindings: state.carrier_bindings.clone(),
-                seen_names: v2_rt::rc_map_insert(
-                    state.seen_names.clone(),
-                    stamped.name.clone(),
-                    true,
-                ),
-            }),
+                None => state,
+            }
+        } else {
+            state
         };
-        let deps = node_type_deps(stamped.resolved.clone(), source_indices.clone());
+        let deps = node_type_deps(stamped.clone(), source_indices.clone());
         deps.iter().cloned().fold(
-            with_binding,
+            with_self,
             |acc: Rc<CarrierClosureState>, dep_name: String| {
                 match lookup_type_binding_by_name_in_env(dep_env.clone(), dep_name.clone()) {
                     Some(dep_binding) => add_type_binding_dependency_closure(
@@ -11125,76 +11192,41 @@ pub fn add_type_binding_dependency_closure(
     }
 }
 
-pub fn add_node_dependency_closure(
-    state: Rc<CarrierClosureState>,
-    n: Rc<Node>,
-    dep_env: Rc<TypeEnv>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<CarrierClosureState> {
-    let stamped = stamp_hidden_dependency_refs(n, dep_env.clone(), source_indices.clone());
-    let name = authored_name_at(source_indices.clone(), stamped.clone());
-    let with_self = if name.clone().as_str() != "".to_string().as_str() {
-        match lookup_type_binding_by_name_in_env(dep_env.clone(), name.clone()) {
-            Some(self_binding) => add_type_binding_dependency_closure(
-                state.clone(),
-                self_binding.clone(),
-                dep_env.clone(),
-                source_indices.clone(),
-            ),
-            None => state.clone(),
-        }
-    } else {
-        state.clone()
-    };
-    let deps = node_type_deps(stamped, source_indices.clone());
-    deps.iter().cloned().fold(
-        with_self,
-        |acc: Rc<CarrierClosureState>, dep_name: String| match lookup_type_binding_by_name_in_env(
-            dep_env.clone(),
-            dep_name.clone(),
-        ) {
-            Some(dep_binding) => add_type_binding_dependency_closure(
-                acc.clone(),
-                dep_binding.clone(),
-                dep_env.clone(),
-                source_indices.clone(),
-            ),
-            None => acc.clone(),
-        },
-    )
-}
-
 pub fn collect_import_carrier_bindings_for_import(
     acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>,
     imp: Rc<ResolvedImport>,
     env: Rc<TypeEnv>,
 ) -> Rc<HashMap<BindingId, Rc<TypeBinding>>> {
-    let closure_state = Rc::new(v2_rt::map_values(&env.bindings.clone()))
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(CarrierClosureState {
-                carrier_bindings: acc,
-                seen_names: v2_rt::rc_empty_map::<String, bool>(),
-            }),
-            |state: Rc<CarrierClosureState>, binding: Rc<TypeBinding>| {
-                if ((imp.module_path.clone().as_str() == "std.types".to_string().as_str())
-                    && is_type_variable_name(binding.name.clone()))
-                {
-                    state
-                } else if import_allows_type_binding(imp.clone(), binding.clone(), env.clone()) {
-                    add_type_binding_dependency_closure(
-                        state.clone(),
-                        binding.clone(),
-                        env.clone(),
-                        env.source_indices.clone(),
-                    )
-                } else {
-                    state
-                }
-            },
-        );
-    closure_state.carrier_bindings.clone()
+    {
+        let closure_state = Rc::new(v2_rt::map_values(&env.bindings.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(CarrierClosureState {
+                    carrier_bindings: acc,
+                    seen_names: v2_rt::rc_empty_map::<String, bool>(),
+                }),
+                |state: Rc<CarrierClosureState>, binding: Rc<TypeBinding>| {
+                    if ((imp.module_path.clone().as_str() == "std.types".to_string().as_str())
+                        && is_type_variable_name(binding.name.clone()))
+                    {
+                        state.clone()
+                    } else {
+                        if import_allows_type_binding(imp.clone(), binding.clone(), env.clone()) {
+                            add_type_binding_dependency_closure(
+                                state.clone(),
+                                binding.clone(),
+                                env.clone(),
+                                env.source_indices.clone(),
+                            )
+                        } else {
+                            state.clone()
+                        }
+                    }
+                },
+            );
+        closure_state.carrier_bindings.clone()
+    }
 }
 
 pub fn collect_import_carrier_bindings_for_imported_funcs(
@@ -11202,8 +11234,11 @@ pub fn collect_import_carrier_bindings_for_imported_funcs(
     imp: Rc<ResolvedImport>,
     typed_parent: Rc<TypedModule>,
 ) -> Rc<HashMap<BindingId, Rc<TypeBinding>>> {
-    let env = typed_parent.type_env.clone();
-    let closure_state = Rc::new(v2_rt::map_values(&typed_parent.func_env.signatures.clone()))
+    {
+        let env = typed_parent.type_env.clone();
+        let closure_state = Rc::new(v2_rt::map_values(
+            &typed_parent.func_env.clone().signatures.clone(),
+        ))
         .iter()
         .cloned()
         .fold(
@@ -11213,29 +11248,32 @@ pub fn collect_import_carrier_bindings_for_imported_funcs(
             }),
             |state: Rc<CarrierClosureState>, sig: Rc<ResolvedFuncSig>| {
                 if import_allows_binding_name(imp.clone(), sig.name.clone()) {
-                    let with_return = add_node_dependency_closure(
-                        state.clone(),
-                        sig.inferred.clone(),
-                        env.clone(),
-                        env.source_indices.clone(),
-                    );
-                    sig.params.clone().iter().cloned().fold(
-                        with_return,
-                        |pacc: Rc<CarrierClosureState>, param: Rc<Node>| {
-                            add_node_dependency_closure(
-                                pacc.clone(),
-                                param_node_type_expr(param.clone()),
-                                env.clone(),
-                                env.source_indices.clone(),
-                            )
-                        },
-                    )
+                    {
+                        let with_return = add_node_dependency_closure(
+                            state.clone(),
+                            sig.inferred.clone(),
+                            env.clone(),
+                            env.source_indices.clone(),
+                        );
+                        sig.params.clone().iter().cloned().fold(
+                            with_return.clone(),
+                            |pacc: Rc<CarrierClosureState>, param: Rc<Node>| {
+                                add_node_dependency_closure(
+                                    pacc,
+                                    param_node_type_expr(param.clone()),
+                                    env.clone(),
+                                    env.source_indices.clone(),
+                                )
+                            },
+                        )
+                    }
                 } else {
-                    state
+                    state.clone()
                 }
             },
         );
-    closure_state.carrier_bindings.clone()
+        closure_state.carrier_bindings.clone()
+    }
 }
 
 pub fn import_allows_binding_name(imp: Rc<ResolvedImport>, name: String) -> bool {
@@ -11496,8 +11534,8 @@ pub fn build_type_env(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                                 binding_id: None,
+                                ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
@@ -11528,8 +11566,8 @@ pub fn build_type_env(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
@@ -11554,8 +11592,8 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         });
         let some_variant = Rc::new(Node {
             name: "Some".to_string(),
@@ -11575,8 +11613,8 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         });
         let kernel_optional = Rc::new(Node {
             name: "Optional".to_string(),
@@ -11596,8 +11634,8 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         });
         let kernel_bindings = v2_rt::rc_map_insert(
             kernel_bindings.clone(),
@@ -11847,8 +11885,8 @@ pub fn build_type_env(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         });
                         register_type_decl_binding(
                             acc.clone(),
@@ -11884,8 +11922,8 @@ pub fn build_type_env(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                                 binding_id: None,
+                                ident: None,
                             });
                             register_type_decl_binding(
                                 acc.clone(),
@@ -11942,8 +11980,8 @@ pub fn build_type_env(
                                         has_non_tail_self_call: false,
                                         match_pattern: None,
                                         expr_data: Rc::new(ExprData::NoExprData),
-                                        ident: None,
                                         binding_id: None,
+                                        ident: None,
                                     });
                                     register_type_decl_binding(
                                         acc.clone(),
@@ -12208,8 +12246,8 @@ pub fn build_type_env_unresolved(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                                 binding_id: None,
+                                ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
@@ -12236,8 +12274,8 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         });
         let some_variant = Rc::new(Node {
             name: "Some".to_string(),
@@ -12257,8 +12295,8 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         });
         let kernel_optional = Rc::new(Node {
             name: "Optional".to_string(),
@@ -12278,8 +12316,8 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         });
         let kernel_bindings = v2_rt::rc_map_insert(
             kernel_bindings.clone(),
@@ -12467,8 +12505,8 @@ pub fn build_type_env_unresolved(
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         });
                         v2_rt::rc_map_insert(
                             acc.clone(),
@@ -12504,8 +12542,8 @@ pub fn build_type_env_unresolved(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                                 binding_id: None,
+                                ident: None,
                             });
                             v2_rt::rc_map_insert(
                                 acc.clone(),
@@ -13145,6 +13183,8 @@ pub fn typecheck_module(
                     if (item.is_self_recursive.clone() && (item.body.clone() != None)) {
                         Rc::new(Node {
                             name: item.name.clone(),
+                            ident: item.ident.clone(),
+                            binding_id: item.binding_id.clone(),
                             span: item.span.clone(),
                             ident_span: item.ident_span.clone(),
                             children: item.children.clone(),
@@ -13168,8 +13208,6 @@ pub fn typecheck_module(
                             has_non_tail_self_call: item.has_non_tail_self_call.clone(),
                             match_pattern: item.match_pattern.clone(),
                             expr_data: item.expr_data.clone(),
-                            ident: None,
-                            binding_id: None,
                         })
                     } else {
                         item.clone()

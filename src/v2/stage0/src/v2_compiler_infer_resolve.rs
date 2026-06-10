@@ -292,6 +292,8 @@ pub fn substitute_type_slots(
                                     });
                                     Rc::new(Node {
                                         name: child.name.clone(),
+                                        ident: child.ident.clone(),
+                                        binding_id: child.binding_id.clone(),
                                         span: child.span.clone(),
                                         ident_span: child.ident_span.clone(),
                                         children: substituted_args.clone(),
@@ -310,8 +312,6 @@ pub fn substitute_type_slots(
                                             .clone(),
                                         match_pattern: child.match_pattern.clone(),
                                         expr_data: child.expr_data.clone(),
-                                        ident: None,
-                                        binding_id: None,
                                     })
                                 }
                             } else {
@@ -341,6 +341,8 @@ pub fn substitute_type_slots(
                 };
                 Rc::new(Node {
                     name: n.name.clone(),
+                    ident: n.ident.clone(),
+                    binding_id: n.binding_id.clone(),
                     span: n.span.clone(),
                     ident_span: n.ident_span.clone(),
                     children: new_children,
@@ -357,8 +359,6 @@ pub fn substitute_type_slots(
                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                     match_pattern: n.match_pattern.clone(),
                     expr_data: n.expr_data.clone(),
-                    ident: None,
-                    binding_id: None,
                 })
             }
         }
@@ -463,6 +463,7 @@ pub fn resolve_nominal_alias_rhs(
                     resolved: Rc::new(Node {
                         name: n.name.clone(),
                         ident: n.ident.clone(),
+                        binding_id: n.binding_id.clone(),
                         span: n.span.clone(),
                         ident_span: n.ident_span.clone(),
                         children: resolved_args,
@@ -479,7 +480,6 @@ pub fn resolve_nominal_alias_rhs(
                         has_non_tail_self_call: false,
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        binding_id: None,
                     }),
                     diagnostics: v2_rt::concat(arg_diags, validation.diagnostics.clone()),
                 })
@@ -534,6 +534,8 @@ pub fn resolve_node_bounded(
                                 Rc::new(NodeResolveResult {
                                     resolved: Rc::new(Node {
                                         name: n.name.clone(),
+                                        ident: n.ident.clone(),
+                                        binding_id: n.binding_id.clone(),
                                         span: n.span.clone(),
                                         ident_span: n.ident_span.clone(),
                                         children: Rc::new(vec![base_resolved]),
@@ -550,8 +552,6 @@ pub fn resolve_node_bounded(
                                         has_non_tail_self_call: false,
                                         match_pattern: None,
                                         expr_data: Rc::new(ExprData::NoExprData),
-                                        ident: None,
-                                        binding_id: None,
                                     }),
                                     diagnostics: base_diags,
                                 })
@@ -582,6 +582,8 @@ pub fn resolve_node_bounded(
                                                 Rc::new(NodeResolveResult {
                                                     resolved: Rc::new(Node {
                                                         name: child.name.clone(),
+                                                        ident: child.ident.clone(),
+                                                        binding_id: child.binding_id.clone(),
                                                         span: child.span.clone(),
                                                         ident_span: child.ident_span.clone(),
                                                         children: child.children.clone(),
@@ -609,8 +611,6 @@ pub fn resolve_node_bounded(
                                                         has_non_tail_self_call: false,
                                                         match_pattern: None,
                                                         expr_data: Rc::new(ExprData::NoExprData),
-                                                        ident: None,
-                                                        binding_id: None,
                                                     }),
                                                     diagnostics: rt_diags.clone(),
                                                 })
@@ -635,6 +635,8 @@ pub fn resolve_node_bounded(
                                             Rc::new(NodeResolveResult {
                                                 resolved: Rc::new(Node {
                                                     name: child.name.clone(),
+                                                    ident: child.ident.clone(),
+                                                    binding_id: child.binding_id.clone(),
                                                     span: child.span.clone(),
                                                     ident_span: child.ident_span.clone(),
                                                     children: child.children.clone(),
@@ -660,8 +662,6 @@ pub fn resolve_node_bounded(
                                                     has_non_tail_self_call: false,
                                                     match_pattern: None,
                                                     expr_data: Rc::new(ExprData::NoExprData),
-                                                    ident: None,
-                                                    binding_id: None,
                                                 }),
                                                 diagnostics: rt_diags.clone(),
                                             })
@@ -687,6 +687,8 @@ pub fn resolve_node_bounded(
                             Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
                                     name: n.name.clone(),
+                                    ident: n.ident.clone(),
+                                    binding_id: n.binding_id.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
                                     children: resolved_children,
@@ -703,8 +705,6 @@ pub fn resolve_node_bounded(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
-                                    binding_id: None,
                                 }),
                                 diagnostics: all_diags,
                             })
@@ -761,73 +761,35 @@ pub fn resolve_node_bounded(
                                                                         );
                                                                     let rt_resolved =
                                                                         rt_result.resolved.clone();
-                                                                    let rt_diags =
-                                                                        rt_result.diagnostics.clone();
+                                                                    let rt_diags = rt_result
+                                                                        .diagnostics
+                                                                        .clone();
                                                                     Rc::new(NodeResolveResult {
-                                                                        resolved: Rc::new(Node {
-                                                                            name: field_child
-                                                                                .name
-                                                                                .clone(),
-                                                                            span: field_child
-                                                                                .span
-                                                                                .clone(),
-                                                                            ident_span: field_child
-                                                                                .ident_span
-                                                                                .clone(),
-                                                                            children: field_child
-                                                                                .children
-                                                                                .clone(),
-                                                                            connective: field_child
-                                                                                .connective
-                                                                                .clone(),
-                                                                            params: field_child
-                                                                                .params
-                                                                                .clone(),
-                                                                            inferred: Some(
-                                                                                Rc::new(
-                                                                                    InferredNode::Resolved {
-                                                                                        node: rt_resolved.clone(),
-                                                                                    },
-                                                                                ),
-                                                                            ),
-                                                                            return_cardinality:
-                                                                                field_child
-                                                                                    .return_cardinality
-                                                                                    .clone(),
-                                                                            uses: field_child
-                                                                                .uses
-                                                                                .clone(),
-                                                                            body: field_child
-                                                                                .body
-                                                                                .clone(),
-                                                                            transport: field_child
-                                                                                .transport
-                                                                                .clone(),
-                                                                            properties:
-                                                                                v2_rt::concat(
-                                                                                    field_child
-                                                                                        .properties
-                                                                                        .clone(),
-                                                                                    rt_resolved
-                                                                                        .properties
-                                                                                        .clone(),
-                                                                                ),
-                                                                            type_annotation:
-                                                                                field_child
-                                                                                    .type_annotation
-                                                                                    .clone(),
-                                                                            is_self_recursive: false,
-                                                                            has_non_tail_self_call:
-                                                                                false,
-                                                                            match_pattern: None,
-                                                                            expr_data: Rc::new(
-                                                                                ExprData::NoExprData,
-                                                                            ),
-                                                                            ident: None,
-                                                                            binding_id: None,
-                                                                        }),
-                                                                        diagnostics: rt_diags.clone(),
-                                                                    })
+    resolved: Rc::new(Node {
+    name: field_child.name.clone(),
+    ident: field_child.ident.clone(),
+    binding_id: field_child.binding_id.clone(),
+    span: field_child.span.clone(),
+    ident_span: field_child.ident_span.clone(),
+    children: field_child.children.clone(),
+    connective: field_child.connective.clone(),
+    params: field_child.params.clone(),
+    inferred: Some(Rc::new(InferredNode::Resolved {
+    node: rt_resolved.clone(),
+})),
+    return_cardinality: field_child.return_cardinality.clone(),
+    uses: field_child.uses.clone(),
+    body: field_child.body.clone(),
+    transport: field_child.transport.clone(),
+    properties: v2_rt::concat(field_child.properties.clone(), rt_resolved.properties.clone()),
+    type_annotation: field_child.type_annotation.clone(),
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+}),
+    diagnostics: rt_diags.clone(),
+})
                                                                 }
                                                             } else {
                                                                 Rc::new(NodeResolveResult {
@@ -880,6 +842,8 @@ pub fn resolve_node_bounded(
                                                                 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
     name: field_child.name.clone(),
+    ident: field_child.ident.clone(),
+    binding_id: field_child.binding_id.clone(),
     span: field_child.span.clone(),
     ident_span: field_child.ident_span.clone(),
     children: field_child.children.clone(),
@@ -898,8 +862,6 @@ pub fn resolve_node_bounded(
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: None,
-    binding_id: None,
 }),
     diagnostics: rt_diags.clone(),
 })
@@ -928,6 +890,8 @@ pub fn resolve_node_bounded(
                                             Rc::new(NodeResolveResult {
                                                 resolved: Rc::new(Node {
                                                     name: variant_child.name.clone(),
+                                                    ident: variant_child.ident.clone(),
+                                                    binding_id: variant_child.binding_id.clone(),
                                                     span: variant_child.span.clone(),
                                                     ident_span: variant_child.ident_span.clone(),
                                                     children: resolved_fields.clone(),
@@ -948,8 +912,6 @@ pub fn resolve_node_bounded(
                                                     has_non_tail_self_call: false,
                                                     match_pattern: None,
                                                     expr_data: Rc::new(ExprData::NoExprData),
-                                                    ident: None,
-                                                    binding_id: None,
                                                 }),
                                                 diagnostics: field_diags.clone(),
                                             })
@@ -974,6 +936,8 @@ pub fn resolve_node_bounded(
                                 Rc::new(NodeResolveResult {
                                     resolved: Rc::new(Node {
                                         name: n.name.clone(),
+                                        ident: n.ident.clone(),
+                                        binding_id: n.binding_id.clone(),
                                         span: n.span.clone(),
                                         ident_span: n.ident_span.clone(),
                                         children: resolved_variants,
@@ -990,8 +954,6 @@ pub fn resolve_node_bounded(
                                         has_non_tail_self_call: false,
                                         match_pattern: None,
                                         expr_data: Rc::new(ExprData::NoExprData),
-                                        ident: None,
-                                        binding_id: None,
                                     }),
                                     diagnostics: all_diags,
                                 })
@@ -1135,6 +1097,8 @@ pub fn resolve_node_bounded(
                                 is_recursive_type_by_name(env.clone(), type_name.clone());
                             let expanded_node = Rc::new(Node {
                                 name: type_name.clone(),
+                                ident: n.ident.clone(),
+                                binding_id: n.binding_id.clone(),
                                 span: n.span.clone(),
                                 ident_span: n.ident_span.clone(),
                                 children: target_result.resolved.clone().children.clone(),
@@ -1151,11 +1115,11 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
-                                ident: None,
-                                binding_id: None,
                             });
                             let resolved_node = Rc::new(Node {
                                 name: type_name.clone(),
+                                ident: n.ident.clone(),
+                                binding_id: n.binding_id.clone(),
                                 span: n.span.clone(),
                                 ident_span: n.ident_span.clone(),
                                 children: resolved_args.clone(),
@@ -1174,8 +1138,6 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
-                                ident: None,
-                                binding_id: None,
                             });
                             Rc::new(NodeResolveResult {
                                 resolved: resolved_node,
@@ -1203,6 +1165,8 @@ pub fn resolve_node_bounded(
                                 is_recursive_type_by_name(env.clone(), type_name.clone());
                             let expanded_node = Rc::new(Node {
                                 name: type_name.clone(),
+                                ident: n.ident.clone(),
+                                binding_id: n.binding_id.clone(),
                                 span: n.span.clone(),
                                 ident_span: n.ident_span.clone(),
                                 children: substituted_children,
@@ -1219,12 +1183,12 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
-                                ident: None,
-                                binding_id: None,
                             });
                             let result = Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
                                     name: type_name.clone(),
+                                    ident: n.ident.clone(),
+                                    binding_id: n.binding_id.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
                                     children: resolved_args.clone(),
@@ -1243,8 +1207,6 @@ pub fn resolve_node_bounded(
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                     match_pattern: n.match_pattern.clone(),
                                     expr_data: n.expr_data.clone(),
-                                    ident: None,
-                                    binding_id: None,
                                 }),
                                 diagnostics: v2_rt::concat(arity_diags, arg_diags),
                             });
@@ -1302,6 +1264,8 @@ pub fn resolve_node_bounded(
                             };
                             let resolved_key_child = Rc::new(Node {
                                 name: key_param_name,
+                                ident: key_child_node.ident.clone(),
+                                binding_id: key_child_node.binding_id.clone(),
                                 span: key_child_node.span.clone(),
                                 ident_span: key_child_node.ident_span.clone(),
                                 children: Rc::new(vec![]),
@@ -1320,11 +1284,11 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
-                                binding_id: None,
                             });
                             let resolved_val_child = Rc::new(Node {
                                 name: val_param_name,
+                                ident: val_child_node.ident.clone(),
+                                binding_id: val_child_node.binding_id.clone(),
                                 span: val_child_node.span.clone(),
                                 ident_span: val_child_node.ident_span.clone(),
                                 children: Rc::new(vec![]),
@@ -1343,12 +1307,12 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
-                                binding_id: None,
                             });
                             Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
                                     name: type_name.clone(),
+                                    ident: n.ident.clone(),
+                                    binding_id: n.binding_id.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
                                     children: Rc::new(vec![resolved_key_child, resolved_val_child]),
@@ -1365,8 +1329,6 @@ pub fn resolve_node_bounded(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
-                                    binding_id: None,
                                 }),
                                 diagnostics: v2_rt::concat(key_diags, val_diags),
                             })
@@ -1399,6 +1361,8 @@ pub fn resolve_node_bounded(
                                         };
                                         let resolved_child = Rc::new(Node {
                                             name: el_param_name,
+                                            ident: child_node.ident.clone(),
+                                            binding_id: child_node.binding_id.clone(),
                                             span: child_node.span.clone(),
                                             ident_span: child_node.ident_span.clone(),
                                             children: Rc::new(vec![]),
@@ -1417,12 +1381,12 @@ pub fn resolve_node_bounded(
                                             has_non_tail_self_call: false,
                                             match_pattern: None,
                                             expr_data: Rc::new(ExprData::NoExprData),
-                                            ident: None,
-                                            binding_id: None,
                                         });
                                         Rc::new(NodeResolveResult {
                                             resolved: Rc::new(Node {
                                                 name: type_name.clone(),
+                                                ident: n.ident.clone(),
+                                                binding_id: n.binding_id.clone(),
                                                 span: n.span.clone(),
                                                 ident_span: n.ident_span.clone(),
                                                 children: Rc::new(vec![resolved_child]),
@@ -1439,8 +1403,6 @@ pub fn resolve_node_bounded(
                                                 has_non_tail_self_call: false,
                                                 match_pattern: None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
-                                                ident: None,
-                                                binding_id: None,
                                             }),
                                             diagnostics: el_diags,
                                         })
@@ -1641,8 +1603,8 @@ pub fn resolve_optional_node(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -1701,6 +1663,8 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
         let rendered_type = if ((authored_type.children.clone().len() as i64) > 0) {
             Rc::new(Node {
                 name: authored_type.name.clone(),
+                ident: authored_type.ident.clone(),
+                binding_id: authored_type.binding_id.clone(),
                 span: authored_type.span.clone(),
                 ident_span: authored_type.ident_span.clone(),
                 children: type_resolved.children.clone(),
@@ -1719,8 +1683,6 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
                 has_non_tail_self_call: authored_type.has_non_tail_self_call.clone(),
                 match_pattern: authored_type.match_pattern.clone(),
                 expr_data: authored_type.expr_data.clone(),
-                ident: None,
-                binding_id: None,
             })
         } else {
             type_resolved.clone()
@@ -3049,8 +3011,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                                 binding_id: None,
+                                ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
@@ -3237,6 +3199,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                         Rc::new(ItemResult {
                             item: Rc::new(Node {
                                 name: child.name.clone(),
+                                ident: child.ident.clone(),
+                                binding_id: child.binding_id.clone(),
                                 span: child.span.clone(),
                                 ident_span: child.ident_span.clone(),
                                 children: child.children.clone(),
@@ -3256,8 +3220,6 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
-                                binding_id: None,
                             }),
                             diagnostics: type_diags.clone(),
                         })
@@ -3292,6 +3254,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                         Rc::new(ItemResult {
                                             item: Rc::new(Node {
                                                 name: field.name.clone(),
+                                                ident: field.ident.clone(),
+                                                binding_id: field.binding_id.clone(),
                                                 span: field.span.clone(),
                                                 ident_span: field.ident_span.clone(),
                                                 children: field.children.clone(),
@@ -3313,8 +3277,6 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                                 has_non_tail_self_call: false,
                                                 match_pattern: None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
-                                                ident: None,
-                                                binding_id: None,
                                             }),
                                             diagnostics: type_diags.clone(),
                                         })
@@ -3339,6 +3301,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                             Rc::new(ItemResult {
                                 item: Rc::new(Node {
                                     name: variant.name.clone(),
+                                    ident: variant.ident.clone(),
+                                    binding_id: variant.binding_id.clone(),
                                     span: variant.span.clone(),
                                     ident_span: variant.ident_span.clone(),
                                     children: resolved_fields.clone(),
@@ -3355,8 +3319,6 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
-                                    binding_id: None,
                                 }),
                                 diagnostics: field_diags.clone(),
                             })
@@ -3395,6 +3357,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         Rc::new(ItemResult {
             item: Rc::new(Node {
                 name: item.name.clone(),
+                ident: item.ident.clone(),
+                binding_id: item.binding_id.clone(),
                 span: item.span.clone(),
                 ident_span: item.ident_span.clone(),
                 children: resolved_children,
@@ -3411,8 +3375,6 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
-                binding_id: None,
             }),
             diagnostics: v2_rt::concat(
                 v2_rt::concat(

@@ -151,7 +151,8 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
 
 pub fn lookup_carrier_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.binding_id.clone() {
-        Some(binding_id) => match v2_rt::map_get(&env.carrier_bindings.clone(), binding_id) {
+        Some(binding_id) => match v2_rt::map_get(&env.carrier_bindings.clone(), binding_id.clone())
+        {
             Some(binding) => Some(binding.resolved.clone()),
             None => None,
         },
@@ -161,12 +162,12 @@ pub fn lookup_carrier_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<No
 
 pub fn lookup_binding_id_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.binding_id.clone() {
-        Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id) {
+        Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
             Some(decl) => match lookup_type(env.clone(), decl.binding_key.clone()) {
-                Some(resolved) => Some(resolved),
-                None => lookup_carrier_type_for(env, node),
+                Some(resolved) => Some(resolved.clone()),
+                None => lookup_carrier_type_for(env.clone(), node.clone()),
             },
-            None => lookup_carrier_type_for(env, node),
+            None => lookup_carrier_type_for(env.clone(), node.clone()),
         },
         None => None,
     }
@@ -178,10 +179,10 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.binding_id.clone() {
-        Some(_) => lookup_binding_id_type_for(env, node),
+        Some(_) => lookup_binding_id_type_for(env.clone(), node.clone()),
         None => match node.ident.clone() {
             Some(id) => match lookup_type(env.clone(), id.clone()) {
-                Some(resolved) => Some(resolved),
+                Some(resolved) => Some(resolved.clone()),
                 None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
             },
             None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),

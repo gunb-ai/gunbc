@@ -400,26 +400,29 @@ pub fn parser_state_param(
     )
     .iter()
     .cloned()
-    .fold(None, |acc: _, pair: (i64, Rc<Node>)| {
-        if (acc.clone() != None) {
-            acc.clone()
-        } else {
-            {
-                let idx = pair.0.clone();
-                let param = pair.1.clone();
-                if (authored_name_at(si.clone(), param_node_type_expr(param.clone())).as_str()
-                    == "ParserState".to_string().as_str())
+    .fold(
+        None,
+        |acc: Option<Rc<ParserStateParam>>, pair: (i64, Rc<Node>)| {
+            if (acc.clone() != None) {
+                acc.clone()
+            } else {
                 {
-                    Some(Rc::new(ParserStateParam {
-                        name: param_node_name_at(param.clone(), si.clone()),
-                        index: idx.clone(),
-                    }))
-                } else {
-                    None
+                    let idx = pair.0.clone();
+                    let param = pair.1.clone();
+                    if (authored_name_at(si.clone(), param_node_type_expr(param.clone())).as_str()
+                        == "ParserState".to_string().as_str())
+                    {
+                        Some(Rc::new(ParserStateParam {
+                            name: param_node_name_at(param.clone(), si.clone()),
+                            index: idx.clone(),
+                        }))
+                    } else {
+                        None
+                    }
                 }
             }
-        }
-    })
+        },
+    )
 }
 
 pub fn parser_state_base_var(
@@ -491,7 +494,7 @@ pub fn parser_state_arg_expr(
     )
     .iter()
     .cloned()
-    .fold(None, |acc: _, pair: (i64, Rc<Node>)| {
+    .fold(None, |acc: Option<Rc<Node>>, pair: (i64, Rc<Node>)| {
         if (acc.clone() != None) {
             acc.clone()
         } else {
@@ -2927,18 +2930,20 @@ pub fn consuming_tokens_arg(
         .clone()
         .iter()
         .cloned()
-        .fold(None, |acc: _, child: Rc<Node>| match acc.clone() {
-            Some(_) => acc.clone(),
-            None => match arg_name_at(child.clone(), si.clone()) {
-                Some(name) => {
-                    if (name.clone().as_str() == "tokens".to_string().as_str()) {
-                        Some(arg_value(child.clone()))
-                    } else {
-                        None
+        .fold(None, |acc: Option<Rc<Node>>, child: Rc<Node>| {
+            match acc.clone() {
+                Some(_) => acc.clone(),
+                None => match arg_name_at(child.clone(), si.clone()) {
+                    Some(name) => {
+                        if (name.clone().as_str() == "tokens".to_string().as_str()) {
+                            Some(arg_value(child.clone()))
+                        } else {
+                            None
+                        }
                     }
-                }
-                None => None,
-            },
+                    None => None,
+                },
+            }
         })
 }
 
@@ -4904,11 +4909,9 @@ pub fn collect_evidence_incremental(
                         merge_optional_evidence(recv_ev, args_ev)
                     }
                 } else {
-                    body.children
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .fold(None, |acc: _, child: Rc<Node>| {
+                    body.children.clone().iter().cloned().fold(
+                        None,
+                        |acc: Option<DescentEvidence>, child: Rc<Node>| {
                             let ce = collect_evidence_incremental(
                                 child.clone(),
                                 func_name.clone(),
@@ -4920,15 +4923,13 @@ pub fn collect_evidence_incremental(
                                 si.clone(),
                             );
                             merge_optional_evidence(acc.clone(), ce.clone())
-                        })
+                        },
+                    )
                 }
             }
-            _ => body
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .fold(None, |acc: _, child: Rc<Node>| {
+            _ => body.children.clone().iter().cloned().fold(
+                None,
+                |acc: Option<DescentEvidence>, child: Rc<Node>| {
                     let ce = collect_evidence_incremental(
                         child.clone(),
                         func_name.clone(),
@@ -4940,7 +4941,8 @@ pub fn collect_evidence_incremental(
                         si.clone(),
                     );
                     merge_optional_evidence(acc.clone(), ce.clone())
-                }),
+                },
+            ),
         }
     })
 }
@@ -5142,10 +5144,9 @@ pub fn construct_branching_termination_proof(
     params: Rc<Vec<Rc<Node>>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<TerminationProof>> {
-    params
-        .iter()
-        .cloned()
-        .fold(None, |best: _, p: Rc<Node>| match best.clone() {
+    params.iter().cloned().fold(
+        None,
+        |best: Option<Rc<TerminationProof>>, p: Rc<Node>| match best.clone() {
             Some(_) => best.clone(),
             None => {
                 let pname = param_node_name_at(p.clone(), si.clone());
@@ -5227,7 +5228,8 @@ pub fn construct_branching_termination_proof(
                     }
                 }
             }
-        })
+        },
+    )
 }
 
 pub fn proof_to_call_pattern(proof: Rc<TerminationProof>) -> Rc<CallPattern> {
