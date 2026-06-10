@@ -179,13 +179,14 @@ pub struct ModuleContext {
     pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub variant_collisions: Rc<HashMap<String, Rc<ErrorNode>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantFoldState {
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
+    pub collisions: Rc<HashMap<String, Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -193,6 +194,7 @@ pub struct InferScope {
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub variant_collisions: Rc<HashMap<String, Rc<ErrorNode>>>,
     pub match_bound_names: Rc<HashMap<String, bool>>,
     pub module_name: String,
     pub service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
@@ -827,31 +829,51 @@ pub fn internal_expr_error_node(message: String, span: Rc<SourceSpan>) -> Rc<Nod
     make_expr_error_node(ExprErrorKind::InternalExprError, message, span)
 }
 
+pub fn variant_collision_result(
+    name: String,
+    span: Rc<SourceSpan>,
+    collision: Rc<ErrorNode>,
+) -> Rc<InferResult> {
+    Rc::new(InferResult {
+        typed: semantic_expr_error_node(
+            v2_rt::concat(
+                v2_rt::concat("ambiguous variant '".to_string(), name),
+                "'".to_string(),
+            ),
+            span,
+        ),
+        diagnostics: Rc::new(vec![collision]),
+    })
+}
+
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
-    match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
-        Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
-            Some(parent) => {
-                let is_coproduct = (parent.connective.clone() == Connective::Disj);
-                if is_coproduct {
-                    if has_child_named(
-                        parent.clone(),
-                        name.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) {
-                        Some(authored_name_at(
+    match v2_rt::map_get(&scope.variant_collisions.clone(), name.clone()) {
+        Some(_) => None,
+        None => match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
+            Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
+                Some(parent) => {
+                    let is_coproduct = (parent.connective.clone() == Connective::Disj);
+                    if is_coproduct {
+                        if has_child_named(
+                            parent.clone(),
+                            name.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                            binding.resolved.clone(),
-                        ))
+                        ) {
+                            Some(authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                binding.resolved.clone(),
+                            ))
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
-                } else {
-                    None
                 }
-            }
+                None => None,
+            },
             None => None,
         },
-        None => None,
     }
 }
 
@@ -935,57 +957,60 @@ pub fn record_lit_expected_fields(
     expected: Option<Rc<Node>>,
 ) -> Rc<Vec<Rc<Node>>> {
     match type_name {
-        Some(tn) => match lookup_type_by_name(scope.type_env.clone(), tn.clone()) {
-            Some(direct) => direct.children.clone(),
-            None => match lookup_variant_parent_enum(scope.clone(), tn.clone()) {
-                Some(parent_name) => {
-                    match lookup_type_by_name(scope.type_env.clone(), parent_name.clone()) {
-                        Some(parent) => match Rc::new({
-                            let mut __result = Vec::new();
-                            for v in parent.children.clone().iter().cloned() {
-                                if (authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    v.clone(),
-                                )
-                                .as_str()
-                                    == tn.clone().as_str())
-                                {
-                                    __result.push(v);
+        Some(tn) => match v2_rt::map_get(&scope.variant_collisions.clone(), tn.clone()) {
+            Some(_) => Rc::new(vec![]),
+            None => match lookup_type_by_name(scope.type_env.clone(), tn.clone()) {
+                Some(direct) => direct.children.clone(),
+                None => match lookup_variant_parent_enum(scope.clone(), tn.clone()) {
+                    Some(parent_name) => {
+                        match lookup_type_by_name(scope.type_env.clone(), parent_name.clone()) {
+                            Some(parent) => match Rc::new({
+                                let mut __result = Vec::new();
+                                for v in parent.children.clone().iter().cloned() {
+                                    if (authored_name_at(
+                                        scope.type_env.clone().source_indices.clone(),
+                                        v.clone(),
+                                    )
+                                    .as_str()
+                                        == tn.clone().as_str())
+                                    {
+                                        __result.push(v);
+                                    }
                                 }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned()
-                        {
-                            Some(variant) => variant.children.clone(),
+                                __result
+                            })
+                            .first()
+                            .cloned()
+                            {
+                                Some(variant) => variant.children.clone(),
+                                None => Rc::new(vec![]),
+                            },
                             None => Rc::new(vec![]),
-                        },
-                        None => Rc::new(vec![]),
+                        }
                     }
-                }
-                None => match lookup_coproduct_parent_binding_by_variant(
-                    scope.type_env.clone(),
-                    tn.clone(),
-                ) {
-                    Some(parent_binding) => match expected_coproduct_variant(
-                        parent_binding.resolved.clone(),
+                    None => match lookup_coproduct_parent_binding_by_variant(
+                        scope.type_env.clone(),
                         tn.clone(),
-                        scope.type_env.clone().source_indices.clone(),
                     ) {
-                        Some(variant) => variant.children.clone(),
-                        None => Rc::new(vec![]),
-                    },
-                    None => match expected {
-                        Some(expected_node) => match expected_coproduct_variant(
-                            expected_node.clone(),
+                        Some(parent_binding) => match expected_coproduct_variant(
+                            parent_binding.resolved.clone(),
                             tn.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         ) {
                             Some(variant) => variant.children.clone(),
                             None => Rc::new(vec![]),
                         },
-                        None => Rc::new(vec![]),
+                        None => match expected {
+                            Some(expected_node) => match expected_coproduct_variant(
+                                expected_node.clone(),
+                                tn.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ) {
+                                Some(variant) => variant.children.clone(),
+                                None => Rc::new(vec![]),
+                            },
+                            None => Rc::new(vec![]),
+                        },
                     },
                 },
             },
@@ -2102,6 +2127,7 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
             type_env: scope.type_env.clone(),
             func_env: scope.func_env.clone(),
             locals: new_locals,
+            variant_collisions: scope.variant_collisions.clone(),
             match_bound_names: scope.match_bound_names.clone(),
             module_name: scope.module_name.clone(),
             service_registry: scope.service_registry.clone(),
@@ -2129,6 +2155,7 @@ pub fn extend_scope(
                 provenance: provenance,
             }),
         ),
+        variant_collisions: scope.variant_collisions.clone(),
         match_bound_names: scope.match_bound_names.clone(),
         module_name: scope.module_name.clone(),
         service_registry: scope.service_registry.clone(),
@@ -2155,6 +2182,7 @@ pub fn extend_scope_match_bound(
                 provenance: provenance,
             }),
         ),
+        variant_collisions: scope.variant_collisions.clone(),
         match_bound_names: v2_rt::rc_map_insert(
             scope.match_bound_names.clone(),
             name.clone(),
@@ -2187,6 +2215,7 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
             type_env: scope.type_env.clone(),
             func_env: scope.func_env.clone(),
             locals: new_locals,
+            variant_collisions: scope.variant_collisions.clone(),
             match_bound_names: scope.match_bound_names.clone(),
             module_name: scope.module_name.clone(),
             service_registry: scope.service_registry.clone(),
@@ -2611,6 +2640,7 @@ pub fn infer_method_args_with_fold(
                                     type_env: scope.type_env.clone(),
                                     func_env: scope.func_env.clone(),
                                     locals: scope.locals.clone(),
+                                    variant_collisions: scope.variant_collisions.clone(),
                                     match_bound_names: scope.match_bound_names.clone(),
                                     module_name: scope.module_name.clone(),
                                     service_registry: scope.service_registry.clone(),
@@ -2653,6 +2683,7 @@ pub fn infer_method_args_with_fold(
                                         type_env: scope.type_env.clone(),
                                         func_env: scope.func_env.clone(),
                                         locals: scope.locals.clone(),
+                                        variant_collisions: scope.variant_collisions.clone(),
                                         match_bound_names: scope.match_bound_names.clone(),
                                         module_name: scope.module_name.clone(),
                                         service_registry: scope.service_registry.clone(),
@@ -2753,7 +2784,9 @@ pub fn infer_expr(
                 let name =
                     expr_var_name_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
                 let span = texpr.span.clone();
-                match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
+                match v2_rt::map_get(&scope.variant_collisions.clone(), name.clone()) {
+                    Some(collision) => variant_collision_result(name.clone(), span.clone(), collision),
+                    None => match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
                     Some(binding) => {
                         let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
                         let local_typed = make_named_expr_node(
@@ -2896,6 +2929,7 @@ pub fn infer_expr(
                                 }
                             },
                         }
+                    }
                     }
                 }
             }
@@ -3769,15 +3803,17 @@ match bare_s {
 })), span.clone(), node_name_span(texpr.clone())),
     diagnostics: arg_diags,
 })
-                                                }
-                                            } else {
-                                                match infer_variant_constructor_call(
-                                                    func_name.clone(),
-                                                    call_args.clone(),
-                                                    span.clone(),
-                                                    node_name_span(texpr.clone()),
-                                                    scope.clone(),
-                                                ) {
+	                                                }
+	                                            } else {
+	                                                match v2_rt::map_get(&scope.variant_collisions.clone(), func_name.clone()) {
+	                                                    Some(collision) => variant_collision_result(func_name.clone(), span.clone(), collision),
+	                                                    None => match infer_variant_constructor_call(
+	                                                    func_name.clone(),
+	                                                    call_args.clone(),
+	                                                    span.clone(),
+	                                                    node_name_span(texpr.clone()),
+	                                                    scope.clone(),
+	                                                ) {
                                                     Some(ctor_result) => ctor_result.clone(),
                                                     None => {
                                                         let type_match = lookup_type_by_name(
@@ -3813,9 +3849,10 @@ match bare_s {
 })), span.clone(), node_name_span(texpr.clone())),
     diagnostics: v2_rt::concat(arg_diags, call_diags),
 })
-                                                    }
-                                                }
-                                            }
+	                                                    }
+	                                                }
+	                                                }
+	                                            }
                                         }
                                     }
                                 }
@@ -4855,6 +4892,7 @@ match bare_s {
                     type_env: lam_scope.type_env.clone(),
                     func_env: lam_scope.func_env.clone(),
                     locals: lam_scope.locals.clone(),
+                    variant_collisions: lam_scope.variant_collisions.clone(),
                     match_bound_names: lam_scope.match_bound_names.clone(),
                     module_name: lam_scope.module_name.clone(),
                     service_registry: lam_scope.service_registry.clone(),
@@ -5502,7 +5540,30 @@ pub fn infer_record_lit(
             }
             __result
         });
-        if (type_name.clone() == None) {
+        if ((type_name.clone() != None)
+            && (v2_rt::map_get(
+                &scope.variant_collisions.clone(),
+                type_name.clone().unwrap(),
+            ) != None))
+        {
+            let collision = v2_rt::map_get(
+                &scope.variant_collisions.clone(),
+                type_name.clone().unwrap(),
+            )
+            .unwrap();
+            let texpr = make_named_expr_node(
+                type_name.clone().unwrap(),
+                Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+                typed_fields,
+                Some(Rc::new(InferredNode::Resolved { node: error_type() })),
+                span.clone(),
+                name_span,
+            );
+            Rc::new(InferResult {
+                typed: texpr,
+                diagnostics: v2_rt::concat(fi_diags, Rc::new(vec![collision])),
+            })
+        } else if (type_name.clone() == None) {
             {
                 let child_nodes = Rc::new({
                     let mut __result = Vec::new();
@@ -13267,7 +13328,7 @@ pub fn build_module_context(
         );
         let variant_fold = Rc::new(v2_rt::map_values(&env.bindings.clone())).iter().cloned().fold(Rc::new(VariantFoldState {
     locals: v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-    collision_errors: Rc::new(vec![]),
+    collisions: v2_rt::rc_empty_map::<String, Rc<ErrorNode>>(),
 }), |acc: Rc<VariantFoldState>, binding: Rc<TypeBinding>| {
             let is_coproduct = (binding.resolved.clone().connective.clone() == Connective::Disj);
 if is_coproduct.clone() {
@@ -13283,9 +13344,9 @@ match v2_rt::map_get(&vacc.locals.clone(), child_name.clone()) {
                             let prev_variant_parent_imported = (v2_rt::map_get(&imported_variant_parent_names, authored_name_at(env.source_indices.clone(), prev.resolved.clone())) != None);
                             let prev_is_imported = ((v2_rt::map_get(&imported_enum_names, authored_name_at(env.source_indices.clone(), prev.resolved.clone())) != None) || prev_variant_parent_imported.clone());
 if (curr_child_imported.clone() && curr_variant_parent_imported.clone() && prev_variant_parent_imported.clone() && curr_is_imported.clone() && prev_is_imported.clone()) {
-                                Rc::new(VariantFoldState {
+	                                Rc::new(VariantFoldState {
     locals: vacc.locals.clone(),
-    collision_errors: v2_rt::rc_list_push(vacc.collision_errors.clone(), make_error_node(Rc::new(CompilerDiagnostic::VariantCollision {
+    collisions: v2_rt::rc_map_insert(vacc.collisions.clone(), child_name.clone(), make_error_node(Rc::new(CompilerDiagnostic::VariantCollision {
     variant: child_name.clone(),
     enum1: authored_name_at(env.source_indices.clone(), prev.resolved.clone()),
     enum2: authored_name_at(env.source_indices.clone(), binding.resolved.clone()),
@@ -13300,7 +13361,7 @@ if (curr_child_imported.clone() && curr_variant_parent_imported.clone() && prev_
     resolved: binding.resolved.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })),
-    collision_errors: vacc.collision_errors.clone(),
+	    collisions: vacc.collisions.clone(),
 })
                                 } else {
                                     vacc.clone()
@@ -13313,7 +13374,7 @@ if (curr_child_imported.clone() && curr_variant_parent_imported.clone() && prev_
     resolved: binding.resolved.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })),
-    collision_errors: vacc.collision_errors.clone(),
+	    collisions: vacc.collisions.clone(),
 }),
 }
 })
@@ -13323,7 +13384,7 @@ if (curr_child_imported.clone() && curr_variant_parent_imported.clone() && prev_
             }
 });
         let imported_variant_locals = variant_fold.locals.clone();
-        let variant_collision_errors = variant_fold.collision_errors.clone();
+        let variant_collisions = variant_fold.collisions.clone();
         let env_variant_locals = variant_locals_from_items(
             local.resolved_items.clone(),
             imported_variant_locals,
@@ -13360,18 +13421,16 @@ if (curr_child_imported.clone() && curr_variant_parent_imported.clone() && prev_
             svc_registry: merged_scope.svc_registry.clone(),
             locals: all_locals,
             item_registry: local.item_registry.clone(),
+            variant_collisions: variant_collisions,
             diagnostics: v2_rt::concat(
-                v2_rt::concat(
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for c in local.diag_chunks.clone().iter().cloned() {
-                            __result.extend((*c.clone()).iter().cloned());
-                        }
-                        __result
-                    }),
-                    resolve_result.diagnostics.clone(),
-                ),
-                variant_collision_errors,
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in local.diag_chunks.clone().iter().cloned() {
+                        __result.extend((*c.clone()).iter().cloned());
+                    }
+                    __result
+                }),
+                resolve_result.diagnostics.clone(),
             ),
         })
     }
@@ -13472,6 +13531,7 @@ pub fn typecheck_module(
             type_env: env.clone(),
             func_env: ctx.func_env.clone(),
             locals: data_locals.clone(),
+            variant_collisions: ctx.variant_collisions.clone(),
             match_bound_names: v2_rt::rc_empty_map::<String, bool>(),
             module_name: resolved_module_name.clone(),
             service_registry: ctx.svc_registry.clone(),

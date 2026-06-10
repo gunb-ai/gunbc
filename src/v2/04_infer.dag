@@ -517,24 +517,35 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
   make_expr_error_node(kind: InternalExprError, message: message, span: span)
 }
 
+fn variant_collision_result(name: String, span: SourceSpan, collision: ErrorNode) -> InferResult {
+  InferResult {
+    typed: semantic_expr_error_node(message: concat("ambiguous variant '", name, "'"), span: span),
+    diagnostics: [collision]
+  }
+}
+
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
   // BRIDGE DEBT (M4): uses has_child_named to verify variant membership.
   // scope.locals contains ALL locals (params, let bindings, match bindings),
   // not just variant bindings — the Disj check alone is insufficient.
   // Deletion point: when variant bindings carry a structural parent edge.
-  match map_get(scope.locals, name) {
-    Some { value: binding } =>
-      match lookup_type_for(env: scope.type_env, node: binding.resolved) {
-        Some { value: parent } =>
-          let is_coproduct = parent.connective == Disj
-          if is_coproduct {
-            if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
-              Some { value: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved) }
-            } else { none }
-          } else { none }
+  match map_get(scope.variant_collisions, name) {
+    Some { value: _ } => none
+    None =>
+      match map_get(scope.locals, name) {
+        Some { value: binding } =>
+          match lookup_type_for(env: scope.type_env, node: binding.resolved) {
+            Some { value: parent } =>
+              let is_coproduct = parent.connective == Disj
+              if is_coproduct {
+                if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
+                  Some { value: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved) }
+                } else { none }
+              } else { none }
+            None => none
+          }
         None => none
       }
-    None => none
   }
 }
 
@@ -579,34 +590,38 @@ fn expected_coproduct_variant(parent: Node, variant_name: String, source_indices
 fn record_lit_expected_fields(type_name: String?, scope: InferScope, expected: Node?) -> List<Node> {
   match type_name {
     Some { value: tn } =>
-      match lookup_type_by_name(env: scope.type_env, name: tn) {
-        Some { value: direct } => direct.children
+      match map_get(scope.variant_collisions, tn) {
+        Some { value: _ } => []
         None =>
-          match lookup_variant_parent_enum(scope: scope, name: tn) {
-            Some { value: parent_name } =>
-              match lookup_type_by_name(env: scope.type_env, name: parent_name) {
-                Some { value: parent } =>
-                  match parent.children |> filter(v => authored_name_at(source_indices: scope.type_env.source_indices, node: v) == tn) |> first {
-                    Some { value: variant } => variant.children
-                    None => []
-                  }
-                None => []
-              }
+          match lookup_type_by_name(env: scope.type_env, name: tn) {
+            Some { value: direct } => direct.children
             None =>
-              match lookup_coproduct_parent_binding_by_variant(env: scope.type_env, variant_name: tn) {
-                Some { value: parent_binding } =>
-                  match expected_coproduct_variant(parent: parent_binding.resolved, variant_name: tn, source_indices: scope.type_env.source_indices) {
-                    Some { value: variant } => variant.children
-                    None => []
-                  }
-                None =>
-                  match expected {
-                    Some { value: expected_node } =>
-                      match expected_coproduct_variant(parent: expected_node, variant_name: tn, source_indices: scope.type_env.source_indices) {
+              match lookup_variant_parent_enum(scope: scope, name: tn) {
+                Some { value: parent_name } =>
+                  match lookup_type_by_name(env: scope.type_env, name: parent_name) {
+                    Some { value: parent } =>
+                      match parent.children |> filter(v => authored_name_at(source_indices: scope.type_env.source_indices, node: v) == tn) |> first {
                         Some { value: variant } => variant.children
                         None => []
                       }
                     None => []
+                  }
+                None =>
+                  match lookup_coproduct_parent_binding_by_variant(env: scope.type_env, variant_name: tn) {
+                    Some { value: parent_binding } =>
+                      match expected_coproduct_variant(parent: parent_binding.resolved, variant_name: tn, source_indices: scope.type_env.source_indices) {
+                        Some { value: variant } => variant.children
+                        None => []
+                      }
+                    None =>
+                      match expected {
+                        Some { value: expected_node } =>
+                          match expected_coproduct_variant(parent: expected_node, variant_name: tn, source_indices: scope.type_env.source_indices) {
+                            Some { value: variant } => variant.children
+                            None => []
+                          }
+                        None => []
+                      }
                   }
               }
           }
@@ -1462,12 +1477,15 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         diagnostics: []
       }
 
-    ExprVar { binding_kind: _ } =>
-      let name = expr_var_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
-      let span = texpr.span
-      match map_get(scope.locals, name) {
-        Some { value: binding } =>
-          let binding_kind = infer_var_binding_kind(scope: scope, name: name)
+	    ExprVar { binding_kind: _ } =>
+	      let name = expr_var_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
+	      let span = texpr.span
+	      match map_get(scope.variant_collisions, name) {
+	        Some { value: collision } => variant_collision_result(name: name, span: span, collision: collision)
+	        None =>
+	      match map_get(scope.locals, name) {
+	        Some { value: binding } =>
+	          let binding_kind = infer_var_binding_kind(scope: scope, name: name)
           let local_typed = make_named_expr_node(
             name: name,
             expr_data: ExprVar { binding_kind: Some { value: binding_kind } },
@@ -1552,13 +1570,14 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                       message: concat("undefined variable '", name, "'"),
                       span: span,
                       module_name: scope.module_name
-                    )]
-                  }
-              }
-          }
-      }
+	                    )]
+	                  }
+	              }
+	          }
+	      }
+	      }
 
-    ExprFieldAccess { summary: _ } =>
+	    ExprFieldAccess { summary: _ } =>
       let field_name = field_access_field_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let base_expr = field_access_base(texpr: texpr)
@@ -1981,8 +2000,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             ),
             diagnostics: concat(arg_diags, tier2b.kernel_diags)
           }
-        } else {
-          let callable_local = match map_get(scope.locals, func_name) {
+	        } else {
+	          let callable_local = match map_get(scope.locals, func_name) {
             Some { value: binding } =>
               if binding.resolved.params |> count > 0 { Some { value: binding.resolved } }
               else { none }
@@ -2003,11 +2022,14 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 name_span: node_name_span(n: texpr)
               ),
               diagnostics: arg_diags
-            }
-          } else {
-          match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
-            Some { value: ctor_result } => ctor_result
-            None =>
+	            }
+	          } else {
+	          match map_get(scope.variant_collisions, func_name) {
+	            Some { value: collision } => variant_collision_result(name: func_name, span: span, collision: collision)
+	            None =>
+	          match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
+	            Some { value: ctor_result } => ctor_result
+	            None =>
               let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
               let resolved_type = match type_match {
                 Some { value: tn } => tn
@@ -2030,11 +2052,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                   name_span: node_name_span(n: texpr)
                 ),
                 diagnostics: concat(arg_diags, call_diags)
-              }
-          }
-        }
-        }
-      }
+	              }
+	          }
+	          }
+	        }
+	        }
+	      }
 
     ExprMethodCall { method_semantics: _ } =>
       let method_name = expr_method_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
@@ -2849,8 +2872,22 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
   let fi_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
-  if type_name == none {
-    let child_nodes = fi_infer_results |> map(fir =>
+	  if type_name != none && map_get(scope.variant_collisions, type_name.value) != none {
+	    let collision = map_get(scope.variant_collisions, type_name.value).value
+	    let texpr = make_named_expr_node(
+	      name: type_name.value,
+	      expr_data: ExprRecordLit { parent_enum: none },
+	      children: typed_fields,
+	      inferred: Some { value: Resolved { node: error_type } },
+	      span: span,
+	      name_span: name_span
+	    )
+	    InferResult {
+	      typed: texpr,
+	      diagnostics: concat(fi_diags, [collision])
+	    }
+	  } else if type_name == none {
+	    let child_nodes = fi_infer_results |> map(fir =>
       Node {
         name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices), span: fir.typed_field.span, ident_span: fir.typed_field.ident_span,
         children: [], connective: NoConnective,
@@ -6088,8 +6125,8 @@ fn build_module_context(contributions: List<ItemContribution>,
         )
       None => acc
     }
-  )
-	  let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, binding) =>
+	  )
+		  let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), collisions: empty_map() }, f: (acc, binding) =>
 	    let is_coproduct = binding.resolved.connective == Disj
 	    if is_coproduct {
 	      let curr_parent_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: binding.resolved)) != none
@@ -6102,28 +6139,28 @@ fn build_module_context(contributions: List<ItemContribution>,
 	          Some { value: prev } =>
 	            let prev_variant_parent_imported = map_get(imported_variant_parent_names, authored_name_at(source_indices: env.source_indices, node: prev.resolved)) != none
 	            let prev_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: prev.resolved)) != none || prev_variant_parent_imported
-            if curr_child_imported && curr_variant_parent_imported && prev_variant_parent_imported && curr_is_imported && prev_is_imported {
-	              VariantFoldState {
-	                locals: vacc.locals,
-	                collision_errors: list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: authored_name_at(source_indices: env.source_indices, node: prev.resolved), enum2: authored_name_at(source_indices: env.source_indices, node: binding.resolved), span: no_span() }, module_name: module_name))
-	              }
-	            } else if curr_is_imported {
-	              VariantFoldState {
-	                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
-	                collision_errors: vacc.collision_errors
-	              }
-	            } else { vacc }
-	          None =>
-	            VariantFoldState {
-	              locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
-	              collision_errors: vacc.collision_errors
-	            }
+		            if curr_child_imported && curr_variant_parent_imported && prev_variant_parent_imported && curr_is_imported && prev_is_imported {
+		              VariantFoldState {
+		                locals: vacc.locals,
+		                collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: authored_name_at(source_indices: env.source_indices, node: prev.resolved), enum2: authored_name_at(source_indices: env.source_indices, node: binding.resolved), span: no_span() }, module_name: module_name))
+		              }
+		            } else if curr_is_imported {
+		              VariantFoldState {
+		                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
+		                collisions: vacc.collisions
+		              }
+		            } else { vacc }
+		          None =>
+		            VariantFoldState {
+		              locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
+		              collisions: vacc.collisions
+		            }
 	        }
       )
     } else { acc }
-  )
-  let imported_variant_locals = variant_fold.locals
-  let variant_collision_errors = variant_fold.collision_errors
+	  )
+	  let imported_variant_locals = variant_fold.locals
+	  let variant_collisions = variant_fold.collisions
   let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals, source_indices: env.source_indices)
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
@@ -6146,12 +6183,13 @@ fn build_module_context(contributions: List<ItemContribution>,
   ModuleContext {
     resolved_items: local.resolved_items,
     func_env: resolve_result.func_env,
-    svc_registry: merged_scope.svc_registry,
-    locals: all_locals,
-    item_registry: local.item_registry,
-    diagnostics: concat(concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics), variant_collision_errors)
-  }
-}
+	    svc_registry: merged_scope.svc_registry,
+	    locals: all_locals,
+	    item_registry: local.item_registry,
+	    variant_collisions: variant_collisions,
+	    diagnostics: concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics)
+	  }
+	}
 
 // =========================================================================
 // Typecheck a single module
