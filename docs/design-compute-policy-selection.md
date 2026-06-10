@@ -21,7 +21,7 @@ policy code: the selection is **derived from declared facts** (no per-provider b
 | Concept | Where | Use here |
 |---|---|---|
 | `find_witness` fold: closed `CandidateSet`, preservation predicate, fail-closed 0/≥2 | `src/v4/std/find_witness.dag` | the selection engine, reused as-is |
-| **`MultiplicityPolicy = UniqueOnly \| TargetSelection { policy }`** and **`TargetSelectionPolicy = TargetDeclaredPriority { priority: Node } \| UserSelected { selection }`** | `find_witness.dag:62-67` | **the policy seam, already declared** — C extends `TargetDeclaredPriority` semantics from "select this declared candidate" to "select the max under this declared ordering" (§4.2) |
+| **`MultiplicityPolicy = UniqueOnly \| TargetSelection { policy }`** and **`TargetSelectionPolicy = TargetDeclaredPriority { priority: Node } \| UserSelected { selection }`** | `find_witness.dag:62-67` | **the selection seam, reused with its existing semantics unchanged** — both arms mean "this exact candidate" (`find_witness_realized` routes either into `resolve_selected_candidate` as `selection:`). C does **not** overload `priority` with an ordering meaning (review r3384872268 — one carrier with two type-indistinguishable meanings violates P2); the ordering lives entirely in the domain wrapper (§4.2), which hands `find_witness` the already-computed argmax as the selected candidate |
 | Domain-wrapper precedent: `constraints.dag` = "canonical source grounding via find_witness + UniqueOnly (T-9 solve_constraints wrapper)" | `src/v4/std/constraints.dag` | the pattern to copy: a thin domain module wrapping the shared fold — `compute_select` is the compute twin of `solve_constraints` |
 | Interval containment | `v4.std.integer` interval specs; `design-value-set-lattice.md` | capacity-satisfies-ask is interval containment — the same relation shape as refinement widening, on resource dimensions |
 | Effect partition | `src/v4/std/effects.dag` | obligation discharge (preemptible ⇒ re-runnable) is a structural check on workload effect facts |
@@ -54,21 +54,25 @@ compute_select(request, providers: CandidateSet, policy) -> Outcome<SelectionRes
    expected latency, locality distance) plus a direction. Composite policies are
    lexicographic lists of such orderings (the same lexicographic discipline as termination
    proofs — order by first objective, tie-break by next).
-3. **Selection** = fold over the closed candidate list keeping the policy-max among
-   satisfiers — `find_witness`'s unique-candidate fold with the passing-uniqueness condition
-   replaced by **argmax-uniqueness under the declared order**: exactly one maximum ⇒
-   `SelectionResult` with witness; zero satisfiers ⇒ refuse; **two-way tie ⇒ refuse as
+3. **Selection** = the wrapper folds over the closed candidate list keeping the policy-max
+   among satisfiers — **argmax-uniqueness under the declared order**: exactly one maximum ⇒
+   hand that candidate to `find_witness` as the selection (§4.2) and return the
+   `SelectionResult` with its witness; zero satisfiers ⇒ refuse; **two-way tie ⇒ refuse as
    ambiguous** (P4 determinism — a tie is a policy underspecification surfaced to the
    author, never coin-flipped; the fix is one more lexicographic level, declared).
 
 ### 4.2 Where it plugs in (and what it deliberately does not change)
 
-`TargetSelectionPolicy.TargetDeclaredPriority { priority: Node }` already carries "a
-declared Node that resolves selection among multiple passing candidates." C's extension:
-the `priority` Node may be an **ordering declaration** (objective projection + direction +
-lexicographic tail) interpreted by the domain wrapper — `resolve_selected_candidate`'s
-"exactly this one" semantics remain for `UserSelected`, and `UniqueOnly` remains the
-coercion default. The shared fold's closedness invariant carries unchanged: **providers are
+`compute_select` owns the ordering end-to-end as its **own typed carrier**
+(`ComputePolicy`: objective projection + direction + lexicographic tail — a compute-domain
+type, not a `find_witness` type). The flow: filter satisfiers → fold for lexicographic
+argmax (ties refuse) → invoke `find_witness` with `TargetSelection { UserSelected {
+selection: argmax } }`, which re-validates the predicate on the chosen candidate and mints
+the witness + closedness result through the shared discipline. **`find_witness` and its
+`TargetSelectionPolicy` carriers are untouched and keep their existing exact-candidate
+semantics** — no second meaning is smuggled into `TargetDeclaredPriority.priority`
+(review r3384872268), no new variant, no fold variant. The shared fold's closedness
+invariant carries unchanged: **providers are
 never generated, only declared** — the moment anything synthesizes a candidate (spin up a
 new VM shape to fit), it has left the decidable fragment; that capability, if ever wanted,
 is a different relation with its own design.

@@ -39,7 +39,13 @@ refusal downstream — never a silent fallback (C-8).
   memory, gpu count/class, storage. An exact need is a degenerate interval; "as much as
   available up to N" is an honest range.
 - **duration** — expected runtime bound + (optional) deadline, as datetime/duration facts.
-  An unbounded ask is representable but is itself a fact a policy may refuse on.
+  **The wait-bound is structurally required at the dispatch boundary** (review
+  r3384872272): an ask without a finite duration/timeout fact is representable for
+  *analysis and selection*, but the dispatch effect-request constructor **requires the
+  bound fact** (the same constructor-requires-the-fact pattern as effect signatures,
+  `design-v4-runtime-architecture.md` §4.3/§5.4) — so unbounded work cannot reach a
+  waiting handler regardless of how permissive a policy is. P4's bounded-waiting guarantee
+  is enforced by construction at the boundary that waits, not by policy goodwill.
 - **capabilities** — the *required* capability set (e.g. `Gpu(class)`, `Docker`,
   `Checkpointable` as a property the *workload offers*, network egress). Closed coproduct
   vocabulary in wave 1 (Step 3: substrate-declared — satisfaction must be decidable per
