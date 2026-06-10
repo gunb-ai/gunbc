@@ -7,6 +7,8 @@
 use std::rc::Rc;
 
 use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
+use v2_compiler::v2_compiler_emit_rust::emit_variant_pattern;
+use v2_compiler::v2_compiler_infer_emit_info::empty_emit_graph_info;
 use v2_compiler::v2_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
@@ -58,6 +60,46 @@ fn match_pattern_does_not_bridge_witness_to_some_none() {
     assert!(
         !match_pattern_body.contains(r#"variant_name == "Violates" && (name == "None""#),
         "Witness Violates must not be accepted as legacy None."
+    );
+}
+
+/// Discriminates the Rust emitter's Optional-only lowering boundary.
+#[test]
+fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
+    let info = empty_emit_graph_info();
+    let empty_bindings = Rc::new(vec![]);
+    let empty_path = Rc::new(vec![]);
+    let empty_shared = Rc::new(std::collections::BTreeSet::new());
+    let empty_indices = Rc::new(std::collections::HashMap::new());
+
+    let non_optional = emit_variant_pattern(
+        "Absent".to_string(),
+        Some("NonOptional".to_string()),
+        empty_bindings.clone(),
+        empty_path.clone(),
+        empty_shared.clone(),
+        "".to_string(),
+        empty_indices.clone(),
+        info.clone(),
+    );
+    assert_eq!(
+        non_optional, "NonOptional::Absent",
+        "non-Optional Absent must stay on its declared enum surface"
+    );
+
+    let optional = emit_variant_pattern(
+        "Absent".to_string(),
+        Some("Optional".to_string()),
+        empty_bindings,
+        empty_path,
+        empty_shared,
+        "".to_string(),
+        empty_indices,
+        info,
+    );
+    assert_eq!(
+        optional, "None",
+        "Optional Absent must lower to Rust Option::None"
     );
 }
 
