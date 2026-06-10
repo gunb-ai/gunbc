@@ -272,16 +272,11 @@ type TargetBundleChildLookup
   | BundleChildFound { value: Node }
   | BundleChildDuplicate
   | BundleChildInvalidEdge
-type BodiedArrowGrammarRowLookup
-  = BodiedArrowGrammarRowLookupMissing
-  | BodiedArrowGrammarRowLookupFound { row: Node }
-  | BodiedArrowGrammarRowLookupAmbiguous
 data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
 data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
 data translate_sg_rc_bundle_partial: Symbol = translate_sg_rc_bundle_partial
 data translate_grammar_inverse_not_realized: Symbol = translate_grammar_inverse_not_realized
 data translate_grammar_relation_row_not_found: Symbol = translate_grammar_relation_row_not_found
-data translate_grammar_relation_bodied_scaffold_row_ambiguous: Symbol = translate_grammar_relation_bodied_scaffold_row_ambiguous
 data translate_conj_invalid_edge: Symbol = translate_conj_invalid_edge
 data translate_conj_named_child_missing: Symbol = translate_conj_named_child_missing
 data translate_lex_rule_literal_not_found: Symbol = translate_lex_rule_literal_not_found
@@ -498,15 +493,6 @@ fn translate_grammar_relation_row_not_found_diagnostic(emitted: Node) -> Diagnos
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_grammar_relation_bodied_scaffold_row_ambiguous_diagnostic(
-  rules: Node
-) -> Diagnostic {
-  Diagnostic {
-    reason: translate_grammar_relation_bodied_scaffold_row_ambiguous,
-    at: node_locus(node: rules),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
 fn translate_conj_invalid_edge_diagnostic(parent: Node) -> Diagnostic {
   Diagnostic {
     reason: translate_conj_invalid_edge,
@@ -584,100 +570,6 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
       }
     _ =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
-  }
-}
-fn arrow_positional_signatures_equal(left: Node, right: Node) -> Bool {
-  match left.kind {
-    TypeNode { connective: Arrow } =>
-      match right.kind {
-        TypeNode { connective: Arrow } =>
-          zip_eq(
-            a: node_positional_child_targets(node: left),
-            b: node_positional_child_targets(node: right),
-            eq: fn(l, r) { l == r }
-          )
-        _ => false
-      }
-    _ => false
-  }
-}
-fn bodied_grammar_relation_row_matches_emitted_signature(
-  row: Node,
-  emitted: Node
-) -> Bool {
-  match grammar_relation_row_emitted(row: row) {
-    Accepted { value: row_emitted, diagnostics: _ } =>
-      arrow_has_transform_body(arrow: row_emitted)
-      && arrow_has_transform_body(arrow: emitted)
-      && arrow_positional_signatures_equal(left: emitted, right: row_emitted)
-    Rejected { diagnostics: _ } => false
-  }
-}
-fn grammar_relation_row_for_bodied_arrow_signature_match(
-  rules: Node,
-  emitted: Node
-) -> Outcome<Node> {
-  if arrow_has_transform_body(arrow: emitted) {
-    match rules.kind {
-      TypeNode { connective: Conj } =>
-        match fold(
-          rules.children,
-          init: BodiedArrowGrammarRowLookupMissing,
-          f: fn(acc, e) {
-            match acc {
-              BodiedArrowGrammarRowLookupAmbiguous => acc
-              BodiedArrowGrammarRowLookupMissing =>
-                match e.label {
-                  Named { name: _ } =>
-                    match bodied_arrow_scaffold_from_grammar_relation_row(row: e.target) {
-                      Accepted { value: _, diagnostics: _ } =>
-                        if bodied_grammar_relation_row_matches_emitted_signature(
-                          row: e.target,
-                          emitted: emitted
-                        ) {
-                          BodiedArrowGrammarRowLookupFound { row: e.target }
-                        } else {
-                          acc
-                        }
-                      Rejected { diagnostics: _ } => acc
-                    }
-                  Positional => acc
-                }
-              BodiedArrowGrammarRowLookupFound { row: _ } =>
-                match e.label {
-                  Named { name: _ } =>
-                    match bodied_arrow_scaffold_from_grammar_relation_row(row: e.target) {
-                      Accepted { value: _, diagnostics: _ } =>
-                        if bodied_grammar_relation_row_matches_emitted_signature(
-                          row: e.target,
-                          emitted: emitted
-                        ) {
-                          BodiedArrowGrammarRowLookupAmbiguous
-                        } else {
-                          acc
-                        }
-                      Rejected { diagnostics: _ } => acc
-                    }
-                  Positional => acc
-                }
-            }
-          }
-        ) {
-          BodiedArrowGrammarRowLookupFound { row: row } => outcome_accepted(row)
-          BodiedArrowGrammarRowLookupMissing =>
-            outcome_rejected(
-              translate_grammar_relation_row_not_found_diagnostic(emitted: emitted)
-            )
-          BodiedArrowGrammarRowLookupAmbiguous =>
-            outcome_rejected(
-              translate_grammar_relation_bodied_scaffold_row_ambiguous_diagnostic(rules: rules)
-            )
-        }
-      _ =>
-        outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
-    }
-  } else {
-    outcome_rejected(translate_grammar_relation_row_not_found_diagnostic(emitted: emitted))
   }
 }
 fn grammar_relation_row_for_bodied_arrow_serialize(
@@ -4664,8 +4556,8 @@ fn translate_type_expression_tree(
     f: fn(n) {
       if arrow_has_transform_body(arrow: n) {
         // Bodied Arrow: coerce signature slots to target inhabitants; preserve body for
-        // value-expression serialize. Grammar-row match is by exact emitted node or by
-        // positional signature equality against a bodied scaffold row (fail-closed).
+        // value-expression serialize. Serialize fail-closes on exact grammar_relation_row
+        // match (grammar_relation_row_for_emitted) via grammar_inverse_bodied_arrow_validated.
         bind_outcome(
           o: translate_bodied_arrow_coerce_signature_slots(
             arrow: n,

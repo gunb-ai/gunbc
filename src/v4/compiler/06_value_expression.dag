@@ -146,19 +146,11 @@ fn transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   transform_positional_operand_binding(node: node, index: 0)
 }
 
-fn transform_primitive_apply_edges_conform(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Transform } =>
-      all_edges_positional(children: node.children)
-      && length(xs: node_positional_child_targets(node: node)) == 3
-    _ => false
-  }
-}
-
 fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpression> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      if !transform_primitive_apply_edges_conform(node: node) {
+      if !all_edges_positional(children: node.children)
+        || length(xs: node_positional_child_targets(node: node)) != 3 {
         outcome_rejected(
           value_expr_diagnostic(
             reason: value_expr_reason_transform_shape_invalid,
