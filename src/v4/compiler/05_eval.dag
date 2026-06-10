@@ -1569,7 +1569,11 @@ fn eval_interpret_node(
             runtime: runtime
           )
         TypeNode { connective: _ } =>
-          eval_runtime_binding_lookup(node: node, environment: environment)
+          match eval_runtime_binding_lookup(node: node, environment: environment) {
+            Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+            Rejected { diagnostics: _ } =>
+              interpretation.value.allocate_literal(node, environment)
+          }
       }
     }
   )
