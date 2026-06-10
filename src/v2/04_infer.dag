@@ -928,7 +928,7 @@ fn direct_call_arg_mismatch_diags(
             actual_expr: actual_expr,
             actual_type: actual_raw,
             source_indices: source_indices
-          ) || node_contains_type_variable(n: formal_subst) {
+          ) || node_contains_type_variable(n: formal_subst) || node_contains_type_variable(n: actual_raw) {
             []
           } else if direct_call_decl_identity_mismatch(
             formal_identity: formal_identity,
