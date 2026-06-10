@@ -16,6 +16,7 @@ import v4.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_wave1_modeled
 }
+import v4.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -25,6 +26,7 @@ import v4.std.diagnostic {
   bind_outcome,
   diagnostics_singleton,
   outcome_accepted,
+  outcome_rejected,
   port_locus
 }
 import v4.std.grammar { ParseTree }
@@ -48,6 +50,11 @@ type NormalizedDagSourceAst {
 
 type DagSemanticIr {
   tree: ResolvedTree
+}
+
+type DagSourceReadWitness {
+  source: DagSource
+  artifact: Artifact
 }
 
 type SourceAstEqual {
@@ -90,6 +97,7 @@ data source_authority_ast_mismatch: Symbol = source_authority_ast_mismatch
 data source_authority_ir_mismatch: Symbol = source_authority_ir_mismatch
 data source_authority_normalized_ast_mismatch: Symbol = source_authority_normalized_ast_mismatch
 data source_authority_serializer_nondeterministic: Symbol = source_authority_serializer_nondeterministic
+data source_authority_read_artifact_not_source_file: Symbol = source_authority_read_artifact_not_source_file
 
 
 fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
@@ -142,6 +150,54 @@ fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: DagLanguageModel) -> O
         }
       )
     }
+  )
+}
+
+
+fn semantic_ir_from_source_with_model(source: DagSource, lm: DagLanguageModel) -> Outcome<DagSemanticIr> {
+  bind_outcome(
+    o: parse_dag_source_ast_with_model(source: source, lm: lm),
+    f: fn(ast) {
+      semantic_ir_from_ast_with_model(ast: ast, lm: lm)
+    }
+  )
+}
+
+
+fn semantic_ir_from_source(source: DagSource) -> Outcome<DagSemanticIr> {
+  semantic_ir_from_source_with_model(source: source, lm: dag_language_model_wave1_modeled())
+}
+
+
+fn source_ir_node_artifact_provenance_from_model(
+  source_read: DagSourceReadWitness,
+  lm: DagLanguageModel
+) -> Outcome<NodeArtifactProvenance> {
+  match source_read.artifact.kind {
+    SourceFile =>
+      bind_outcome(
+        o: semantic_ir_from_source_with_model(source: source_read.source, lm: lm),
+        f: fn(ir) {
+          outcome_accepted(
+            value: NodeArtifactProvenance {
+              node: ir.tree,
+              artifact: source_read.artifact
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(d: source_authority_diagnostic(reason: source_authority_read_artifact_not_source_file))
+  }
+}
+
+
+fn source_ir_node_artifact_provenance(
+  source_read: DagSourceReadWitness
+) -> Outcome<NodeArtifactProvenance> {
+  source_ir_node_artifact_provenance_from_model(
+    source_read: source_read,
+    lm: dag_language_model_wave1_modeled()
   )
 }
 
