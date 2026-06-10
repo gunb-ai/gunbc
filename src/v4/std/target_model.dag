@@ -107,6 +107,8 @@ data target_model_edge_serialize_source: Symbol = target_model_edge_serialize_so
 data grammar_relation_field_production: Symbol = grammar_relation_field_production
 data grammar_relation_field_emitted: Symbol = grammar_relation_field_emitted
 data grammar_relation_field_tokens: Symbol = grammar_relation_field_tokens
+data grammar_relation_field_bodied_scaffold: Symbol = grammar_relation_field_bodied_scaffold
+data grammar_relation_bodied_scaffold_missing: Symbol = grammar_relation_bodied_scaffold_missing
 data concrete_syntax_token_field_kind: Symbol = concrete_syntax_token_field_kind
 data concrete_syntax_token_field_class: Symbol = concrete_syntax_token_field_class
 data concrete_syntax_token_field_binding: Symbol = concrete_syntax_token_field_binding
@@ -707,6 +709,48 @@ fn decode_value_expression_projection_bundle(
 
 fn concrete_syntax_token_list_to_node(tokens: List<ConcreteSyntaxToken>) -> Node {
   fold_list_node(xs: tokens, item_node: concrete_syntax_token_to_node)
+}
+
+fn grammar_relation_bodied_scaffold_missing_diagnostic(row: Node) -> Diagnostic {
+  Diagnostic {
+    reason: grammar_relation_bodied_scaffold_missing,
+    at: node_locus(node: row),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn grammar_relation_row_attach_bodied_scaffold(
+  row: Node,
+  scaffold: TargetBodiedArrowStatementScaffold
+) -> Node {
+  target_model_type_conj_node(
+    children: list_append(
+      left: row.children,
+      right: Cons {
+        head: target_model_named_edge(
+          name: grammar_relation_field_bodied_scaffold,
+          target: bodied_arrow_statement_scaffold_bundle_node(scaffold: scaffold)
+        ),
+        tail: Empty
+      }
+    )
+  )
+}
+
+fn bodied_arrow_scaffold_from_grammar_relation_row(
+  row: Node
+) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  match find_named_child(root: row, name: grammar_relation_field_bodied_scaffold) {
+    Accepted { value: scaffold_bundle, diagnostics: d } =>
+      bind_outcome(
+        o: decode_bodied_arrow_statement_scaffold_bundle(bundle: scaffold_bundle),
+        f: fn(scaffold) {
+          Accepted { value: scaffold, diagnostics: d }
+        }
+      )
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
 }
 
 fn bodied_arrow_statement_scaffold_bundle_node(
