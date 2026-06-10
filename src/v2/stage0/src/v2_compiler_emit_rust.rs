@@ -247,6 +247,16 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
         && (v2_rt::substring(&type_name, 0, 3).as_str() == "Rc<".to_string().as_str()))
 }
 
+pub fn rust_named_type_base(name: String) -> String {
+    if ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
+    {
+        "v2_rt::Witness".to_string()
+    } else {
+        coerce_primitive_type(RenderTarget::Rust, name.clone())
+    }
+}
+
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -266,10 +276,7 @@ pub fn render_rust_applied_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let base = coerce_primitive_type(
-            RenderTarget::Rust,
-            authored_name_at(source_indices.clone(), n.clone()),
-        );
+        let base = rust_named_type_base(authored_name_at(source_indices.clone(), n.clone()));
         if ((n.children.clone().len() as i64) == 0) {
             base
         } else {
@@ -377,7 +384,7 @@ pub fn render_rust_decl_type(
                         && ((n.children.clone().len() as i64) > 0))
                     {
                         {
-                            let base = coerce_primitive_type(RenderTarget::Rust, name.clone());
+                            let base = rust_named_type_base(name.clone());
                             let args = Rc::new({
                                 let mut __result = Vec::new();
                                 for arg in n.children.clone().iter().cloned() {
