@@ -166,6 +166,14 @@ hand-written direction-specific adapters.**
 This is the part that must be decided *now* (the operator has directed Mgr-SPINE to build
 inverse-aware; this section is the spec for that directive):
 
+> **Precedence note (2026-06-10, resolving a dual-authority seam):** item 1 below states the
+> *direction* — rows-as-data, never render closures. The **binding decision** of the T3 fold
+> carrier's shape — including whether one row/fold discipline-as-data carries both positional
+> (Arrow) and labeled (Conj) edge disciplines — is **taken after the one bounded run**, per
+> `design-optional-surface.md` §4 (the measured T3 root-cause sequence). That memo's sequence
+> is the single authority for *when*; this section remains the authority for *what shape
+> qualifies* once the datapoint is in. Do not commit a carrier shape before the run.
+
 1. **T3's fold carrier (dep-graph Q1) is the production-row reference, not a render
    closure.** The `06_translate` `project_*` dissolution lands as "interpret row backward."
    Any new emit capability that cannot be expressed as a row + bindings is a substrate gap to
