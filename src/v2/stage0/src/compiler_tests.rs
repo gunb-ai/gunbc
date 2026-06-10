@@ -693,11 +693,11 @@ mod compiler_tests {
         );
         assert_eq!(
             coerce_primitive_type(RenderTarget::Rust, "Witness".into()),
-            "v2_rt::Witness"
+            "Witness"
         );
         assert_eq!(
             coerce_primitive_type(RenderTarget::Rust, "witness".into()),
-            "v2_rt::Witness"
+            "Witness"
         );
     }
 
