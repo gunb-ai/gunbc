@@ -188,11 +188,51 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
     }
   })
 }
+type ArrowBodyTargetLookup
+  = ArrowBodyTargetAbsent
+  | ArrowBodyTargetFound { target: Node }
+  | ArrowBodyTargetAmbiguous
+
+fn arrow_body_target_lookup(children: List<Edge>) -> ArrowBodyTargetLookup {
+  fold(children, init: ArrowBodyTargetAbsent, f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } =>
+        if sym == ^arrow_body_edge {
+          match acc {
+            ArrowBodyTargetAbsent => ArrowBodyTargetFound { target: e.target }
+            ArrowBodyTargetFound { target: _ } => ArrowBodyTargetAmbiguous
+            ArrowBodyTargetAmbiguous => ArrowBodyTargetAmbiguous
+          }
+        } else {
+          acc
+        }
+      Positional => acc
+    }
+  })
+}
+
+// Wave-0: internal L1 Behavior sub-DAG only. E-9 external realization carrier validation lands with extdeps primitive wiring.
+fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
+  match target.kind {
+    ComputationNode { behavior: _ } => true
+    _ => false
+  }
+}
+
+fn arrow_body_target_conforms(children: List<Edge>) -> Bool {
+  match arrow_body_target_lookup(children: children) {
+    ArrowBodyTargetAbsent => true
+    ArrowBodyTargetFound { target: t } => arrow_body_target_is_valid_realization(target: t)
+    ArrowBodyTargetAmbiguous => false
+  }
+}
+
 fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
   let body_edges = name_occurrences(name: ^arrow_body_edge, children: children)
   (body_edges <= 1)
   && arrow_signature_edges_conform(children: children)
   && (positional_child_count(children: children) >= 1)
+  && arrow_body_target_conforms(children: children)
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-bound-measure-target — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop loop_bound_edge target projection shared by cardinality witness; forbidden: parallel ad-hoc loop_bound_edge extraction outside well_formed/cardinality.
 type LoopMeasureTargetLookup
