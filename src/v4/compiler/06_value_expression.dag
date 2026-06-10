@@ -183,27 +183,40 @@ fn value_expr_positional_child_atom_is(node: Node, index: Int, sym: Symbol) -> B
   )
 }
 
+fn value_expr_coerced_ts_number_inhabitant_slot(slot: Node) -> Bool {
+  match find_named_child(root: slot, name: ^ts_inhabitant_field_atom) {
+    Accepted { value: atom_wire, diagnostics: _ } =>
+      match atom_wire.kind {
+        TypeNode { connective: Atom { identity: id } } => id == ^ts_inhabitant_number
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn value_expr_wave1_add_signature_slot_valid(slot: Node) -> Bool {
+  match slot.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_binding_type_int
+    _ => value_expr_coerced_ts_number_inhabitant_slot(slot: slot)
+  }
+}
+
+fn value_expr_wave1_add_signature_slot_at(arrow: Node, index: Int) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
+    Present { value: slot } => value_expr_wave1_add_signature_slot_valid(slot: slot)
+    Absent => false
+  }
+}
+
 // 🟡 gated — COMPREP wave-1 body-scope binding authority (E-9) — dissolve-on: Arrow signature
 // carries declared param bindings and body projection consumes that authority instead of a
 // literal Int,Int→Int add-shape gate; forbidden: unscoped Atom binding refs in body projection.
 fn value_expr_wave1_add_signature_matches(arrow: Node) -> Bool {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
-      value_expr_positional_child_atom_is(
-        node: arrow,
-        index: 0,
-        sym: ^dag_binding_type_int
-      )
-      && value_expr_positional_child_atom_is(
-        node: arrow,
-        index: 1,
-        sym: ^dag_binding_type_int
-      )
-      && value_expr_positional_child_atom_is(
-        node: arrow,
-        index: 2,
-        sym: ^dag_binding_type_int
-      )
+      value_expr_wave1_add_signature_slot_at(arrow: arrow, index: 0)
+      && value_expr_wave1_add_signature_slot_at(arrow: arrow, index: 1)
+      && value_expr_wave1_add_signature_slot_at(arrow: arrow, index: 2)
     _ => false
   }
 }
