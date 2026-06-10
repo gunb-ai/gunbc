@@ -561,7 +561,7 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
         kind: n.kind,
         children: sort_by(n.children, e => named_edge_sort_key(e: e)),
         span: Unanchored
-}
+      }
     NoEdges => n
     PositionalEdges => n
     ArrowBodyEdges =>
@@ -574,7 +574,7 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
         kind: n.kind,
         children: canonicalize_loop_children_for_content_hash(children: n.children),
         span: Unanchored
-}
+      }
   }
 }
 // 🟢 TERMINAL — B1 merkle_fold: canonicalize_node_for_content_hash at every recursive step (plain fold_node would skip nested LabeledEdges/Loop reorder).
@@ -1263,7 +1263,7 @@ fn node_offset_atom(sym: Symbol) -> Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     span: Unanchored
-}
+  }
 }
 
 
@@ -1277,7 +1277,7 @@ fn node_offset_conj(children: List<Edge>) -> Node {
     kind: TypeNode { connective: Conj },
     children: children,
     span: Unanchored
-}
+  }
 }
 
 
