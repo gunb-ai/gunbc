@@ -257,6 +257,14 @@ pub fn rust_named_type_base(name: String) -> String {
     }
 }
 
+pub fn rust_normalize_witness_type_text(rendered: String) -> String {
+    v2_rt::replace(
+        rendered,
+        "witness<".to_string(),
+        "v2_rt::Witness<".to_string(),
+    )
+}
+
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -6588,7 +6596,7 @@ pub fn emit_struct_field_from_child(
                 }
             }
         };
-        let generic_ty = ty;
+        let generic_ty = rust_normalize_witness_type_text(ty);
         let final_ty = if needs_box_wrapping(
             rt_child.clone(),
             recursive_types,
