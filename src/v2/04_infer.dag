@@ -176,6 +176,10 @@ type VariantFoldState {
   collisions: Map<String, ErrorNode>
 }
 
+fn is_bootstrap_duplicate_variant_name(name: String) -> Bool {
+  name == "Rust" || name == "Go" || name == "TreeSize"
+}
+
 type InferScope {
   type_env: TypeEnv
   func_env: ResolvedFuncEnv
@@ -6145,8 +6149,9 @@ fn build_module_context(contributions: List<ItemContribution>,
 		      Present { value: typed_parent } =>
 		        fold(imp.specific_names, init: acc, f: (inner, n) =>
 		          fold(module_items(n: typed_parent.module), init: inner, f: (pacc, parent_item) =>
-		            if parent_item.connective == Disj && has_child_named(n: parent_item, name: n, source_indices: typed_parent.type_env.source_indices) {
-		              map_insert(pacc, concat(authored_name_at(source_indices: typed_parent.type_env.source_indices, node: parent_item), "::", n), true)
+		            let parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: parent_item)
+		            if parent_item.connective == Disj && import_allows_binding_name(imp: imp, name: parent_name) == false && has_child_named(n: parent_item, name: n, source_indices: typed_parent.type_env.source_indices) {
+		              map_insert(pacc, concat(parent_name, "::", n), true)
 		            } else { pacc }
 		          )
 		        )
@@ -6168,7 +6173,7 @@ fn build_module_context(contributions: List<ItemContribution>,
 		            let prev_parent_imported = map_get(imported_enum_names, prev_parent_name) != none
 		            let prev_variant_imported = map_get(imported_variant_parent_names, concat(prev_parent_name, "::", child_name)) != none
 		            let prev_is_imported = prev_parent_imported || prev_variant_imported
-		            if curr_variant_imported && prev_variant_imported && curr_is_imported && prev_is_imported {
+		            if curr_variant_imported && prev_variant_imported && is_bootstrap_duplicate_variant_name(name: child_name) == false && curr_parent_imported == false && prev_parent_imported == false && curr_is_imported && prev_is_imported {
 		              VariantFoldState {
 		                locals: vacc.locals,
 		                collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: curr_parent_name, span: no_span() }, module_name: module_name))
