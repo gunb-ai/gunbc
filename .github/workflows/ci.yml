@@ -625,6 +625,8 @@ jobs:
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
+    - name: v4 glob-discovery substrate equivalence (C9)
+      run: bash scripts/v4-substrate-equivalence-gate.sh --perturb-check
   # Affected-set node-frontier selection CI gate. Lens witnesses run CONCURRENTLY in `v4_lens_gate`;
   # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
   v4_lens_ci:

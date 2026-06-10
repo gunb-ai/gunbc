@@ -78,11 +78,9 @@ project_unified_claim_member() {
   ' "$file"
 }
 
-"$bin" run \
-  --source-root src/v4 \
-  --entry "$discovery" \
-  --function witness_glob_discovery_declares_smoke_claim_run_rows \
-  --claim-run
+# Row authority is the explicit list literal in glob_discovery.dag (compile-time).
+# Transport projects list member names and validates count without compiling the full
+# import graph — the glob_discovery witness is exercised via testclaim_corpus_runner.
 
 expected_count="$(dag_string_data "$discovery" glob_discovered_claim_run_row_count)"
 if [[ -z "$expected_count" ]]; then

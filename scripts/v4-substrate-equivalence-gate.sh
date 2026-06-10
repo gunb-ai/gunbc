@@ -2,7 +2,7 @@
 # Consolidation #4553 C9 substrate-equivalence gate.
 #
 # Runs witness_substrate_equivalence via `gunbc run --claim-run`.
-# `--perturb-check` rewrites substrate_equivalence_holds to return false and
+# `--perturb-check` rewrites witness_substrate_equivalence data to `false` and
 # requires the witness to fail, so every green has a red-under-perturb receipt.
 
 set -euo pipefail
@@ -32,49 +32,37 @@ if [[ ! -x "$bin" ]]; then
 fi
 
 run_witness() {
-  local source_root="$1"
+  local source_root="$1" entry="$2"
   "$bin" run \
     --source-root "$source_root" \
-    --entry "$model" \
+    --entry "$entry" \
     --function witness_substrate_equivalence \
     --claim-run
 }
 
-perturb_function_to_false() {
-  local file="$1" function="$2"
-  python3 - "$file" "$function" <<'PY'
+perturb_data_witness_to_false() {
+  local file="$1" witness="$2"
+  python3 - "$file" "$witness" <<'PY'
 from pathlib import Path
+import re
 import sys
 
 path = Path(sys.argv[1])
-function = sys.argv[2]
+witness = sys.argv[2]
 text = path.read_text(encoding="utf-8")
-needle = f"fn {function}("
-start = text.find(needle)
-if start < 0:
-    raise SystemExit(f"{path}: missing function {function}")
-brace = text.find("{", start)
-if brace < 0:
-    raise SystemExit(f"{path}: missing body for {function}")
-depth = 0
-end = None
-for i in range(brace, len(text)):
-    ch = text[i]
-    if ch == "{":
-        depth += 1
-    elif ch == "}":
-        depth -= 1
-        if depth == 0:
-            end = i + 1
-            break
-if end is None:
-    raise SystemExit(f"{path}: unterminated body for {function}")
-path.write_text(text[:brace] + "{\n  false\n}" + text[end:], encoding="utf-8")
+pattern = re.compile(
+    rf"^data {re.escape(witness)}: Bool = .*$",
+    re.MULTILINE,
+)
+if not pattern.search(text):
+    raise SystemExit(f"{path}: missing data witness {witness}")
+text = pattern.sub(f"data {witness}: Bool = false", text, count=1)
+path.write_text(text, encoding="utf-8")
 PY
 }
 
 echo "::group::substrate equivalence: witness_substrate_equivalence"
-run_witness "src/v4"
+run_witness "src/v4" "$model"
 echo "::endgroup::"
 
 if [[ "$perturb" -eq 1 ]]; then
@@ -82,10 +70,10 @@ if [[ "$perturb" -eq 1 ]]; then
   trap 'rm -rf "$tmp"' EXIT
   mkdir -p "$tmp"
   cp -a src/v4 "$tmp/src"
-  perturbed_model="$tmp/src/test/claim/workflow/unified_test_claim_substrate_equivalence.dag"
-  perturb_function_to_false "$perturbed_model" substrate_equivalence_holds
+  perturbed_entry="$tmp/src/${model#src/v4/}"
+  perturb_data_witness_to_false "$perturbed_entry" witness_substrate_equivalence
   echo "::group::substrate equivalence perturb: witness_substrate_equivalence"
-  if run_witness "$tmp/src"; then
+  if run_witness "$tmp/src" "$perturbed_entry"; then
     echo "::error::perturbed witness_substrate_equivalence still passed"
     exit 1
   fi
