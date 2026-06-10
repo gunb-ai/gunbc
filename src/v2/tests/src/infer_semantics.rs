@@ -475,6 +475,32 @@ fn caller(uid: UserId) -> String {
 }
 
 #[test]
+fn pd3_direct_call_rejects_canonical_kernel_leaf_mismatch() {
+    let source = r#"
+module pd3.kernel_leaf_call_reject
+
+fn take_secret(value: Secret) -> Int {
+  0
+}
+
+fn caller(value: String) -> Int {
+  take_secret(value)
+}
+"#;
+
+    let result = crate::helpers::compile_dag(source);
+    let has_type_mismatch = result
+        .diagnostics
+        .iter()
+        .any(|diag| matches!(&*diag.diagnostic, CompilerDiagnostic::TypeMismatch { .. }));
+    assert!(
+        has_type_mismatch,
+        "PD-3: direct call must reject String-for-Secret via canonical kernel type set, got: {:?}",
+        crate::helpers::diagnostic_messages(&result)
+    );
+}
+
+#[test]
 fn pd3_direct_call_accepts_same_brand() {
     let source = r#"
 module pd3.brand_call_accept
