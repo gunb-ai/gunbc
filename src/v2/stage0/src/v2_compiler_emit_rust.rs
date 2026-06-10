@@ -291,7 +291,7 @@ pub fn rust_witness_pattern_qualifier(scrut_type: String) -> String {
         {
             "v2_rt::Witness".to_string()
         } else {
-            "Witness".to_string()
+            "v2_rt::Witness".to_string()
         }
     }
 }

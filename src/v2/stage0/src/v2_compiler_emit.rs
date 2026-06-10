@@ -3833,10 +3833,10 @@ pub fn apply_bridge_method_overrides(
     overrides: Rc<HashMap<String, String>>,
 ) -> String {
     match v2_rt::lookup(&overrides, name.clone()) {
-        Witness::Holds {
+        v2_rt::Witness::Holds {
             value: replacement, ..
         } => replacement.clone(),
-        Witness::Violates { diagnostic: _, .. } => name.clone(),
+        v2_rt::Witness::Violates { diagnostic: _, .. } => name.clone(),
     }
 }
 
