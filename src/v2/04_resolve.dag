@@ -31,7 +31,7 @@ import v2.std.core {
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
-  default_ident_span, kernel_span, node_name_span, intern
+  default_ident_span, kernel_span, node_name_span, node_with_preserved_binding_id, intern
 }
 import v2.compiler.infer_types {
   resolved_type, child_type_node, node_is_keyed_collection, is_declared_container_alias_spelling
@@ -51,16 +51,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 // When peeling a one-level type alias to its structural target, carry
 // declaration identity on binding_id while leaving ident_span as source span.
 fn with_preserved_binding_id(identity: Node, structural: Node) -> Node {
-  Node {
-    name: structural.name, ident: structural.ident, binding_id: identity.binding_id,
-    span: structural.span, ident_span: structural.ident_span,
-    children: structural.children, connective: structural.connective, params: structural.params,
-    inferred: structural.inferred, return_cardinality: structural.return_cardinality,
-    uses: structural.uses, body: structural.body, transport: structural.transport,
-    properties: structural.properties, type_annotation: structural.type_annotation,
-    is_self_recursive: structural.is_self_recursive, has_non_tail_self_call: structural.has_non_tail_self_call,
-    match_pattern: structural.match_pattern, expr_data: structural.expr_data
-  }
+  node_with_preserved_binding_id(identity: identity, structural: structural)
 }
 
 // After env binding resolve, keep declaration-site brand on the structural carrier.
@@ -966,6 +957,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
         provenance: SubValueUnknown
       }),
       decl_registry: e.decl_registry,
+      duplicate_decl_ids: e.duplicate_decl_ids,
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,
       inductive_fields: e.inductive_fields,

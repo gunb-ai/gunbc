@@ -705,7 +705,7 @@ pub type BindingId = i64;
 pub struct Node {
     pub name: String,
     pub ident: Option<i64>,
-    pub binding_id: Box<Option<BindingId>>,
+    pub binding_id: Option<i64>,
     pub span: Rc<SourceSpan>,
     pub ident_span: Option<Rc<SourceSpan>>,
     pub children: Rc<Vec<Rc<Node>>>,
@@ -2464,7 +2464,7 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
     Rc::new(Node {
         name: node.name.clone(),
         ident: node.ident.clone(),
-        binding_id: Box::new(node.binding_id.clone()),
+        binding_id: node.binding_id.clone(),
         span: node.span.clone(),
         ident_span: node.ident_span.clone(),
         children: Rc::new({
@@ -3582,7 +3582,7 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: n.name.clone(),
         ident: n.ident.clone(),
-        binding_id: Box::new(n.binding_id.clone()),
+        binding_id: n.binding_id.clone(),
         span: n.span.clone(),
         ident_span: n.ident_span.clone(),
         children: n.children.clone(),
@@ -3606,7 +3606,7 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: n.name.clone(),
         ident: n.ident.clone(),
-        binding_id: Box::new(n.binding_id.clone()),
+        binding_id: n.binding_id.clone(),
         span: n.span.clone(),
         ident_span: n.ident_span.clone(),
         children: n.children.clone(),

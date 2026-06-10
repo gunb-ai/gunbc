@@ -323,7 +323,7 @@ type BindingId = Int
 type Node {
   name: String
   ident: Int?
-  binding_id: BindingId?
+  binding_id: Int?
   span: SourceSpan
   ident_span: SourceSpan?
   children: List<Node>
@@ -351,6 +351,33 @@ fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
 
 fn node_name_span(n: Node) -> SourceSpan {
   match n.ident_span { Some { value: s } => s  None => n.span }
+}
+
+fn node_with_binding_id(n: Node, binding_id: Int) -> Node {
+  Node {
+    name: n.name, ident: n.ident, binding_id: Some { value: binding_id },
+    span: n.span, ident_span: n.ident_span, children: n.children,
+    connective: n.connective, params: n.params, inferred: n.inferred,
+    return_cardinality: n.return_cardinality, uses: n.uses,
+    body: n.body, transport: n.transport, properties: n.properties,
+    type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
+    has_non_tail_self_call: n.has_non_tail_self_call,
+    match_pattern: n.match_pattern, expr_data: n.expr_data
+  }
+}
+
+fn node_with_preserved_binding_id(identity: Node, structural: Node) -> Node {
+  Node {
+    name: structural.name, ident: structural.ident, binding_id: identity.binding_id,
+    span: structural.span, ident_span: structural.ident_span,
+    children: structural.children, connective: structural.connective, params: structural.params,
+    inferred: structural.inferred, return_cardinality: structural.return_cardinality,
+    uses: structural.uses, body: structural.body, transport: structural.transport,
+    properties: structural.properties, type_annotation: structural.type_annotation,
+    is_self_recursive: structural.is_self_recursive,
+    has_non_tail_self_call: structural.has_non_tail_self_call,
+    match_pattern: structural.match_pattern, expr_data: structural.expr_data
+  }
 }
 
 // Construct a Node carrying expression data (P5.11 dissolved form).

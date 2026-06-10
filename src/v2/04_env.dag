@@ -1,7 +1,7 @@
 // v2 type environment -- structural type bindings and lookup.
 module v2.compiler.infer_env
 
-import v2.std.core { Node, BindingId, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
+import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
@@ -10,7 +10,8 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
-  decl_registry: Map<BindingId, TypeDeclBinding>
+  decl_registry: Map<Int, TypeDeclBinding>
+  duplicate_decl_ids: List<Int>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
   inductive_fields: Map<String, List<InductiveField>>
@@ -25,9 +26,9 @@ type TypeBinding {
 }
 
 type TypeDeclBinding {
-  binding_id: BindingId
+  binding_id: Int
+  binding_key: Int
   name: String
-  resolved: Node
   provenance: SubValueRelation
 }
 
@@ -36,7 +37,7 @@ type BindingIdAllocator {
 }
 
 type BindingIdAllocResult {
-  binding_id: BindingId
+  binding_id: Int
   allocator: BindingIdAllocator
 }
 
@@ -49,6 +50,32 @@ fn alloc_binding_id(allocator: BindingIdAllocator) -> BindingIdAllocResult {
     binding_id: allocator.next_id,
     allocator: BindingIdAllocator { next_id: allocator.next_id + 1 }
   }
+}
+
+type DeclRegistryMergeState {
+  decl_registry: Map<Int, TypeDeclBinding>
+  duplicate_decl_ids: List<Int>
+}
+
+fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<Int, TypeDeclBinding>) -> DeclRegistryMergeState {
+  fold(map_keys(incoming), init: state, f: (acc, binding_id) =>
+    match map_get(incoming, binding_id) {
+      Some { value: binding } =>
+        match map_get(acc.decl_registry, binding_id) {
+          Some { value: _ } =>
+            DeclRegistryMergeState {
+              decl_registry: acc.decl_registry,
+              duplicate_decl_ids: list_push(acc.duplicate_decl_ids, binding_id)
+            }
+          None =>
+            DeclRegistryMergeState {
+              decl_registry: map_insert(acc.decl_registry, binding_id, binding),
+              duplicate_decl_ids: acc.duplicate_decl_ids
+            }
+        }
+      None => acc
+    }
+  )
 }
 
 // =========================================================================
@@ -155,7 +182,13 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
 
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
-  let merged_decl_registry = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.decl_registry))
+  let merged_decl_state = fold(envs, init: DeclRegistryMergeState { decl_registry: empty_map(), duplicate_decl_ids: [] }, f: (acc, env) =>
+    let with_prior_duplicates = DeclRegistryMergeState {
+      decl_registry: acc.decl_registry,
+      duplicate_decl_ids: concat(acc.duplicate_decl_ids, env.duplicate_decl_ids)
+    }
+    merge_decl_registry_state(state: with_prior_duplicates, incoming: env.decl_registry)
+  )
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
@@ -164,5 +197,5 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
     Some { value: first_env } => first_env.intern_table
     None => empty_intern_table()
   }
-  TypeEnv { bindings: merged_bindings, decl_registry: merged_decl_registry, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
+  TypeEnv { bindings: merged_bindings, decl_registry: merged_decl_state.decl_registry, duplicate_decl_ids: merged_decl_state.duplicate_decl_ids, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
 }

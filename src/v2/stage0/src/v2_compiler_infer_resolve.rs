@@ -62,7 +62,7 @@ pub fn with_preserved_binding_id(identity: Rc<Node>, structural: Rc<Node>) -> Rc
     Rc::new(Node {
         name: structural.name.clone(),
         ident: structural.ident.clone(),
-        binding_id: Box::new(identity.binding_id.clone()),
+        binding_id: identity.binding_id.clone(),
         span: structural.span.clone(),
         ident_span: structural.ident_span.clone(),
         children: structural.children.clone(),
@@ -2940,6 +2940,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                         }),
                     ),
                     decl_registry: e.decl_registry.clone(),
+                    duplicate_decl_ids: Rc::new(vec![]),
                     recursive_types: e.recursive_types.clone(),
                     recursive_type_set: e.recursive_type_set.clone(),
                     inductive_fields: e.inductive_fields.clone(),

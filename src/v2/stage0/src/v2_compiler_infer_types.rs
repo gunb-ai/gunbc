@@ -162,7 +162,7 @@ pub fn structural_carrier_template_name(
         canonical_template_name(
             Rc::new(Node {
                 name: n.name.clone(),
-                binding_id: Box::new(n.binding_id.clone()),
+                binding_id: n.binding_id.clone(),
                 span: n.span.clone(),
                 ident_span: Some(kernel_span(n.name.clone())),
                 children: n.children.clone(),

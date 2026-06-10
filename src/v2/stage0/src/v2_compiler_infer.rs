@@ -10650,7 +10650,7 @@ pub fn register_type_decl_binding(
         let stamped = Rc::new(Node {
             name: resolved.name.clone(),
             ident: resolved.ident.clone(),
-            binding_id: Box::new(Some(binding_alloc.binding_id.clone())),
+            binding_id: Some(binding_alloc.binding_id.clone()),
             span: resolved.span.clone(),
             ident_span: resolved.ident_span.clone(),
             children: resolved.children.clone(),
@@ -10682,7 +10682,7 @@ pub fn register_type_decl_binding(
                 acc.decl_registry.clone(),
                 binding_alloc.binding_id.clone(),
                 Rc::new(TypeDeclBinding {
-                    binding_id: Box::new(binding_alloc.binding_id.clone()),
+                    binding_id: binding_alloc.binding_id.clone(),
                     name: name.clone(),
                     resolved: stamped.clone(),
                     provenance: provenance.clone(),
@@ -10955,7 +10955,8 @@ pub fn build_type_env(
             );
         let kernel = Rc::new(TypeEnv {
             bindings: kernel_bindings.clone(),
-            decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: kernel_recursive_types,
             recursive_type_set: kernel_recursive_type_set,
             inductive_fields: node_fields,
@@ -11055,8 +11056,8 @@ pub fn build_type_env(
                 v2_rt::concat(acc, env.recursive_types.clone())
             });
         let import_decl_registry = parent_envs.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
-            |acc: Rc<HashMap<BindingId, Rc<TypeDeclBinding>>>, env: Rc<TypeEnv>| {
+            v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            |acc: Rc<HashMap<i64, Rc<TypeDeclBinding>>>, env: Rc<TypeEnv>| {
                 v2_rt::rc_map_merge(acc, env.decl_registry.clone())
             },
         );
@@ -11075,6 +11076,7 @@ pub fn build_type_env(
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
             decl_registry: import_decl_registry,
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: import_recursive,
             recursive_type_set: import_recursive_set,
             inductive_fields: import_inductive_fields,
@@ -11330,6 +11332,7 @@ pub fn build_type_env(
         let pre_local_env = Rc::new(TypeEnv {
             bindings: all_local_bindings,
             decl_registry: local_decl_registry,
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
@@ -11398,6 +11401,7 @@ pub fn build_type_env(
         let unresolved_env = Rc::new(TypeEnv {
             bindings: merged.bindings.clone(),
             decl_registry: merged.decl_registry.clone(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: cycle_set,
             recursive_type_set: cross_type_set,
             inductive_fields: merged_inductive_fields,
@@ -11415,6 +11419,7 @@ pub fn build_type_env(
         let final_env = Rc::new(TypeEnv {
             bindings: resolved_env_out.bindings.clone(),
             decl_registry: resolved_env_out.decl_registry.clone(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: resolved_env_out.recursive_types.clone(),
             recursive_type_set: resolved_env_out.recursive_type_set.clone(),
             inductive_fields: resolved_env_out.inductive_fields.clone(),
@@ -11564,7 +11569,8 @@ pub fn build_type_env_unresolved(
         );
         let kernel = Rc::new(TypeEnv {
             bindings: kernel_bindings.clone(),
-            decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
@@ -11664,8 +11670,8 @@ pub fn build_type_env_unresolved(
                 v2_rt::concat(acc, env.recursive_types.clone())
             });
         let import_decl_registry = parent_envs.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
-            |acc: Rc<HashMap<BindingId, Rc<TypeDeclBinding>>>, env: Rc<TypeEnv>| {
+            v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            |acc: Rc<HashMap<i64, Rc<TypeDeclBinding>>>, env: Rc<TypeEnv>| {
                 v2_rt::rc_map_merge(acc, env.decl_registry.clone())
             },
         );
@@ -11684,6 +11690,7 @@ pub fn build_type_env_unresolved(
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
             decl_registry: import_decl_registry,
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: import_recursive,
             recursive_type_set: import_recursive_set,
             inductive_fields: import_inductive_fields,
@@ -11818,7 +11825,8 @@ pub fn build_type_env_unresolved(
         );
         let pre_local_env = Rc::new(TypeEnv {
             bindings: local_bindings,
-            decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
@@ -11887,6 +11895,7 @@ pub fn build_type_env_unresolved(
         let unresolved_env = Rc::new(TypeEnv {
             bindings: merged.bindings.clone(),
             decl_registry: merged.decl_registry.clone(),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: cycle_set,
             recursive_type_set: cross_type_set,
             inductive_fields: merged_inductive_fields,
@@ -12611,6 +12620,7 @@ pub fn topo_resolve_types(
                     env: Rc::new(TypeEnv {
                         bindings: stuck_accum.bindings.clone(),
                         decl_registry: env.decl_registry.clone(),
+                        duplicate_decl_ids: Rc::new(vec![]),
                         recursive_types: env.recursive_types.clone(),
                         recursive_type_set: env.recursive_type_set.clone(),
                         inductive_fields: env.inductive_fields.clone(),
@@ -12681,6 +12691,7 @@ pub fn topo_resolve_types(
             let __tco_1 = Rc::new(TypeEnv {
                 bindings: ready_accum.bindings.clone(),
                 decl_registry: env.decl_registry.clone(),
+                duplicate_decl_ids: Rc::new(vec![]),
                 recursive_types: env.recursive_types.clone(),
                 recursive_type_set: env.recursive_type_set.clone(),
                 inductive_fields: env.inductive_fields.clone(),
