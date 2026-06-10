@@ -4,8 +4,12 @@
 
 module v4.test.claim.manual.comprep_add_body_emit_typescript
 
-import v4.compiler.body_producer { produce_mvp1_add_arrow_with_body }
+import v4.compiler.body_producer {
+  produce_mvp1_add_arrow_with_body,
+  produce_mvp1_add_binary_body
+}
 import v4.compiler.emit { emit }
+import v4.compiler.translate { translate }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.extdeps.languages.typescript {
@@ -84,6 +88,10 @@ data comprep_ts_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node(
 
 fn comprep_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   if node == comprep_ts_bodied_arrow_root() {
+    Holds {
+      value: comprep_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == produce_mvp1_add_binary_body() {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
@@ -222,6 +230,13 @@ fn anchor_comprep_ts_bodied_emit_accepts() -> Outcome<TargetSource> {
 }
 
 data comprep_ts_bodied_emit_receipt: Outcome<TargetSource> = anchor_comprep_ts_bodied_emit_accepts()
+
+fn comprep_ts_debug_translate_accepts() -> Bool {
+  match translate(tree: comprep_ts_bodied_inferred_tree, target: ts_mvp1_target_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 fn comprep_ts_bodied_emit_add_fn_accepts_holds() -> Bool {
   match comprep_ts_bodied_emit_receipt {
