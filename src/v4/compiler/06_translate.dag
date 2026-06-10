@@ -271,11 +271,16 @@ type TargetBundleChildLookup
   | BundleChildFound { value: Node }
   | BundleChildDuplicate
   | BundleChildInvalidEdge
+type BodiedScaffoldRowLookup
+  = BodiedScaffoldRowLookupMissing
+  | BodiedScaffoldRowLookupFound { row: Node }
+  | BodiedScaffoldRowLookupAmbiguous
 data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
 data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
 data translate_sg_rc_bundle_partial: Symbol = translate_sg_rc_bundle_partial
 data translate_grammar_inverse_not_realized: Symbol = translate_grammar_inverse_not_realized
 data translate_grammar_relation_row_not_found: Symbol = translate_grammar_relation_row_not_found
+data translate_grammar_relation_bodied_scaffold_row_ambiguous: Symbol = translate_grammar_relation_bodied_scaffold_row_ambiguous
 data translate_conj_invalid_edge: Symbol = translate_conj_invalid_edge
 data translate_conj_named_child_missing: Symbol = translate_conj_named_child_missing
 data translate_lex_rule_literal_not_found: Symbol = translate_lex_rule_literal_not_found
@@ -492,6 +497,15 @@ fn translate_grammar_relation_row_not_found_diagnostic(emitted: Node) -> Diagnos
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+fn translate_grammar_relation_bodied_scaffold_row_ambiguous_diagnostic(
+  rules: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: translate_grammar_relation_bodied_scaffold_row_ambiguous,
+    at: node_locus(node: rules),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
 fn translate_conj_invalid_edge_diagnostic(parent: Node) -> Diagnostic {
   Diagnostic {
     reason: translate_conj_invalid_edge,
@@ -569,6 +583,68 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
       }
     _ =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
+  }
+}
+fn grammar_relation_row_with_unique_bodied_scaffold(rules: Node) -> Outcome<Node> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        rules.children,
+        init: BodiedScaffoldRowLookupMissing,
+        f: fn(acc, e) {
+          match acc {
+            BodiedScaffoldRowLookupAmbiguous => acc
+            BodiedScaffoldRowLookupMissing =>
+              match e.label {
+                Named { name: _ } =>
+                  match bodied_arrow_scaffold_from_grammar_relation_row(row: e.target) {
+                    Accepted { value: _, diagnostics: _ } =>
+                      BodiedScaffoldRowLookupFound { row: e.target }
+                    Rejected { diagnostics: _ } => acc
+                  }
+                Positional => acc
+              }
+            BodiedScaffoldRowLookupFound { row: _ } =>
+              match e.label {
+                Named { name: _ } =>
+                  match bodied_arrow_scaffold_from_grammar_relation_row(row: e.target) {
+                    Accepted { value: _, diagnostics: _ } =>
+                      BodiedScaffoldRowLookupAmbiguous
+                    Rejected { diagnostics: _ } => acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        BodiedScaffoldRowLookupFound { row: row } => outcome_accepted(row)
+        BodiedScaffoldRowLookupMissing =>
+          outcome_rejected(
+            translate_grammar_relation_row_not_found_diagnostic(emitted: rules)
+          )
+        BodiedScaffoldRowLookupAmbiguous =>
+          outcome_rejected(
+            translate_grammar_relation_bodied_scaffold_row_ambiguous_diagnostic(rules: rules)
+          )
+      }
+    _ =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
+  }
+}
+fn grammar_relation_row_for_bodied_arrow_serialize(
+  rules: Node,
+  emitted: Node
+) -> Outcome<Node> {
+  match grammar_relation_row_for_emitted(rules: rules, emitted: emitted) {
+    Accepted { value: row, diagnostics: d } =>
+      bind_outcome(
+        o: bodied_arrow_scaffold_from_grammar_relation_row(row: row),
+        f: fn(scaffold) {
+          Accepted { value: row, diagnostics: d }
+        }
+      )
+    Rejected { diagnostics: _ } =>
+      grammar_relation_row_with_unique_bodied_scaffold(rules: rules)
   }
 }
 fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
@@ -969,7 +1045,7 @@ fn target_serialize_bodied_arrow_from_model(
     o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
     f: fn(rules) {
       bind_outcome(
-        o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+        o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
         f: fn(row) {
           bind_outcome(
             o: bodied_arrow_scaffold_from_grammar_relation_row(row: row),
