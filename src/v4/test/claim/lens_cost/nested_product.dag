@@ -16,7 +16,7 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   EqualsClaim,
@@ -32,7 +32,7 @@ import v4.std.witness { Holds }
 data nested_product_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data nested_product_inner: Node = Node {
@@ -40,7 +40,7 @@ data nested_product_inner: Node = Node {
   children: [
     Edge { label: Positional, target: nested_product_body }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data nested_product_input: Node = Node {
@@ -48,7 +48,7 @@ data nested_product_input: Node = Node {
   children: [
     Edge { label: Positional, target: nested_product_inner }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 fn nested_product_claim_holds() -> Bool {
@@ -69,7 +69,7 @@ fn nested_product_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

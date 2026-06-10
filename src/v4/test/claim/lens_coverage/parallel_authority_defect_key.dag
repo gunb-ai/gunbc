@@ -11,7 +11,7 @@ import v4.lens.coverage {
   coverage_defect_parallel_authority
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -24,7 +24,7 @@ import v4.std.verification {
 data parallel_authority_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^parallel_authority_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data expected_parallel_authority_acceptance: CoverageDefectAcceptance = {
@@ -42,7 +42,7 @@ fn parallel_authority_defect_key_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

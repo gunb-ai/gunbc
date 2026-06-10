@@ -4,11 +4,7 @@
 
 module v4.test.claim.provenance.occurrence_id_model
 
-<<<<<<< HEAD
-import v4.std.diagnostic { ByteRange, Textual, WholeFile }
-=======
 import v4.std.diagnostic { ByteRange, NodeLocus, PortLocus, Textual, WholeFile }
->>>>>>> origin/main
 import v4.std.node { Symbol }
 import v4.std.occurrence_id {
   alloc_occurrence_id,
@@ -33,31 +29,18 @@ data occurrence_model_file: Symbol = ^occurrence_model_file
 
 fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
-<<<<<<< HEAD
-  let (id0, alloc1) = alloc_occurrence_id(alloc: alloc0)
-  let (id1, alloc2) = alloc_occurrence_id(alloc: alloc1)
-  let (id2, _) = alloc_occurrence_id(alloc: alloc2)
-  !occurrence_id_eq(left: id0, right: id1)
-    && !occurrence_id_eq(left: id1, right: id2)
-    && !occurrence_id_eq(left: id0, right: id2)
-=======
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
   let r2 = alloc_occurrence_id(alloc: r1.alloc)
   !occurrence_id_eq(left: r0.id, right: r1.id)
     && !occurrence_id_eq(left: r1.id, right: r2.id)
     && !occurrence_id_eq(left: r0.id, right: r2.id)
->>>>>>> origin/main
 }
 
 fn span_index_from_source_round_trip_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
-<<<<<<< HEAD
-  let (id, _) = alloc_occurrence_id(alloc: alloc0)
-=======
   let minted = alloc_occurrence_id(alloc: alloc0)
   let id = minted.id
->>>>>>> origin/main
   let locus = Textual {
     file: occurrence_model_file,
     extent: ByteRange { start: 0, end: 12 }
@@ -72,13 +55,6 @@ fn span_index_from_source_round_trip_holds() -> Bool {
     Holds { value: got } =>
       match got {
         FromSource { locus: got_locus } =>
-<<<<<<< HEAD
-          (got_locus.file == occurrence_model_file)
-            && match got_locus.extent {
-              ByteRange { start: s, end: e } => (s == 0) && (e == 12)
-              WholeFile => false
-            }
-=======
           match got_locus {
             Textual { file: f, extent: ext } =>
               (f == occurrence_model_file)
@@ -89,7 +65,6 @@ fn span_index_from_source_round_trip_holds() -> Bool {
             NodeLocus { anchor: _ } => false
             PortLocus { anchor: _ } => false
           }
->>>>>>> origin/main
         DerivedBy { producer: _, from: _ } => false
         GeneratedBy { generator: _, from: _ } => false
       }

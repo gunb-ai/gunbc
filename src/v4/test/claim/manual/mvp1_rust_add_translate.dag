@@ -85,7 +85,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   DiagnosticClaim,
@@ -107,7 +107,7 @@ fn mvp_int_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^mvp_add_int_atom } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -118,7 +118,7 @@ data mvp_add_arrow_node: Node = Node {
     Edge { label: Positional, target: mvp_int_node() },
     Edge { label: Positional, target: mvp_int_node() }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data mvp1_rust_emitted_root: Node = rust_mvp1_fixture_emitted_add_fn
@@ -136,7 +136,7 @@ data mvp1_rust_poisoned_authority_target_model: TargetModel = TargetModel {
 data mvp1_rust_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data mvp1_rust_missing_translation_rules_target: TargetModel = TargetModel {

@@ -61,7 +61,7 @@ import v4.std.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.node_query { find_named_child }
 import v4.std.target_model {
   ConcreteSyntaxToken,
@@ -269,7 +269,7 @@ fn dag_grammar_atom(id: Symbol) -> Node {
       connective: Atom { identity: id }
     },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -325,7 +325,7 @@ fn emit_grammar_relation_row(
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2375,7 +2375,7 @@ fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
         target: qualified_name
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2420,7 +2420,7 @@ fn emit_import_decl_emitted_node(
         )
       Absent => prefix
     },
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2474,7 +2474,7 @@ fn emit_data_decl_emitted_node(
         target: expr
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2868,7 +2868,7 @@ fn dag_fidelity_disposition_node(
             target: dag_trivia_normalization_feature_node(feature: feature)
           )
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
       }
     FailClosed { feature: feature } =>
       Node {
@@ -2883,7 +2883,7 @@ fn dag_fidelity_disposition_node(
             target: dag_trivia_normalization_feature_node(feature: feature)
           )
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
       }
   }
 }
@@ -2905,7 +2905,7 @@ fn dag_mvp1_fidelity_quotient_node() -> Node {
         target: dag_fidelity_disposition_node(disposition: dag_block_comment_fidelity())
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
   }
 }
 
@@ -2935,7 +2935,7 @@ fn dag_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2949,7 +2949,7 @@ fn dag_int_inhabitant_node() -> Node {
         target: dag_inhabitant_atom(id: ^dag_surface_spelling_int)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2959,7 +2959,7 @@ fn dag_declared_inhabitants_core() -> Node {
     children: [
       dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node())
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2972,7 +2972,7 @@ data dag_mvp1_fixture_emitted_add_fn: Node = Node {
     Edge { label: Positional, target: dag_mvp1_fixture_int_inhabitant },
     Edge { label: Positional, target: dag_mvp1_fixture_int_inhabitant }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 fn dag_mvp1_zip_fold_closure_edges() -> List<Edge> {
@@ -2999,7 +2999,7 @@ fn dag_mvp1_declared_inhabitants_root() -> Node {
       left: dag_declared_inhabitants_core().children,
       right: dag_mvp1_zip_fold_closure_edges()
     ),
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -3048,7 +3048,7 @@ fn dag_mvp1_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: dag_mvp1_serialize_source_children(),
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -3143,7 +3143,7 @@ fn dag_mvp1_grammar_relation_row_node() -> Node {
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -3156,7 +3156,7 @@ fn dag_mvp1_translation_rules_node() -> Node {
         target: dag_mvp1_grammar_relation_row_node()
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -3185,7 +3185,7 @@ fn dag_mvp1_target_model_bundle_core() -> Node {
         target: dag_mvp1_fidelity_quotient_node()
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -3212,7 +3212,7 @@ fn dag_mvp1_target_model() -> TargetModel {
 // T-36 / rung-3 RoundTripClaim precondition receipt — wave-1 lex/grammar/C5 trivia axes.
 fn dag_round_trip_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

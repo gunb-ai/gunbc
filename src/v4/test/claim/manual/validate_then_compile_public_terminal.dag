@@ -33,7 +33,7 @@ import v4.std.diagnostic {
 }
 import v4.std.algebra { Empty }
 import v4.std.collection { empty_map }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -50,7 +50,7 @@ data rust_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 },
   lex: VoidLexRules,
   binding_spellings: empty_map(),
@@ -60,7 +60,7 @@ fn claim_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -155,7 +155,7 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }
@@ -179,7 +179,7 @@ fn claim_rejecting_lens_blocks_passes() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

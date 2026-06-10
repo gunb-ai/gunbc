@@ -39,7 +39,7 @@ import v4.std.find_witness {
   preservation_rule_exact_structural_equality_zip_fold,
   preservation_rule_refinement_widening
 }
-import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, Unanchored }
+import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, substrate_synthetic_occurrence_id }
 import v4.std.refinement_widening_predicate { refinement_widening_is_strict_coarsening }
 import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
@@ -253,7 +253,7 @@ fn coercion_homomorphism_evidence(
       Edge { label: Named { name: coercion_homomorphism_evidence_candidate }, target: fw.candidate },
       Edge { label: Named { name: coercion_homomorphism_evidence_find_witness }, target: fw.witness.evidence }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn coercion_fold_exact_structural(

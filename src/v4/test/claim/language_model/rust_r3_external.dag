@@ -25,7 +25,7 @@ import v4.std.leaf_model_verification {
   target_diagnostic_e0423_expected_value_found_type
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verdict { verdict_fail }
 import v4.std.verification {
   EqualsClaim,
@@ -39,10 +39,10 @@ import v4.std.verification {
 fn rust_r3_external_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^rust_r3_external_claim_bool_true } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^rust_r3_external_claim_bool_false } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

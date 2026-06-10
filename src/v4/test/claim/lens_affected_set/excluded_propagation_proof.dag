@@ -21,7 +21,7 @@ import v4.lens.affected_set_examples {
 }
 import v4.test.claim.lens_affected_set.frontier_observation { frontier_decision_matches }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Node, TypeNode, Unanchored }
+import v4.std.node { Conj, Node, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -90,7 +90,7 @@ fn excluded_propagation_proof_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

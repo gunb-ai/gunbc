@@ -1183,7 +1183,7 @@ fn node_offset_atom(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
   }
 }
 
@@ -1197,7 +1197,7 @@ fn node_offset_conj(children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: children,
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
   }
 }
 

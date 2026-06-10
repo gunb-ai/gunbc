@@ -16,7 +16,7 @@ import v4.lens.affected_set_examples {
   expected_affected_set_boundary_prune
 }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Node, TypeNode, Unanchored }
+import v4.std.node { Conj, Node, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -42,7 +42,7 @@ fn boundary_prune_receipt_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

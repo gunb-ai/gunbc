@@ -28,7 +28,7 @@ import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v4.std.collection { empty_map }
 import v4.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_eq }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName }
 import v4.std.verification {
   CompilesClaim,
@@ -41,12 +41,12 @@ import v4.std.verification {
 }
 fn fc_pass_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^fc_pass_sym } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn fc_fail_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^fc_fail_sym } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn fc_claim_input(ok: Bool) -> Node {
@@ -58,7 +58,7 @@ fn fc_qn_node(seg: Symbol) -> Node {
     xs: Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
       Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
     }
   )
@@ -83,11 +83,11 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
-          span: Unanchored
+          occurrence_id: substrate_synthetic_occurrence_id
 }
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -127,11 +127,11 @@ fn fc_malformed_subject_root() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^fc_malformed_child_sym } },
           children: [],
-          span: Unanchored
+          occurrence_id: substrate_synthetic_occurrence_id
 }
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

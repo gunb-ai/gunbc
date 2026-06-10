@@ -42,7 +42,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   CompilesClaim,
@@ -58,21 +58,21 @@ fn distinct_source_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_target_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_wrong_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^distinct_zip_wrong_atom } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_source_add_node() -> Node {
@@ -83,7 +83,7 @@ fn distinct_source_add_node() -> Node {
       Edge { label: Positional, target: distinct_source_leaf() },
       Edge { label: Positional, target: distinct_source_leaf() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_target_add_node() -> Node {
@@ -94,7 +94,7 @@ fn distinct_target_add_node() -> Node {
       Edge { label: Positional, target: distinct_target_leaf() },
       Edge { label: Positional, target: distinct_target_leaf() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_wrong_arity_node() -> Node {
@@ -104,7 +104,7 @@ fn distinct_wrong_arity_node() -> Node {
       Edge { label: Positional, target: distinct_wrong_leaf() },
       Edge { label: Positional, target: distinct_wrong_leaf() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_wrong_subtree_node() -> Node {
@@ -115,7 +115,7 @@ fn distinct_wrong_subtree_node() -> Node {
       Edge { label: Positional, target: distinct_target_leaf() },
       Edge { label: Positional, target: distinct_target_leaf() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_source_nested_node() -> Node {
@@ -125,7 +125,7 @@ fn distinct_source_nested_node() -> Node {
       Edge { label: Positional, target: distinct_source_add_node() },
       Edge { label: Positional, target: distinct_source_leaf() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_target_nested_node() -> Node {
@@ -135,14 +135,14 @@ fn distinct_target_nested_node() -> Node {
       Edge { label: Positional, target: distinct_target_add_node() },
       Edge { label: Positional, target: distinct_target_leaf() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn distinct_closedness() -> StructuralPropertyWitness {

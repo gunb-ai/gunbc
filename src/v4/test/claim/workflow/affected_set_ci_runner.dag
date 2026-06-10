@@ -19,7 +19,7 @@ import v4.std.change {
 import v4.std.algebra { count_equal, filter, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.text { String }
 import v4.std.verification {
   EqualsClaim,
@@ -38,31 +38,31 @@ import v4.workflow.affected_set_selection {
 data ci_runner_untouched_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_untouched_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data ci_runner_touched_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_touched_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data ci_runner_other_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_other_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data ci_runner_shape_a_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_shape_a_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data ci_runner_shape_b_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_shape_b_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data ci_runner_conj_wrapped_touched_node: Node = Node {
@@ -73,7 +73,7 @@ data ci_runner_conj_wrapped_touched_node: Node = Node {
       target: ci_runner_touched_node
     }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data ci_runner_claim_untouched: TestClaim = EqualsClaim {
@@ -162,7 +162,7 @@ fn ci_runner_narrow_selection_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }
@@ -174,7 +174,7 @@ fn ci_runner_fail_closed_superset_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }
@@ -240,7 +240,7 @@ fn ci_runner_shape_collision_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }
@@ -378,7 +378,7 @@ fn ci_runner_inner_frontier_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

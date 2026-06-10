@@ -8,7 +8,7 @@ module v4.test.claim.algebra_laws.is_prefix_of_prefix_check
 
 
 import v4.std.algebra { Cons, Empty, FreeMonoid, is_prefix_of }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -27,12 +27,12 @@ fn sym_ab() -> FreeMonoid<Symbol> { Cons { head: ^prefix_sym_a, tail: Cons { hea
 
 fn prefix_pass_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^prefix_pass_sym } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn prefix_fail_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^prefix_fail_sym } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn prefix_claim_input(ok: Bool) -> Node {

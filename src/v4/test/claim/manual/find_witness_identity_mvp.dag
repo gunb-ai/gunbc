@@ -44,7 +44,7 @@ import v4.std.node {
   Node,
   Symbol,
   TypeNode,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   CompilesClaim,
@@ -60,14 +60,14 @@ fn identity_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^identity_mvp_source_atom } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn identity_other_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^identity_mvp_other_atom } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn identity_closedness() -> StructuralPropertyWitness {

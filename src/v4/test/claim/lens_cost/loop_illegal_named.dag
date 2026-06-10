@@ -19,7 +19,7 @@ import v4.std.node {
   Symbol,
   TypeNode,
   loop_bound_edge,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   EqualsClaim,
@@ -34,19 +34,19 @@ import v4.std.witness { Violates }
 data loop_illegal_named_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_body_atom } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data loop_illegal_named_measure_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_measure_atom } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data loop_illegal_named_extra_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_extra_atom } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data loop_illegal_named_input: Node = Node {
@@ -56,7 +56,7 @@ data loop_illegal_named_input: Node = Node {
     Edge { label: Named { name: loop_bound_edge }, target: loop_illegal_named_measure_leaf },
     Edge { label: Named { name: ^loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 fn loop_illegal_named_claim_holds() -> Bool {
@@ -73,7 +73,7 @@ fn loop_illegal_named_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

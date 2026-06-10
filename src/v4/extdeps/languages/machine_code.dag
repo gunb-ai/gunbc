@@ -36,7 +36,7 @@ import v4.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
@@ -396,7 +396,7 @@ fn mc_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -454,7 +454,7 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
         target: mc_inhabitant_atom(id: facts.std_projection)
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

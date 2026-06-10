@@ -25,13 +25,13 @@ import v4.std.node {
   Connective,
   Edge,
   Node,
-  NodeSpan,
+  OccurrenceId,
   Symbol,
   TypeNode,
   is_positional,
   all_edges_named,
   all_edges_positional,
-  node_with_span,
+  node_with_occurrence_id,
   well_formed
 }
 
@@ -137,11 +137,11 @@ fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
   })
 }
 
-fn type_node(connective: Connective, children: List<Edge>, span: NodeSpan) -> Node {
-  node_with_span(
+fn type_node(connective: Connective, children: List<Edge>, occurrence_id: OccurrenceId) -> Node {
+  node_with_occurrence_id(
     kind: TypeNode { connective: connective },
     children: children,
-    span: span
+    occurrence_id: occurrence_id
   )
 }
 
@@ -149,13 +149,13 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
   match kind {
     ServiceSugar =>
       if all_edges_named(children: children) {
-        Accepted { value: type_node(connective: Conj, children: children, span: n.span), diagnostics: None }
+        Accepted { value: type_node(connective: Conj, children: children, occurrence_id: n.occurrence_id), diagnostics: None }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
       }
     FnSugar =>
       if all_edges_positional(children: children) {
-        Accepted { value: type_node(connective: Arrow, children: children, span: n.span), diagnostics: None }
+        Accepted { value: type_node(connective: Arrow, children: children, occurrence_id: n.occurrence_id), diagnostics: None }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
       }
@@ -176,7 +176,7 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
       }
     OperationSugar =>
       if all_edges_positional(children: children) {
-        Accepted { value: type_node(connective: Arrow, children: children, span: n.span), diagnostics: None }
+        Accepted { value: type_node(connective: Arrow, children: children, occurrence_id: n.occurrence_id), diagnostics: None }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
       }
@@ -202,7 +202,7 @@ fn normalize_node(n: Node) -> Outcome<Node> {
           }
         Absent =>
           Accepted {
-            value: node_with_span(kind: n.kind, children: normalized_children, span: n.span),
+            value: node_with_occurrence_id(kind: n.kind, children: normalized_children, occurrence_id: n.occurrence_id),
             diagnostics: cd
           }
       }

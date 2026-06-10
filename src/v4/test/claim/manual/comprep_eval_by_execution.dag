@@ -66,7 +66,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   arrow_body_edge,
-  node_span_unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.runtime {
   BindInterpreter,
@@ -101,7 +101,7 @@ import v4.std.verification {
 fn comprep_eval_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    span: node_span_unanchored(),
+    occurrence_id: substrate_synthetic_occurrence_id,
     children: []
   }
 }
@@ -385,7 +385,7 @@ fn comprep_eval_resolve_holds() -> Bool {
 fn comprep_eval_add_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: substrate_synthetic_occurrence_id,
     children: [
       Edge { label: Positional, target: callee },
       Edge { label: Positional, target: comprep_eval_literal_two_node() },
@@ -397,7 +397,7 @@ fn comprep_eval_add_call(callee: Node) -> Node {
 fn comprep_eval_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    span: node_span_unanchored(),
+    occurrence_id: substrate_synthetic_occurrence_id,
     children: [
       Edge { label: Named { name: ^comprep_eval_actual }, target: call },
       Edge { label: Named { name: ^comprep_eval_expected }, target: expected }
@@ -474,7 +474,7 @@ fn comprep_eval_run(callee: Node, expected: Node) -> Outcome<TestClaimRun<Node, 
 fn comprep_swapped_operand_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: substrate_synthetic_occurrence_id,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
@@ -486,7 +486,7 @@ fn comprep_swapped_operand_body() -> Node {
 fn comprep_swapped_add_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    span: node_span_unanchored(),
+    occurrence_id: substrate_synthetic_occurrence_id,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },

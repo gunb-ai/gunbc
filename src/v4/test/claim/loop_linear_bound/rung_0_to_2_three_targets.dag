@@ -10,7 +10,7 @@ module v4.test.claim.loop_linear_bound.rung_0_to_2_three_targets
 
 
 import v4.std.collection { List }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -29,7 +29,7 @@ import v4.test.claim.computation_shapes.loop_linear_bound {
 data phase4_loop_linear_bound_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase4_loop_linear_bound_rung_subject_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 

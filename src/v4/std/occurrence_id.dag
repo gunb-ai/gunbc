@@ -11,32 +11,21 @@ type OccurrenceIdAllocator {
   next_id: Int
 }
 
-<<<<<<< HEAD
-=======
 type OccurrenceIdAllocResult {
   id: OccurrenceId
   alloc: OccurrenceIdAllocator
 }
 
->>>>>>> origin/main
 fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
   OccurrenceIdAllocator { next_id: 0 }
 }
 
 // SOLE MINT — OccurrenceId { value: ... } constructed only here (#4615 BindingId parity).
-<<<<<<< HEAD
-fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> (OccurrenceId, OccurrenceIdAllocator) {
-  (
-    OccurrenceId { value: alloc.next_id },
-    OccurrenceIdAllocator { next_id: alloc.next_id + 1 }
-  )
-=======
 fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
   OccurrenceIdAllocResult {
     id: OccurrenceId { value: alloc.next_id },
     alloc: OccurrenceIdAllocator { next_id: alloc.next_id + 1 }
   }
->>>>>>> origin/main
 }
 
 fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
