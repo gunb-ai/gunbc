@@ -23,17 +23,41 @@ import v4.test.claim.impossible_bug.transport_type_drift {
   falsification_target_contract_drift,
   falsification_wire_contract_drift
 }
-import v4.test.claim.lens_idempotency.write_effect { idempotency_write_effect_claim_holds }
-import v4.test.claim.lens_synthesis.synthesis_gap_polynomial { synthesis_gap_poly_lens_non_empty }
-
-
-fn release_complexity_lens_catches() -> Bool {
-  synthesis_gap_poly_lens_non_empty()
+import v4.test.claim.impossible_bug.idempotency_contract {
+  claim_nonidempotent_in_idempotent_position_caught
+}
+import v4.test.claim.impossible_bug.suboptimal_complexity {
+  claim_overcost_against_structural_bound_violates
 }
 
 
-fn release_idempotency_lens_catches() -> Bool {
-  idempotency_write_effect_claim_holds()
+fn release_complexity_claim_catches() -> Bool {
+  match test_claim_expected_outcome(c: claim_overcost_against_structural_bound_violates) {
+    Accepted { value: Rejected { diagnostics: expected }, diagnostics: None } =>
+      match expected.head {
+        Diagnostic { reason: reason, at: _, correction: _ } =>
+          match impossible_bug_class_from_diagnostic_reason(reason: reason) {
+              Accepted { value: SuboptimalComplexity, diagnostics: None } => true
+              _ => false
+            }
+      }
+    _ => false
+  }
+}
+
+
+fn release_idempotency_claim_catches() -> Bool {
+  match test_claim_expected_outcome(c: claim_nonidempotent_in_idempotent_position_caught) {
+    Accepted { value: Rejected { diagnostics: expected }, diagnostics: None } =>
+      match expected.head {
+        Diagnostic { reason: reason, at: _, correction: _ } =>
+          match impossible_bug_class_from_diagnostic_reason(reason: reason) {
+              Accepted { value: IdempotencyContract, diagnostics: None } => true
+              _ => false
+            }
+      }
+    _ => false
+  }
 }
 
 
@@ -75,32 +99,32 @@ fn release_transport_drift_probe_catches() -> Bool {
 }
 
 
-fn release_complexity_claims_are_lens_rejections() -> Bool {
-  release_complexity_lens_catches()
+fn release_complexity_claims_are_class_rejections() -> Bool {
+  release_complexity_claim_catches()
 }
 
 
-fn release_idempotency_claims_are_lens_rejections() -> Bool {
-  release_idempotency_lens_catches()
+fn release_idempotency_claims_are_class_rejections() -> Bool {
+  release_idempotency_claim_catches()
 }
 
 
-fn release_transport_claims_are_lens_rejections() -> Bool {
+fn release_transport_claims_are_class_rejections() -> Bool {
   release_transport_drift_probe_catches()
 }
 
 
-fn witness_impossible_bug_release_demos_are_v4_lens_caught() -> Bool {
-  release_complexity_claims_are_lens_rejections() &&
-    release_idempotency_claims_are_lens_rejections() &&
-    release_transport_claims_are_lens_rejections()
+fn witness_impossible_bug_release_demos_are_v4_claims_caught() -> Bool {
+  release_complexity_claims_are_class_rejections() &&
+    release_idempotency_claims_are_class_rejections() &&
+    release_transport_claims_are_class_rejections()
 }
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
-// Co-located with `witness_impossible_bug_release_demos_are_v4_lens_caught` so glob discovery finds the witness without the central roster.
+// Co-located with `witness_impossible_bug_release_demos_are_v4_claims_caught` so glob discovery finds the witness without the central roster.
 data unified_claim_impossible_bug_release_demos: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/impossible_bug/release_demos.dag",
-    function: witness_impossible_bug_release_demos_are_v4_lens_caught
+    function: witness_impossible_bug_release_demos_are_v4_claims_caught
   }
 }
