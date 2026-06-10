@@ -7,6 +7,12 @@
 
 module v4.test.claim.manual.discriminant_intrinsic
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 // A local coproduct — two arms, each with a payload, so the witness proves the
 // discriminant is keyed on the CONSTRUCTOR, not the payload.
 type DiscriminantProbeShape
@@ -26,4 +32,13 @@ fn discriminant_intrinsic_is_payload_blind_and_arm_sharp() -> Bool {
   let cross_arm_distinct = (discriminant(v: alpha_one) == discriminant(v: beta_one)) == false
 
   same_arm_equal && cross_arm_distinct
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `discriminant_intrinsic_is_payload_blind_and_arm_sharp` so glob discovery finds the witness without the central roster.
+data unified_claim_discriminant_intrinsic: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/discriminant_intrinsic.dag",
+    function: discriminant_intrinsic_is_payload_blind_and_arm_sharp
+  }
 }

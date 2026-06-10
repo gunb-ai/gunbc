@@ -20,7 +20,18 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.algebra { Empty, list_snoc_item }
-import v4.std.node { Conj, Edge, Named, Node, Positional, Symbol, TypeNode, name_occurrences }
+import v4.std.node {
+  Arrow,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  arrow_body_edge,
+  name_occurrences
+}
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
 fn node_positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
@@ -84,6 +95,57 @@ fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
     _ =>
       outcome_rejected(d: Diagnostic {
         reason: ^named_child_missing,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+  }
+}
+
+// 🟢 grounded — Arrow.body single-named-edge lookup (E-9); Conj-only find_named_child must not be reused on Arrow roots.
+fn find_arrow_body_child(root: Node) -> Outcome<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } =>
+      let count = name_occurrences(name: arrow_body_edge, children: root.children)
+      if count == 1 {
+        fold(
+          root.children,
+          init: outcome_rejected(d: Diagnostic {
+            reason: ^arrow_body_child_missing,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }),
+          f: fn(acc, e) {
+            match acc {
+              Accepted { value: _, diagnostics: _ } => acc
+              Rejected { diagnostics: _ } =>
+                match e.label {
+                  Named { name: edge_name } =>
+                    if edge_name == arrow_body_edge {
+                      outcome_accepted(value: e.target)
+                    } else {
+                      acc
+                    }
+                  Positional => acc
+                }
+            }
+          }
+        )
+      } else if count == 0 {
+        outcome_rejected(d: Diagnostic {
+          reason: ^arrow_body_child_missing,
+          at: node_locus(node: root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      } else {
+        outcome_rejected(d: Diagnostic {
+          reason: ^arrow_body_child_ambiguous,
+          at: node_locus(node: root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      }
+    _ =>
+      outcome_rejected(d: Diagnostic {
+        reason: ^arrow_body_child_not_arrow,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
       })

@@ -62,7 +62,10 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   Unit,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 data sg2_fail_text: String = ""
 data sg2_expected_type_text: String = "Rc<FooBar<X, Y>>"
@@ -483,3 +486,20 @@ fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
   }
 }
 
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_sg2_arrow_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_sg2_arrow: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+    function: witness_sg2_arrow_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_sg2_projection_falsification_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_sg2_projection_falsification: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
+    function: witness_sg2_projection_falsification_holds
+  }
+}

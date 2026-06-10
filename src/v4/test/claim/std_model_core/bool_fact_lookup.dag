@@ -26,6 +26,12 @@ import v4.std.model_core {
 }
 
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 fn bool_lookup_width_ok(vw: Node) -> Bool {
   content_hash(n: vw) == content_hash(n: bool_width_fact_node(width: bool_primitive_facts.width))
 }
@@ -68,5 +74,14 @@ fn witness_model_core_bool_fact_lookup_discriminates() -> Bool {
       Violates { diagnostic: _ } => false
     }
     Violates { diagnostic: _ } => false
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_model_core_bool_fact_lookup_discriminates` so glob discovery finds the witness without the central roster.
+data unified_claim_model_core_bool_fact_lookup: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_model_core/bool_fact_lookup.dag",
+    function: witness_model_core_bool_fact_lookup_discriminates
   }
 }

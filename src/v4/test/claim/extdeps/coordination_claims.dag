@@ -41,6 +41,12 @@ import v4.extdeps.coordination {
 }
 
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 fn coord_not(b: Bool) -> Bool {
   b == false
 }
@@ -114,4 +120,22 @@ fn coordination_obligation_settlement_arm_sharp_holds() -> Bool {
     && settlement_is_within(s: coordination_effect_obligation(effect: PubSub).required_settlement)
     && coord_not(b: settlement_is_within(s: coordination_effect_obligation(effect: Http).required_settlement))
     && coord_not(b: settlement_is_immediate(s: coordination_effect_obligation(effect: Queue).required_settlement))
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `coordination_obligation_exchange_arm_sharp_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_coordination_obligation_exchange: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/coordination_claims.dag",
+    function: coordination_obligation_exchange_arm_sharp_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `coordination_obligation_settlement_arm_sharp_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_coordination_obligation_settlement: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps/coordination_claims.dag",
+    function: coordination_obligation_settlement_arm_sharp_holds
+  }
 }

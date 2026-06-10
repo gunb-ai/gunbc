@@ -61,29 +61,22 @@ data text_host_string_roundtrip_holds: Symbol = text_host_string_roundtrip_holds
 data text_string_freemonoid_carrier_holds: Symbol = text_string_freemonoid_carrier_holds
 data ts_g2_sg1_symbol_carrier_holds: Symbol = ts_g2_sg1_symbol_carrier_holds
 data ts_g2_sg5_absence_fail_closed_holds: Symbol = ts_g2_sg5_absence_fail_closed_holds
+data witness_cross_target_python_to_rust_i32_rejects: Symbol = witness_cross_target_python_to_rust_i32_rejects
+data witness_cross_target_python_to_rust_i32_would_lose_information: Symbol = witness_cross_target_python_to_rust_i32_would_lose_information
+data witness_cross_target_rust_i32_to_python_int_accepts: Symbol = witness_cross_target_rust_i32_to_python_int_accepts
 data witness_claim_crux_substrate_gap: Symbol = witness_claim_crux_substrate_gap
-data project_to_core_accepts_sibling: Symbol = project_to_core_accepts_sibling
-data project_to_core_rejects_wrong_core: Symbol = project_to_core_rejects_wrong_core
-data project_to_core_rejects_empty_core: Symbol = project_to_core_rejects_empty_core
-data project_to_core_rejects_surface_wrapped_core: Symbol = project_to_core_rejects_surface_wrapped_core
-data project_to_core_preserves_ambiguity: Symbol = project_to_core_preserves_ambiguity
-data project_to_core_drops_nested_surface: Symbol = project_to_core_drops_nested_surface
-data project_to_core_rejects_nested_core_difference: Symbol = project_to_core_rejects_nested_core_difference
-data integer_value_set_accepts_subset: Symbol = integer_value_set_accepts_subset
-data integer_value_set_accepts_proper_subrange: Symbol = integer_value_set_accepts_proper_subrange
-data integer_value_set_accepts_cross_signed_subrange: Symbol = integer_value_set_accepts_cross_signed_subrange
-data integer_value_set_rejects_malformed_interval: Symbol = integer_value_set_rejects_malformed_interval
-data integer_value_set_interval_rejects_malformed_interval: Symbol = integer_value_set_interval_rejects_malformed_interval
-data integer_value_set_reverse_strict: Symbol = integer_value_set_reverse_strict
-data integer_value_set_refuses_incompatible: Symbol = integer_value_set_refuses_incompatible
 data integer_interval_bound_compare_orders_pointer_width_bounds: Symbol = integer_interval_bound_compare_orders_pointer_width_bounds
-data integer_value_set_rejects_unbounded_with_extra_field: Symbol = integer_value_set_rejects_unbounded_with_extra_field
-data project_to_core_rejects_different_connective_same_core_children: Symbol = project_to_core_rejects_different_connective_same_core_children
-data cross_target_rust_i32_python_int_widens: Symbol = cross_target_rust_i32_python_int_widens
-data cross_target_python_int_rust_i32_narrows: Symbol = cross_target_python_int_rust_i32_narrows
-data cross_target_python_int_rust_i32_exact_rejects: Symbol = cross_target_python_int_rust_i32_exact_rejects
 data witness_claim_task_id_surfaces_distinct: Symbol = witness_claim_task_id_surfaces_distinct
 data witness_grounding_terminal_gate_runtime_authoritative_discriminates: Symbol = witness_grounding_terminal_gate_runtime_authoritative_discriminates
+data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Symbol = witness_integer_interval_bound_compare_orders_pointer_width_bounds
+data witness_integer_value_set_accepts_i16_subset_i32: Symbol = witness_integer_value_set_accepts_i16_subset_i32
+data witness_integer_value_set_accepts_i32_subset_python_int: Symbol = witness_integer_value_set_accepts_i32_subset_python_int
+data witness_integer_value_set_accepts_u8_subset_i16: Symbol = witness_integer_value_set_accepts_u8_subset_i16
+data witness_integer_value_set_interval_containment_rejects_malformed_payload: Symbol = witness_integer_value_set_interval_containment_rejects_malformed_payload
+data witness_integer_value_set_refuses_incompatible_unknown: Symbol = witness_integer_value_set_refuses_incompatible_unknown
+data witness_integer_value_set_rejects_malformed_interval_payload: Symbol = witness_integer_value_set_rejects_malformed_interval_payload
+data witness_integer_value_set_rejects_unbounded_with_extra_field: Symbol = witness_integer_value_set_rejects_unbounded_with_extra_field
+data witness_integer_value_set_reverse_is_strict_coarsening: Symbol = witness_integer_value_set_reverse_is_strict_coarsening
 data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Symbol = witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green
 data witness_lens_testgen_scheduled_generators_carry_provenance_green: Symbol = witness_lens_testgen_scheduled_generators_carry_provenance_green
 data witness_lens_testgen_schedules_dag_input_surface_green: Symbol = witness_lens_testgen_schedules_dag_input_surface_green
@@ -91,6 +84,14 @@ data witness_lens_testgen_shadow_ci_run_receipt_green: Symbol = witness_lens_tes
 data witness_lens_idempotency_family_gate_closed: Symbol = witness_lens_idempotency_family_gate_closed
 data witness_lens_parallelism_family_gate_closed: Symbol = witness_lens_parallelism_family_gate_closed
 data witness_model_core_bool_fact_lookup_discriminates: Symbol = witness_model_core_bool_fact_lookup_discriminates
+data witness_project_to_core_derives_preserves_ambiguity: Symbol = witness_project_to_core_derives_preserves_ambiguity
+data witness_project_to_core_drops_nested_surface: Symbol = witness_project_to_core_drops_nested_surface
+data witness_project_to_core_real_dispatch_accepts_sibling: Symbol = witness_project_to_core_real_dispatch_accepts_sibling
+data witness_project_to_core_real_dispatch_rejects_wrong_core: Symbol = witness_project_to_core_real_dispatch_rejects_wrong_core
+data witness_project_to_core_rejects_core_only_under_surface: Symbol = witness_project_to_core_rejects_core_only_under_surface
+data witness_project_to_core_rejects_different_connective_same_core_children: Symbol = witness_project_to_core_rejects_different_connective_same_core_children
+data witness_project_to_core_rejects_nested_core_difference: Symbol = witness_project_to_core_rejects_nested_core_difference
+data witness_project_to_core_rejects_surface_only_empty_core: Symbol = witness_project_to_core_rejects_surface_only_empty_core
 data witness_sg2_arrow_holds: Symbol = witness_sg2_arrow_holds
 data witness_sg2_projection_falsification_holds: Symbol = witness_sg2_projection_falsification_holds
 data parallel_executor_claims_hold: Symbol = parallel_executor_claims_hold
@@ -155,26 +156,26 @@ fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
   let m50 = map_insert(m49, sg_rc_value_rc_wrap_tagged, "sg_rc_value_rc_wrap_tagged")
   let m51 = map_insert(m50, witness_lens_idempotency_family_gate_closed, "witness_lens_idempotency_family_gate_closed")
   let m52 = map_insert(m51, witness_lens_parallelism_family_gate_closed, "witness_lens_parallelism_family_gate_closed")
-  let m53 = map_insert(m52, project_to_core_accepts_sibling, "witness_project_to_core_real_dispatch_accepts_sibling")
-  let m54 = map_insert(m53, project_to_core_rejects_wrong_core, "witness_project_to_core_real_dispatch_rejects_wrong_core")
-  let m55 = map_insert(m54, project_to_core_rejects_empty_core, "witness_project_to_core_rejects_surface_only_empty_core")
-  let m56 = map_insert(m55, project_to_core_rejects_surface_wrapped_core, "witness_project_to_core_rejects_core_only_under_surface")
-  let m57 = map_insert(m56, project_to_core_preserves_ambiguity, "witness_project_to_core_derives_preserves_ambiguity")
-  let m58 = map_insert(m57, project_to_core_drops_nested_surface, "witness_project_to_core_drops_nested_surface")
-  let m59 = map_insert(m58, project_to_core_rejects_nested_core_difference, "witness_project_to_core_rejects_nested_core_difference")
-  let m60 = map_insert(m59, project_to_core_rejects_different_connective_same_core_children, "witness_project_to_core_rejects_different_connective_same_core_children")
-  let m61 = map_insert(m60, integer_value_set_accepts_subset, "witness_integer_value_set_accepts_i32_subset_python_int")
-  let m62 = map_insert(m61, integer_value_set_accepts_proper_subrange, "witness_integer_value_set_accepts_i16_subset_i32")
-  let m63 = map_insert(m62, integer_value_set_accepts_cross_signed_subrange, "witness_integer_value_set_accepts_u8_subset_i16")
-  let m64 = map_insert(m63, integer_value_set_rejects_malformed_interval, "witness_integer_value_set_rejects_malformed_interval_payload")
-  let m65 = map_insert(m64, integer_value_set_interval_rejects_malformed_interval, "witness_integer_value_set_interval_containment_rejects_malformed_payload")
-  let m66 = map_insert(m65, integer_value_set_reverse_strict, "witness_integer_value_set_reverse_is_strict_coarsening")
-  let m67 = map_insert(m66, integer_value_set_refuses_incompatible, "witness_integer_value_set_refuses_incompatible_unknown")
-  let m68 = map_insert(m67, integer_interval_bound_compare_orders_pointer_width_bounds, "witness_integer_interval_bound_compare_orders_pointer_width_bounds")
-  let m69 = map_insert(m68, integer_value_set_rejects_unbounded_with_extra_field, "witness_integer_value_set_rejects_unbounded_with_extra_field")
-  let m70 = map_insert(m69, cross_target_rust_i32_python_int_widens, "witness_cross_target_rust_i32_to_python_int_accepts")
-  let m71 = map_insert(m70, cross_target_python_int_rust_i32_narrows, "witness_cross_target_python_to_rust_i32_would_lose_information")
-  let m72 = map_insert(m71, cross_target_python_int_rust_i32_exact_rejects, "witness_cross_target_python_to_rust_i32_rejects")
+  let m53 = map_insert(m52, witness_project_to_core_real_dispatch_accepts_sibling, "witness_project_to_core_real_dispatch_accepts_sibling")
+  let m54 = map_insert(m53, witness_project_to_core_real_dispatch_rejects_wrong_core, "witness_project_to_core_real_dispatch_rejects_wrong_core")
+  let m55 = map_insert(m54, witness_project_to_core_rejects_surface_only_empty_core, "witness_project_to_core_rejects_surface_only_empty_core")
+  let m56 = map_insert(m55, witness_project_to_core_rejects_core_only_under_surface, "witness_project_to_core_rejects_core_only_under_surface")
+  let m57 = map_insert(m56, witness_project_to_core_derives_preserves_ambiguity, "witness_project_to_core_derives_preserves_ambiguity")
+  let m58 = map_insert(m57, witness_project_to_core_drops_nested_surface, "witness_project_to_core_drops_nested_surface")
+  let m59 = map_insert(m58, witness_project_to_core_rejects_nested_core_difference, "witness_project_to_core_rejects_nested_core_difference")
+  let m60 = map_insert(m59, witness_project_to_core_rejects_different_connective_same_core_children, "witness_project_to_core_rejects_different_connective_same_core_children")
+  let m61 = map_insert(m60, witness_integer_value_set_accepts_i32_subset_python_int, "witness_integer_value_set_accepts_i32_subset_python_int")
+  let m62 = map_insert(m61, witness_integer_value_set_accepts_i16_subset_i32, "witness_integer_value_set_accepts_i16_subset_i32")
+  let m63 = map_insert(m62, witness_integer_value_set_accepts_u8_subset_i16, "witness_integer_value_set_accepts_u8_subset_i16")
+  let m64 = map_insert(m63, witness_integer_value_set_rejects_malformed_interval_payload, "witness_integer_value_set_rejects_malformed_interval_payload")
+  let m65 = map_insert(m64, witness_integer_value_set_interval_containment_rejects_malformed_payload, "witness_integer_value_set_interval_containment_rejects_malformed_payload")
+  let m66 = map_insert(m65, witness_integer_value_set_reverse_is_strict_coarsening, "witness_integer_value_set_reverse_is_strict_coarsening")
+  let m67 = map_insert(m66, witness_integer_value_set_refuses_incompatible_unknown, "witness_integer_value_set_refuses_incompatible_unknown")
+  let m68 = map_insert(m67, witness_integer_interval_bound_compare_orders_pointer_width_bounds, "witness_integer_interval_bound_compare_orders_pointer_width_bounds")
+  let m69 = map_insert(m68, witness_integer_value_set_rejects_unbounded_with_extra_field, "witness_integer_value_set_rejects_unbounded_with_extra_field")
+  let m70 = map_insert(m69, witness_cross_target_rust_i32_to_python_int_accepts, "witness_cross_target_rust_i32_to_python_int_accepts")
+  let m71 = map_insert(m70, witness_cross_target_python_to_rust_i32_would_lose_information, "witness_cross_target_python_to_rust_i32_would_lose_information")
+  let m72 = map_insert(m71, witness_cross_target_python_to_rust_i32_rejects, "witness_cross_target_python_to_rust_i32_rejects")
   let m73 = map_insert(m72, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
   map_insert(m73, parallel_executor_claims_hold, "parallel_executor_claims_hold")
 }
@@ -551,140 +552,140 @@ data v4_roster_pilot_row_project_to_core_accepts_sibling: V4RosterPilotClaimRunR
   label: "find_witness project_to_core dispatch accepts same-core sibling",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_project_to_core_real_dispatch_accepts_sibling",
-  function_symbol: project_to_core_accepts_sibling
+  function_symbol: witness_project_to_core_real_dispatch_accepts_sibling
 }
 
 data v4_roster_pilot_row_project_to_core_rejects_wrong_core: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "find_witness project_to_core dispatch rejects wrong-core candidate",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_project_to_core_real_dispatch_rejects_wrong_core",
-  function_symbol: project_to_core_rejects_wrong_core
+  function_symbol: witness_project_to_core_real_dispatch_rejects_wrong_core
 }
 
 data v4_roster_pilot_row_project_to_core_rejects_empty_core: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "find_witness project_to_core dispatch rejects surface-only empty core",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_project_to_core_rejects_surface_only_empty_core",
-  function_symbol: project_to_core_rejects_empty_core
+  function_symbol: witness_project_to_core_rejects_surface_only_empty_core
 }
 
 data v4_roster_pilot_row_project_to_core_rejects_surface_wrapped_core: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "find_witness project_to_core rejects core hidden under surface",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_project_to_core_rejects_core_only_under_surface",
-  function_symbol: project_to_core_rejects_surface_wrapped_core
+  function_symbol: witness_project_to_core_rejects_core_only_under_surface
 }
 
 data v4_roster_pilot_row_project_to_core_preserves_ambiguity: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "find_witness project_to_core dispatch preserves ambiguity diagnostic",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_project_to_core_derives_preserves_ambiguity",
-  function_symbol: project_to_core_preserves_ambiguity
+  function_symbol: witness_project_to_core_derives_preserves_ambiguity
 }
 
 data v4_roster_pilot_row_project_to_core_drops_nested_surface: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "find_witness project_to_core drops nested surface facts",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_project_to_core_drops_nested_surface",
-  function_symbol: project_to_core_drops_nested_surface
+  function_symbol: witness_project_to_core_drops_nested_surface
 }
 
 data v4_roster_pilot_row_project_to_core_rejects_nested_core_difference: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "find_witness project_to_core rejects nested core differences",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_project_to_core_rejects_nested_core_difference",
-  function_symbol: project_to_core_rejects_nested_core_difference
+  function_symbol: witness_project_to_core_rejects_nested_core_difference
 }
 
 data v4_roster_pilot_row_project_to_core_rejects_different_connective_same_core_children: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "find_witness project_to_core rejects different connective same core children",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_project_to_core_rejects_different_connective_same_core_children",
-  function_symbol: project_to_core_rejects_different_connective_same_core_children
+  function_symbol: witness_project_to_core_rejects_different_connective_same_core_children
 }
 
 data v4_roster_pilot_row_integer_value_set_accepts_subset: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer value-set containment accepts i32 subset python-int",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_accepts_i32_subset_python_int",
-  function_symbol: integer_value_set_accepts_subset
+  function_symbol: witness_integer_value_set_accepts_i32_subset_python_int
 }
 
 data v4_roster_pilot_row_integer_value_set_accepts_proper_subrange: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer value-set containment accepts proper fixed-width subrange",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_accepts_i16_subset_i32",
-  function_symbol: integer_value_set_accepts_proper_subrange
+  function_symbol: witness_integer_value_set_accepts_i16_subset_i32
 }
 
 data v4_roster_pilot_row_integer_value_set_accepts_cross_signed_subrange: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer value-set containment accepts cross-signed valid subrange",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_accepts_u8_subset_i16",
-  function_symbol: integer_value_set_accepts_cross_signed_subrange
+  function_symbol: witness_integer_value_set_accepts_u8_subset_i16
 }
 
 data v4_roster_pilot_row_integer_value_set_rejects_malformed_interval: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer value-set containment rejects malformed interval payload",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_rejects_malformed_interval_payload",
-  function_symbol: integer_value_set_rejects_malformed_interval
+  function_symbol: witness_integer_value_set_rejects_malformed_interval_payload
 }
 
 data v4_roster_pilot_row_integer_value_set_interval_rejects_malformed_interval: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer interval containment rejects malformed interval payload",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_interval_containment_rejects_malformed_payload",
-  function_symbol: integer_value_set_interval_rejects_malformed_interval
+  function_symbol: witness_integer_value_set_interval_containment_rejects_malformed_payload
 }
 
 data v4_roster_pilot_row_integer_value_set_reverse_strict: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer value-set containment detects reverse strict coarsening",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_reverse_is_strict_coarsening",
-  function_symbol: integer_value_set_reverse_strict
+  function_symbol: witness_integer_value_set_reverse_is_strict_coarsening
 }
 
 data v4_roster_pilot_row_integer_value_set_refuses_incompatible: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer value-set containment refuses incompatible unknown core",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_refuses_incompatible_unknown",
-  function_symbol: integer_value_set_refuses_incompatible
+  function_symbol: witness_integer_value_set_refuses_incompatible_unknown
 }
 
 data v4_roster_pilot_row_integer_interval_bound_compare_orders_pointer_width_bounds: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer interval bound compare orders pointer-width bounds",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_interval_bound_compare_orders_pointer_width_bounds",
-  function_symbol: integer_interval_bound_compare_orders_pointer_width_bounds
+  function_symbol: witness_integer_interval_bound_compare_orders_pointer_width_bounds
 }
 
 data v4_roster_pilot_row_integer_value_set_rejects_unbounded_with_extra_field: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "integer value-set containment rejects unbounded with extra field",
   entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
   function: "witness_integer_value_set_rejects_unbounded_with_extra_field",
-  function_symbol: integer_value_set_rejects_unbounded_with_extra_field
+  function_symbol: witness_integer_value_set_rejects_unbounded_with_extra_field
 }
 
 data v4_roster_pilot_row_cross_target_rust_i32_python_int_widens: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "cross-target rust i32 to python int refinement widening accepts",
   entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
   function: "witness_cross_target_rust_i32_to_python_int_accepts",
-  function_symbol: cross_target_rust_i32_python_int_widens
+  function_symbol: witness_cross_target_rust_i32_to_python_int_accepts
 }
 
 data v4_roster_pilot_row_cross_target_python_int_rust_i32_narrows: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "cross-target python int to rust i32 narrowing reports WouldLoseInformation",
   entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
   function: "witness_cross_target_python_to_rust_i32_would_lose_information",
-  function_symbol: cross_target_python_int_rust_i32_narrows
+  function_symbol: witness_cross_target_python_to_rust_i32_would_lose_information
 }
 
 data v4_roster_pilot_row_cross_target_python_int_rust_i32_exact_rejects: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "cross-target python unbounded int to rust i32 exact rule rejects NoTargetCandidate",
   entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
   function: "witness_cross_target_python_to_rust_i32_rejects",
-  function_symbol: cross_target_python_int_rust_i32_exact_rejects
+  function_symbol: witness_cross_target_python_to_rust_i32_rejects
 }
 
 // Wave-A W2: lens smoke→witness fold-delete (application, idempotency, identical_variant,
