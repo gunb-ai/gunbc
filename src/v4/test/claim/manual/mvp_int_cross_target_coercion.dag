@@ -48,7 +48,7 @@ import v4.std.find_witness {
   TargetDeclaredPriority,
   find_witness_reason_no_candidate
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Node }
 import v4.std.target_model { target_model_edge_declared_inhabitants }
 import v4.std.verdict { Fail, Pass, Deferred }
 import v4.std.verification {
@@ -66,9 +66,6 @@ import v4.std.verification {
 }
 import v4.std.witness { StructuralPropertyWitness }
 
-data cross_target_rust_i32_python_int_widens: Symbol = cross_target_rust_i32_python_int_widens
-data cross_target_python_int_rust_i32_narrows: Symbol = cross_target_python_int_rust_i32_narrows
-data cross_target_python_int_rust_i32_exact_rejects: Symbol = cross_target_python_int_rust_i32_exact_rejects
 
 fn python_unbounded_int_grounding() -> CanonicalGrounding {
   let source = python_int_inhabitant_node()
@@ -284,7 +281,7 @@ data witness_cross_target_python_to_rust_i32_would_lose_information: Bool = matc
 data unified_claim_cross_target_rust_i32_python_int_widens: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
-    function: cross_target_rust_i32_python_int_widens
+    function: witness_cross_target_rust_i32_to_python_int_accepts
   }
 }
 
@@ -293,7 +290,7 @@ data unified_claim_cross_target_rust_i32_python_int_widens: UnifiedTestClaim = B
 data unified_claim_cross_target_python_int_rust_i32_narrows: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
-    function: cross_target_python_int_rust_i32_narrows
+    function: witness_cross_target_python_to_rust_i32_would_lose_information
   }
 }
 
@@ -302,6 +299,6 @@ data unified_claim_cross_target_python_int_rust_i32_narrows: UnifiedTestClaim = 
 data unified_claim_cross_target_python_int_rust_i32_exact_rejects: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
-    function: cross_target_python_int_rust_i32_exact_rejects
+    function: witness_cross_target_python_to_rust_i32_rejects
   }
 }
