@@ -221,6 +221,11 @@ fn node_with_span(kind: NodeKind, children: List<Edge>, span: NodeSpan) -> Node 
   Node { kind: kind, children: children, span: span }
 }
 
+// T-8 provenance discipline — rebuild transformed Nodes without dropping span.
+fn node_rebuild(n: Node, children: List<Edge>) -> Node {
+  node_with_span(kind: n.kind, children: children, span: n.span)
+}
+
 fn node_unanchored(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_span(kind: kind, children: children, span: Unanchored)
 }

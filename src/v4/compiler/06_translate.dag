@@ -59,6 +59,7 @@ import v4.std.node {
   Symbol,
   TypeNode,
   fold_node,
+  node_rebuild,
   well_formed,
   Unanchored
 }
@@ -3903,9 +3904,7 @@ fn translate_coerced_shell_base(coerced: Node, target: TargetModel) -> Outcome<N
       }
     Rejected { diagnostics: r } =>
       if translate_outcome_is_catalog_lookup_miss(diagnostics: r) {
-        outcome_accepted(Node { kind: coerced.kind, children: [],
- span: Unanchored
-})
+        outcome_accepted(node_rebuild(n: coerced, children: []))
       } else {
         Rejected { diagnostics: r }
       }
@@ -4216,9 +4215,7 @@ fn translate_coerced_with_atom_realization(
 
 fn translate_type_fold_init(node: Node) -> Outcome<Node> {
   Accepted {
-    value: Node { kind: node.kind, children: [],
- span: Unanchored
-},
+    value: node_rebuild(n: node, children: []),
     diagnostics: None
   }
 }
@@ -4508,11 +4505,13 @@ fn translate_fold_step(
       match child {
         Accepted { value: translated_child, diagnostics: cd } =>
           Accepted {
-            value: Node {
-              kind: parent.kind,
-              children: list_snoc_item(xs: parent.children, item: Edge { label: edge.label, target: translated_child }),
-              span: Unanchored
-},
+            value: node_rebuild(
+              n: parent,
+              children: list_snoc_item(
+                xs: parent.children,
+                item: Edge { label: edge.label, target: translated_child }
+              )
+            ),
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
         Rejected { diagnostics: r } =>
