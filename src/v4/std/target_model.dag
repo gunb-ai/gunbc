@@ -260,10 +260,11 @@ type TargetValueTemplate {
 
 // T6 — closed canonical operation vocabulary (substrate-owned; arms land with producers).
 // Q-V1 (design-value-emit-schema.md §7): OpAdd is the ring add fact by construction (M9).
-type CanonicalOperation = OpAdd
+type CanonicalOperation
+  = OpAdd {}
 
 fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd
+  OpAdd {}
 }
 
 // T6 — per-language operator spelling shape axis.
@@ -364,7 +365,7 @@ fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> Diagnosti
 
 fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
   match operation {
-    OpAdd =>
+    OpAdd {} =>
       Node {
         kind: TypeNode { connective: Atom { identity: discriminant(v: OpAdd {}) } },
         children: [],
@@ -378,7 +379,7 @@ fn canonical_operation_equal(
   right: CanonicalOperation
 ) -> Bool {
   match left {
-    OpAdd => match right { OpAdd => true }
+    OpAdd {} => match right { OpAdd {} => true }
   }
 }
 
@@ -387,7 +388,7 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
     TypeNode { connective: Atom { identity: id } } =>
       if id == discriminant(v: OpAdd {}) {
         if is_empty(xs: wire.children) {
-          outcome_accepted(OpAdd)
+          outcome_accepted(OpAdd {})
         } else {
           outcome_rejected(
             target_canonical_operation_wire_malformed_diagnostic(wire: wire)
@@ -601,7 +602,7 @@ fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperato
         f: fn(operation_wire) {
           bind_outcome(
             o: canonical_operation_from_wire_node(wire: operation_wire),
-            f: fn(operation) {
+            f: fn(canonical_op) {
               bind_outcome(
                 o: find_named_child(root: row, name: target_operator_realization_field_shape),
                 f: fn(shape_wire) {
@@ -610,7 +611,7 @@ fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperato
                     f: fn(shape) {
                       outcome_accepted(
                         TargetOperatorRealization {
-                          operation: operation,
+                          operation: canonical_op,
                           shape: shape
                         }
                       )
