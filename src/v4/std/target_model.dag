@@ -20,6 +20,7 @@ import v4.std.algebra {
   list_snoc_item,
   length,
   list_append,
+  fold_list_right,
   ring_field_add
 }
 import v4.std.collection {
@@ -256,17 +257,12 @@ type TargetValueTemplate {
 }
 
 // T6 — closed canonical operation vocabulary (substrate-owned; arms land with producers).
-// 🟡 gated — Q-V1 interim (design-value-emit-schema.md §7) — feature:t6-canonical-op-algebra-grounding —
-// bind: PR #4627 — owner: T6 value-expression skeleton — lane: std/target_model + std/algebra —
-// dissolve-on: OpAdd discriminant grounds via ring_field_add witness; delete bare OpAdd arm name.
+// Q-V1 (design-value-emit-schema.md §7): each arm carries its algebra-field witness.
 type CanonicalOperation
-  = OpAdd {}
-
-// Q-V1 interim algebra witness — OpAdd maps to ordered-ring addition until producer-grounded arms land.
-data canonical_operation_op_add_algebra_field: Symbol = ring_field_add
+  = OpAdd { algebra_field: Symbol }
 
 fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd {}
+  OpAdd { algebra_field: ring_field_add }
 }
 
 // T6 — per-language operator spelling shape axis.
@@ -353,6 +349,55 @@ fn target_model_type_conj_node(children: List<Edge>) -> Node {
   }
 }
 
+fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
+  match shape {
+    InfixToken { token: t } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: InfixToken {}) } },
+        children: [
+          target_model_named_edge(
+            name: target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: t)
+          )
+        ],
+        span: Unanchored
+      }
+    PrefixToken { token: t } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: PrefixToken {}) } },
+        children: [
+          target_model_named_edge(
+            name: target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: t)
+          )
+        ],
+        span: Unanchored
+      }
+    CallIdent { ident: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: CallIdent {}) } },
+        children: [
+          target_model_named_edge(
+            name: target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        span: Unanchored
+      }
+    MethodIdent { ident: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: MethodIdent {}) } },
+        children: [
+          target_model_named_edge(
+            name: target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        span: Unanchored
+      }
+  }
+}
+
 fn target_operator_realization_node(
   operation: CanonicalOperation,
   shape: TargetOperatorShape
@@ -365,44 +410,7 @@ fn target_operator_realization_node(
       ),
       target_model_named_edge(
         name: target_operator_realization_field_shape,
-        target: match shape {
-          InfixToken { token: t } =>
-            target_model_type_conj_node(
-              children: [
-                target_model_named_edge(
-                  name: target_operator_shape_field_token,
-                  target: target_model_type_atom_node(identity: t)
-                )
-              ]
-            )
-          PrefixToken { token: t } =>
-            target_model_type_conj_node(
-              children: [
-                target_model_named_edge(
-                  name: target_operator_shape_field_token,
-                  target: target_model_type_atom_node(identity: t)
-                )
-              ]
-            )
-          CallIdent { ident: i } =>
-            target_model_type_conj_node(
-              children: [
-                target_model_named_edge(
-                  name: target_operator_shape_field_token,
-                  target: target_model_type_atom_node(identity: i)
-                )
-              ]
-            )
-          MethodIdent { ident: i } =>
-            target_model_type_conj_node(
-              children: [
-                target_model_named_edge(
-                  name: target_operator_shape_field_token,
-                  target: target_model_type_atom_node(identity: i)
-                )
-              ]
-            )
-        }
+        target: target_model_operator_shape_wire_node(shape: shape)
       )
     ]
   )
@@ -1193,6 +1201,77 @@ fn target_value_expression_binding_ref(binding: Symbol) -> TargetValueExpression
   }
 }
 
+fn target_value_expr_primitive_apply_operand_edges(
+  operands: List<TargetValueExpression>
+) -> List<Edge> {
+  fold_list_right(
+    xs: operands,
+    empty: Empty,
+    snoc: fn(acc, operand) {
+      Cons {
+        head: target_model_named_edge(
+          name: target_value_expr_field_operand,
+          target: target_value_expression_node(expr: operand)
+        ),
+        tail: acc
+      }
+    }
+  )
+}
+
+fn target_value_expr_operand_wire_binding(operand_wire: Node) -> Optional<Symbol> {
+  match fold(
+    operand_wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_binding {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: binding } => optional_present(value: binding)
+    Absent => optional_absent()
+  }
+}
+
+fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
+  outcome_accepted(
+    fold_list_right(
+      xs: wire.children,
+      empty: Empty,
+      snoc: fn(acc, edge) {
+        match edge.label {
+          Named { name: n } =>
+            if n == target_value_expr_field_operand {
+              match target_value_expr_operand_wire_binding(operand_wire: edge.target) {
+                Present { value: binding } =>
+                  Cons { head: binding, tail: acc }
+                Absent => acc
+              }
+            } else {
+              acc
+            }
+          Positional => acc
+        }
+      }
+    )
+  )
+}
+
 fn target_value_expression_primitive_apply(
   operation: CanonicalOperation,
   operands: List<TargetValueExpression>
@@ -1207,134 +1286,90 @@ fn target_value_expression_primitive_apply(
         left: [
           target_model_named_edge(
             name: target_value_expr_field_operation,
-            target: Node {
-              kind: TypeNode { connective: Atom { identity: discriminant(v: operation) } },
-              children: []
-            }
+            target: target_model_type_atom_node(identity: discriminant(v: operation))
           )
         ],
-        right: fold_list(
-          xs: operands,
-          empty: Empty,
-          cons: fn(acc, operand) {
-            Cons {
-              head: target_model_named_edge(
-                name: target_value_expr_field_operand,
-                target: target_value_expression_node(expr: operand)
-              ),
-              tail: acc
-            }
-          }
-        )
-      )
+        right: target_value_expr_primitive_apply_operand_edges(operands: operands)
+      ),
+      span: Unanchored
     }
   }
 }
 
 fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+  target_model_type_conj_node(
     children: [
       target_model_named_edge(
         name: target_value_expr_field_binding_ref,
-        target: Node {
-          kind: TypeNode { connective: Conj },
+        target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
               name: target_value_expr_field_ident_token,
-              target: Node {
-                kind: TypeNode {
-                  connective: Atom { identity: projection.binding_ref_form.ident_token }
-                },
-                children: []
-              }
+              target: target_model_type_atom_node(
+                identity: projection.binding_ref_form.ident_token
+              )
             )
           ]
-        }
+        )
       ),
       target_model_named_edge(
         name: target_value_expr_field_primitive_apply,
-        target: Node {
-          kind: TypeNode { connective: Conj },
+        target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
               name: target_value_expr_field_open,
-              target: Node {
-                kind: TypeNode {
-                  connective: Atom { identity: projection.primitive_apply_form.open }
-                },
-                children: []
-              }
+              target: target_model_type_atom_node(
+                identity: projection.primitive_apply_form.open
+              )
             ),
             target_model_named_edge(
               name: target_value_expr_field_close,
-              target: Node {
-                kind: TypeNode {
-                  connective: Atom { identity: projection.primitive_apply_form.close }
-                },
-                children: []
-              }
+              target: target_model_type_atom_node(
+                identity: projection.primitive_apply_form.close
+              )
             ),
             target_model_named_edge(
               name: target_value_expr_field_separator,
-              target: Node {
-                kind: TypeNode {
-                  connective: Atom { identity: projection.primitive_apply_form.separator }
-                },
-                children: []
-              }
+              target: target_model_type_atom_node(
+                identity: projection.primitive_apply_form.separator
+              )
             )
           ]
-        }
+        )
       ),
       target_model_named_edge(
         name: target_value_expr_field_callable_apply,
-        target: Node {
-          kind: TypeNode { connective: Conj },
+        target: target_model_type_conj_node(
           children: [
             target_model_named_edge(
               name: target_value_expr_field_ident_token,
-              target: Node {
-                kind: TypeNode {
-                  connective: Atom {
-                    identity: projection.callable_apply_form.callee_ident_token
-                  }
-                },
-                children: []
-              }
+              target: target_model_type_atom_node(
+                identity: projection.callable_apply_form.callee_ident_token
+              )
             ),
             target_model_named_edge(
               name: target_value_expr_field_open,
-              target: Node {
-                kind: TypeNode {
-                  connective: Atom { identity: projection.callable_apply_form.open }
-                },
-                children: []
-              }
+              target: target_model_type_atom_node(
+                identity: projection.callable_apply_form.open
+              )
             ),
             target_model_named_edge(
               name: target_value_expr_field_close,
-              target: Node {
-                kind: TypeNode {
-                  connective: Atom { identity: projection.callable_apply_form.close }
-                },
-                children: []
-              }
+              target: target_model_type_atom_node(
+                identity: projection.callable_apply_form.close
+              )
             ),
             target_model_named_edge(
               name: target_value_expr_field_separator,
-              target: Node {
-                kind: TypeNode {
-                  connective: Atom { identity: projection.callable_apply_form.separator }
-                },
-                children: []
-              }
+              target: target_model_type_atom_node(
+                identity: projection.callable_apply_form.separator
+              )
             )
           ]
-        }
+        )
       )
     ]
-  }
+  )
 }
 
 fn target_value_template_apply(

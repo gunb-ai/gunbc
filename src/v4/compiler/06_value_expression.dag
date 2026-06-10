@@ -69,6 +69,7 @@ import v4.std.target_model {
   target_value_expr_field_binding,
   target_value_expr_field_operation,
   target_value_expr_field_operand,
+  target_value_expr_primitive_apply_operand_bindings,
   target_value_expression_binding_ref,
   target_value_expression_primitive_apply
 }
@@ -555,29 +556,7 @@ fn primitive_apply_operation_from_expr(expr: TargetValueExpression) -> Outcome<C
 fn primitive_apply_operand_bindings(expr: TargetValueExpression) -> Outcome<List<Symbol>> {
   match expr.kind {
     TargetValueExprPrimitiveApply =>
-      outcome_accepted(
-        fold(
-          expr.node.children,
-          init: Empty,
-          f: fn(acc, edge) {
-            match edge.label {
-              Named { name: n } =>
-                if n == target_value_expr_field_operand {
-                  match primitive_apply_operand_binding_from_operand_node(
-                    operand_node: edge.target
-                  ) {
-                    Present { value: binding } =>
-                      Cons { head: binding, tail: acc }
-                    Absent => acc
-                  }
-                } else {
-                  acc
-                }
-              Positional => acc
-            }
-          }
-        )
-      )
+      target_value_expr_primitive_apply_operand_bindings(wire: expr.node)
     _ =>
       outcome_rejected(
         value_expr_diagnostic(
