@@ -24,6 +24,7 @@ import std.algebra {
 }
 import v2.compiler.infer_types {
   child_type_node,
+  make_container_type,
   nominal_type_ref,
   normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
   method_receiver_element_node,
@@ -100,7 +101,15 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
       if is_product {
         match find_child_named(n: n, name: field_name, source_indices: source_indices) {
           Some { value: field_child } =>
-            Some { value: child_type_node(ch: field_child) }
+            if node_is_keyed_collection(n: n, source_indices: source_indices) && field_name == "lookup" {
+              let value_child = match n.children |> skip(1) |> first {
+                Some { value: child } => child_type_node(ch: child)
+                None => nominal_type_ref(name: "V")
+              }
+              Some { value: make_container_type(kind_name: "Witness", element: value_child).ty }
+            } else {
+              Some { value: child_type_node(ch: field_child) }
+            }
           None => none
         }
       } else {
@@ -271,6 +280,14 @@ fn lookup_field_in_product(product: Node, method_name: String, source_indices: M
   let matching = product.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == method_name)
   match matching |> first {
     Some { value: field } =>
+      if node_is_keyed_collection(n: product, source_indices: source_indices) && method_name == "lookup" {
+        let value_child = match product.children |> skip(1) |> first {
+          Some { value: child } => child_type_node(ch: child)
+          None => nominal_type_ref(name: "V")
+        }
+        let witness_value = make_container_type(kind_name: "Witness", element: value_child)
+        Some { value: MethodFieldResult { field_node: field, result_type: witness_value.ty, size_effect: none, cost_shape: none, algebra_template: none } }
+      } else {
       match field.inferred {
         Some { value: Resolved { node: rt } } =>
           if rt.params |> count > 0 {
@@ -282,6 +299,7 @@ fn lookup_field_in_product(product: Node, method_name: String, source_indices: M
             Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
           }
         _ => none
+      }
       }
     None => none
   }

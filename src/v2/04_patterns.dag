@@ -67,6 +67,21 @@ fn synthesize_optional_present_variant(scrut: Node) -> Node {
   present_node
 }
 
+fn synthesize_witness_holds_variant(scrut: Node) -> Node {
+  let inner = match scrut.children |> first {
+    Some { value: child } => child_type_node(ch: child)
+    None => error_type
+  }
+  let value_field = Node { name: "value", span: scrut.span, ident_span: Some { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Holds", span: scrut.span, ident_span: Some { value: kernel_span(name: "Holds") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn synthesize_witness_violates_variant(scrut: Node) -> Node {
+  let diagnostic_type = Node { name: "Diagnostic", span: scrut.span, ident_span: Some { value: kernel_span(name: "Diagnostic") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let diagnostic_field = Node { name: "diagnostic", span: scrut.span, ident_span: Some { value: kernel_span(name: "diagnostic") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: diagnostic_type } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Violates", span: scrut.span, ident_span: Some { value: kernel_span(name: "Violates") }, children: [diagnostic_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
   // Structural check: CompilerError in inferred means error sentinel.
   // Dynamic/Error name checks dissolved — no .dag source declares these types,
@@ -138,10 +153,15 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         node_lookup_failed(diagnostics: [])
       } else {
         let optional_cardinality_subject = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
+        let witness_subject = authored_name_at(source_indices: source_indices, node: scrut_node) == "Witness" && scrut_node.children |> count == 1
         if optional_cardinality_subject && variant_name == "Present" {
           node_lookup_resolved(node: synthesize_optional_present_variant(scrut: scrut_node))
         } else if optional_cardinality_subject && variant_name == "Absent" {
           node_lookup_resolved(node: none_type)
+        } else if witness_subject && variant_name == "Holds" {
+          node_lookup_resolved(node: synthesize_witness_holds_variant(scrut: scrut_node))
+        } else if witness_subject && variant_name == "Violates" {
+          node_lookup_resolved(node: synthesize_witness_violates_variant(scrut: scrut_node))
         } else {
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
           // Record / generic-record destructuring: `LocusAnchor { at: x }` against
@@ -204,9 +224,12 @@ fn check_match_exhaustiveness(
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   let is_coproduct = resolved.connective == Disj
   let resolved_is_optional = resolved.return_cardinality == CardOptional
-  if is_coproduct || resolved_is_optional {
+  let resolved_is_witness = authored_name_at(source_indices: env.source_indices, node: resolved) == "Witness" && resolved.children |> count == 1
+  if is_coproduct || resolved_is_optional || resolved_is_witness {
     let variant_names = if resolved_is_optional {
       ["Present", "Absent"]
+    } else if resolved_is_witness {
+      ["Holds", "Violates"]
     } else {
       resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c))
     }

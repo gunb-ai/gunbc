@@ -115,6 +115,122 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
+    {
+        let inner = match scrut.children.first().cloned() {
+            Some(child) => child_type_node(child),
+            None => error_type(),
+        };
+        let value_field = Rc::new(Node {
+            name: "value".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("value".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: inner })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(Node {
+            name: "Holds".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("Holds".to_string())),
+            children: Rc::new(vec![value_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
+pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
+    {
+        let diagnostic_type = Rc::new(Node {
+            name: "Diagnostic".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("Diagnostic".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let diagnostic_field = Rc::new(Node {
+            name: "diagnostic".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("diagnostic".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: diagnostic_type,
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(Node {
+            name: "Violates".to_string(),
+            span: scrut.span.clone(),
+            ident_span: Some(kernel_span("Violates".to_string())),
+            children: Rc::new(vec![diagnostic_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
 pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
     loop {
         let is_error = if (n.inferred.clone() != None) {
@@ -235,6 +351,10 @@ pub fn lookup_variant_in_type(
                     let optional_cardinality_subject = (scrut_opt.clone()
                         && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
                             != "Optional".to_string().as_str()));
+                    let witness_subject =
+                        ((authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
+                            == "Witness".to_string().as_str())
+                            && ((scrut_node.children.clone().len() as i64) == 1));
                     if (optional_cardinality_subject.clone()
                         && (variant_name.clone().as_str() == "Present".to_string().as_str()))
                     {
@@ -247,33 +367,51 @@ pub fn lookup_variant_in_type(
                         {
                             node_lookup_resolved(none_type())
                         } else {
+                            if (witness_subject.clone()
+                                && (variant_name.clone().as_str() == "Holds".to_string().as_str()))
                             {
-                                let direct_match = find_child_named(
+                                node_lookup_resolved(synthesize_witness_holds_variant(
                                     scrut_node.clone(),
-                                    variant_name.clone(),
-                                    source_indices.clone(),
-                                );
-                                let record_destructure = (((field_binding_count > 0)
-                                    && (scrut_node.connective.clone() == Connective::Conj))
-                                    && (authored_name_at(
-                                        source_indices.clone(),
+                                ))
+                            } else {
+                                if (witness_subject.clone()
+                                    && (variant_name.clone().as_str()
+                                        == "Violates".to_string().as_str()))
+                                {
+                                    node_lookup_resolved(synthesize_witness_violates_variant(
                                         scrut_node.clone(),
-                                    )
-                                    .as_str()
-                                        == variant_name.clone().as_str()));
-                                let fallback = if record_destructure {
-                                    node_lookup_resolved(scrut_node.clone())
+                                    ))
                                 } else {
-                                    variant_not_found_result(
-                                        scrut_node.clone(),
-                                        variant_name.clone(),
-                                        module_name,
-                                        source_indices.clone(),
-                                    )
-                                };
-                                match direct_match {
-                                    Some(v) => node_lookup_resolved(v.clone()),
-                                    None => fallback,
+                                    {
+                                        let direct_match = find_child_named(
+                                            scrut_node.clone(),
+                                            variant_name.clone(),
+                                            source_indices.clone(),
+                                        );
+                                        let record_destructure = (((field_binding_count > 0)
+                                            && (scrut_node.connective.clone()
+                                                == Connective::Conj))
+                                            && (authored_name_at(
+                                                source_indices.clone(),
+                                                scrut_node.clone(),
+                                            )
+                                            .as_str()
+                                                == variant_name.clone().as_str()));
+                                        let fallback = if record_destructure {
+                                            node_lookup_resolved(scrut_node.clone())
+                                        } else {
+                                            variant_not_found_result(
+                                                scrut_node.clone(),
+                                                variant_name.clone(),
+                                                module_name,
+                                                source_indices.clone(),
+                                            )
+                                        };
+                                        match direct_match {
+                                            Some(v) => node_lookup_resolved(v.clone()),
+                                            None => fallback,
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -355,10 +493,16 @@ pub fn check_match_exhaustiveness(
         let is_coproduct = (resolved.connective.clone() == Connective::Disj);
         let resolved_is_optional =
             (resolved.return_cardinality.clone() == Cardinality::CardOptional);
-        if (is_coproduct || resolved_is_optional.clone()) {
+        let resolved_is_witness =
+            ((authored_name_at(env.source_indices.clone(), resolved.clone()).as_str()
+                == "Witness".to_string().as_str())
+                && ((resolved.children.clone().len() as i64) == 1));
+        if ((is_coproduct || resolved_is_optional.clone()) || resolved_is_witness.clone()) {
             {
                 let variant_names = if resolved_is_optional.clone() {
                     Rc::new(vec!["Present".to_string(), "Absent".to_string()])
+                } else if resolved_is_witness.clone() {
+                    Rc::new(vec!["Holds".to_string(), "Violates".to_string()])
                 } else {
                     Rc::new({
                         let mut __result = Vec::new();
