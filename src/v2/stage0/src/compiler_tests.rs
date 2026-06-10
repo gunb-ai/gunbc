@@ -1749,7 +1749,6 @@ mod compiler_tests {
                         module_index.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
-                        crate::v2_compiler_infer::empty_binding_id_allocator(),
                     );
                     let unres_elapsed = t_unres.elapsed();
                     let rss_after_unres = get_rss_bytes();
@@ -1813,6 +1812,7 @@ mod compiler_tests {
                         module_index.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        crate::v2_compiler_infer::empty_binding_id_allocator(),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();

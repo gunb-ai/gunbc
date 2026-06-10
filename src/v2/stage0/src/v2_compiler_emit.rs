@@ -105,9 +105,9 @@ pub use crate::v2_std_core::{
     unaryop_operand, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
-    BindingId, Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
-    UnaryOpKind, VarBindingKind,
+    BindingId, Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart,
+    TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

@@ -1180,6 +1180,38 @@ pub fn direct_call_plain_kernel_leaf_mismatch(
     }
 }
 
+pub fn direct_call_element_collection_carrier(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let name = authored_name_at(source_indices.clone(), n.clone());
+        ((node_is_element_collection(n.clone(), source_indices.clone())
+            || is_declared_container_alias_spelling(name))
+            && ((n.children.clone().len() as i64) == 1))
+    }
+}
+
+pub fn direct_call_structural_pd3_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let both_declared_identity =
+            ((formal.binding_id.clone() != None) && (actual.binding_id.clone() != None));
+        let both_element_carriers =
+            ((direct_call_element_collection_carrier(formal.clone(), source_indices.clone())
+                && direct_call_element_collection_carrier(actual.clone(), source_indices.clone()))
+                && (structural_carrier_template_name(formal.clone(), source_indices.clone())
+                    .as_str()
+                    == structural_carrier_template_name(actual.clone(), source_indices.clone())
+                        .as_str()));
+        ((both_declared_identity || both_element_carriers)
+            && !node_type_compatible(formal.clone(), actual.clone(), source_indices.clone()))
+    }
+}
+
 pub fn direct_call_arg_type_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -1190,11 +1222,15 @@ pub fn direct_call_arg_type_mismatch(
     if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
         false
     } else {
-        ((direct_call_plain_kernel_leaf_mismatch(
+        (((direct_call_structural_pd3_mismatch(
             formal.clone(),
             actual.clone(),
             source_indices.clone(),
-        ) || nominal_call_arg_brand_mismatch(
+        ) || direct_call_plain_kernel_leaf_mismatch(
+            formal.clone(),
+            actual.clone(),
+            source_indices.clone(),
+        )) || nominal_call_arg_brand_mismatch(
             formal.clone(),
             actual.clone(),
             source_indices.clone(),

@@ -750,6 +750,30 @@ fn direct_call_plain_kernel_leaf_mismatch(formal: Node, actual: Node, source_ind
     && formal_name != actual_name
 }
 
+fn direct_call_element_collection_carrier(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  (node_is_element_collection(n: n, source_indices: source_indices) || is_declared_container_alias_spelling(name: name))
+    && n.children |> count == 1
+}
+
+fn direct_call_structural_pd3_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let both_declared_identity = formal.binding_id != none && actual.binding_id != none
+  let both_element_carriers = direct_call_element_collection_carrier(n: formal, source_indices: source_indices)
+    && direct_call_element_collection_carrier(n: actual, source_indices: source_indices)
+    && structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
+  let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+  let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+  let record_twin_carriers = formal.connective == Conj
+    && actual.connective == Conj
+    && formal_name != ""
+    && actual_name != ""
+    && formal_name != actual_name
+    && formal.children |> count > 0
+    && formal.children |> count == actual.children |> count
+  (both_declared_identity || both_element_carriers || record_twin_carriers)
+    && !node_type_compatible(left: formal, right: actual, source_indices: source_indices)
+}
+
 // Direct-call argument gate: compare the resolved formal/actual types through
 // node_type_compatible, whose leaf path carries binding_id brand identity and
 // whose container-alias path keeps List/FreeMonoid transparency.
@@ -762,7 +786,8 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
-    direct_call_plain_kernel_leaf_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    direct_call_structural_pd3_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+      || direct_call_plain_kernel_leaf_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
