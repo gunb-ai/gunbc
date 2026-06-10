@@ -30,7 +30,7 @@ import v4.std.diagnostic {
   port_locus
 }
 import v4.std.grammar { ParseTree }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v4.std.target_model { TargetModel }
 import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate { target_serialize_source_from_model }
@@ -228,11 +228,16 @@ fn source_ir_node_artifact_provenance(
 }
 
 
+fn source_authority_node_equal(left: Node, right: Node) -> Bool {
+  canonicalize_node_strip_provenance(n: left)
+    == canonicalize_node_strip_provenance(n: right)
+}
+
 fn source_ast_equal_witness(
   original: DagSourceAst,
   reparsed: DagSourceAst
 ) -> Witness<SourceAstEqual> {
-  if original.tree == reparsed.tree {
+  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     Holds { value: SourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
@@ -246,7 +251,7 @@ fn normalized_source_ast_equal_witness(
   original: NormalizedDagSourceAst,
   reparsed: NormalizedDagSourceAst
 ) -> Witness<NormalizedSourceAstEqual> {
-  if original.tree == reparsed.tree {
+  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
@@ -260,7 +265,7 @@ fn semantic_ir_equal_witness(
   original: DagSemanticIr,
   reparsed: DagSemanticIr
 ) -> Witness<SemanticIrEqual> {
-  if original.tree == reparsed.tree {
+  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {

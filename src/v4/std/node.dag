@@ -579,6 +579,30 @@ fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edg
     )
   )
 }
+// T-8 provenance boundary — strip Node.span for semantic/structural equality (source authority
+// AST/IR witnesses). Preserves child order (unlike canonicalize_node_for_content_hash).
+fn strip_provenance_fold_init(n: Node) -> Node {
+  node_unanchored(kind: n.kind, children: [])
+}
+
+fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
+  node_rebuild(
+    n: acc,
+    children: concat(acc.children, [Edge { label: edge.label, target: child }])
+  )
+}
+
+fn strip_provenance_fold_algebra() -> NodeFold<Node> {
+  NodeFold {
+    init: strip_provenance_fold_init,
+    step: strip_provenance_fold_step
+  }
+}
+
+fn canonicalize_node_strip_provenance(n: Node) -> Node {
+  fold_node(n: n, algebra: strip_provenance_fold_algebra())
+}
+
 fn canonicalize_node_for_content_hash(n: Node) -> Node {
   match node_edge_discipline(n: n) {
     LabeledEdges =>
