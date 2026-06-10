@@ -34,7 +34,7 @@ import v4.std.node {
   arrow_body_edge,
   well_formed
 }
-import v4.std.node_query { find_named_child }
+import v4.std.node_query { find_arrow_body_child }
 
 data body_producer_reason_malformed_attachment: Symbol = body_producer_reason_malformed_attachment
 data body_producer_reason_post_produce_not_well_formed: Symbol = body_producer_reason_post_produce_not_well_formed
@@ -165,7 +165,7 @@ fn produce_mvp1_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
 }
 
 fn arrow_has_body_edge(arrow: Node) -> Bool {
-  match find_named_child(root: arrow, name: arrow_body_edge) {
+  match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: _ } => true

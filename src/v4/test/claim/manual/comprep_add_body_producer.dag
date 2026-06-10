@@ -23,7 +23,7 @@ import v4.std.node {
   arrow_body_edge,
   well_formed
 }
-import v4.std.node_query { find_named_child }
+import v4.std.node_query { find_arrow_body_child }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -95,7 +95,7 @@ fn comprep_body_operand_order_differs() -> Bool {
 fn comprep_body_edge_targets_binary_transform() -> Bool {
   match produce_mvp1_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      match find_named_child(root: arrow, name: arrow_body_edge) {
+      match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Transform } => true
