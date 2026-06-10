@@ -5,6 +5,12 @@
 
 module v4.test.claim.manual.caret_sigil_surface
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 type CaretProbeShape
   = CaretAlpha { x: Int }
   | CaretBeta { y: Int }
@@ -19,4 +25,13 @@ fn caret_sigil_surface_witness_holds() -> Bool {
   let sugar_distinct_across_arms = (^(alpha) == ^(beta)) == false
 
   spelling_is_opaque && sugar_matches_intrinsic && sugar_distinct_across_arms
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `caret_sigil_surface_witness_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_caret_sigil_surface: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/caret_sigil_surface.dag",
+    function: caret_sigil_surface_witness_holds
+  }
 }

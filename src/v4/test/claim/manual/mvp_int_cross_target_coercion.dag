@@ -59,9 +59,13 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   Unit,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 import v4.std.witness { StructuralPropertyWitness }
+
 
 fn python_unbounded_int_grounding() -> CanonicalGrounding {
   let source = python_int_inhabitant_node()
@@ -270,4 +274,31 @@ data witness_cross_target_python_to_rust_i32_would_lose_information: Bool = matc
   Pass => true
   Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_cross_target_rust_i32_to_python_int_accepts` so glob discovery finds the witness without the central roster.
+data unified_claim_cross_target_rust_i32_python_int_widens: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
+    function: witness_cross_target_rust_i32_to_python_int_accepts
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_cross_target_python_to_rust_i32_would_lose_information` so glob discovery finds the witness without the central roster.
+data unified_claim_cross_target_python_int_rust_i32_narrows: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
+    function: witness_cross_target_python_to_rust_i32_would_lose_information
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_cross_target_python_to_rust_i32_rejects` so glob discovery finds the witness without the central roster.
+data unified_claim_cross_target_python_int_rust_i32_exact_rejects: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
+    function: witness_cross_target_python_to_rust_i32_rejects
+  }
 }

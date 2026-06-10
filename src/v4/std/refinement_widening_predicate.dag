@@ -65,8 +65,7 @@ fn refinement_widening_value_sets_hold(algebra: Node) -> Bool {
     Accepted { value: source_value_set, diagnostics: None } =>
       match find_named_child(root: algebra, name: refinement_widening_field_candidate_value_set) {
         Accepted { value: candidate_value_set, diagnostics: None } =>
-          integer_value_set_contains(container: candidate_value_set, contained: source_value_set)
-            && (source_value_set != candidate_value_set)
+          integer_value_set_strictly_contains(container: candidate_value_set, contained: source_value_set)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

@@ -189,6 +189,105 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v2_compiler_compile::SourceFi
     sources
 }
 
+/// Outcome of running a single Bool witness (`--claim-run` semantics), without
+/// touching the process exit code. The exit-code contract lives in the caller.
+pub enum ClaimOutcome {
+    /// Function returned `Bool(true)` — witness holds.
+    Pass,
+    /// Function returned `Bool(false)` — witness fails (the perturb-red signal).
+    Fail,
+    /// Function returned a non-Bool value; under `--claim-run` the entry must
+    /// return Bool. Carries the rendered value for diagnostics.
+    NotBool { got: String },
+    /// The interpreter raised a runtime error.
+    RuntimeError { message: String },
+}
+
+/// Resolve one entry `.dag` file's transitive import closure into a typed graph,
+/// or return formatted blocking diagnostics. This is the expensive step
+/// (`build_module_index` + closure resolve + full compile); callers that run
+/// many witnesses against the SAME entry should call this once and reuse the
+/// returned graph (see the `claim_batch` bin).
+///
+/// Single-authority note: this reuses the exact primitives the per-run path in
+/// `handle_run_with_options` uses (`load_sources_for_entry`,
+/// `compile_to_resolved`, `is_interpreter_blocking_diagnostic`). It is an
+/// alternate ORCHESTRATION over those primitives (resolve-once / run-many), not
+/// a second copy of the resolve logic.
+pub fn resolve_entry_graph(
+    source_roots: &[String],
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v2_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let sources = load_sources_for_entry(source_roots, entry_file)?;
+    let result = v2_compiler_compile::compile_to_resolved(Rc::new(sources));
+
+    let has_errors = result
+        .diagnostics
+        .iter()
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+    if has_errors {
+        let si: HashMap<String, Rc<NewlineIndex>> = result
+            .newline_indices
+            .iter()
+            .map(|idx| (idx.file.clone(), idx.clone()))
+            .collect();
+        let mut msgs = Vec::new();
+        for d in result.diagnostics.iter() {
+            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+                continue;
+            }
+            let span = diagnostic_to_span(d.diagnostic.clone());
+            let loc = match si.get(&span.file) {
+                Some(idx) => {
+                    let lc = byte_to_line_col(idx.clone(), span.start);
+                    format!("{}:{}:{}", span.file, lc.line, lc.col)
+                }
+                None => span.file.clone(),
+            };
+            msgs.push(format!(
+                "{}: error: {}",
+                loc,
+                diagnostic_to_message(d.diagnostic.clone())
+            ));
+        }
+        return Err(msgs.join("\n"));
+    }
+
+    let graph = result
+        .graph
+        .clone()
+        .ok_or_else(|| "compilation produced no graph".to_string())?;
+    Ok((graph, result.source_indices.clone()))
+}
+
+/// Run one Bool witness function against an already-resolved graph, classifying
+/// the result the same way `handle_run_with_options`'s `--claim-run` branch
+/// does (Bool true → Pass, false → Fail, anything else → diagnostic), but
+/// without calling `std::process::exit`. Eager data-env is disabled to match
+/// claim-run behavior (witnesses pull data lazily).
+pub fn run_claim(
+    graph: &v2_compiler_compile::ResolvedGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    function: &str,
+) -> ClaimOutcome {
+    match v2_interpreter::run_with_options(graph, source_indices, function, false, false) {
+        Ok(v2_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
+        Ok(v2_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
+        Ok(other) => ClaimOutcome::NotBool {
+            got: format!("{}", other),
+        },
+        Err(e) => ClaimOutcome::RuntimeError {
+            message: format!("{}", e),
+        },
+    }
+}
+
 /// Entry point for `dag run`. Called from the generated main.rs.
 pub fn handle_run(
     source_roots: Vec<String>,

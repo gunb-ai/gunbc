@@ -49,7 +49,10 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier1,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 import v4.test.claim.manual.eval_runtime_mvp {
   eval_mvp2_add_subgraph,
@@ -317,4 +320,22 @@ fn ts_g2_sg1_symbol_carrier_holds() -> Bool {
 // Fail-closed discrimination — SG-5 absence records reject collection realization edges.
 fn ts_g2_sg5_absence_fail_closed_holds() -> Bool {
   ts_g2_sg5_collection_realization_absence_holds()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `ts_g2_sg1_symbol_carrier_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_grounding_ts_symbol_carrier: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
+    function: ts_g2_sg1_symbol_carrier_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `ts_g2_sg5_absence_fail_closed_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_grounding_ts_absence_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
+    function: ts_g2_sg5_absence_fail_closed_holds
+  }
 }

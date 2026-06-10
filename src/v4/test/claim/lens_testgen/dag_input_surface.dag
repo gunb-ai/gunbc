@@ -37,7 +37,10 @@ import v4.std.verification {
   TestClaim,
   Tier1,
   Unit,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj,
@@ -166,3 +169,21 @@ data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim
 data witness_lens_testgen_schedules_dag_input_surface_green: Bool = scheduled_language_behavior_generators_cover_dag_inputs()
 
 data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool = bootstrap_generator_has_conj_dag_input_surface()
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_lens_testgen_schedules_dag_input_surface_green` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_testgen_dag_input_scheduled: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
+    function: witness_lens_testgen_schedules_dag_input_surface_green
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_testgen_dag_input_bootstrap: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
+    function: witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green
+  }
+}

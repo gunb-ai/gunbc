@@ -16,7 +16,10 @@ import v4.std.verification {
   TestClaim,
   Tier1,
   Unit,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 fn lens_testgen_generator_provenance_marker_node(marker: Symbol) -> Node {
   Node {
@@ -45,3 +48,12 @@ data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = Equal
 
 
 data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_lens_testgen_scheduled_generators_carry_provenance_green` so glob discovery finds the witness without the central roster.
+data unified_claim_generator_provenance: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_testgen/generator_provenance.dag",
+    function: witness_lens_testgen_scheduled_generators_carry_provenance_green
+  }
+}
