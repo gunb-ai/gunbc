@@ -38,7 +38,6 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  None,
   Outcome,
   Rejected,
   Unavailable,
@@ -783,22 +782,6 @@ fn target_bodied_arrow_compose_statement_tokens(
   )
 }
 
-fn wire_conj_named_binding_field_absent(parent: Node) -> Outcome<None> {
-  match parent.kind {
-    TypeNode { connective: Conj } =>
-      if name_occurrences(
-        name: concrete_syntax_token_field_binding,
-        children: parent.children
-      ) == 0 {
-        outcome_accepted(None)
-      } else {
-        outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
-      }
-    _ =>
-      outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
-  }
-}
-
 fn wire_conj_named_binding_atom(parent: Node) -> Outcome<Symbol> {
   bind_outcome(
     o: find_named_child(root: parent, name: concrete_syntax_token_field_binding),
@@ -831,14 +814,25 @@ fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxTo
           match kind_node.kind {
             TypeNode { connective: Atom { identity: kind } } =>
               if kind == concrete_syntax_token_kind_fixed {
-                bind_outcome(
-                  o: wire_conj_named_binding_field_absent(parent: token),
-                  f: fn(_) {
-                    outcome_accepted(
-                      FixedToken { token_class: token_class }
+                match token.kind {
+                  TypeNode { connective: Conj } =>
+                    if name_occurrences(
+                      name: concrete_syntax_token_field_binding,
+                      children: token.children
+                    ) == 0 {
+                      outcome_accepted(
+                        FixedToken { token_class: token_class }
+                      )
+                    } else {
+                      outcome_rejected(
+                        concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                      )
+                    }
+                  _ =>
+                    outcome_rejected(
+                      concrete_syntax_token_wire_malformed_diagnostic(token: token)
                     )
-                  }
-                )
+                }
               } else {
                 if kind == concrete_syntax_token_kind_bound {
                   bind_outcome(
