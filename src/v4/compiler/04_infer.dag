@@ -20,7 +20,6 @@ import v4.std.algebra {
   list_snoc_item
 }
 import v4.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
-import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { List, Map }
 import v4.std.constraints {
@@ -263,7 +262,7 @@ fn infer_partial_bounded_lattice_instances_fold_step(
   })
 }
 
-fn partial_bounded_lattice_instances_in_tree(tree: ResolvedTree) -> List<Node> {
+fn partial_bounded_lattice_instances_in_tree(tree: Node) -> List<Node> {
   fold_node(
     n: tree,
     algebra: NodeFold {
@@ -532,7 +531,7 @@ fn infer_entries_fold_step(
   }
 }
 
-fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
+fn infer_entries_for_tree(tree: Node) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
   fold_node(
     n: tree,
@@ -547,7 +546,7 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
   )
 }
 
-fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
+fn infer(tree: Node) -> Outcome<InferredTree> {
   match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
