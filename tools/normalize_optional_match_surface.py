@@ -50,7 +50,13 @@ class Diagnostic:
     end: int
 
 
-def run_regen_verify() -> str:
+@dataclass(frozen=True)
+class RegenVerifyResult:
+    returncode: int
+    output: str
+
+
+def run_regen_verify() -> RegenVerifyResult:
     env = os.environ.copy()
     env.setdefault("CARGO_TERM_COLOR", "never")
     proc = subprocess.run(
@@ -62,7 +68,7 @@ def run_regen_verify() -> str:
         stderr=subprocess.STDOUT,
         check=False,
     )
-    return proc.stdout
+    return RegenVerifyResult(returncode=proc.returncode, output=proc.stdout)
 
 
 def parse_diagnostics(output: str) -> list[Diagnostic]:
@@ -186,7 +192,16 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="report edits without writing files")
     args = parser.parse_args()
 
-    diagnostics = parse_diagnostics(run_regen_verify())
+    verify = run_regen_verify()
+    diagnostics = parse_diagnostics(verify.output)
+    if verify.returncode != 0 and not diagnostics:
+        print(
+            "normalize_optional_match_surface: regen_stage0 --verify failed before "
+            "emitting legacy Optional diagnostics",
+            file=sys.stderr,
+        )
+        print(verify.output, file=sys.stderr, end="" if verify.output.endswith("\n") else "\n")
+        return verify.returncode
     if not diagnostics:
         print("normalize_optional_match_surface: no legacy Optional diagnostics found")
         return 0
