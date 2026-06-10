@@ -6131,32 +6131,30 @@ fn build_module_context(contributions: List<ItemContribution>,
 	  let variant_fold = fold(resolved_imports, init: VariantFoldState { locals: empty_map(), collisions: empty_map() }, f: (acc, imp) =>
 	    match map_get(parent_index, imp.module_path) {
 	      Present { value: typed_parent } =>
-	        fold(typed_parent.items, init: acc, f: (item_acc, decl_item) =>
-	          if decl_item.connective == Disj {
-	            let parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: decl_item)
+	        fold(typed_parent.items, init: acc, f: (iacc, parent_item) =>
+	          if parent_item.connective == Disj {
+	            let parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: parent_item)
 	            let parent_imported = import_allows_binding_name(imp: imp, name: parent_name)
-	            fold(decl_item.children, init: item_acc, f: (vacc, child) =>
+	            fold(parent_item.children, init: iacc, f: (vacc, child) =>
 	              let child_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: child)
-	              let child_imported = parent_imported || (imp.specific_names |> any(n => n == child_name))
-	              if child_imported {
+	              let variant_imported = parent_imported || (imp.specific_names |> any(n => n == child_name))
+	              if variant_imported {
 	                match map_get(vacc.locals, child_name) {
 	                  Present { value: prev } =>
 	                    let prev_parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: prev.resolved)
-	                    if prev_parent_name != parent_name {
-	                      VariantFoldState {
-	                        locals: vacc.locals,
-	                        collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: parent_name, span: no_span() }, module_name: module_name))
-	                      }
-	                    } else { vacc }
+	                    VariantFoldState {
+	                      locals: vacc.locals,
+	                      collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: parent_name, span: no_span() }, module_name: module_name))
+	                    }
 	                  Absent =>
 	                    VariantFoldState {
-	                      locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: decl_item, provenance: SubValueUnknown }),
+	                      locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: parent_item, provenance: SubValueUnknown }),
 	                      collisions: vacc.collisions
 	                    }
 	                }
 	              } else { vacc }
 	            )
-	          } else { item_acc }
+	          } else { iacc }
 	        )
 	      Absent => acc
 	    }
