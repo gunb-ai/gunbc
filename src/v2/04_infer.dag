@@ -2190,9 +2190,20 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let else_diags = else_result.diagnostics
           let then_rt = resolved_type(n: then_typed)
           let else_rt = resolved_type(n: else_typed)
-          let then_compare = direct_call_arg_decl_identity(n: then_rt, env: scope.type_env)
-          let else_compare = direct_call_arg_decl_identity(n: else_rt, env: scope.type_env)
-          let unified = prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
+          let then_is_none = direct_call_actual_is_none(actual_expr: then_expr, actual_type: then_rt, source_indices: scope.type_env.source_indices)
+          let else_is_none = direct_call_actual_is_none(actual_expr: else_branch, actual_type: else_rt, source_indices: scope.type_env.source_indices)
+          let then_compare_raw = direct_call_arg_decl_identity(n: then_rt, env: scope.type_env)
+          let else_compare_raw = direct_call_arg_decl_identity(n: else_rt, env: scope.type_env)
+          let then_compare = if else_is_none && !then_is_none { with_optional_cardinality(n: then_compare_raw) } else { then_compare_raw }
+          let else_compare = if then_is_none && !else_is_none { with_optional_cardinality(n: else_compare_raw) } else { else_compare_raw }
+          let unified_raw = prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
+          let unified = if then_is_none && !else_is_none {
+            with_optional_cardinality(n: else_rt)
+          } else if else_is_none && !then_is_none {
+            with_optional_cardinality(n: then_rt)
+          } else {
+            unified_raw
+          }
           let branch_diags = if node_type_compatible(
             left: then_compare,
             right: else_compare,

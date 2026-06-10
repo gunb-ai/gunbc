@@ -4254,15 +4254,42 @@ match bare_s {
                         let else_diags = else_result.diagnostics.clone();
                         let then_rt = resolved_type(then_typed.clone());
                         let else_rt = resolved_type(else_typed.clone());
-                        let then_compare =
+                        let then_is_none = direct_call_actual_is_none(
+                            then_expr.clone(),
+                            then_rt.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        );
+                        let else_is_none = direct_call_actual_is_none(
+                            else_branch.clone(),
+                            else_rt.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        );
+                        let then_compare_raw =
                             direct_call_arg_decl_identity(then_rt.clone(), scope.type_env.clone());
-                        let else_compare =
+                        let else_compare_raw =
                             direct_call_arg_decl_identity(else_rt.clone(), scope.type_env.clone());
-                        let unified = prefer_specific_type(
+                        let then_compare = if (else_is_none && !then_is_none) {
+                            with_optional_cardinality(then_compare_raw.clone())
+                        } else {
+                            then_compare_raw.clone()
+                        };
+                        let else_compare = if (then_is_none && !else_is_none) {
+                            with_optional_cardinality(else_compare_raw.clone())
+                        } else {
+                            else_compare_raw.clone()
+                        };
+                        let unified_raw = prefer_specific_type(
                             then_rt.clone(),
                             else_rt.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         );
+                        let unified = if (then_is_none && !else_is_none) {
+                            with_optional_cardinality(else_rt.clone())
+                        } else if (else_is_none && !then_is_none) {
+                            with_optional_cardinality(then_rt.clone())
+                        } else {
+                            unified_raw.clone()
+                        };
                         let branch_diags = if node_type_compatible(
                             then_compare.clone(),
                             else_compare.clone(),
@@ -4270,6 +4297,22 @@ match bare_s {
                         ) {
                             Rc::new(vec![])
                         } else {
+                            eprintln!(
+                                "BRANCHDBG span={:?} then_expr={} else_expr={} then_shape={} else_shape={} then_card={:?} else_card={:?} then_cmp={} else_cmp={} then_bid={:?} else_bid={:?} then_cmp_bid={:?} else_cmp_bid={:?}",
+                                span.clone(),
+                                authored_name_at(scope.type_env.clone().source_indices.clone(), then_expr.clone()),
+                                authored_name_at(scope.type_env.clone().source_indices.clone(), else_branch.clone()),
+                                node_type_shape(then_rt.clone(), scope.type_env.clone().source_indices.clone()),
+                                node_type_shape(else_rt.clone(), scope.type_env.clone().source_indices.clone()),
+                                then_rt.return_cardinality.clone(),
+                                else_rt.return_cardinality.clone(),
+                                node_type_shape(then_compare.clone(), scope.type_env.clone().source_indices.clone()),
+                                node_type_shape(else_compare.clone(), scope.type_env.clone().source_indices.clone()),
+                                then_rt.binding_id.clone(),
+                                else_rt.binding_id.clone(),
+                                then_compare.binding_id.clone(),
+                                else_compare.binding_id.clone()
+                            );
                             Rc::new(vec![inference_error(
                                 v2_rt::concat(
                                     v2_rt::concat(
