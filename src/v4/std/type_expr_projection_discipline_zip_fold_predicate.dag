@@ -6,7 +6,7 @@
 
 module v4.std.type_expr_projection_discipline_zip_fold_predicate
 
-import v4.std.algebra { Cons, Empty, FreeMonoid, length, zip_eq }
+import v4.std.algebra { zip_eq }
 import v4.std.collection {
   Absent,
   List,
