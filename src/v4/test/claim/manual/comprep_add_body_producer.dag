@@ -1,0 +1,178 @@
+// src/v4/test/claim/manual/comprep_add_body_producer.dag
+// Scope: COMPREP wave-1 keystone receipt — body producer attaches Behavior sub-DAG on Arrow.body.
+// Status: producer well-formedness + discriminating body-shape witness (operand order flips attachment).
+
+module v4.test.claim.manual.comprep_add_body_producer
+
+import v4.compiler.body_producer {
+  arrow_has_body_edge,
+  produce_mvp1_add_arrow_with_body,
+  produce_mvp1_add_binary_body
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  arrow_body_edge,
+  well_formed
+}
+import v4.std.node_query { find_arrow_body_child }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+fn comprep_bool_node(pass: Bool) -> Node {
+  if pass {
+    Node {
+      kind: TypeNode { connective: Atom { identity: ^comprep_body_producer_pass } },
+      children: []
+    }
+  } else {
+    Node {
+      kind: TypeNode { connective: Atom { identity: ^comprep_body_producer_fail } },
+      children: []
+    }
+  }
+}
+
+fn comprep_produce_add_arrow_accepts() -> Bool {
+  match produce_mvp1_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      well_formed(n: arrow) && arrow_has_body_edge(arrow: arrow)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Discriminating red: swap operand param refs — body subtree changes, well-formedness holds.
+fn comprep_swapped_operand_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_token_plus } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_param_y } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
+          children: []
+        }
+      }
+    ]
+  }
+}
+
+fn comprep_body_operand_order_differs() -> Bool {
+  let canonical = produce_mvp1_add_binary_body()
+  let swapped = comprep_swapped_operand_body()
+  canonical != swapped
+}
+
+fn comprep_arrow_with_atom_body_rejects() -> Bool {
+  let arrow = Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+          children: []
+        }
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^comprep_body_producer_fail } },
+          children: []
+        }
+      }
+    ]
+  }
+  !well_formed(n: arrow)
+}
+
+fn comprep_body_edge_targets_binary_transform() -> Bool {
+  match produce_mvp1_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Transform } => true
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data claim_comprep_add_body_producer_well_formed: TestClaim = EqualsClaim {
+  label: "manual/comprep: produce_mvp1_add_arrow_with_body is well-formed with Arrow.body Behavior subtree",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: comprep_bool_node(pass: comprep_produce_add_arrow_accepts()),
+  rhs: comprep_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_comprep_add_body_operand_order_discriminates: TestClaim = EqualsClaim {
+  label: "manual/comprep: swapped operand param refs change body subtree (discriminating red for eval follow-up)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: comprep_bool_node(pass: comprep_body_operand_order_differs()),
+  rhs: comprep_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_comprep_add_body_is_transform: TestClaim = EqualsClaim {
+  label: "manual/comprep: Arrow.body target is ComputationNode Transform for MVP add",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: comprep_bool_node(pass: comprep_body_edge_targets_binary_transform()),
+  rhs: comprep_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_comprep_arrow_body_rejects_non_computation_target: TestClaim = EqualsClaim {
+  label: "manual/comprep: Arrow.body with TypeNode atom target rejects well_formed (E-9 target-shape authority)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: comprep_bool_node(pass: comprep_arrow_with_atom_body_rejects()),
+  rhs: comprep_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

@@ -13,21 +13,28 @@ import v4.compiler.eval {
   test_claim_run_claim,
   test_claim_run_verdict
 }
-import v4.std.algebra { length }
 import v4.std.collection { List }
+import v4.std.algebra { Equal, Greater, Less, length, list_append }
 import v4.std.logic { Bool }
-import v4.std.nat { Nat }
+import v4.std.nat { Nat, Succ, Zero, nat_compare }
 import v4.std.node { Node, Symbol }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verdict {
+  Pass,
   VerdictTally,
   verdict_tally_add,
   verdict_tally_empty,
   verdict_tally_total
 }
+import v4.std.target_model { TargetModel }
 import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  EmitVsEval,
   EvalOnly,
   NodeCorpus,
+  TestClaim,
+  TestClaimTransportMode,
   UnifiedTestClaim,
   bool_witness_descriptor,
   test_claim_label,
@@ -46,8 +53,35 @@ import v4.test.claim.workflow.v4_roster_pilot {
 }
 
 
+// Consolidation #4553 Phase 2: execution receipts are unified here at the workflow layer.
+// `UnifiedTestClaim` remains a descriptor-only registration row in `std.verification`.
+// RULING-1: needs-more-work — authoring-time queue vs runtime verdict until Phase 4 host transport.
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2; dissolve-on: Phase 4 CI transport
+// fills BoolWitnessRuntimeVerdict from host `--claim-run` (design §3.3 / §6.1 E1).
+type BoolWitnessRun
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 host-transport queue arm
+  = BoolWitnessRuntimeVerdict { witness: BoolWitness, result: Bool }
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 authoring-time deferral arm
+  | BoolWitnessQueuedForHostTransport { witness: BoolWitness }
+
+
+// RULING-1: needs-more-work — NodeCorpusUnresolvedRun fail-closed until subject binds at eval boundary.
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2; dissolve-on: NodeCorpus.subject lands on
+// UnifiedTestClaim and unresolved arm deletes (verification.dag 🟡 Phase 2 runner migration).
+type UnifiedClaimRun
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 NodeCorpus eval-only wedge
+  = NodeCorpusRun { run: TestClaimRun<Node, RuntimeValue> }
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 fail-closed unresolved subject lookup
+  | NodeCorpusUnresolvedRun { claim: TestClaim }
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2; dissolve-on: Phase 3/4 wires
+// run_test_claim_emit_vs_eval for EmitVsEval transport (design §3.4 / §6.1 E3).
+  | NodeCorpusEmitVsEvalDeferredRun { claim: TestClaim, target: TargetModel }
+// 🟡 coproduct dissolution — consolidation #4553 Phase 2 BoolWitness modality receipt wrapper
+  | BoolWitnessRunReceipt { run: BoolWitnessRun }
+
+
 type CorpusEvalEntry {
-  run: TestClaimRun<Node, RuntimeValue>
+  run: UnifiedClaimRun
 }
 
 
@@ -83,13 +117,68 @@ data testclaim_subject_roster_unsupported_rows: List<TestClaimSubjectRosterUnsup
 
 
 fn corpus_entry_label(e: CorpusEvalEntry) -> String {
-  test_claim_label(c: test_claim_run_claim(run: e.run))
+  match e.run {
+    NodeCorpusRun { run: node_run } =>
+      test_claim_label(c: test_claim_run_claim(run: node_run))
+    NodeCorpusUnresolvedRun { claim: claim } =>
+      test_claim_label(c: claim)
+    NodeCorpusEmitVsEvalDeferredRun { claim: claim, target: _ } =>
+      test_claim_label(c: claim)
+    BoolWitnessRunReceipt { run: bool_run } =>
+      bool_witness_run_witness(run: bool_run).entry
+  }
+}
+
+
+fn verdict_tally_add_deferred_row(t: VerdictTally) -> VerdictTally {
+  VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }
+}
+
+
+fn bool_witness_run_witness(run: BoolWitnessRun) -> BoolWitness {
+  match run {
+    BoolWitnessRuntimeVerdict { witness: witness, result: _ } =>
+      witness
+    BoolWitnessQueuedForHostTransport { witness: witness } =>
+      witness
+  }
+}
+
+
+fn unified_bool_witness_run_tally(t: VerdictTally, run: BoolWitnessRun) -> VerdictTally {
+  match run {
+    BoolWitnessQueuedForHostTransport { witness: _ } =>
+      verdict_tally_add_deferred_row(t: t)
+    BoolWitnessRuntimeVerdict { witness: _, result: true } =>
+      verdict_tally_add(t: t, v: Pass)
+    BoolWitnessRuntimeVerdict { witness: _, result: false } =>
+      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
+  }
+}
+
+
+fn queued_bool_witness_run(witness: BoolWitness) -> BoolWitnessRun {
+  BoolWitnessQueuedForHostTransport { witness: witness }
+}
+
+
+fn corpus_report_tally_add_unified_run(t: VerdictTally, run: UnifiedClaimRun) -> VerdictTally {
+  match run {
+    NodeCorpusRun { run: node_run } =>
+      verdict_tally_add(t: t, v: test_claim_run_verdict(run: node_run))
+    NodeCorpusUnresolvedRun { claim: _ } =>
+      verdict_tally_add_deferred_row(t: t)
+    NodeCorpusEmitVsEvalDeferredRun { claim: _, target: _ } =>
+      verdict_tally_add_deferred_row(t: t)
+    BoolWitnessRunReceipt { run: bool_run } =>
+      unified_bool_witness_run_tally(t: t, run: bool_run)
+  }
 }
 
 
 fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
-    verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
+    corpus_report_tally_add_unified_run(t: acc, run: e.run)
   })
 }
 
@@ -114,10 +203,24 @@ fn corpus_report_total(r: CorpusEvalReport) -> Nat {
 }
 
 
+fn list_length_nat<T>(xs: List<T>) -> Nat {
+  fold(xs, init: Zero, f: fn(acc, _) { Succ { prev: acc } })
+}
+
+
+fn nat_eq(a: Nat, b: Nat) -> Bool {
+  match nat_compare(a: a, b: b) {
+    Equal => true
+    Less => false
+    Greater => false
+  }
+}
+
+
 fn corpus_entry_from_node_runtime_value_run(
   run: TestClaimRun<Node, RuntimeValue>
 ) -> CorpusEvalEntry {
-  CorpusEvalEntry { run: run }
+  CorpusEvalEntry { run: NodeCorpusRun { run: run } }
 }
 
 
@@ -158,6 +261,29 @@ fn v4_roster_pilot_bool_witness_unified_claims() -> List<UnifiedTestClaim> {
 }
 
 
+fn unified_corpus_eval_pilot_claims() -> List<UnifiedTestClaim> {
+  list_append(
+    left: manual_node_corpus_unified_claims(),
+    right: v4_roster_pilot_bool_witness_unified_claims()
+  )
+}
+
+
+fn corpus_entry_from_queued_bool_witness(witness: BoolWitness) -> CorpusEvalEntry {
+  CorpusEvalEntry {
+    run: BoolWitnessRunReceipt { run: queued_bool_witness_run(witness: witness) }
+  }
+}
+
+
+fn v4_roster_pilot_queued_bool_witness_entries() -> List<CorpusEvalEntry> {
+  map(
+    v4_roster_pilot_claim_run_rows,
+    fn(row) { corpus_entry_from_queued_bool_witness(witness: bool_witness_from_roster_row(row: row)) }
+  )
+}
+
+
 fn manual_node_corpus_unified_claim_projection_holds() -> Bool {
   fold(
     manual_node_corpus_unified_claims(),
@@ -175,6 +301,159 @@ fn v4_roster_pilot_bool_witness_unified_claim_projection_holds() -> Bool {
       init: true,
       f: fn(acc, c) { acc && (unified_test_claim_modality(c: c) == UnifiedBoolWitnessModality) }
     )
+}
+
+
+fn corpus_entry_from_unresolved_node_corpus_claim(claim: TestClaim) -> CorpusEvalEntry {
+  CorpusEvalEntry { run: NodeCorpusUnresolvedRun { claim: claim } }
+}
+
+
+fn corpus_entry_from_emit_vs_eval_deferred_node_corpus_claim(
+  claim: TestClaim,
+  target: TargetModel
+) -> CorpusEvalEntry {
+  CorpusEvalEntry {
+    run: NodeCorpusEmitVsEvalDeferredRun { claim: claim, target: target }
+  }
+}
+
+
+fn run_node_corpus_eval_only_entry(c: UnifiedTestClaim) -> CorpusEvalEntry {
+  match c {
+    NodeCorpus { claim: claim, transport: EvalOnly } => {
+      let unresolved = corpus_entry_from_unresolved_node_corpus_claim(claim: claim)
+      fold(
+        manual_corpus_node_subject_rows,
+        init: unresolved,
+        f: fn(acc, subject) {
+          match acc.run {
+            NodeCorpusUnresolvedRun { claim: _ } =>
+              if node_corpus_claim_from_subject(subject: subject) == c {
+                corpus_entry_from_node_runtime_value_run(run: run_test_claim(subject: subject))
+              } else {
+                acc
+              }
+            _ => acc
+          }
+        }
+      )
+    }
+    NodeCorpus { claim: claim, transport: EmitVsEval { target: target } } =>
+      corpus_entry_from_emit_vs_eval_deferred_node_corpus_claim(claim: claim, target: target)
+    BoolWitnessClaim { witness: w } =>
+      corpus_entry_from_queued_bool_witness(witness: w)
+  }
+}
+
+
+fn manual_node_corpus_claims_all_resolve() -> Bool {
+  fold(
+    manual_node_corpus_unified_claims(),
+    init: true,
+    f: fn(acc, c) {
+      match c {
+        NodeCorpus { claim: _, transport: EvalOnly } =>
+          acc && fold(
+            manual_corpus_node_subject_rows,
+            init: false,
+            f: fn(found, subject) {
+              found || (node_corpus_claim_from_subject(subject: subject) == c)
+            }
+          )
+        _ => false
+      }
+    }
+  )
+}
+
+
+fn run_unified_corpus_eval_entry(c: UnifiedTestClaim) -> CorpusEvalEntry {
+  match c {
+    BoolWitnessClaim { witness: w } =>
+      corpus_entry_from_queued_bool_witness(witness: w)
+    NodeCorpus { claim: claim, transport: transport } =>
+      match transport {
+        EvalOnly =>
+          run_node_corpus_eval_only_entry(c: c)
+        EmitVsEval { target: target } =>
+          corpus_entry_from_emit_vs_eval_deferred_node_corpus_claim(claim: claim, target: target)
+      }
+  }
+}
+
+
+fn run_unified_corpus_eval(claims: List<UnifiedTestClaim>) -> CorpusEvalReport {
+  CorpusEvalReport {
+    entries: map(claims, fn(c) { run_unified_corpus_eval_entry(c: c) })
+  }
+}
+
+
+fn run_unified_corpus_eval_pilot() -> CorpusEvalReport {
+  run_unified_corpus_eval(claims: unified_corpus_eval_pilot_claims())
+}
+
+
+fn unified_corpus_eval_manual_node_slice_holds() -> Bool {
+  fold(
+    manual_corpus_node_subject_rows,
+    init: true,
+    f: fn(acc, subject) {
+      let c = node_corpus_claim_from_subject(subject: subject)
+      let manual_run = run_test_claim(subject: subject)
+      match run_unified_corpus_eval_entry(c: c).run {
+        NodeCorpusRun { run: unified_run } =>
+          acc
+            && test_claim_run_claim(run: unified_run) == test_claim_run_claim(run: manual_run)
+            && test_claim_run_verdict(run: unified_run) == test_claim_run_verdict(run: manual_run)
+        _ => false
+      }
+    }
+  )
+}
+
+
+fn unified_corpus_eval_bool_witness_slice_holds() -> Bool {
+  let unified_entries = run_unified_corpus_eval(claims: v4_roster_pilot_bool_witness_unified_claims()).entries
+  let expected_entries = v4_roster_pilot_queued_bool_witness_entries()
+  unified_entries == expected_entries
+}
+
+
+fn unified_corpus_eval_pilot_queued_bool_witnesses_tally_deferred_holds() -> Bool {
+  let report = run_unified_corpus_eval(claims: v4_roster_pilot_bool_witness_unified_claims())
+  let tally = corpus_report_tally(r: report)
+  let roster_rows = v4_roster_pilot_claim_run_rows
+  let roster_deferred_count = list_length_nat(xs: roster_rows)
+  nat_eq(a: tally.deferred, b: roster_deferred_count)
+    && (length(xs: report.entries) == length(xs: roster_rows))
+    && (tally.pass == Zero)
+    && (tally.fail == Zero)
+    && fold(
+      report.entries,
+      init: true,
+      f: fn(acc, e) {
+        acc && match e.run {
+          BoolWitnessRunReceipt { run: bool_run } =>
+            match bool_run {
+              BoolWitnessQueuedForHostTransport { witness: _ } => true
+              BoolWitnessRuntimeVerdict { witness: _, result: _ } => false
+            }
+          _ => false
+        }
+      }
+    )
+}
+
+
+fn unified_corpus_eval_pilot_equivalence_holds() -> Bool {
+  let pilot = run_unified_corpus_eval_pilot()
+  manual_node_corpus_claims_all_resolve()
+    && unified_corpus_eval_manual_node_slice_holds()
+    && unified_corpus_eval_bool_witness_slice_holds()
+    && unified_corpus_eval_pilot_queued_bool_witnesses_tally_deferred_holds()
+    && (length(xs: pilot.entries) == length(xs: unified_corpus_eval_pilot_claims()))
 }
 
 
@@ -211,3 +490,4 @@ fn manual_testclaim_subject_roster_family_receipt_holds() -> Bool {
 data witness_manual_testclaim_subject_roster_family_receipt: Bool = manual_testclaim_subject_roster_family_receipt_holds()
 data witness_manual_node_corpus_unified_claim_projection: Bool = manual_node_corpus_unified_claim_projection_holds()
 data witness_v4_roster_pilot_bool_witness_unified_claim_projection: Bool = v4_roster_pilot_bool_witness_unified_claim_projection_holds()
+data witness_unified_corpus_eval_pilot_equivalence: Bool = unified_corpus_eval_pilot_equivalence_holds()
