@@ -228,6 +228,7 @@ data grammar_relation_emitted_conj_slot_surplus: Symbol = ^grammar_relation_emit
 data grammar_relation_emitted_not_conj: Symbol = ^grammar_relation_emitted_not_conj
 data grammar_relation_row_tokens_not_conj: Symbol = ^grammar_relation_row_tokens_not_conj
 data grammar_relation_row_backward_selection_mismatch: Symbol = ^grammar_relation_row_backward_selection_mismatch
+data grammar_relation_row_backward_selection_ambiguous: Symbol = ^grammar_relation_row_backward_selection_ambiguous
 data grammar_root_start_production_node_projection: Symbol = ^grammar_root_start_production_node_projection
 data grammar_root_productions_node_projection: Symbol = ^grammar_root_productions_node_projection
 data grammar_root_sync_tokens_node_projection: Symbol = ^grammar_root_sync_tokens_node_projection
@@ -1277,11 +1278,114 @@ fn grammar_production_selection_predicate(direction: GrammarInterpretationDirect
   }
 }
 
+// 🟢 coproduct dissolution — ephemeral fold state for fail-closed unique lhs-exact match
+// (find_witness multiplicity discipline at the syntax layer).
+type LhsExactProductionMatchFold
+  = LhsExactProductionMatchNone
+  | LhsExactProductionMatchOne { production: FormalProduction }
+  | LhsExactProductionMatchMany
+
+fn formal_production_matches_lhs_exact_child(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node,
+  candidate: FormalProduction
+) -> Bool {
+  if emitted_shape_supported_for_lhs_exact(child: child) {
+    let emitted_slot_count = emitted_node_slot_count(emitted: child)
+    formal_production_matches_lhs_and_slot_count(
+      production: candidate,
+      lhs: lhs,
+      emitted_slot_count: emitted_slot_count
+    ) &&
+      formal_production_matches_emitted_child(
+        production: candidate,
+        productions: productions,
+        child: child
+      )
+  } else {
+    false
+  }
+}
+
+fn lhs_exact_production_match_fold_step(
+  acc: LhsExactProductionMatchFold,
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node,
+  candidate: FormalProduction
+) -> LhsExactProductionMatchFold {
+  if formal_production_matches_lhs_exact_child(
+    productions: productions,
+    lhs: lhs,
+    child: child,
+    candidate: candidate
+  ) {
+    match acc {
+      LhsExactProductionMatchNone =>
+        LhsExactProductionMatchOne { production: candidate }
+      LhsExactProductionMatchOne { production: _ } => LhsExactProductionMatchMany
+      LhsExactProductionMatchMany => LhsExactProductionMatchMany
+    }
+  } else {
+    acc
+  }
+}
+
+fn formal_production_unique_lhs_exact_match(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node
+) -> Witness<FormalProduction> {
+  if emitted_shape_supported_for_lhs_exact(child: child) {
+    match fold_list(
+      xs: productions,
+      empty: LhsExactProductionMatchNone,
+      cons: fn(acc, candidate) {
+        lhs_exact_production_match_fold_step(
+          acc: acc,
+          productions: productions,
+          lhs: lhs,
+          child: child,
+          candidate: candidate
+        )
+      }
+    ) {
+      LhsExactProductionMatchNone =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_production_not_found,
+            at: node_locus(node: child),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchMany =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: grammar_relation_row_backward_selection_ambiguous,
+            at: node_locus(node: child),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchOne { production: production } =>
+        Holds { value: production }
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^grammar_relation_emitted_not_conj,
+        at: node_locus(node: child),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
 fn grammar_relation_row_backward_selection(
   row: GrammarRelationRow,
   productions: List<FormalProduction>
 ) -> Witness<FormalProduction> {
-  match formal_production_for_lhs_exact(
+  match formal_production_unique_lhs_exact_match(
     productions: productions,
     lhs: row.production.lhs.identity,
     child: row.emitted
