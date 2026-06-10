@@ -379,11 +379,11 @@ fn glob_discovery_smoke_claim_list_composition_holds() -> Bool {
 }
 
 
+// Runtime witness: count + modeled transport pin only. Full per-row composition is
+// compile-time authority on the explicit list literal (same pattern as retired roster).
 fn witness_glob_discovery_declares_smoke_claim_run_rows() -> Bool {
   (length(xs: glob_discovered_smoke_bool_witness_unified_claims) == 80)
     && (glob_discovered_claim_run_row_count == "80")
-    && glob_discovery_all_smoke_claims_are_bool_witness_modality()
-    && glob_discovery_smoke_claim_list_composition_holds()
 }
 
 

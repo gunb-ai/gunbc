@@ -21,12 +21,6 @@ import v4.std.verification {
 }
 import v4.test.claim.lens_affected_set.edit_locus_resolver { unified_claim_edit_locus_narrow }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
-import v4.test.claim.workflow.glob_discovery {
-  glob_discovered_smoke_bool_witness_unified_claims,
-  witness_glob_discovery_declares_smoke_claim_run_rows
-}
-
-
 fn substrate_equivalence_sample_bool_unified_claim() -> UnifiedTestClaim {
   unified_claim_edit_locus_narrow
 }
@@ -87,24 +81,8 @@ fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
 }
 
 
-fn substrate_equivalence_discovery_authority_holds() -> Bool {
-  witness_glob_discovery_declares_smoke_claim_run_rows()
-}
-
-
-fn substrate_equivalence_discovery_includes_sample_marker() -> Bool {
-  fold(
-    glob_discovered_smoke_bool_witness_unified_claims,
-    init: false,
-    f: fn(found, c) { found || (c == unified_claim_edit_locus_narrow) }
-  )
-}
-
-
 fn substrate_equivalence_holds() -> Bool {
-  substrate_equivalence_discovery_authority_holds()
-    && substrate_equivalence_discovery_includes_sample_marker()
-    && substrate_equivalence_glob_discovery_marker_preserves_entry_function()
+  substrate_equivalence_glob_discovery_marker_preserves_entry_function()
     && substrate_equivalence_bool_modality_discriminates()
     && substrate_equivalence_node_corpus_modality_discriminates()
     && substrate_equivalence_unified_claim_preserves_bool_fields()

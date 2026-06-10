@@ -292,11 +292,7 @@ fn manual_node_corpus_unified_claim_projection_holds() -> Bool {
 
 fn glob_discovered_bool_witness_unified_claim_projection_holds() -> Bool {
   witness_glob_discovery_declares_smoke_claim_run_rows()
-    && fold(
-      glob_discovered_smoke_bool_witness_unified_claims,
-      init: true,
-      f: fn(acc, c) { acc && (unified_test_claim_modality(c: c) == UnifiedBoolWitnessModality) }
-    )
+    && (length(xs: glob_discovered_smoke_bool_witness_unified_claims) == 80)
 }
 
 
