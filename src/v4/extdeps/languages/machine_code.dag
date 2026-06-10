@@ -19,7 +19,7 @@ import v4.std.lexing {
   TriviaRule,
   WhitespaceChar
 }
-import v4.std.algebra { fold_list, list_snoc_item }
+import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.collection { List, Map }
 import v4.std.machine { Byte }
 import v4.std.text { String }

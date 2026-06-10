@@ -7,6 +7,8 @@ module v4.workflow.scheduler
 
 import v4.std.collection { List, list_at_optional, optional_present_witness }
 import v4.std.algebra {
+  Empty,
+  FreeMonoid,
   contains,
   filter,
   for_all,
@@ -94,7 +96,7 @@ fn scheduler_execution_dependencies(dependencies: List<DependencyView>) -> List<
   filter(xs: dependencies, predicate: scheduler_dependency_orders_execution)
 }
 
-fn scheduler_append_node_once(nodes: List<Node>, node: Node) -> List<Node> {
+fn scheduler_append_node_once(nodes: FreeMonoid<Node>, node: Node) -> FreeMonoid<Node> {
   if contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
     nodes
   } else {
@@ -103,7 +105,7 @@ fn scheduler_append_node_once(nodes: List<Node>, node: Node) -> List<Node> {
 }
 
 fn scheduler_dependency_nodes(dependencies: List<DependencyView>) -> List<Node> {
-  fold(dependencies, init: [], f: fn(nodes, dependency) {
+  fold(dependencies, init: Empty, f: fn(nodes, dependency) {
     scheduler_append_node_once(
       nodes: scheduler_append_node_once(nodes: nodes, node: dependency.source),
       node: dependency.dependent
@@ -184,7 +186,7 @@ fn scheduler_schedule_frontier(scheduled: List<Node>, frontier: RunnableFrontier
   })
 }
 
-fn scheduler_append_frontier_layer(layers: List<ReadinessLayer>, frontier: RunnableFrontier) -> List<ReadinessLayer> {
+fn scheduler_append_frontier_layer(layers: FreeMonoid<ReadinessLayer>, frontier: RunnableFrontier) -> FreeMonoid<ReadinessLayer> {
   if non_empty(xs: frontier.ready) {
     list_snoc_item(
       xs: layers,

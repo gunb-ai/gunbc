@@ -12,6 +12,7 @@ import v4.test.fixture.derivable_coercion_task_id {
   task_id_db_inhabitant_node,
   task_id_wire_inhabitant_node
 }
+import v4.std.algebra { Equal, Less }
 import v4.std.collection { List }
 import v4.std.find_witness {
   CandidateSet,

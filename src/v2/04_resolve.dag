@@ -67,6 +67,12 @@ fn preserve_nominal_brand_on_resolve(
   } else { structural }
 }
 
+fn is_bare_type_ref(n: Node) -> Bool {
+  n.connective == NoConnective
+    && n.children |> count == 0
+    && n.params |> count == 0
+}
+
 // Peel alias bindings for call-site arg check: structural carrier with
 // reference-site brand identity (bounded A3 — not a full re-resolve).
 fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
@@ -85,7 +91,15 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       }
       if resolved.binding_id != none && brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
         && !is_declared_container_alias_spelling(name: brand) {
-        with_preserved_binding_id(identity: resolved, structural: structural)
+        match resolved.inferred {
+          Present { value: Resolved { node: target } } =>
+            if is_bare_type_ref(n: target) {
+              structural
+            } else {
+              with_preserved_binding_id(identity: resolved, structural: structural)
+            }
+          _ => with_preserved_binding_id(identity: resolved, structural: structural)
+        }
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Present { value: Resolved { node: target } } =>

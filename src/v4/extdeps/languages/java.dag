@@ -96,6 +96,7 @@ import v4.std.node {
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
   BooleanAlgebra,
+  Empty,
   boolean_algebra_node,
   boolean_algebra_type_node,
   commutative_semiring_node,

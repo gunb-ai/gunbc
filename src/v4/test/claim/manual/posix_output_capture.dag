@@ -7,7 +7,7 @@ module v4.test.claim.manual.posix_output_capture
 
 
 import v4.extdeps.posix { CapturedOutputPipes }
-import v4.std.algebra { is_empty }
+import v4.std.algebra { Empty, is_empty }
 import v4.std.node { Node }
 import v4.std.verification {
   EqualsClaim,

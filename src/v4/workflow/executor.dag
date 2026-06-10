@@ -7,6 +7,8 @@
 module v4.workflow.executor
 
 import v4.std.algebra {
+  Empty,
+  FreeMonoid,
   contains,
   list_snoc_item,
   non_empty
@@ -85,12 +87,12 @@ fn executor_batch_for_frontier(frontier: RunnableFrontier) -> ExecutorBatch {
 }
 
 fn executor_job_nodes(jobs: List<ExecutorJob>) -> List<Node> {
-  fold(jobs, init: [], f: fn(nodes, job) {
+  fold(jobs, init: Empty, f: fn(nodes, job) {
     list_snoc_item(xs: nodes, item: job.node)
   })
 }
 
-fn executor_append_batch(batches: List<ExecutorBatch>, batch: ExecutorBatch) -> List<ExecutorBatch> {
+fn executor_append_batch(batches: FreeMonoid<ExecutorBatch>, batch: ExecutorBatch) -> FreeMonoid<ExecutorBatch> {
   if non_empty(xs: batch.jobs) {
     list_snoc_item(xs: batches, item: batch)
   } else {
