@@ -752,8 +752,9 @@ fn direct_call_plain_kernel_leaf_mismatch(formal: Node, actual: Node, source_ind
 
 fn direct_call_element_collection_carrier(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let name = authored_name_at(source_indices: source_indices, node: n)
+  let child_count = (n.children |> count)
   (node_is_element_collection(n: n, source_indices: source_indices) || is_declared_container_alias_spelling(name: name))
-    && n.children |> count == 1
+    && child_count == 1
 }
 
 fn direct_call_structural_pd3_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -763,13 +764,15 @@ fn direct_call_structural_pd3_mismatch(formal: Node, actual: Node, source_indice
     && structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
   let formal_name = authored_name_at(source_indices: source_indices, node: formal)
   let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+  let formal_child_count = (formal.children |> count)
+  let actual_child_count = (actual.children |> count)
   let record_twin_carriers = formal.connective == Conj
     && actual.connective == Conj
     && formal_name != ""
     && actual_name != ""
     && formal_name != actual_name
-    && formal.children |> count > 0
-    && formal.children |> count == actual.children |> count
+    && formal_child_count > 0
+    && formal_child_count == actual_child_count
   (both_declared_identity || both_element_carriers || record_twin_carriers)
     && !node_type_compatible(left: formal, right: actual, source_indices: source_indices)
 }

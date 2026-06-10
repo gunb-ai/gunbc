@@ -1186,9 +1186,10 @@ pub fn direct_call_element_collection_carrier(
 ) -> bool {
     {
         let name = authored_name_at(source_indices.clone(), n.clone());
+        let child_count = (n.children.clone().len() as i64);
         ((node_is_element_collection(n.clone(), source_indices.clone())
             || is_declared_container_alias_spelling(name))
-            && ((n.children.clone().len() as i64) == 1))
+            && (child_count == 1))
     }
 }
 
@@ -1207,7 +1208,18 @@ pub fn direct_call_structural_pd3_mismatch(
                     .as_str()
                     == structural_carrier_template_name(actual.clone(), source_indices.clone())
                         .as_str()));
-        ((both_declared_identity || both_element_carriers)
+        let formal_name = authored_name_at(source_indices.clone(), formal.clone());
+        let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+        let formal_child_count = (formal.children.clone().len() as i64);
+        let actual_child_count = (actual.children.clone().len() as i64);
+        let record_twin_carriers = (((((((formal.connective.clone() == Connective::Conj)
+            && (actual.connective.clone() == Connective::Conj))
+            && (formal_name.clone().as_str() != "".to_string().as_str()))
+            && (actual_name.clone().as_str() != "".to_string().as_str()))
+            && (formal_name.clone().as_str() != actual_name.clone().as_str()))
+            && (formal_child_count.clone() > 0))
+            && (formal_child_count.clone() == actual_child_count));
+        (((both_declared_identity || both_element_carriers) || record_twin_carriers)
             && !node_type_compatible(formal.clone(), actual.clone(), source_indices.clone()))
     }
 }
