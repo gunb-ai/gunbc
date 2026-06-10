@@ -914,14 +914,16 @@ fn direct_call_arg_mismatch_diags(
     pair =>
       let formal_raw = param_node_type_expr(n: pair.second)
       let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
-	      let formal_identity = direct_call_arg_decl_identity(n: formal_subst, env: type_env)
-	      let formal = stamp_hidden_dependency_refs(n: peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name), dep_env: type_env, source_indices: source_indices)
+	      let formal_peeled = peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name)
+	      let formal_identity = direct_call_arg_decl_identity(n: formal_peeled, env: type_env)
+	      let formal = stamp_hidden_dependency_refs(n: formal_peeled, dep_env: type_env, source_indices: source_indices)
 	      match typed_args |> skip(pair.first) |> first {
 	        Present { value: ta } =>
 	          let actual_expr = arg_value(n: ta)
 	          let actual_raw = resolved_type(n: actual_expr)
-	          let actual_identity = direct_call_arg_decl_identity(n: actual_raw, env: type_env)
-          let actual = stamp_hidden_dependency_refs(n: peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name), dep_env: type_env, source_indices: source_indices)
+	          let actual_peeled = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+	          let actual_identity = direct_call_arg_decl_identity(n: actual_peeled, env: type_env)
+          let actual = stamp_hidden_dependency_refs(n: actual_peeled, dep_env: type_env, source_indices: source_indices)
           let arg_span = arg_value(n: ta).span
           if direct_call_arg_is_typed_deferral(
             formal_raw: formal_raw,

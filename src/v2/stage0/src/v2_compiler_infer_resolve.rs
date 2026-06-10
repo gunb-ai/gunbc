@@ -135,11 +135,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                                 )
                                 .resolved
                                 .clone();
-                                if (resolved.binding_id.clone() != None) {
-                                    with_preserved_binding_id(resolved.clone(), target_resolved)
-                                } else {
-                                    target_resolved
-                                }
+                                target_resolved
                             }
                             _ => resolved.clone(),
                         }
@@ -1605,8 +1601,8 @@ pub fn resolve_optional_node(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    binding_id: None,
                     ident: None,
+                    binding_id: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -3013,8 +3009,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),

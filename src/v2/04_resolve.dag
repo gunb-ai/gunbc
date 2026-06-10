@@ -90,9 +90,7 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
         match resolved.inferred {
           Present { value: Resolved { node: target } } =>
             let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
-            if resolved.binding_id != none {
-              with_preserved_binding_id(identity: resolved, structural: target_resolved)
-            } else { target_resolved }
+            target_resolved
           _ => resolved
         }
       } else { resolved }
