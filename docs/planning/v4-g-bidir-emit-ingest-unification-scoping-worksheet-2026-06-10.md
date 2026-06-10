@@ -209,7 +209,7 @@ until TS round-trip through descriptor row (manager ruling 2026-06-10).
 | Row | Status | Required shape | Consumer |
 |---|---|---|---|
 | G.1 | **Prep landed** | `add`-subset `FormalProduction` rows with named bindings in `dag.dag` (`dag_formal_grammar_symbol_from_token` preserves `BoundToken` bindings) | obligation folds |
-| G.2 | **Prep landed** | `GrammarInterpretationDirection`, `BidirectionalGrammarObligation`, selection predicates, `grammar_relation_row_slot_bijection_holds` in `std/grammar.dag` — modeling only; execution claims gated on emit S1 | `TestClaim` lens verdicts |
+| G.2 | **Prep landed** | `GrammarInterpretationDirection`, `BidirectionalGrammarObligation`, selection predicates, `grammar_relation_row_slot_bijection_holds`, `grammar_relation_row_backward_selection_holds` in `std/grammar.dag`; Q-G2 `target_model_edge_fidelity_quotient` in dag_mvp1 bundle — modeling only; execution claims gated on emit S1 | `TestClaim` lens verdicts |
 | G.3 | Open | Forward interpreter derived over G.1 rows for `add` subset (enough for keystone surface) | replaces hand path in `02_parse` for those constructs |
 | G.4 | Open | Round-trip by execution: `add` source → tree → source, identity up to `dag` quotient | extends RTADD to **text** |
 | G.5 | Deferred | Per-construct `02_parse` dissolution beyond `add` subset | consumer-triggered ratchet |
@@ -317,9 +317,9 @@ The committed risk is **same rows, both directions + obligations** — not a toy
 | ID | Question | Recommendation | Escalate if |
 |---|---|---|---|
 | Q-G1 | T3 fold-carrier shape (positional vs labeled edges in derived rows) | Defer until one bounded run (`design-optional-surface.md` §4) — kinds + catalog independent | implementation commits carrier shape early |
-| Q-G2 | Quotient field shape on `TargetModel` (Q-B2) | Per-target `FidelityDisposition` bundle already exists; formalize quotient edge on `TargetModel` | operator prefers different authority |
+| Q-G2 | Quotient field shape on `TargetModel` (Q-B2) | **RATIFIED + landed:** `target_model_edge_fidelity_quotient` on `TargetModel` bundle — `Conj` of per-feature `FidelityDisposition` wire nodes (`dag_mvp1_fidelity_quotient_node` in dag.dag). Claims cite bundle edge; no per-claim labels. | typed roster only if Conj can't discriminate a real case |
 | Q-G3 | `CanonicalOperation` grounding (Q-V1) | Algebra-grounded `OpAdd`; interim surface-atom map under 🟡 | rows multiply before ruling |
-| Q-G4 | Marker repair (Q-B4) | Re-point CP-1b markers from missing `TASKS.md T-6/T-7` to this worksheet + BIDIR node | blocking dissolution triggers |
+| Q-G4 | Marker repair (Q-B4) | **Recommended + landed:** re-point `feature:CP-1b-bidirectional-grammar-carrier` markers to `docs/design-bidirectional-coercion.md §4` + this worksheet Phase G (grammar.dag / lexing.dag). Mechanical anchor repair; no design call. | — |
 | Q-G5 | Language identity on `TargetModel` for descriptor selection (Q-T1) | Ruled: language identity, not `authority_source_text` pin | `TargetModel` lacks stable identity field |
 
 ---

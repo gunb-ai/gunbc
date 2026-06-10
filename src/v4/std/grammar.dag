@@ -1280,3 +1280,17 @@ fn grammar_relation_row_slot_bijection_holds(
     emitted: row.emitted
   )
 }
+
+fn grammar_relation_row_backward_selection_holds(
+  row: GrammarRelationRow,
+  productions: List<FormalProduction>
+) -> Bool {
+  match formal_production_for_lhs_exact(
+    productions: productions,
+    lhs: row.production.lhs.identity,
+    child: row.emitted
+  ) {
+    Holds { value: selected } => selected == row.production
+    Violates { diagnostic: _ } => false
+  }
+}
