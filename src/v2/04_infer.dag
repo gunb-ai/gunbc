@@ -727,6 +727,17 @@ fn direct_call_arg_is_typed_deferral(formal_raw: Node, actual_expr: Node, actual
   (formal_is_callable && actual_is_callable_literal) || (formal_is_optional && actual_is_none)
 }
 
+fn node_contains_type_variable(n: Node) -> Bool {
+  let inferred_has_type_variable = match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    Present { value: Resolved { node: rt } } => node_contains_type_variable(n: rt)
+    _ => false
+  }
+  inferred_has_type_variable
+    || (n.children |> any(ch => node_contains_type_variable(n: ch)))
+    || (n.params |> any(p => node_contains_type_variable(n: p)))
+}
+
 fn direct_call_arg_decl_identity(n: Node, env: TypeEnv) -> Node {
   match n.binding_id {
     Present { value: _ } => n
@@ -917,7 +928,7 @@ fn direct_call_arg_mismatch_diags(
             actual_expr: actual_expr,
             actual_type: actual_raw,
             source_indices: source_indices
-          ) {
+          ) || node_contains_type_variable(n: formal_subst) {
             []
           } else if direct_call_decl_identity_mismatch(
             formal_identity: formal_identity,

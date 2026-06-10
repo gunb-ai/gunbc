@@ -1173,6 +1173,37 @@ pub fn direct_call_arg_is_typed_deferral(
     }
 }
 
+pub fn node_contains_type_variable(n: Rc<Node>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let inferred_has_type_variable = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: _, .. }) => true,
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                node_contains_type_variable(rt.clone())
+            }
+            _ => false,
+        };
+        ((inferred_has_type_variable || {
+            let mut __found = false;
+            for ch in n.children.clone().iter().cloned() {
+                if node_contains_type_variable(ch.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) || {
+            let mut __found = false;
+            for p in n.params.clone().iter().cloned() {
+                if node_contains_type_variable(p.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+    })
+}
+
 pub fn direct_call_arg_decl_identity(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     match n.binding_id.clone() {
         Some(_) => n.clone(),
@@ -1488,12 +1519,13 @@ pub fn direct_call_arg_mismatch_diags(
                                     source_indices.clone(),
                                 );
                                 let arg_span = arg_value(ta.clone()).span.clone();
-                                if direct_call_arg_is_typed_deferral(
+                                if (direct_call_arg_is_typed_deferral(
                                     formal_raw.clone(),
                                     actual_expr.clone(),
                                     actual_raw.clone(),
                                     source_indices.clone(),
-                                ) {
+                                ) || node_contains_type_variable(formal_subst.clone()))
+                                {
                                     Rc::new(vec![])
                                 } else {
                                     if (direct_call_decl_identity_mismatch(
