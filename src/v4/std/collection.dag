@@ -110,7 +110,12 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   match lookup(m, key) {
     Holds { value: v } => outcome_accepted(value: Present { value: v })
-    Violates { diagnostic: _ } => outcome_accepted(value: Absent)
+    Violates { diagnostic: d } =>
+      if d.reason == ^map_key_absent {
+        outcome_accepted(value: Absent)
+      } else {
+        outcome_rejected(d: d)
+      }
   }
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {

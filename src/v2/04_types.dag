@@ -9,7 +9,7 @@ import std.algebra {
   FreeMonoidScalarProfile,
   FreeMonoidCollectionProfile, PartialFunctionProfile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
-  NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, TupleOf, AlgebraTypeVariable,
+  NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, WitnessOf, TupleOf, AlgebraTypeVariable,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
   algebra_templates_for_profile
