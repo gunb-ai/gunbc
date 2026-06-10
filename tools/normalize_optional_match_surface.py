@@ -162,6 +162,69 @@ def rewrite_source(text: str) -> tuple[str, int]:
     return "".join(out), edits
 
 
+def identifier_occurrences(text: str, start: int, end: int, names: set[str]) -> list[tuple[int, int]]:
+    occurrences: list[tuple[int, int]] = []
+    for name in sorted(names):
+        index = start
+        while index < end:
+            found = text.find(name, index, end)
+            if found == -1:
+                break
+            found_end = found + len(name)
+            if is_ident_boundary(text, found, found_end):
+                occurrences.append((found, found_end))
+            index = found_end
+    return sorted(occurrences)
+
+
+def diagnostic_rewrite_ranges(text: str, diagnostics: list[Diagnostic], rel: Path) -> list[tuple[int, int]]:
+    ranges: set[tuple[int, int]] = set()
+    for diagnostic in diagnostics:
+        if diagnostic.start < 0 or diagnostic.end > len(text) or diagnostic.start >= diagnostic.end:
+            raise RuntimeError(
+                f"{rel}: refusing invalid diagnostic span {diagnostic.start}-{diagnostic.end}"
+            )
+
+        if diagnostic.name in REPLACEMENTS:
+            occurrences = identifier_occurrences(
+                text=text,
+                start=diagnostic.start,
+                end=diagnostic.end,
+                names={diagnostic.name},
+            )
+            if len(occurrences) != 1:
+                raise RuntimeError(
+                    f"{rel}: expected one {diagnostic.name} token in diagnostic span "
+                    f"{diagnostic.start}-{diagnostic.end}, found {len(occurrences)}"
+                )
+            ranges.add(occurrences[0])
+        else:
+            rewritten, edits = rewrite_source(text[diagnostic.start:diagnostic.end])
+            if edits == 0:
+                raise RuntimeError(
+                    f"{rel}: diagnostic span {diagnostic.start}-{diagnostic.end} "
+                    "contains no legacy Optional token"
+                )
+            ranges.add((diagnostic.start, diagnostic.end))
+    return sorted(ranges)
+
+
+def rewrite_ranges(text: str, ranges: list[tuple[int, int]]) -> tuple[str, int]:
+    out: list[str] = []
+    edits = 0
+    cursor = 0
+    for start, end in ranges:
+        if start < cursor:
+            raise RuntimeError(f"overlapping diagnostic rewrite ranges at {start}-{end}")
+        out.append(text[cursor:start])
+        rewritten, range_edits = rewrite_source(text[start:end])
+        out.append(rewritten)
+        edits += range_edits
+        cursor = end
+    out.append(text[cursor:])
+    return "".join(out), edits
+
+
 def apply(diagnostics: list[Diagnostic], dry_run: bool) -> int:
     by_path: dict[Path, list[Diagnostic]] = {}
     for diagnostic in diagnostics:
@@ -176,7 +239,14 @@ def apply(diagnostics: list[Diagnostic], dry_run: bool) -> int:
         if len(by_path[path]) > 5:
             reasons = f"{reasons}, +{len(by_path[path]) - 5} more"
         text = path.read_text()
-        rewritten, edits = rewrite_source(text)
+        ranges = diagnostic_rewrite_ranges(text=text, diagnostics=by_path[path], rel=rel)
+        rewritten, edits = rewrite_ranges(text=text, ranges=ranges)
+        _, full_file_edits = rewrite_source(text)
+        if full_file_edits != edits:
+            raise RuntimeError(
+                f"{rel}: {full_file_edits - edits} rewriteable Some/None token(s) "
+                "outside compiler diagnostic spans; refusing whole-file rewrite"
+            )
         if edits and not dry_run:
             path.write_text(rewritten)
         if edits:
