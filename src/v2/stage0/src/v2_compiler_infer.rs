@@ -1704,8 +1704,9 @@ pub fn annotate_pattern_parent_enums(
                                 .as_str()
                                     != "Optional".to_string().as_str()));
                         if (optional_cardinality_bridge.clone()
-                            && ((optional_variant_name.as_str() == "Present".to_string().as_str())
-                                || (optional_variant_name.as_str()
+                            && ((optional_variant_name.clone().as_str()
+                                == "Present".to_string().as_str())
+                                || (optional_variant_name.clone().as_str()
                                     == "Absent".to_string().as_str())))
                         {
                             Some("Optional".to_string())
@@ -1741,7 +1742,7 @@ pub fn annotate_pattern_parent_enums(
                                 )
                                 .as_str()
                                     != "Optional".to_string().as_str()));
-                        if optional_cardinality_bridge {
+                        if optional_cardinality_bridge.clone() {
                             optional_match_variant_legacy_name(variant_name.clone())
                         } else {
                             variant_name.clone()
@@ -1790,7 +1791,7 @@ pub fn annotate_pattern_parent_enums(
                 });
                 match inferred_parent {
                     Some(parent_name) => Rc::new(MatchPattern::VariantPattern {
-                        name: annotated_variant_name.clone(),
+                        name: annotated_variant_name,
                         parent_enum: Some(parent_name.clone()),
                         field_bindings: annotated_bindings,
                     }),

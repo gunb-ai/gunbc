@@ -202,6 +202,37 @@ pub fn variant_not_found_result(
     )]))
 }
 
+pub fn optional_match_variant_canonical_name(variant_name: String) -> String {
+    if ((variant_name.clone().as_str() == "Some".to_string().as_str())
+        || (variant_name.clone().as_str() == "Present".to_string().as_str()))
+    {
+        "Present".to_string()
+    } else {
+        if ((variant_name.clone().as_str() == "None".to_string().as_str())
+            || (variant_name.clone().as_str() == "Absent".to_string().as_str()))
+        {
+            "Absent".to_string()
+        } else {
+            variant_name.clone()
+        }
+    }
+}
+
+pub fn optional_match_variant_legacy_name(variant_name: String) -> String {
+    {
+        let canonical = optional_match_variant_canonical_name(variant_name.clone());
+        if (canonical.clone().as_str() == "Present".to_string().as_str()) {
+            "Some".to_string()
+        } else {
+            if (canonical.clone().as_str() == "Absent".to_string().as_str()) {
+                "None".to_string()
+            } else {
+                variant_name.clone()
+            }
+        }
+    }
+}
+
 pub fn lookup_variant_in_type(
     scrut: Rc<PatternSubject>,
     variant_name: String,
@@ -238,12 +269,14 @@ pub fn lookup_variant_in_type(
                         && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
                             != "Optional".to_string().as_str()));
                     if (optional_cardinality_bridge.clone()
-                        && (optional_variant_name.as_str() == "Present".to_string().as_str()))
+                        && (optional_variant_name.clone().as_str()
+                            == "Present".to_string().as_str()))
                     {
                         node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
                     } else {
                         if (optional_cardinality_bridge.clone()
-                            && (optional_variant_name.as_str() == "Absent".to_string().as_str()))
+                            && (optional_variant_name.clone().as_str()
+                                == "Absent".to_string().as_str()))
                         {
                             node_lookup_resolved(none_type())
                         } else {
@@ -281,27 +314,6 @@ pub fn lookup_variant_in_type(
                 }
             }
         }
-    }
-}
-
-pub fn optional_match_variant_canonical_name(variant_name: String) -> String {
-    if (variant_name.as_str() == "Some") || (variant_name.as_str() == "Present") {
-        "Present".to_string()
-    } else if (variant_name.as_str() == "None") || (variant_name.as_str() == "Absent") {
-        "Absent".to_string()
-    } else {
-        variant_name
-    }
-}
-
-pub fn optional_match_variant_legacy_name(variant_name: String) -> String {
-    let canonical = optional_match_variant_canonical_name(variant_name.clone());
-    if canonical.as_str() == "Present" {
-        "Some".to_string()
-    } else if canonical.as_str() == "Absent" {
-        "None".to_string()
-    } else {
-        variant_name
     }
 }
 
