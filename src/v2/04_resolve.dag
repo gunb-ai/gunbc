@@ -195,24 +195,6 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
       Present { value: concrete } => concrete
       Absent => n
     }
-  } else if n.children |> count == 0 && n.connective == NoConnective && n.body == none {
-    match n.inferred {
-      Present { value: TypeVariable { id: tv } } =>
-        match map_get(slot_bindings, tv) {
-          Present { value: concrete } => concrete
-          Absent => n
-        }
-      Present { value: Resolved { node: rt } } =>
-        match rt.inferred {
-          Present { value: TypeVariable { id: tv } } =>
-            match map_get(slot_bindings, tv) {
-              Present { value: concrete } => concrete
-              Absent => n
-            }
-          _ => n
-        }
-      _ => n
-    }
   } else {
     let new_children = n.children |> map(child =>
       if authored_name_at(source_indices: source_indices, node: child) == decl_name {
