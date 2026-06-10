@@ -6049,13 +6049,25 @@ fn build_module_context(contributions: List<ItemContribution>,
   let imported_enum_names = fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
     fold(imp.specific_names, init: acc, f: (inner, n) => map_insert(inner, n, true))
   )
+  let imported_variant_names = fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
+    match map_get(parent_index, imp.module_path) {
+      Some { value: typed_parent } =>
+        fold(imp.specific_names, init: acc, f: (inner, n) =>
+          match lookup_type_binding_by_name_in_env(env: typed_parent.type_env, name: n) {
+            Some { value: _ } => inner
+            None => map_insert(inner, n, true)
+          }
+        )
+      None => acc
+    }
+  )
 	  let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, binding) =>
 	    let is_coproduct = binding.resolved.connective == Disj
 	    if is_coproduct {
 	      let curr_parent_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: binding.resolved)) != none
 	      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
 	        let child_name = authored_name_at(source_indices: env.source_indices, node: child)
-	        let curr_child_imported = map_get(imported_enum_names, child_name) != none
+	        let curr_child_imported = map_get(imported_variant_names, child_name) != none
 	        let curr_is_imported = curr_parent_imported || curr_child_imported
 	        match map_get(vacc.locals, child_name) {
 	          Some { value: prev } =>
