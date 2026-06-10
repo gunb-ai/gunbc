@@ -7956,7 +7956,7 @@ fn emit_compile_target_helpers(crate_name: String, pipeline_mod: String, artifac
     "        }\n",
     "        match render_target_from_name(trimmed) {\n",
     "            Some(render_target) => targets.push((trimmed.to_string(), render_target)),\n",
-    "            Absent => {\n",
+    "            None => {\n",
     "                eprintln!(\"unknown target: {}. supported: rust, python, go, dag, rust+dag\", target);\n",
     "                std::process::exit(1);\n",
     "            }\n",
