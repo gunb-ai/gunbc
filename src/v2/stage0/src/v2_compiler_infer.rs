@@ -376,21 +376,27 @@ pub fn merge_scope_from_imports(
                         |acc: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
                          rsig: Rc<ResolvedFuncSig>| {
                             let sig_key = rsig.name.clone();
-                            let sig_params = rsig.params.clone();
-                            let sig_rt = rsig.inferred.clone();
-                            let sig_async = rsig.is_async.clone();
-                            v2_rt::rc_map_insert(
-                                acc,
-                                sig_key.clone(),
-                                Rc::new(DeclaredFuncSig {
-                                    name: sig_key.clone(),
-                                    params: sig_params.clone(),
-                                    inferred: Some(sig_rt.clone()),
-                                    is_async: sig_async.clone(),
-                                    output_provenance: rsig.output_provenance.clone(),
-                                    variant_provenance: rsig.variant_provenance.clone(),
-                                }),
-                            )
+                            if (import_allows_binding_name(imp.clone(), sig_key.clone()) == false) {
+                                acc.clone()
+                            } else {
+                                {
+                                    let sig_params = rsig.params.clone();
+                                    let sig_rt = rsig.inferred.clone();
+                                    let sig_async = rsig.is_async.clone();
+                                    v2_rt::rc_map_insert(
+                                        acc.clone(),
+                                        sig_key.clone(),
+                                        Rc::new(DeclaredFuncSig {
+                                            name: sig_key.clone(),
+                                            params: sig_params.clone(),
+                                            inferred: Some(sig_rt.clone()),
+                                            is_async: sig_async.clone(),
+                                            output_provenance: rsig.output_provenance.clone(),
+                                            variant_provenance: rsig.variant_provenance.clone(),
+                                        }),
+                                    )
+                                }
+                            }
                         },
                     );
                     let parent_result = typed_parent.items.clone().iter().cloned().fold(
@@ -400,80 +406,78 @@ pub fn merge_scope_from_imports(
                             svc_locals: svc_locals,
                         }),
                         |acc: Rc<InferScopeComponents>, titem: Rc<Node>| {
-                            if ((titem.transport.clone() != None)
-                                && ((titem.children.clone().len() as i64) > 0))
+                            let item_name =
+                                authored_name_at(env.source_indices.clone(), titem.clone());
+                            if (import_allows_binding_name(imp.clone(), item_name.clone()) == false)
                             {
-                                {
-                                    let entries = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for c in titem.children.clone().iter().cloned() {
-                                            __result.push(Rc::new(OpEntry {
-                                                name: authored_name_at(
-                                                    env.source_indices.clone(),
-                                                    c.clone(),
-                                                ),
-                                                outputs: inferred_to_outputs(
-                                                    c.inferred.clone(),
-                                                    c.span.clone(),
-                                                    env.source_indices.clone(),
-                                                ),
-                                                params: c.params.clone(),
-                                            }));
-                                        }
-                                        __result
-                                    });
-                                    let root = namespace_root_from_properties(
-                                        titem.properties.clone(),
-                                        authored_name_at(env.source_indices.clone(), titem.clone()),
-                                        env.source_indices.clone(),
-                                    );
-                                    Rc::new(InferScopeComponents {
-                                        func_sigs: acc.func_sigs.clone(),
-                                        svc_registry: v2_rt::rc_map_insert(
-                                            acc.svc_registry.clone(),
-                                            authored_name_at(
-                                                env.source_indices.clone(),
-                                                titem.clone(),
-                                            ),
-                                            entries.clone(),
-                                        ),
-                                        svc_locals: v2_rt::rc_map_insert(
-                                            acc.svc_locals.clone(),
-                                            root.clone(),
-                                            nominal_type_binding(root.clone()),
-                                        ),
-                                    })
-                                }
+                                acc.clone()
                             } else {
-                                if (((((titem.body.clone() != None)
-                                    && ((titem.params.clone().len() as i64) == 0))
-                                    && (titem.transport.clone() == None))
-                                    && (titem.connective.clone() == Connective::NoConnective))
-                                    && (titem.inferred.clone() != None))
+                                if ((titem.transport.clone() != None)
+                                    && ((titem.children.clone().len() as i64) > 0))
                                 {
-                                    Rc::new(InferScopeComponents {
-                                        func_sigs: acc.func_sigs.clone(),
-                                        svc_registry: acc.svc_registry.clone(),
-                                        svc_locals: v2_rt::rc_map_insert(
-                                            acc.svc_locals.clone(),
-                                            authored_name_at(
-                                                env.source_indices.clone(),
-                                                titem.clone(),
+                                    {
+                                        let entries = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for c in titem.children.clone().iter().cloned() {
+                                                __result.push(Rc::new(OpEntry {
+                                                    name: authored_name_at(
+                                                        env.source_indices.clone(),
+                                                        c.clone(),
+                                                    ),
+                                                    outputs: inferred_to_outputs(
+                                                        c.inferred.clone(),
+                                                        c.span.clone(),
+                                                        env.source_indices.clone(),
+                                                    ),
+                                                    params: c.params.clone(),
+                                                }));
+                                            }
+                                            __result
+                                        });
+                                        let root = namespace_root_from_properties(
+                                            titem.properties.clone(),
+                                            item_name.clone(),
+                                            env.source_indices.clone(),
+                                        );
+                                        Rc::new(InferScopeComponents {
+                                            func_sigs: acc.func_sigs.clone(),
+                                            svc_registry: v2_rt::rc_map_insert(
+                                                acc.svc_registry.clone(),
+                                                item_name.clone(),
+                                                entries.clone(),
                                             ),
-                                            Rc::new(TypeBinding {
-                                                name: authored_name_at(
-                                                    env.source_indices.clone(),
-                                                    titem.clone(),
-                                                ),
-                                                resolved: resolved_type(titem.clone()),
-                                                provenance: Rc::new(
-                                                    SubValueRelation::SubValueUnknown,
-                                                ),
-                                            }),
-                                        ),
-                                    })
+                                            svc_locals: v2_rt::rc_map_insert(
+                                                acc.svc_locals.clone(),
+                                                root.clone(),
+                                                nominal_type_binding(root.clone()),
+                                            ),
+                                        })
+                                    }
                                 } else {
-                                    acc.clone()
+                                    if (((((titem.body.clone() != None)
+                                        && ((titem.params.clone().len() as i64) == 0))
+                                        && (titem.transport.clone() == None))
+                                        && (titem.connective.clone() == Connective::NoConnective))
+                                        && (titem.inferred.clone() != None))
+                                    {
+                                        Rc::new(InferScopeComponents {
+                                            func_sigs: acc.func_sigs.clone(),
+                                            svc_registry: acc.svc_registry.clone(),
+                                            svc_locals: v2_rt::rc_map_insert(
+                                                acc.svc_locals.clone(),
+                                                item_name.clone(),
+                                                Rc::new(TypeBinding {
+                                                    name: item_name.clone(),
+                                                    resolved: resolved_type(titem.clone()),
+                                                    provenance: Rc::new(
+                                                        SubValueRelation::SubValueUnknown,
+                                                    ),
+                                                }),
+                                            ),
+                                        })
+                                    } else {
+                                        acc.clone()
+                                    }
                                 }
                             }
                         },
@@ -10866,6 +10870,39 @@ pub fn import_allows_binding_name(imp: Rc<ResolvedImport>, name: String) -> bool
     })
 }
 
+pub fn import_allows_type_binding(
+    imp: Rc<ResolvedImport>,
+    binding: Rc<TypeBinding>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    if import_allows_binding_name(imp.clone(), binding.name.clone()) {
+        true
+    } else {
+        {
+            let mut __found = false;
+            for child in binding.resolved.clone().children.clone().iter().cloned() {
+                if {
+                    let child_name = authored_name_at(env.source_indices.clone(), child.clone());
+                    {
+                        let mut __found = false;
+                        for n in imp.specific_names.clone().iter().cloned() {
+                            if (n.clone().as_str() == child_name.clone().as_str()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }
+                } {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
 pub fn collect_import_bindings_for_import(
     acc: Rc<HashMap<i64, Rc<TypeBinding>>>,
     imp: Rc<ResolvedImport>,
@@ -10878,21 +10915,17 @@ pub fn collect_import_bindings_for_import(
             acc,
             |bacc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
                 let name = intern_str(env.intern_table.clone(), ident.clone());
-                if (import_allows_binding_name(imp.clone(), name.clone()) == false) {
-                    bacc.clone()
-                } else {
-                    if ((imp.module_path.clone().as_str() == "std.types".to_string().as_str())
-                        && is_type_variable_name(name.clone()))
-                    {
-                        bacc.clone()
-                    } else {
-                        match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
-                            Some(binding) => {
-                                v2_rt::rc_map_insert(bacc.clone(), ident.clone(), binding.clone())
-                            }
-                            None => bacc.clone(),
+                match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
+                    Some(binding) => {
+                        if ((imp.module_path.clone().as_str() == "std.types".to_string().as_str())
+                            && is_type_variable_name(name.clone()))
+                        {
+                            bacc.clone()
+                        } else {
+                            v2_rt::rc_map_insert(bacc.clone(), ident.clone(), binding.clone())
                         }
                     }
+                    None => bacc.clone(),
                 }
             },
         )

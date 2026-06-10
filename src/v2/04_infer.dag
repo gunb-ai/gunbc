@@ -5264,9 +5264,7 @@ fn collect_import_bindings_for_import(acc: Map<Int, TypeBinding>, imp: ResolvedI
     let name = intern_str(table: env.intern_table, id: ident)
     match map_get(env.bindings, ident) {
       Some { value: binding } =>
-        if import_allows_type_binding(imp: imp, binding: binding, env: env) == false {
-          bacc
-        } else if imp.module_path == "std.types" && is_type_variable_name(name: name) {
+        if imp.module_path == "std.types" && is_type_variable_name(name: name) {
           bacc
         } else {
           map_insert(bacc, ident, binding)
