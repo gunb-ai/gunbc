@@ -569,6 +569,7 @@ fn optional_match_exhaustiveness_reports_missing_none() {
         Rc::new(vec![variant_arm("Some")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+            carrier_bindings: Rc::new(std::collections::HashMap::new()),
             decl_registry: Rc::new(std::collections::HashMap::new()),
             duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -594,6 +595,7 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+            carrier_bindings: Rc::new(std::collections::HashMap::new()),
             decl_registry: Rc::new(std::collections::HashMap::new()),
             duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -653,6 +655,7 @@ fn resolve_node_uses_node_name_for_lookup() {
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         )])),
+        carrier_bindings: Rc::new(std::collections::HashMap::new()),
         decl_registry: Rc::new(std::collections::HashMap::new()),
         duplicate_decl_ids: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
