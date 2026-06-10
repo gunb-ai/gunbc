@@ -28,7 +28,7 @@ type SKey {
 
 type SKeyMap = Map<SKey, Int>
 
-fn one_entry(a: Int, b: Int, v: Int) -> SKeyMap {
+fn one_entry(a: Int, b: Int, v: Int) -> Map<SKey, Int> {
   map_insert(m: empty_map(), key: SKey { a: a, b: b }, value: v)
 }
 

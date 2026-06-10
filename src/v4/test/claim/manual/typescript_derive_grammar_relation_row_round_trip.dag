@@ -26,6 +26,7 @@ import v4.std.grammar {
   grammar_relation_tokens_node
 }
 
+import v4.std.diagnostic { Diagnostic }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, content_hash, Unanchored }

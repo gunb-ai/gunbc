@@ -28,6 +28,7 @@ import v4.extdeps.languages.go {
   SignedPlatformInt,
   SignedTypedIntegerTruncatesSilentlyOnOverflow,
   go_facts_int,
+  go_mvp1_emitted_add_fn_node,
   go_inhabitant_atom,
   go_int_inhabitant_node,
   go_int_kind_node,

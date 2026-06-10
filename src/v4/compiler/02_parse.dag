@@ -44,7 +44,7 @@ import v4.std.node {
 }
 import v4.std.provenance { make_node_span_anchored, merge_node_spans }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
-import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
+import v4.std.algebra { Cons, Empty, FreeMonoid, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.lexing { Token, TokenStream }
@@ -223,11 +223,11 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
 // --- Parse table (memoized position × production) ---
 
 // Map<K,V> uses structural == on K; ParsePositionKey { position: Int, production: Symbol } is a valid composite key.
-fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseExprResult> {
+fn parse_table_lookup(table: Map<ParsePositionKey, ParseExprResult>, key: ParsePositionKey) -> Witness<ParseExprResult> {
   table.lookup(key)
 }
 
-fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseExprResult) -> ParseTable {
+fn parse_table_insert(table: Map<ParsePositionKey, ParseExprResult>, key: ParsePositionKey, value: ParseExprResult) -> ParseTable {
   map_insert(m: table, key: key, value: value)
 }
 
@@ -410,7 +410,7 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
 
 // v2 bootstrap compiler workaround: Empty literal has unknown element type in if/else context;
 // a typed wrapper anchors the type to List<Symbol> so branch unification succeeds.
-fn grammar_empty_corner_list() -> List<Symbol> {
+fn grammar_empty_corner_list() -> FreeMonoid<Symbol> {
   Empty
 }
 

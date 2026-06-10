@@ -93,6 +93,7 @@ import v4.std.target_model {
   TargetFunctionTypeShape,
   TargetGenericApply,
   TargetModel,
+  TargetModelBundle,
   TargetSumTypeShape,
   TargetTypeExpressionProjection,
   ValueBoolLiteral,
@@ -1688,8 +1689,8 @@ fn rust_mvp1_target_model_node() -> Node {
 }
 }
 
-fn rust_mvp1_target_model() -> TargetModel {
-  TargetModel {
+fn rust_mvp1_target_model() -> TargetModelBundle {
+  TargetModelBundle {
     bundle: rust_mvp1_target_model_node(),
     lex: rust_wave1_lex(),
     binding_spellings: rust_mvp1_binding_spellings(),
@@ -3527,8 +3528,8 @@ fn rust_sg2_serialize_source_node() -> Node {
 }
 }
 
-fn rust_sg2_type_expr_target_model() -> TargetModel {
-  TargetModel {
+fn rust_sg2_type_expr_target_model() -> TargetModelBundle {
+  TargetModelBundle {
     bundle: rust_sg2_type_expr_target_model_node(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),

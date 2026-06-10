@@ -107,7 +107,7 @@ import v4.std.grounding {
 }
 import v4.std.node_query { find_named_child }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model { TargetModel, TargetModelBundle }
 import v4.std.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
@@ -1455,8 +1455,8 @@ fn ts_sg2_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn ts_sg2_type_expr_target_model() -> TargetModel {
-  TargetModel {
+fn ts_sg2_type_expr_target_model() -> TargetModelBundle {
+  TargetModelBundle {
     bundle: ts_sg2_type_expr_target_model_node(),
     lex: ts_sg2_type_expr_lex(),
     binding_spellings: ts_sg2_binding_spellings(),

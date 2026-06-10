@@ -16,6 +16,7 @@ import v4.std.algebra {
 import v4.compiler.target_carriers { LanguageModel }
 import v4.std.target_model {
   TargetModel,
+  TargetModelBundle,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules
 }
@@ -55,7 +56,7 @@ type BootstrapSourceSnapshot {
 
 type BootstrapProjectionInputs {
   snapshot: BootstrapSourceSnapshot
-  target_model: TargetModel
+  target_model: TargetModelBundle
   runtime_model: V4EvaluatorRuntime
 }
 
@@ -295,7 +296,7 @@ fn bootstrap_target_model_bundle_construct_fold_state(root: Node) -> BootstrapCo
   fold_node(n: root, algebra: bootstrap_target_model_bundle_construct_fold_algebra())
 }
 
-fn bootstrap_target_model_construct_inventory(target: TargetModel) -> List<BootstrapConstruct> {
+fn bootstrap_target_model_construct_inventory(target: TargetModelBundle) -> List<BootstrapConstruct> {
   bootstrap_target_model_bundle_construct_fold_state(root: target.bundle).constructs
 }
 

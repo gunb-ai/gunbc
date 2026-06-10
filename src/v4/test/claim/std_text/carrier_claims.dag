@@ -19,9 +19,9 @@
 module v4.test.claim.std_text.carrier_claims
 
 
-import v4.std.algebra { Cons, Empty, Equal, FreeMonoid, Ordering }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.logic { Bool }
-import v4.std.nat { Nat, Succ, Zero, nat_compare }
+import v4.std.nat { Succ, Zero }
 import v4.std.text {
   Char,
   CharAbsent,
@@ -51,12 +51,8 @@ fn text_not(b: Bool) -> Bool {
 }
 
 
-// Char equality via the substrate total-order compare (no reliance on `==` over Nat).
 fn text_char_eq(a: Char, b: Char) -> Bool {
-  match nat_compare(a: a, b: b) {
-    Equal => true
-    _ => false
-  }
+  a == b
 }
 
 

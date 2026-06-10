@@ -177,7 +177,9 @@ type VariantFoldState {
 }
 
 fn is_bootstrap_duplicate_variant_name(name: String) -> Bool {
-  name == "Rust" || name == "Go" || name == "TreeSize"
+  // Bounded bootstrap carve-out for shared external tag names until variant
+  // constructors carry parent identity through value lookup.
+  name == "Rust" || name == "Go" || name == "TreeSize" || name == "Bits32"
 }
 
 type InferScope {

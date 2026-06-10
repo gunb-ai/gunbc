@@ -5,6 +5,7 @@
 module v4.test.claim.lens_cost.loop_illegal_named
 
 import v4.lens.cost { cost_lens }
+import v4.std.diagnostic { Diagnostic }
 import v4.std.cardinality { cardinality_loop_bound_malformed }
 import v4.std.logic { Bool }
 import v4.std.node {

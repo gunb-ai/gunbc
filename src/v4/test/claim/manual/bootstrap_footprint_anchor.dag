@@ -13,6 +13,7 @@ import v4.extdeps.runtimes.v4_evaluator {
   v4_evaluator_runtime_wave1,
   v4_evaluator_value_representation_wave1
 }
+import v4.std.diagnostic { Diagnostic }
 import v4.std.runtime { ResourceEffectBoundary }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, Unanchored }
 import v4.std.verification {

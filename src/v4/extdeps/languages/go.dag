@@ -71,6 +71,7 @@ import v4.std.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
   TargetModel,
+  TargetModelBundle,
   TargetTypeExpression,
   ValueBoolLiteral,
   ValueCharUnicodeScalar,
@@ -1804,8 +1805,8 @@ fn go_mvp1_target_model_node() -> Node {
 }
 }
 
-fn go_mvp1_target_model() -> TargetModel {
-  TargetModel {
+fn go_mvp1_target_model() -> TargetModelBundle {
+  TargetModelBundle {
     bundle: go_mvp1_target_model_node(),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),

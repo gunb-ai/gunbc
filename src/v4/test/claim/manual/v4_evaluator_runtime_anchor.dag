@@ -38,9 +38,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-type v4_evaluator_anchor_runtime_type = V4EvaluatorRuntime
-
-data v4_evaluator_anchor_runtime: v4_evaluator_anchor_runtime_type = v4_evaluator_runtime_wave1()
+data v4_evaluator_anchor_runtime: V4EvaluatorRuntime = v4_evaluator_runtime_wave1()
 
 data v4_evaluator_anchor_core: ModelCore = v4_evaluator_anchor_runtime.core
 
