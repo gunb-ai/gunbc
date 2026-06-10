@@ -107,12 +107,15 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
 // dissolve-on: bootstrap Witness<V> dispatch at Map.lookup (substrate Witness above); forbidden:
 // ad hoc map_get outside v4.std.collection.
-// Bootstrap (v2 M1 emit): lookup projects as Option — Some→Present, None→Absent. Substrate intent
-// (^map_key_absent Violates→Absent, other Violates→Rejected) lands when emit matches Witness.
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   match m.lookup(key) {
-    Some { value: v } => outcome_accepted(value: Present { value: v })
-    None => outcome_accepted(value: Absent)
+    Holds { value: v } => outcome_accepted(value: Present { value: v })
+    Violates { diagnostic: d } =>
+      if d.reason == ^map_key_absent {
+        outcome_accepted(value: Absent)
+      } else {
+        outcome_rejected(d: d)
+      }
   }
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {

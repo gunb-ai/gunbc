@@ -345,8 +345,8 @@ type ItemKeywords {
 fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> String {
   let matching = forms |> filter(f => f.kind == kind)
   match matching |> first {
-    Some { value: f } => f.keyword
-    None => "__MISSING_ITEM_KEYWORD__"
+    Present { value: f } => f.keyword
+    Absent => "__MISSING_ITEM_KEYWORD__"
   }
 }
 
@@ -536,9 +536,9 @@ fn rust_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
       match_value_form: MatchExpression,
-      wildcard_case: None,
-      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
-      guard_prefix: Some { value: " if " },
+      wildcard_case: Absent,
+      variant_pattern: Present { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
+      guard_prefix: Present { value: " if " },
       empty_return_value: "()",
       return_suffix: "",
       suppress_unit_return: false
@@ -681,9 +681,9 @@ fn python_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: ConditionalTernary,
       match_value_form: MatchStatementArmReturn,
-      wildcard_case: None,
-      variant_pattern: Some { value: VariantPatternSyntax { open: "(", close: ")", binding_sep: "=", empty_suffix: "()" } },
-      guard_prefix: Some { value: " if " },
+      wildcard_case: Absent,
+      variant_pattern: Present { value: VariantPatternSyntax { open: "(", close: ")", binding_sep: "=", empty_suffix: "()" } },
+      guard_prefix: Present { value: " if " },
       empty_return_value: "None",
       return_suffix: "",
       suppress_unit_return: false
@@ -826,9 +826,9 @@ fn go_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: IfStatement,
       match_value_form: MatchStatementArmReturn,
-      wildcard_case: Some { value: "default" },
-      variant_pattern: None,
-      guard_prefix: None,
+      wildcard_case: Present { value: "default" },
+      variant_pattern: Absent,
+      guard_prefix: Absent,
       empty_return_value: "struct{}{}, nil",
       return_suffix: ", nil",
       suppress_unit_return: true
@@ -971,9 +971,9 @@ fn dag_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
       match_value_form: MatchExpression,
-      wildcard_case: None,
-      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
-      guard_prefix: Some { value: " if " },
+      wildcard_case: Absent,
+      variant_pattern: Present { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
+      guard_prefix: Present { value: " if " },
       empty_return_value: "()",
       return_suffix: "",
       suppress_unit_return: false
@@ -1029,9 +1029,9 @@ fn language_spec_for_target(target: RenderTarget) -> LanguageSpec {
 
 fn target_keyword(target: RenderTarget, key: String) -> String {
   match target {
-    Rust => match lookup(rust_keywords, key: key) { Some { value: kw } => kw  None => key }
-    Go => match lookup(go_keywords, key: key) { Some { value: kw } => kw  None => key }
-    Python => match lookup(python_keywords, key: key) { Some { value: kw } => kw  None => key }
+    Rust => match lookup(rust_keywords, key: key) { Holds { value: kw } => kw  Violates { diagnostic: _ } => key }
+    Go => match lookup(go_keywords, key: key) { Holds { value: kw } => kw  Violates { diagnostic: _ } => key }
+    Python => match lookup(python_keywords, key: key) { Holds { value: kw } => kw  Violates { diagnostic: _ } => key }
     Dag => key
   }
 }
@@ -1048,21 +1048,21 @@ fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
 fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: AlgebraFieldKind?) -> String? {
   let ops = target_operators(target: target)
   let op_matching = ops |> filter(spec => match spec.binop {
-    Some { value: b } => b == op
-    None => false
+    Present { value: b } => b == op
+    Absent => false
   })
   let specific = match algebra_field {
-    Some { value: af } =>
-      op_matching |> filter(spec => match spec.algebra_field { Some { value: sf } => sf == af  _ => false }) |> first
-    None => none
+    Present { value: af } =>
+      op_matching |> filter(spec => match spec.algebra_field { Present { value: sf } => sf == af  _ => false }) |> first
+    Absent => none
   }
   let result = match specific {
-    Some { value: _ } => specific
-    None => op_matching |> filter(spec => spec.algebra_field == none) |> first
+    Present { value: _ } => specific
+    Absent => op_matching |> filter(spec => spec.algebra_field == none) |> first
   }
   match result {
-    Some { value: spec } => Some { value: spec.symbol }
-    None => none
+    Present { value: spec } => Present { value: spec.symbol }
+    Absent => none
   }
 }
 

@@ -20,10 +20,13 @@ pub use crate::v2_compiler_infer_service::check_service_method_call_node;
 pub use crate::v2_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::{
-    child_type_node, emit_map_has, enrich_kernel_type, method_receiver_element_node,
-    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
+    child_type_node, emit_map_has, enrich_kernel_type, make_container_type,
+    method_receiver_element_node, node_is_keyed_collection, node_is_set_collection,
+    nominal_type_ref, normalize_access_type_node,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::FieldAccessStyle::OptionalUnwrap;
@@ -51,6 +54,11 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
+}
+
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -87,7 +95,8 @@ pub fn lookup_field_type_node(
                 if (field_name.clone().as_str() == "value".to_string().as_str()) {
                     Some(inner)
                 } else {
-                    match lookup_field_type_node(inner, field_name.clone(), source_indices) {
+                    match lookup_field_type_node(inner, field_name.clone(), source_indices.clone())
+                    {
                         Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
                         None => None,
                     }
@@ -100,15 +109,42 @@ pub fn lookup_field_type_node(
                     {
                         let is_product = (n.connective.clone() == Connective::Conj);
                         if is_product {
-                            match find_child_named(n.clone(), field_name.clone(), source_indices) {
-                                Some(field_child) => Some(child_type_node(field_child.clone())),
+                            match find_child_named(
+                                n.clone(),
+                                field_name.clone(),
+                                source_indices.clone(),
+                            ) {
+                                Some(field_child) => {
+                                    if (node_is_keyed_collection(n.clone(), source_indices.clone())
+                                        && (field_name.clone().as_str()
+                                            == "lookup".to_string().as_str()))
+                                    {
+                                        {
+                                            let value_child =
+                                                match n.children.clone().get(1 as usize).cloned() {
+                                                    Some(child) => child_type_node(child.clone()),
+                                                    None => nominal_type_ref("V".to_string()),
+                                                };
+                                            Some(
+                                                make_container_type(
+                                                    "Witness".to_string(),
+                                                    value_child,
+                                                )
+                                                .ty
+                                                .clone(),
+                                            )
+                                        }
+                                    } else {
+                                        Some(child_type_node(field_child.clone()))
+                                    }
+                                }
                                 None => None,
                             }
                         } else {
                             lookup_coproduct_common_field_node(
                                 n.children.clone(),
                                 field_name.clone(),
-                                source_indices,
+                                source_indices.clone(),
                             )
                         }
                     }
@@ -401,6 +437,49 @@ pub struct StructuralMethodLookup {
     pub kernel_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
+pub fn product_field_result_type(field: Rc<Node>) -> Option<Rc<Node>> {
+    match field.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            if ((rt.params.clone().len() as i64) > 0) {
+                match rt.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved {
+                        node: return_type, ..
+                    }) => Some(return_type.clone()),
+                    _ => Some(rt.clone()),
+                }
+            } else {
+                Some(rt.clone())
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn map_lookup_result_type(
+    product: Rc<Node>,
+    field: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    if (authored_name_at(source_indices.clone(), product).as_str() == "Map".to_string().as_str()) {
+        match product_field_result_type(field) {
+            Some(raw) => {
+                if is_witness_type_name(authored_name_at(source_indices.clone(), raw.clone())) {
+                    Some(raw.clone())
+                } else {
+                    Some(
+                        make_container_type("Witness".to_string(), raw.clone())
+                            .ty
+                            .clone(),
+                    )
+                }
+            }
+            None => None,
+        }
+    } else {
+        None
+    }
+}
+
 pub fn lookup_field_in_product(
     product: Rc<Node>,
     method_name: String,
@@ -419,38 +498,29 @@ pub fn lookup_field_in_product(
             __result
         });
         match matching.first().cloned() {
-            Some(field) => match field.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    if ((rt.params.clone().len() as i64) > 0) {
-                        match rt.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved {
-                                node: return_type, ..
-                            }) => Some(Rc::new(MethodFieldResult {
-                                field_node: field.clone(),
-                                result_type: return_type.clone(),
-                                size_effect: None,
-                                cost_shape: None,
-                                algebra_template: None,
-                            })),
-                            _ => Some(Rc::new(MethodFieldResult {
-                                field_node: field.clone(),
-                                result_type: rt.clone(),
-                                size_effect: None,
-                                cost_shape: None,
-                                algebra_template: None,
-                            })),
-                        }
-                    } else {
-                        Some(Rc::new(MethodFieldResult {
-                            field_node: field.clone(),
-                            result_type: rt.clone(),
-                            size_effect: None,
-                            cost_shape: None,
-                            algebra_template: None,
-                        }))
-                    }
-                }
-                _ => None,
+            Some(field) => match if (method_name.clone().as_str() == "lookup".to_string().as_str())
+            {
+                map_lookup_result_type(product.clone(), field.clone(), source_indices.clone())
+            } else {
+                None
+            } {
+                Some(lookup_rt) => Some(Rc::new(MethodFieldResult {
+                    field_node: field.clone(),
+                    result_type: lookup_rt.clone(),
+                    size_effect: None,
+                    cost_shape: None,
+                    algebra_template: None,
+                })),
+                None => match product_field_result_type(field.clone()) {
+                    Some(rt) => Some(Rc::new(MethodFieldResult {
+                        field_node: field.clone(),
+                        result_type: rt.clone(),
+                        size_effect: None,
+                        cost_shape: None,
+                        algebra_template: None,
+                    })),
+                    None => None,
+                },
             },
             None => None,
         }

@@ -263,19 +263,19 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: c },
         evidence: Strict,
-        factor: Some { value: ConstantShrink { steps: p } } }
+        factor: Present { value: ConstantShrink { steps: p } } }
 
     ArithmeticSubtractCall { steps: p, ring_param: r } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: r },
         evidence: Strict,
-        factor: Some { value: ConstantShrink { steps: p } } }
+        factor: Present { value: ConstantShrink { steps: p } } }
 
     ArithmeticDivideCall { divisor: d, ring_param: r } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: r },
         evidence: Strict,
-        factor: Some { value: ProportionalShrink { divisor: d } } }
+        factor: Present { value: ProportionalShrink { divisor: d } } }
 
     ParserAdvanceCall { witness: w } =>
       LoweringTarget { primitive: Fold,
@@ -306,11 +306,11 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
 // O(1)-class costs because the iteration count doesn't depend on input size.
 fn size_bound_param(bound: SizeBound) -> String? {
   match bound {
-    TreeSize { param: p }       => Some { value: p }
-    CollectionSize { param: p } => Some { value: p }
-    ParserStreamSize { witness: w } => Some { value: w }
-    WorklistDrainSize { element: e } => Some { value: e }
-    ArithmeticParam { param: p } => Some { value: p }
+    TreeSize { param: p }       => Present { value: p }
+    CollectionSize { param: p } => Present { value: p }
+    ParserStreamSize { witness: w } => Present { value: w }
+    WorklistDrainSize { element: e } => Present { value: e }
+    ArithmeticParam { param: p } => Present { value: p }
     ExplicitCountZero           => none
     ExplicitCountPositive { steps: _ } => none
     Forever                     => none
@@ -338,9 +338,9 @@ fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
 fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
-    ExplicitCountZero => Some { value: 0 }
-    ExplicitCountPositive { steps: s } => Some { value: positive_descent_count(s) }
-    Forever                    => Some { value: forever_iteration_bound() }
+    ExplicitCountZero => Present { value: 0 }
+    ExplicitCountPositive { steps: s } => Present { value: positive_descent_count(s) }
+    Forever                    => Present { value: forever_iteration_bound() }
     _                          => none
   }
 }
@@ -411,12 +411,12 @@ type IterationDimension
 
 fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? {
   match profile {
-    FreeMonoidCollectionProfile     => Some { value: CollectionFold }
-    FreeMonoidScalarProfile         => Some { value: CollectionFold }
-    BooleanAlgebraCollectionProfile => Some { value: CollectionFold }
-    PartialFunctionProfile          => Some { value: CollectionFold }
-    OrderedRingProfile              => Some { value: ArithmeticRepeat }
-    ApproximateFieldProfile         => Some { value: ArithmeticRepeat }
+    FreeMonoidCollectionProfile     => Present { value: CollectionFold }
+    FreeMonoidScalarProfile         => Present { value: CollectionFold }
+    BooleanAlgebraCollectionProfile => Present { value: CollectionFold }
+    PartialFunctionProfile          => Present { value: CollectionFold }
+    OrderedRingProfile              => Present { value: ArithmeticRepeat }
+    ApproximateFieldProfile         => Present { value: ArithmeticRepeat }
     BooleanAlgebraProfile           => none
   }
 }
@@ -426,11 +426,11 @@ fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? 
 // special-cases "Node" (the compiler's recursive tree type).
 // Returns none for unknown/user-defined types.
 fn type_iteration_dimension(type_name: String) -> IterationDimension? {
-  if type_name == "Node" { Some { value: TreeDescent } }
+  if type_name == "Node" { Present { value: TreeDescent } }
   else {
     match kernel_algebra_profile |> get(type_name) {
-      Some { value: p } => algebra_profile_to_dimension(profile: p)
-      None => none
+      Present { value: p } => algebra_profile_to_dimension(profile: p)
+      Absent => none
     }
   }
 }

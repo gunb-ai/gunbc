@@ -656,17 +656,17 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
 
 fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   match relation {
-    StrictSubValue { field: f, factor: _ }    => Some { value: ChildAccessorCall { accessor: f.field_name } }
-    IteratedSubValue { field: f }             => Some { value: ChildAccessorCall { accessor: f.field_name } }
+    StrictSubValue { field: f, factor: _ }    => Present { value: ChildAccessorCall { accessor: f.field_name } }
+    IteratedSubValue { field: f }             => Present { value: ChildAccessorCall { accessor: f.field_name } }
     ArithmeticDescent { param: p, factor: f } =>
       match f {
         ConstantShrink { steps: steps } =>
-          Some { value: ArithmeticSubtractCall { steps: steps, ring_param: p } }
+          Present { value: ArithmeticSubtractCall { steps: steps, ring_param: p } }
         ProportionalShrink { divisor: d } =>
-          Some { value: ArithmeticDivideCall { divisor: d, ring_param: p } }
-        UnitShrink => Some { value: ArithmeticSubtractCall { steps: OneStep, ring_param: p } }
+          Present { value: ArithmeticDivideCall { divisor: d, ring_param: p } }
+        UnitShrink => Present { value: ArithmeticSubtractCall { steps: OneStep, ring_param: p } }
       }
-    PreservedValue                            => Some { value: SameArgumentCall }
+    PreservedValue                            => Present { value: SameArgumentCall }
     // Non-structural lawful inhabitants have no specific call pattern to project.
     // Same fail-closed posture as `SubValueUnknown` for downstream consumers.
     NonIncreasingValue                        => none
@@ -690,28 +690,28 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
 fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
   match relation {
     StrictSubValue { field: f, factor: fac } =>
-      Some { value: LoweringTarget {
+      Present { value: LoweringTarget {
         primitive: Descend,
         bound: tree_size_bound(param: f.field_name),
         evidence: Strict,
-        factor: Some { value: fac }
+        factor: Present { value: fac }
       }}
     IteratedSubValue { field: f } =>
-      Some { value: LoweringTarget {
+      Present { value: LoweringTarget {
         primitive: Fold,
         bound: CollectionSize { param: f.field_name },
         evidence: Strict,
         factor: none
       }}
     ArithmeticDescent { param: p, factor: fac } =>
-      Some { value: LoweringTarget {
+      Present { value: LoweringTarget {
         primitive: Repeat,
         bound: ArithmeticParam { param: p },
         evidence: Strict,
-        factor: Some { value: fac }
+        factor: Present { value: fac }
       }}
     PreservedValue =>
-      Some { value: LoweringTarget {
+      Present { value: LoweringTarget {
         primitive: Repeat,
         bound: Forever,
         evidence: NonIncreasing,
@@ -720,7 +720,7 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
     // NonIncreasingValue lowers like PreservedValue: we know non-increase but cannot
     // project a specific shrink target. Forever-bounded Repeat with NonIncreasing evidence.
     NonIncreasingValue =>
-      Some { value: LoweringTarget {
+      Present { value: LoweringTarget {
         primitive: Repeat,
         bound: Forever,
         evidence: NonIncreasing,
@@ -832,8 +832,8 @@ type CostBound
 // P3: empty alternative stack has no max/merge semantics — fail closed (Codex #726 schedule review).
 fn sum_bound(terms: List<CostBound>) -> CostBound {
   match terms |> first {
-    None => ErrorBound
-    Some { value: _ } => SumBound { terms: terms }
+    Absent => ErrorBound
+    Present { value: _ } => SumBound { terms: terms }
   }
 }
 
@@ -861,9 +861,9 @@ fn cost_poly(param: String, degree: Int) -> CostBound {
       AtomicBound { cost: PolyCost { param: param, exponent: IntegerExpZero } }
     } else {
       match positive_descent_amount_from_positive_int(k: degree) {
-        Some { value: deg } =>
+        Present { value: deg } =>
           AtomicBound { cost: PolyCost { param: param, exponent: IntegerExpPos { degree: deg } } }
-        None => ErrorBound
+        Absent => ErrorBound
       }
     }
   }
@@ -872,9 +872,9 @@ fn cost_root(param: String, k: Int) -> CostBound {
   if k <= 0 { ErrorBound }
   else {
     match positive_descent_amount_from_positive_int(k: k) {
-      Some { value: rw } =>
+      Present { value: rw } =>
         AtomicBound { cost: PolyCost { param: param, exponent: FractionExp { numerator: OneStep, root: rw } } }
-      None => ErrorBound
+      Absent => ErrorBound
     }
   }
 }
@@ -932,39 +932,39 @@ type RecurrenceForm {
 fn int_add_checked(a: Int, b: Int) -> Int? {
   if b > 0 {
     if a > 9223372036854775807 - b { none }
-    else { Some { value: a + b } }
+    else { Present { value: a + b } }
   } else {
     if b < 0 {
       if a < (0 - 9223372036854775807 - 1) - b { none }
-      else { Some { value: a + b } }
-    } else { Some { value: a } }
+      else { Present { value: a + b } }
+    } else { Present { value: a } }
   }
 }
 
 fn int_mul_checked(a: Int, b: Int) -> Int? {
-  if b == 0 { Some { value: 0 } }
+  if b == 0 { Present { value: 0 } }
   else {
-    if a == 0 { Some { value: 0 } }
+    if a == 0 { Present { value: 0 } }
     else {
       if b == -1 {
         if a == (0 - 9223372036854775807 - 1) { none }
-        else { Some { value: 0 - a } }
+        else { Present { value: 0 - a } }
       } else {
         if b > 0 {
           if a > 0 {
             if a > 9223372036854775807 / b { none }
-            else { Some { value: a * b } }
+            else { Present { value: a * b } }
           } else {
             if a < (0 - 9223372036854775807 - 1) / b { none }
-            else { Some { value: a * b } }
+            else { Present { value: a * b } }
           }
         } else {
           if a > 0 {
             if b < (0 - 9223372036854775807 - 1) / a { none }
-            else { Some { value: a * b } }
+            else { Present { value: a * b } }
           } else {
             if b < 9223372036854775807 / a { none }
-            else { Some { value: a * b } }
+            else { Present { value: a * b } }
           }
         }
       }
@@ -980,7 +980,7 @@ fn bounded_int_pow_exponent(k: Int) -> Int? {
   if k < 0 { none }
   else {
     if k > peano_literal_materialization_cap() { none }
-    else { Some { value: k } }
+    else { Present { value: k } }
   }
 }
 
@@ -992,29 +992,29 @@ fn bounded_int_pow_exponent(k: Int) -> Int? {
 // (Codex #726: bounded forward execution on the exported helper, not only `base ≥ 2` call sites).
 fn int_pow_bounded(base: Int, exp: Int) -> Int? {
   match bounded_int_pow_exponent(k: exp) {
-    None => none
-    Some { value: e } =>
-      if e == 0 { Some { value: 1 } }
+    Absent => none
+    Present { value: e } =>
+      if e == 0 { Present { value: 1 } }
       else {
-        if base == 0 { Some { value: 0 } }
+        if base == 0 { Present { value: 0 } }
         else {
-          if base == 1 { Some { value: 1 } }
+          if base == 1 { Present { value: 1 } }
           else {
             if base == (0 - 1) {
               let half = e / 2
-              if half + half == e { Some { value: 1 } } else { Some { value: 0 - 1 } }
+              if half + half == e { Present { value: 1 } } else { Present { value: 0 - 1 } }
             }
             else {
               // `e` is the validated value of `exp`, but keep the recursive
               // argument syntactically tied to the original parameter so the
               // v2 complexity analyzer can see the arithmetic descent.
               match int_pow_bounded(base: base, exp: exp - 1) {
-                Some { value: prev } =>
+                Present { value: prev } =>
                   match int_mul_checked(a: base, b: prev) {
-                    Some { value: prod } => Some { value: prod }
-                    None => none
+                    Present { value: prod } => Present { value: prod }
+                    Absent => none
                   }
-                None => none
+                Absent => none
               }
             }
           }
@@ -1032,14 +1032,14 @@ fn ceil_log(base: Int, argument: Int) -> Int? {
 
 // Pre: base ≥ 2, argument ≥ 1. Overflow in `power * base` or `k + 1` → none.
 fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int? {
-  if power >= argument { Some { value: k } }
+  if power >= argument { Present { value: k } }
   else {
     match int_mul_checked(a: power, b: base) {
-      None => none
-      Some { value: next_power } =>
+      Absent => none
+      Present { value: next_power } =>
         match int_add_checked(a: k, b: 1) {
-          None => none
-          Some { value: k1 } =>
+          Absent => none
+          Present { value: k1 } =>
             ceil_log_iter(base: base, argument: argument, k: k1, power: next_power)
         }
     }
@@ -1056,11 +1056,11 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   if a < 1 || b < 2 { ErrorBound }
   else {
     match bounded_int_pow_exponent(k: d) {
-      None => ErrorBound
-      Some { value: d_ok } =>
+      Absent => ErrorBound
+      Present { value: d_ok } =>
         match int_pow_bounded(base: b, exp: d_ok) {
-          None => ErrorBound
-          Some { value: b_to_d } =>
+          Absent => ErrorBound
+          Present { value: b_to_d } =>
             if a < b_to_d {
               // Case 3: per-level work dominates → O(n^d)
               match d_ok {
@@ -1074,22 +1074,22 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
                   0 => cost_log(param: n)
                   _ =>
                     match positive_descent_amount_from_positive_int(k: d_ok) {
-                      Some { value: deg } =>
+                      Present { value: deg } =>
                         ProductBound { factors: [PolyCost { param: n, exponent: IntegerExpPos { degree: deg } }, LogCost { param: n }] }
-                      None => ErrorBound
+                      Absent => ErrorBound
                     }
                 }
               } else {
                 // Case 1: sub-problem work dominates → O(n^(log_b(a)))
                 // Exact representation via LogBasedExp — no approximation
                 match proportional_divisor_from_int_at_least_two(k: b) {
-                  Some { value: baseW } =>
+                  Present { value: baseW } =>
                     match positive_descent_amount_from_positive_int(k: a) {
-                      Some { value: argW } =>
+                      Present { value: argW } =>
                         AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: baseW, argument: argW } } }
-                      None => ErrorBound
+                      Absent => ErrorBound
                     }
-                  None => ErrorBound
+                  Absent => ErrorBound
                 }
               }
             }
@@ -1124,8 +1124,8 @@ fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponen
   if branches < 1 { ErrorBound }
   else {
     match bounded_int_pow_exponent(k: work_exponent) {
-      None => ErrorBound
-      Some { value: _ } =>
+      Absent => ErrorBound
+      Present { value: _ } =>
         match factor {
           // Structural recursion: each step removes one constructor
           UnitShrink =>

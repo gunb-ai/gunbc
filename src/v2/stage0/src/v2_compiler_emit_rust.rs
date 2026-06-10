@@ -80,6 +80,8 @@ pub use crate::v2_compiler_ownership::{
 pub use crate::v2_compiler_resolve::get_exported_names;
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
@@ -246,6 +248,40 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
         && (v2_rt::substring(&type_name, 0, 3).as_str() == "Rc<".to_string().as_str()))
 }
 
+pub fn rust_named_type_base(name: String) -> String {
+    if ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
+    {
+        "Witness".to_string()
+    } else {
+        coerce_primitive_type(RenderTarget::Rust, name.clone())
+    }
+}
+
+pub fn rust_normalize_witness_type_text(rendered: String) -> String {
+    v2_rt::replace(
+        rendered,
+        "witness<".to_string(),
+        "v2_rt::Witness<".to_string(),
+    )
+}
+
+pub fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
+    v2_rt::replace(
+        v2_rt::replace(
+            v2_rt::replace(
+                rendered,
+                "HashMap<K, V>".to_string(),
+                "PartialFunction<K, V>".to_string(),
+            ),
+            "Vec<K>".to_string(),
+            "FreeMonoid<K>".to_string(),
+        ),
+        "Vec<V>".to_string(),
+        "FreeMonoid<V>".to_string(),
+    )
+}
+
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -265,10 +301,7 @@ pub fn render_rust_applied_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let base = coerce_primitive_type(
-            RenderTarget::Rust,
-            authored_name_at(source_indices.clone(), n.clone()),
-        );
+        let base = rust_named_type_base(authored_name_at(source_indices.clone(), n.clone()));
         if ((n.children.clone().len() as i64) == 0) {
             base
         } else {
@@ -376,7 +409,7 @@ pub fn render_rust_decl_type(
                         && ((n.children.clone().len() as i64) > 0))
                     {
                         {
-                            let base = coerce_primitive_type(RenderTarget::Rust, name.clone());
+                            let base = rust_named_type_base(name.clone());
                             let args = Rc::new({
                                 let mut __result = Vec::new();
                                 for arg in n.children.clone().iter().cloned() {
@@ -5773,12 +5806,18 @@ pub fn emit_prelude() -> String {
         let use_line = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
-                    "use std::collections::BTreeSet;\n".to_string(),
-                    "use std::collections::HashMap;\n".to_string(),
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            "use std::collections::BTreeSet;\n".to_string(),
+                            "use std::collections::HashMap;\n".to_string(),
+                        ),
+                        "use std::rc::Rc;\n".to_string(),
+                    ),
+                    "use crate::v2_rt;\n".to_string(),
                 ),
-                "use std::rc::Rc;\n".to_string(),
+                "use crate::v2_rt::Witness;\n".to_string(),
             ),
-            "use crate::v2_rt;".to_string(),
+            "use crate::v2_rt::Witness::{Holds, Violates};".to_string(),
         );
         let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
         v2_rt::concat(v2_rt::concat(use_line, "\n".to_string()), wrapper_use)
@@ -6343,6 +6382,7 @@ pub fn emit_struct_from_children(
                     let mut __result = Vec::new();
                     for child in children.clone().iter().cloned() {
                         __result.push(emit_struct_field_from_child(
+                            name.clone(),
                             child.clone(),
                             generic_param_names.clone(),
                             recursive_types.clone(),
@@ -6458,6 +6498,7 @@ pub fn render_rust_field_type_with_applied_binding(
 }
 
 pub fn emit_struct_field_from_child(
+    struct_name: String,
     child: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
@@ -6577,7 +6618,11 @@ pub fn emit_struct_field_from_child(
                 }
             }
         };
-        let generic_ty = ty;
+        let generic_ty = if (struct_name.as_str() == "PartialFunction".to_string().as_str()) {
+            rust_normalize_partial_function_field_type_text(rust_normalize_witness_type_text(ty))
+        } else {
+            ty
+        };
         let final_ty = if needs_box_wrapping(
             rt_child.clone(),
             recursive_types,
@@ -8454,10 +8499,12 @@ pub fn collect_pattern_string_guards(
         match (*pattern).clone() {
             MatchPattern::VariantPattern {
                 name: n,
+                parent_enum: parent,
                 field_bindings: fbs,
                 ..
             } => {
-                if ((n.clone().as_str() == "Some".to_string().as_str())
+                if (((n.clone().as_str() == "Present".to_string().as_str())
+                    && (parent.clone().as_deref() == Some("Optional".to_string()).as_deref()))
                     && ((fbs.clone().len() as i64) == 1))
                 {
                     match fbs.clone().first().cloned() {
@@ -8482,7 +8529,8 @@ pub fn collect_pattern_string_guards(
                             } else {
                                 {
                                     let __tco_0 = fb_pat.clone();
-                                    let __tco_1 = v2_rt::rc_list_push(path_prefix, n.clone());
+                                    let __tco_1 =
+                                        v2_rt::rc_list_push(path_prefix, "Some".to_string());
                                     pattern = __tco_0;
                                     path_prefix = __tco_1;
                                     continue;
@@ -8641,18 +8689,56 @@ pub fn pattern_parent_enum(
 ) -> Option<String> {
     {
         let scrut_is_known_enum = ((scrut_type.clone().as_str() != "".to_string().as_str())
-            && is_enum_type_name(scrut_type.clone(), type_summaries));
-        if ((name.clone().as_str() == "Some".to_string().as_str())
-            || (name.clone().as_str() == "None".to_string().as_str()))
-        {
-            None
+            && is_enum_type_name(scrut_type.clone(), type_summaries.clone()));
+        if (parent_enum.clone() != None) {
+            parent_enum.clone()
         } else {
             if scrut_is_known_enum {
                 Some(scrut_type.clone())
             } else {
-                parent_enum
+                unique_variant_parent(type_summaries.clone(), name)
             }
         }
+    }
+}
+
+pub fn unique_variant_parent(
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_name: String,
+) -> Option<String> {
+    {
+        let parent_matches = Rc::new({
+            let mut __result = Vec::new();
+            for type_name in Rc::new(v2_rt::map_keys(&type_summaries)).iter().cloned() {
+                if (is_enum_type_name(type_name.clone(), type_summaries.clone())
+                    && variant_belongs_to_enum(
+                        type_summaries.clone(),
+                        variant_name.clone(),
+                        type_name.clone(),
+                    ))
+                {
+                    __result.push(type_name);
+                }
+            }
+            __result
+        });
+        if ((parent_matches.clone().len() as i64) == 1) {
+            parent_matches.clone().first().cloned()
+        } else {
+            None
+        }
+    }
+}
+
+pub fn is_optional_variant_name(name: String) -> bool {
+    ((name.clone().as_str() == "Present".to_string().as_str())
+        || (name.clone().as_str() == "Absent".to_string().as_str()))
+}
+
+pub fn is_optional_parent(parent_enum: Option<String>) -> bool {
+    match parent_enum {
+        Some(parent) => (parent.clone().as_str() == "Optional".to_string().as_str()),
+        None => false,
     }
 }
 
@@ -8700,26 +8786,41 @@ pub fn emit_variant_pattern(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let resolved_parent = if ((name.clone().as_str() == "Some".to_string().as_str())
-            || (name.clone().as_str() == "None".to_string().as_str()))
-        {
-            None
+        let resolved_parent = pattern_parent_enum(
+            name.clone(),
+            parent_enum,
+            scrut_type.clone(),
+            emit_info.type_summaries.clone(),
+        );
+        let optional_variant =
+            (is_optional_variant_name(name.clone()) && is_optional_parent(resolved_parent.clone()));
+        let rust_name = if optional_variant.clone() {
+            if (name.clone().as_str() == "Present".to_string().as_str()) {
+                "Some".to_string()
+            } else {
+                "None".to_string()
+            }
         } else {
-            pattern_parent_enum(
-                name.clone(),
-                parent_enum,
-                scrut_type.clone(),
-                emit_info.type_summaries.clone(),
-            )
+            name.clone()
         };
-        let qualified = match resolved_parent.clone() {
-            Some(parent) => v2_rt::concat(
-                v2_rt::concat(parent.clone(), "::".to_string()),
-                name.clone(),
-            ),
-            None => name.clone(),
+        let qualified = if optional_variant.clone() {
+            rust_name.clone()
+        } else {
+            match resolved_parent.clone() {
+                Some(parent) => {
+                    if (parent.clone().as_str() == "Witness".to_string().as_str()) {
+                        v2_rt::concat("v2_rt::Witness::".to_string(), rust_name.clone())
+                    } else {
+                        v2_rt::concat(
+                            v2_rt::concat(parent.clone(), "::".to_string()),
+                            rust_name.clone(),
+                        )
+                    }
+                }
+                None => rust_name.clone(),
+            }
         };
-        if ((name.clone().as_str() == "Some".to_string().as_str())
+        if ((optional_variant.clone() && (name.clone().as_str() == "Present".to_string().as_str()))
             && ((field_bindings.clone().len() as i64) == 1))
         {
             match field_bindings.clone().first().cloned() {
@@ -8731,7 +8832,7 @@ pub fn emit_variant_pattern(
                         {
                             let inner_pat = emit_pattern(
                                 fb_pat.clone(),
-                                v2_rt::rc_list_push(path_prefix.clone(), name.clone()),
+                                v2_rt::rc_list_push(path_prefix.clone(), rust_name.clone()),
                                 shared_types.clone(),
                                 scrut_type.clone(),
                                 source_indices.clone(),
@@ -9112,9 +9213,7 @@ pub fn analyze_rc_pattern(
             field_bindings: fbs,
             ..
         } => {
-            if ((n.clone().as_str() == "Some".to_string().as_str())
-                || (n.clone().as_str() == "None".to_string().as_str()))
-            {
+            if (is_optional_variant_name(n.clone()) && is_optional_parent(parent_enum.clone())) {
                 if ((fbs.clone().len() as i64) == 1) {
                     match fbs.clone().first().cloned() {
                         Some(fb) => {
@@ -9128,7 +9227,7 @@ pub fn analyze_rc_pattern(
                             Rc::new(RcPatternAnalysis {
                                 matches_rc_variant: false,
                                 matches_option_rc_variant: ((n.clone().as_str()
-                                    == "Some".to_string().as_str())
+                                    == "Present".to_string().as_str())
                                     && inner.matches_rc_variant.clone()),
                                 needs_rc_pattern: inner.needs_rc_pattern.clone(),
                                 ref_bound_fields: Rc::new(vec![]),
@@ -9320,26 +9419,41 @@ pub fn emit_variant_pattern_rc_aware(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let resolved_parent = if ((name.clone().as_str() == "Some".to_string().as_str())
-            || (name.clone().as_str() == "None".to_string().as_str()))
-        {
-            None
+        let resolved_parent = pattern_parent_enum(
+            name.clone(),
+            parent_enum,
+            scrut_type.clone(),
+            emit_info.type_summaries.clone(),
+        );
+        let optional_variant =
+            (is_optional_variant_name(name.clone()) && is_optional_parent(resolved_parent.clone()));
+        let rust_name = if optional_variant.clone() {
+            if (name.clone().as_str() == "Present".to_string().as_str()) {
+                "Some".to_string()
+            } else {
+                "None".to_string()
+            }
         } else {
-            pattern_parent_enum(
-                name.clone(),
-                parent_enum,
-                scrut_type.clone(),
-                emit_info.type_summaries.clone(),
-            )
+            name.clone()
         };
-        let qualified = match resolved_parent.clone() {
-            Some(parent) => v2_rt::concat(
-                v2_rt::concat(parent.clone(), "::".to_string()),
-                name.clone(),
-            ),
-            None => name.clone(),
+        let qualified = if optional_variant.clone() {
+            rust_name.clone()
+        } else {
+            match resolved_parent.clone() {
+                Some(parent) => {
+                    if (parent.clone().as_str() == "Witness".to_string().as_str()) {
+                        v2_rt::concat("v2_rt::Witness::".to_string(), rust_name.clone())
+                    } else {
+                        v2_rt::concat(
+                            v2_rt::concat(parent.clone(), "::".to_string()),
+                            rust_name.clone(),
+                        )
+                    }
+                }
+                None => rust_name.clone(),
+            }
         };
-        if ((name.clone().as_str() == "Some".to_string().as_str())
+        if ((optional_variant.clone() && (name.clone().as_str() == "Present".to_string().as_str()))
             && ((field_bindings.clone().len() as i64) == 1))
         {
             match field_bindings.clone().first().cloned() {
@@ -9358,7 +9472,7 @@ pub fn emit_variant_pattern_rc_aware(
                             );
                             let inner_pat = emit_pattern_rc_aware(
                                 fb_pat.clone(),
-                                v2_rt::rc_list_push(path_prefix.clone(), name.clone()),
+                                v2_rt::rc_list_push(path_prefix.clone(), rust_name.clone()),
                                 inner_analysis.clone(),
                                 shared_types.clone(),
                                 scrut_type.clone(),
@@ -9760,9 +9874,7 @@ pub fn rc_pattern_preludes(
             field_bindings: fbs,
             ..
         } => {
-            if ((n.clone().as_str() == "Some".to_string().as_str())
-                || (n.clone().as_str() == "None".to_string().as_str()))
-            {
+            if (is_optional_variant_name(n.clone()) && is_optional_parent(parent_enum.clone())) {
                 if ((fbs.clone().len() as i64) == 1) {
                     match fbs.clone().first().cloned() {
                         Some(fb) => {
@@ -10060,10 +10172,20 @@ pub fn emit_var_ref(
                 );
                 let ref_str = match variant_parent {
                     Some(enum_name) => {
-                        let qualified = v2_rt::concat(
-                            v2_rt::concat(enum_name.clone(), "::".to_string()),
-                            name.clone(),
-                        );
+                        let qualified = if (is_optional_variant_name(name.clone())
+                            && (enum_name.clone().as_str() == "Optional".to_string().as_str()))
+                        {
+                            if (name.clone().as_str() == "Present".to_string().as_str()) {
+                                "Some".to_string()
+                            } else {
+                                "None".to_string()
+                            }
+                        } else {
+                            v2_rt::concat(
+                                v2_rt::concat(enum_name.clone(), "::".to_string()),
+                                name.clone(),
+                            )
+                        };
                         if v2_rt::set_contains(&shared_types, enum_name.clone()) {
                             v2_rt::concat(
                                 v2_rt::concat("Rc::new(".to_string(), qualified),
@@ -10163,10 +10285,21 @@ pub fn emit_typed_expr_base(
                             );
                             match variant_parent {
                                 Some(enum_name) => {
-                                    let qualified = v2_rt::concat(
-                                        v2_rt::concat(enum_name.clone(), "::".to_string()),
-                                        n.clone(),
-                                    );
+                                    let qualified = if (is_optional_variant_name(n.clone())
+                                        && (enum_name.clone().as_str()
+                                            == "Optional".to_string().as_str()))
+                                    {
+                                        if (n.clone().as_str() == "Present".to_string().as_str()) {
+                                            "Some".to_string()
+                                        } else {
+                                            "None".to_string()
+                                        }
+                                    } else {
+                                        v2_rt::concat(
+                                            v2_rt::concat(enum_name.clone(), "::".to_string()),
+                                            n.clone(),
+                                        )
+                                    };
                                     if v2_rt::set_contains(&shared_types, enum_name.clone()) {
                                         v2_rt::concat(
                                             v2_rt::concat("Rc::new(".to_string(), qualified),
@@ -14789,31 +14922,44 @@ pub fn is_already_optional(
                 _ => false,
             },
             ExprData::ExprVar {
-                binding_kind: _, ..
+                binding_kind: binding_kind,
+                ..
             } => {
-                if ((n.clone().as_str() == "none".to_string().as_str())
-                    || (n.clone().as_str() == "None".to_string().as_str()))
+                if (((n.clone().as_str() == "Present".to_string().as_str())
+                    || (n.clone().as_str() == "Absent".to_string().as_str()))
+                    && (variant_parent_from_binding_kind(binding_kind.clone()).as_deref()
+                        == Some("Optional".to_string()).as_deref()))
                 {
                     true
                 } else {
-                    match texpr.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: rt, .. }) => {
-                            (rt.return_cardinality.clone() == Cardinality::CardOptional)
-                        }
-                        _ => match v2_rt::map_get(&scope.locals.clone(), n.clone()) {
-                            Some(binding) => {
-                                (binding.resolved.clone().return_cardinality.clone()
-                                    == Cardinality::CardOptional)
+                    if ((n.clone().as_str() == "none".to_string().as_str())
+                        || (n.clone().as_str() == "None".to_string().as_str()))
+                    {
+                        true
+                    } else {
+                        match texpr.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => {
+                                (rt.return_cardinality.clone() == Cardinality::CardOptional)
                             }
-                            None => false,
-                        },
+                            _ => match v2_rt::map_get(&scope.locals.clone(), n.clone()) {
+                                Some(binding) => {
+                                    (binding.resolved.clone().return_cardinality.clone()
+                                        == Cardinality::CardOptional)
+                                }
+                                None => false,
+                            },
+                        }
                     }
                 }
             }
-            ExprData::ExprRecordLit { parent_enum: _, .. } => match tn {
+            ExprData::ExprRecordLit {
+                parent_enum: parent,
+                ..
+            } => match tn {
                 Some(name) => {
-                    ((name.clone().as_str() == "Some".to_string().as_str())
-                        || (name.clone().as_str() == "None".to_string().as_str()))
+                    ((parent.clone().as_deref() == Some("Optional".to_string()).as_deref())
+                        && ((name.clone().as_str() == "Present".to_string().as_str())
+                            || (name.clone().as_str() == "Absent".to_string().as_str())))
                 }
                 None => false,
             },
@@ -15298,20 +15444,31 @@ pub fn emit_typed_record_lit(
                         }
                     }
                 };
-                let display_tn = if ((tn.clone().as_str() == "Some".to_string().as_str())
-                    || (tn.clone().as_str() == "None".to_string().as_str()))
-                {
+                let optional_variant = (is_optional_variant_name(tn.clone())
+                    && (is_optional_parent(parent_enum.clone())
+                        || is_optional_parent(effective_parent.clone())));
+                let rust_tn = if optional_variant.clone() {
+                    if (tn.clone().as_str() == "Present".to_string().as_str()) {
+                        "Some".to_string()
+                    } else {
+                        "None".to_string()
+                    }
+                } else {
                     tn.clone()
+                };
+                let display_tn = if optional_variant.clone() {
+                    rust_tn
                 } else {
                     match effective_parent.clone() {
                         Some(resolved_parent_enum) => v2_rt::concat(
                             v2_rt::concat(resolved_parent_enum.clone(), "::".to_string()),
-                            tn.clone(),
+                            rust_tn,
                         ),
-                        None => tn.clone(),
+                        None => rust_tn,
                     }
                 };
-                if ((tn.clone().as_str() == "Some".to_string().as_str())
+                if ((optional_variant.clone()
+                    && (tn.clone().as_str() == "Present".to_string().as_str()))
                     && ((fields.clone().len() as i64) == 1))
                 {
                     match fields.clone().first().cloned() {

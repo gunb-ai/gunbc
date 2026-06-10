@@ -1198,6 +1198,57 @@ fn char_value(c: char) -> Value {
     Value::Int(c as i64)
 }
 
+fn native_map_absent_diagnostic_value() -> Value {
+    let mut anchor_fields = HashMap::new();
+    anchor_fields.insert("at".to_string(), Value::Str("map_lookup_port".to_string()));
+
+    let mut locus_fields = HashMap::new();
+    locus_fields.insert(
+        "anchor".to_string(),
+        Value::Record {
+            type_name: "LocusAnchor".to_string(),
+            fields: Rc::new(anchor_fields),
+        },
+    );
+
+    let mut correction_fields = HashMap::new();
+    correction_fields.insert(
+        "reason".to_string(),
+        Value::Variant {
+            type_name: "NoCorrectionReason".to_string(),
+            variant_name: "ExternalContractUnknown".to_string(),
+            fields: Rc::new(HashMap::new()),
+        },
+    );
+
+    let mut diagnostic_fields = HashMap::new();
+    diagnostic_fields.insert(
+        "reason".to_string(),
+        Value::Str("map_key_absent".to_string()),
+    );
+    diagnostic_fields.insert(
+        "at".to_string(),
+        Value::Variant {
+            type_name: "Locus".to_string(),
+            variant_name: "PortLocus".to_string(),
+            fields: Rc::new(locus_fields),
+        },
+    );
+    diagnostic_fields.insert(
+        "correction".to_string(),
+        Value::Variant {
+            type_name: "Correction".to_string(),
+            variant_name: "Unavailable".to_string(),
+            fields: Rc::new(correction_fields),
+        },
+    );
+
+    Value::Record {
+        type_name: "Diagnostic".to_string(),
+        fields: Rc::new(diagnostic_fields),
+    }
+}
+
 fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
@@ -1223,7 +1274,7 @@ fn match_pattern(
 
         MatchPattern::VariantPattern {
             name,
-            parent_enum: _,
+            parent_enum,
             field_bindings,
         } => {
             match value {
@@ -1233,38 +1284,17 @@ fn match_pattern(
                     fields,
                     ..
                 } => {
-                    // Bridge Witness (v4.std.witness) to legacy Option-style Some/None patterns.
-                    // Map.lookup returns Witness<V>; bootstrap map_get (collection.dag
-                    // B-LOOKUP-1) still matches Some/None before projecting Present/Absent.
-                    if variant_name == "Holds" && name == "Some" {
-                        let inner = fields.get("value").cloned().unwrap_or(Value::Null);
-                        let mut bindings = HashMap::new();
-                        for fb in field_bindings.iter() {
-                            let fb_pat = field_binding_pattern(fb.clone());
-                            let sub_bindings = match_pattern(&fb_pat, &inner, ctx)?;
-                            bindings.extend(sub_bindings);
-                        }
-                        return Some(bindings);
-                    }
-                    if variant_name == "Violates" && (name == "None" || name == "none") {
-                        return Some(HashMap::new());
-                    }
-                    // A *present* coproduct value bridges to `Some { value: <self> }`,
-                    // symmetric with the `_ if name == "Some"` bridge below for present
-                    // non-Variant values. A native `Value::Map` lookup returns the raw
-                    // stored value (not Holds-wrapped), so a present lookup of a coproduct
-                    // value (e.g. `Excluded`) must still satisfy a std `map_get`-style
-                    // `Some { value: v }` arm. Absent-witness/option arms are EXCLUDED so
-                    // this never fabricates presence (P3 fail-closed): `Violates` and a
-                    // nominal `None`/`none` must fall through to the `None` arm (handled by
-                    // the Violates→None bridge above and nominal None matching), not match
-                    // `Some`. `Holds` is already unwrapped to `Some` above. Genuine `Some`
-                    // variants are handled by nominal matching (variant_name == name) below.
-                    if name == "Some"
-                        && variant_name != "Some"
+                    // Symmetric Witness projection: a *present* coproduct value bridges to
+                    // `v2_rt::Witness::Holds { value: <self> }`. A native `Value::Map` lookup returns the raw
+                    // stored value, and a `-> Witness`-annotated `.lookup` consumer (e.g.
+                    // parse_table_lookup / lookup_table) matches `Holds`/`Violates`, so a
+                    // present coproduct value must satisfy the `Holds` arm. Same absent-arm
+                    // exclusions (`Violates`/`Absent`/`none` stay absent -> the `Violates` arm);
+                    // a genuine `Holds` is handled by nominal matching below.
+                    if name == "Holds"
+                        && parent_enum.as_deref() == Some("Witness")
+                        && variant_name != "Holds"
                         && variant_name != "Violates"
-                        && variant_name != "None"
-                        && variant_name != "none"
                     {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
@@ -1274,18 +1304,10 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    // Symmetric Witness projection: a *present* coproduct value bridges to
-                    // `Holds { value: <self> }`. A native `Value::Map` lookup returns the raw
-                    // stored value, and a `-> Witness`-annotated `.lookup` consumer (e.g.
-                    // parse_table_lookup / lookup_table) matches `Holds`/`Violates`, so a
-                    // present coproduct value must satisfy the `Holds` arm. Same absent-arm
-                    // exclusions (`Violates`/`None`/`none` stay absent → the `Violates` arm);
-                    // a genuine `Holds` is handled by nominal matching below.
-                    if name == "Holds"
-                        && variant_name != "Holds"
-                        && variant_name != "Violates"
-                        && variant_name != "None"
-                        && variant_name != "none"
+                    if name == "Present"
+                        && parent_enum.as_deref() == Some("Optional")
+                        && variant_name != "Present"
+                        && variant_name != "Absent"
                     {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
@@ -1441,7 +1463,7 @@ fn match_pattern(
                     _ => None,
                 },
                 // Bridge the native-map-miss sentinel (Value::Null) into the Witness
-                // coproduct, mirroring the Option `Null -> None` bridge below. A native
+                // coproduct, without reopening the deleted Optional Some/None bridge. A native
                 // `Value::Map` lookup returns Null on a missing key (raw_map_lookup), but
                 // the std contract is `Map.lookup: fn(K) -> Witness<V>` (v4.std.collection)
                 // and the record-form empty_map presents an absent key as `Violates`. When a
@@ -1450,16 +1472,14 @@ fn match_pattern(
                 // `Violates` (absent) arm rather than falling through a Holds/Violates match
                 // non-exhaustively. `Holds` requires a present value and so never matches Null
                 // (it falls to the `_ => None` arm below).
-                Value::Null if name == "Violates" => {
+                Value::Null if name == "Violates" && parent_enum.as_deref() == Some("Witness") => {
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
                         let field_name =
                             field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                         let fb_pat = field_binding_pattern(fb.clone());
-                        // Violates carries a `diagnostic`; a native-map miss has no structured
-                        // diagnostic to offer, so the absent sentinel binds through as Null.
                         let field_val = match field_name.as_str() {
-                            "diagnostic" => Value::Null,
+                            "diagnostic" => native_map_absent_diagnostic_value(),
                             _ => return None,
                         };
                         let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -1467,9 +1487,16 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                // Match on Option: Some { value: x } pattern
-                Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
-                _ if name == "Some" => {
+                // Diagnostics.None is represented by the interpreter's null sentinel.
+                // Keep this parent-scoped so legacy Optional None stays rejected.
+                Value::Null if name == "None" && parent_enum.as_deref() == Some("Diagnostics") => {
+                    Some(HashMap::new())
+                }
+                // Match cardinality Optional through the canonical std surface.
+                Value::Null if name == "Absent" && parent_enum.as_deref() == Some("Optional") => {
+                    Some(HashMap::new())
+                }
+                _ if name == "Present" && parent_enum.as_deref() == Some("Optional") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -1481,11 +1508,11 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                // Symmetric to the `Some` bridge above, for a `-> Witness` match: a present
+                // Symmetric to the Witness value projection above: a present
                 // non-Variant value (e.g. a native-map `Int` lookup hit) bridges to
-                // `Holds { value: <self> }`. `Null` (a miss) does not match `Holds` — it
-                // falls through to the `Null → Violates` bridge above.
-                _ if name == "Holds" => {
+                // `v2_rt::Witness::Holds { value: <self> }`. `Null` (a miss) does not match `Holds` — it
+                // falls through to the `Null -> Violates` projection above.
+                _ if name == "Holds" && parent_enum.as_deref() == Some("Witness") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -3339,9 +3366,9 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
-        // `lookup` is the low-level raw map probe (present -> value, missing -> Null); the
-        // pattern bridge (Null->None, value->Some) lets the std `map_get` (v4.std.collection,
-        // Outcome<Optional<V>>) wrap it. `map_get` is NOT handled here on purpose: the builtin
+        // `lookup` is the low-level raw map probe (present -> value, missing -> Null). The typed
+        // std `map_get` (v4.std.collection, Outcome<Optional<V>>) wraps that probe into the
+        // canonical Optional surface. `map_get` is NOT handled here on purpose: the builtin
         // arm previously SHADOWED the typed std map_get (eval_builtin wins over user fns at
         // eval_call), so `map_get(...)` returned the RAW value and any `match { Accepted; Rejected }`
         // consumer crashed non-exhaustively (B-LOOKUP-1). Dropping `map_get` here routes it to the

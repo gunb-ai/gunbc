@@ -62,6 +62,7 @@ import v4.std.target_model {
   target_model_edge_translation_rules,
   target_type_expr_emitted_kind
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.text { String }
 import v4.std.verification {
   CompilesClaim,
@@ -249,8 +250,8 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
 
 fn sg2_mode2_lex_only_absent_from_binding_spellings() -> Bool {
   match rust_sg2_binding_spellings().lookup(^rust_binding_sg2_lex_only_atom) {
-    None => true
-    Some { value: _ } => false
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } => false
   }
 }
 

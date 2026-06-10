@@ -246,8 +246,8 @@ fn is_rt_function(name: String) -> Bool {
 
 fn rt_bridge_name(name: String) -> String {
   match map_get(rt_bridge_function_names(), name) {
-    Some { value: bridge } => bridge
-    None => name
+    Present { value: bridge } => bridge
+    Absent => name
   }
 }
 
