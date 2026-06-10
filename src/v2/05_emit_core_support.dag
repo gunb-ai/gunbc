@@ -85,8 +85,8 @@ fn to_string_helper(value: Int, acc: List<String>) -> List<String> {
     let digit = value - (rest * 10)
     let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
     let ch = match digit_chars |> enumerate |> filter(p => p.first == digit) |> first {
-      Some { value: p } => p.second
-      None => "?"
+      Present { value: p } => p.second
+      Absent => "?"
     }
     to_string_helper(value: rest, acc: concat([ch], acc))
   }
@@ -213,16 +213,16 @@ fn apply_named_template(template: String, bindings: Map<String, String>) -> Stri
 
 fn apply_named_template_nested(template: String, bindings: Map<String, String>, keys: List<String>) -> String {
   match keys |> first {
-    None => template
-    Some { value: key } =>
+    Absent => template
+    Present { value: key } =>
       let rest = keys |> skip(1)
       let placeholder = concat("{", key, "}")
       match map_get(bindings, key) {
-        Some { value: val } =>
+        Present { value: val } =>
           let parts = template |> split(delimiter: placeholder)
           let processed = parts |> map(part => apply_named_template_nested(template: part, bindings: bindings, keys: rest))
           processed |> join(separator: val)
-        None =>
+        Absent =>
           concat("TEMPLATE_ERROR_MISSING_BINDING_", key)
       }
   }

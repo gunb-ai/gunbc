@@ -1206,7 +1206,7 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Rc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
-            return_type: Rc::new(AlgebraTypeTemplate::WitnessOf {
+            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
                 inner: Rc::new(AlgebraTypeTemplate::ReceiverValue),
             }),
             size_effect: None,
@@ -1232,7 +1232,7 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Rc::new(AlgebraTypeTemplate::ReceiverKey),
             ]),
-            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
+            return_type: Rc::new(AlgebraTypeTemplate::WitnessOf {
                 inner: Rc::new(AlgebraTypeTemplate::ReceiverValue),
             }),
             size_effect: None,

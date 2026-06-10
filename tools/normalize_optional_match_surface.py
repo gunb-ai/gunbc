@@ -32,6 +32,10 @@ DIAG_RE = re.compile(
     r"(?:(?:type|scope) '(?P<type>[^']*)'|scope) "
     r"\((?P<path>[^():]+\.dag):(?P<start>\d+)-(?P<end>\d+)\)$"
 )
+OPTIONAL_EXHAUSTIVE_RE = re.compile(
+    r"^non-exhaustive match: missing variant\(s\) Present, Absent "
+    r"\((?P<path>[^():]+\.dag):(?P<start>\d+)-(?P<end>\d+)\)$"
+)
 IDENT_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 REPLACEMENTS = {"Some": "Present", "None": "Absent"}
 
@@ -65,16 +69,26 @@ def parse_diagnostics(output: str) -> list[Diagnostic]:
     diagnostics: set[Diagnostic] = set()
     for line in output.splitlines():
         match = DIAG_RE.match(line.strip())
-        if not match:
-            continue
-        rel_path = Path(match.group("path"))
+        if match:
+            rel_path = Path(match.group("path"))
+            name = match.group("name")
+            type_name = match.group("type") or ""
+            kind = match.group("kind")
+        else:
+            match = OPTIONAL_EXHAUSTIVE_RE.match(line.strip())
+            if not match:
+                continue
+            rel_path = Path(match.group("path"))
+            name = "Some/None"
+            type_name = "Optional"
+            kind = "non-exhaustive"
         if rel_path.is_absolute() or ".." in rel_path.parts:
             raise RuntimeError(f"refusing suspicious diagnostic path: {rel_path}")
         diagnostics.add(Diagnostic(
             path=REPO_ROOT / rel_path,
-            kind=match.group("kind"),
-            name=match.group("name"),
-            type_name=match.group("type") or "",
+            kind=kind,
+            name=name,
+            type_name=type_name,
             start=int(match.group("start")),
             end=int(match.group("end")),
         ))
