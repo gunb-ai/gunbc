@@ -83,6 +83,8 @@ type Edge {
 }
 // 🟡 gated — substrate-shape bridge (docs/modeling-discipline.md Practice 2/10) — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
 data loop_bound_edge: Symbol = ^loop_bound_edge
+// 🟢 TERMINAL — E-9/DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
+data arrow_body_edge: Symbol = ^arrow_body_edge
 type Node {
   kind: NodeKind
   children: List<Edge>
@@ -103,12 +105,14 @@ type EdgeDiscipline
   | PositionalEdges
   // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: Loop edge discipline as EdgeDiscipline arm consumed by edges_conform and content_hash canonicalization; forbidden: parallel PositionalEdges classifier for Loop outside loop_behavior_edges_conform.
   | LoopBoundEdges
+  // 🟢 TERMINAL — COMPREP wave 0/1: Arrow signature positional edges + optional Arrow.body named edge (design-computation-representation.md; INVARIANTS E-9).
+  | ArrowBodyEdges
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } => NoEdges
     Conj => LabeledEdges
     Disj => LabeledEdges
-    Arrow => PositionalEdges
+    Arrow => ArrowBodyEdges
     Cardinality => PositionalEdges
     Instantiation => PositionalEdges
   }
@@ -147,14 +151,17 @@ fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-positional-count — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop positional-child count query; forbidden: parallel ad-hoc Loop arity predicates outside well_formed.
-fn loop_positional_child_count(children: List<Edge>) -> Int {
+fn positional_child_count(children: List<Edge>) -> Int {
   fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Positional => acc + 1
       Named { name: _ } => acc
     }
   })
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-positional-count — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop positional-child count query; forbidden: parallel ad-hoc Loop arity predicates outside well_formed.
+fn loop_positional_child_count(children: List<Edge>) -> Int {
+  positional_child_count(children: children)
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
 fn loop_body_edges_conform(children: List<Edge>) -> Bool {
@@ -171,6 +178,21 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   (bound_edges == 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
+}
+// 🟢 TERMINAL — COMPREP: Arrow positional signature edges + at most one Arrow.body edge.
+fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      Named { name: sym } => acc && (sym == ^arrow_body_edge)
+    }
+  })
+}
+fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
+  let body_edges = name_occurrences(name: ^arrow_body_edge, children: children)
+  (body_edges <= 1)
+  && arrow_signature_edges_conform(children: children)
+  && (positional_child_count(children: children) >= 1)
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-bound-measure-target — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop loop_bound_edge target projection shared by cardinality witness; forbidden: parallel ad-hoc loop_bound_edge extraction outside well_formed/cardinality.
 type LoopMeasureTargetLookup
@@ -224,6 +246,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
       all_edges_named(children: children) && all_names_distinct(children: children)
     PositionalEdges => all_edges_positional(children: children)
     LoopBoundEdges => loop_behavior_edges_conform(children: children)
+    ArrowBodyEdges => arrow_body_edges_conform(children: children)
   }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-connective-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Connective arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
@@ -232,8 +255,7 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
     Atom { identity: _ } => edges_conform(children: children, d: NoEdges)
     Conj => edges_conform(children: children, d: LabeledEdges)
     Disj => edges_conform(children: children, d: LabeledEdges)
-    Arrow =>
-      edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Arrow => arrow_body_edges_conform(children: children)
     Cardinality =>
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Instantiation =>
@@ -315,6 +337,33 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
   }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-content-hash-canonicalization — bind B1-CANON content_hash — dissolve-on-arrival: Loop/LabeledEdges child reorder scoped to content_hash merkle fold; forbidden: parallel ad-hoc loop_bound_edge placement canonicalization outside this surface.
+fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
+}
+fn arrow_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  filter(children, e => match e.label {
+    Named { name: sym } => sym == ^arrow_body_edge
+    Positional => false
+  })
+}
+fn arrow_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  sort_by(
+    filter(children, e => match e.label {
+      Named { name: sym } => sym != ^arrow_body_edge
+      Positional => false
+    }),
+    e => named_edge_sort_key(e: e)
+  )
+}
+fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Edge> {
+  concat(
+    arrow_signature_edges_for_content_hash(children: children),
+    concat(
+      arrow_other_named_edges_for_content_hash(children: children),
+      arrow_body_edges_for_content_hash(children: children)
+    )
+  )
+}
 fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
 }
@@ -351,6 +400,11 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
       }
     NoEdges => n
     PositionalEdges => n
+    ArrowBodyEdges =>
+      Node {
+        kind: n.kind,
+        children: canonicalize_arrow_children_for_content_hash(children: n.children)
+      }
     LoopBoundEdges =>
       Node {
         kind: n.kind,

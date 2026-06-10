@@ -51,6 +51,7 @@ import v4.std.find_witness {
 }
 import v4.std.node {
   Arrow,
+  ArrowBodyEdges,
   Atom,
   Cardinality,
   Conj,
@@ -3565,6 +3566,7 @@ fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> No
     NoEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_no_edges)
     LabeledEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_labeled)
     PositionalEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
+    ArrowBodyEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
     LoopBoundEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
   }
 }

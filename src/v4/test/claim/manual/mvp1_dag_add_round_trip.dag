@@ -42,6 +42,12 @@ import v4.std.logic { Bool }
 import v4.std.node { Node }
 import v4.std.target_model { TargetModel }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 data mvp1_dag_emitted_root: Node = dag_mvp1_fixture_emitted_add_fn
 
 data mvp1_dag_target_model: TargetModel = dag_mvp1_target_model()
@@ -196,4 +202,13 @@ fn mvp1_dag_add_emit_ingest_round_trip_holds() -> Bool {
   mvp1_dag_emit_add_fn_accepts_holds()
     && mvp1_dag_grammar_inverse_holds()
     && mvp1_dag_ingest_via_coerce_matches_canonical()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `mvp1_dag_add_emit_ingest_round_trip_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_mvp1_dag_add_round_trip: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/mvp1_dag_add_round_trip.dag",
+    function: mvp1_dag_add_emit_ingest_round_trip_holds
+  }
 }

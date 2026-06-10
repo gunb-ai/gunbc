@@ -13,6 +13,12 @@ module v4.test.claim.manual.map_lookup_miss_witness_violates
 import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.witness { Holds, Violates, Witness }
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 type LookupKey {
   id: Int
 }
@@ -54,4 +60,13 @@ fn map_hit_is_holds() -> Bool {
 // bridge turns the miss arm into a `non-exhaustive pattern match on: null` crash → red.
 fn map_lookup_miss_violates_and_hit_holds() -> Bool {
   map_miss_is_violates() && map_hit_is_holds()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `map_lookup_miss_violates_and_hit_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_map_lookup_miss_witness_violates: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/map_lookup_miss_witness_violates.dag",
+    function: map_lookup_miss_violates_and_hit_holds
+  }
 }

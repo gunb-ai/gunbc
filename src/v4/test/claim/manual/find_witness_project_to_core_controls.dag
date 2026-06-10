@@ -54,6 +54,14 @@ import v4.std.model_core { ModelCoreFactAxisEncoding, ModelCoreFactAxisSurfaceSp
 import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.diagnostic { Accepted, Rejected }
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+
 fn control_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
   CandidateSet {
     candidates: candidates,
@@ -393,3 +401,156 @@ data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = 
       container: int_platform_interval_spec(),
       contained: int8_interval_spec()
     )
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_project_to_core_real_dispatch_accepts_sibling` so glob discovery finds the witness without the central roster.
+data unified_claim_project_to_core_accepts_sibling: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_project_to_core_real_dispatch_accepts_sibling
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_project_to_core_real_dispatch_rejects_wrong_core` so glob discovery finds the witness without the central roster.
+data unified_claim_project_to_core_rejects_wrong_core: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_project_to_core_real_dispatch_rejects_wrong_core
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_project_to_core_rejects_surface_only_empty_core` so glob discovery finds the witness without the central roster.
+data unified_claim_project_to_core_rejects_empty_core: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_project_to_core_rejects_surface_only_empty_core
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_project_to_core_rejects_core_only_under_surface` so glob discovery finds the witness without the central roster.
+data unified_claim_project_to_core_rejects_surface_wrapped_core: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_project_to_core_rejects_core_only_under_surface
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_project_to_core_derives_preserves_ambiguity` so glob discovery finds the witness without the central roster.
+data unified_claim_project_to_core_preserves_ambiguity: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_project_to_core_derives_preserves_ambiguity
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_project_to_core_drops_nested_surface` so glob discovery finds the witness without the central roster.
+data unified_claim_project_to_core_drops_nested_surface: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_project_to_core_drops_nested_surface
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_project_to_core_rejects_nested_core_difference` so glob discovery finds the witness without the central roster.
+data unified_claim_project_to_core_rejects_nested_core_difference: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_project_to_core_rejects_nested_core_difference
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_project_to_core_rejects_different_connective_same_core_children` so glob discovery finds the witness without the central roster.
+data unified_claim_project_to_core_rejects_different_connective_same_core_children: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_project_to_core_rejects_different_connective_same_core_children
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_integer_value_set_accepts_i32_subset_python_int` so glob discovery finds the witness without the central roster.
+data unified_claim_integer_value_set_accepts_subset: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_integer_value_set_accepts_i32_subset_python_int
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_integer_value_set_accepts_i16_subset_i32` so glob discovery finds the witness without the central roster.
+data unified_claim_integer_value_set_accepts_proper_subrange: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_integer_value_set_accepts_i16_subset_i32
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_integer_value_set_accepts_u8_subset_i16` so glob discovery finds the witness without the central roster.
+data unified_claim_integer_value_set_accepts_cross_signed_subrange: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_integer_value_set_accepts_u8_subset_i16
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_integer_value_set_rejects_malformed_interval_payload` so glob discovery finds the witness without the central roster.
+data unified_claim_integer_value_set_rejects_malformed_interval: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_integer_value_set_rejects_malformed_interval_payload
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_integer_value_set_interval_containment_rejects_malformed_payload` so glob discovery finds the witness without the central roster.
+data unified_claim_integer_value_set_interval_rejects_malformed_interval: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_integer_value_set_interval_containment_rejects_malformed_payload
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_integer_value_set_reverse_is_strict_coarsening` so glob discovery finds the witness without the central roster.
+data unified_claim_integer_value_set_reverse_strict: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_integer_value_set_reverse_is_strict_coarsening
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_integer_value_set_refuses_incompatible_unknown` so glob discovery finds the witness without the central roster.
+data unified_claim_integer_value_set_refuses_incompatible: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_integer_value_set_refuses_incompatible_unknown
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_integer_interval_bound_compare_orders_pointer_width_bounds` so glob discovery finds the witness without the central roster.
+data unified_claim_integer_interval_bound_compare_orders_pointer_width_bounds: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_integer_interval_bound_compare_orders_pointer_width_bounds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_integer_value_set_rejects_unbounded_with_extra_field` so glob discovery finds the witness without the central roster.
+data unified_claim_integer_value_set_rejects_unbounded_with_extra_field: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_integer_value_set_rejects_unbounded_with_extra_field
+  }
+}

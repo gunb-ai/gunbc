@@ -37,6 +37,12 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_tree
 }
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.dag"
 data edit_locus_path_source_producer_fixture: RepoPath = "src/v4/test/claim/lens_affected_set/source_producer_fixture.dag"
 data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
@@ -199,3 +205,48 @@ data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_af
 data edit_locus_source_provenance_producer_claim_passes: Bool = edit_locus_source_provenance_producer_holds()
 data edit_locus_source_provenance_affected_set_wire_claim_passes: Bool = edit_locus_source_provenance_affected_set_wire_holds()
 data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes: Bool = edit_locus_source_provenance_producer_rejects_malformed_source_holds()
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `edit_locus_narrow_resolution_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    function: edit_locus_narrow_resolution_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `edit_locus_fail_closed_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_edit_locus_fail_closed: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    function: edit_locus_fail_closed_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `edit_locus_source_provenance_producer_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_edit_locus_source_provenance_producer: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    function: edit_locus_source_provenance_producer_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `edit_locus_source_provenance_affected_set_wire_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_edit_locus_source_provenance_affected_set_wire: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    function: edit_locus_source_provenance_affected_set_wire_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `edit_locus_source_provenance_producer_rejects_malformed_source_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_edit_locus_source_provenance_producer_rejects_malformed_source: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+    function: edit_locus_source_provenance_producer_rejects_malformed_source_holds
+  }
+}

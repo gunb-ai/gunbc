@@ -18,6 +18,12 @@ import v4.test.claim.workflow.testclaim_corpus_runner {
 }
 
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 fn run_lens_parallelism_family_eval() -> CorpusEvalReport {
   CorpusEvalReport {
     entries: corpus_entries_from_node_runtime_value_runs(
@@ -45,3 +51,12 @@ fn lens_parallelism_family_gate(report: CorpusEvalReport) -> Bool {
 data witness_lens_parallelism_family_gate_closed: Bool = lens_parallelism_family_gate(
   report: run_lens_parallelism_family_eval()
 )
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_lens_parallelism_family_gate_closed` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_parallelism_family_gate: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/workflow/lens_parallelism_family_eval.dag",
+    function: witness_lens_parallelism_family_gate_closed
+  }
+}
