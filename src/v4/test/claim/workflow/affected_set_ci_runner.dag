@@ -19,7 +19,7 @@ import v4.std.change {
 import v4.std.algebra { count_equal, filter, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, Unanchored }
 import v4.std.text { String }
 import v4.std.verification {
   EqualsClaim,
@@ -37,27 +37,32 @@ import v4.workflow.affected_set_selection {
 }
 data ci_runner_untouched_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_untouched_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data ci_runner_touched_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_touched_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data ci_runner_other_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_other_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data ci_runner_shape_a_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_shape_a_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data ci_runner_shape_b_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_shape_b_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data ci_runner_conj_wrapped_touched_node: Node = Node {
@@ -67,7 +72,8 @@ data ci_runner_conj_wrapped_touched_node: Node = Node {
       label: Positional,
       target: ci_runner_touched_node
     }
-  ]
+  ],
+  span: Unanchored
 }
 
 data ci_runner_claim_untouched: TestClaim = EqualsClaim {
@@ -155,8 +161,9 @@ fn ci_runner_narrow_selection_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 
@@ -166,8 +173,9 @@ fn ci_runner_fail_closed_superset_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 
@@ -231,8 +239,9 @@ fn ci_runner_shape_collision_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 
@@ -368,8 +377,9 @@ fn ci_runner_inner_frontier_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

@@ -1,0 +1,159 @@
+// src/v4/std/provenance.dag
+// Scope: source-text → Node byte-range provenance (T-8 producer substrate).
+// Status: Layer-3/4 — span on Node (v4.std.node) + parse stamp (v4.compiler.parse).
+
+module v4.std.provenance
+
+import v4.std.artifact { Artifact, NodeArtifactProvenance }
+import v4.std.diagnostic {
+  Accepted,
+  ByteRange,
+  Diagnostic,
+  Outcome,
+  Rejected,
+  Textual,
+  UserInputBoundary,
+  Unavailable,
+  diagnostics_merge,
+  outcome_accepted,
+  outcome_rejected,
+  rejected_with_pending
+}
+import v4.std.node {
+  Anchored,
+  Edge,
+  Node,
+  NodeFold,
+  NodeSpan,
+  SourceSpan,
+  Symbol,
+  Unanchored,
+  fold_node,
+  merge_node_span_same_file,
+  node_span_has_byte_extent,
+  node_span_is_anchored,
+  node_span_same_file,
+  source_span_byte_extent_admits
+}
+
+data provenance_span_file_mismatch: Symbol = provenance_span_file_mismatch
+data provenance_invalid_source_span: Symbol = provenance_invalid_source_span
+
+fn provenance_invalid_source_span_diagnostic(file: Symbol, start: Int, end: Int) -> Diagnostic {
+  Diagnostic {
+    reason: provenance_invalid_source_span,
+    at: Textual {
+      file: file,
+      extent: ByteRange { start: start, end: end }
+    },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn provenance_span_file_mismatch_diagnostic(span: SourceSpan) -> Diagnostic {
+  Diagnostic {
+    reason: provenance_span_file_mismatch,
+    at: Textual {
+      file: span.file,
+      extent: ByteRange { start: span.start, end: span.end }
+    },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn make_source_span(file: Symbol, start: Int, end: Int) -> Outcome<SourceSpan> {
+  if source_span_byte_extent_admits(start: start, end: end) {
+    outcome_accepted(
+      value: SourceSpan { file: file, start: start, end: end }
+    )
+  } else {
+    outcome_rejected(
+      d: provenance_invalid_source_span_diagnostic(file: file, start: start, end: end)
+    )
+  }
+}
+
+fn make_node_span_anchored(file: Symbol, start: Int, end: Int) -> Outcome<NodeSpan> {
+  match make_source_span(file: file, start: start, end: end) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: span, diagnostics: d } =>
+      Accepted { value: Anchored { span: span }, diagnostics: d }
+  }
+}
+
+fn node_has_anchored_span(node: Node) -> Bool {
+  node_span_is_anchored(span: node.span)
+}
+
+fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
+  NodeArtifactProvenance { node: node, artifact: artifact }
+}
+
+fn node_span_byte_extent(span: NodeSpan) -> Bool {
+  node_span_has_byte_extent(span: span)
+}
+
+fn merge_node_spans(left: NodeSpan, right: NodeSpan) -> Outcome<NodeSpan> {
+  if node_span_same_file(left: left, right: right) {
+    outcome_accepted(value: merge_node_span_same_file(left: left, right: right))
+  } else {
+    match left {
+      Anchored { span: ls } =>
+        outcome_rejected(d: provenance_span_file_mismatch_diagnostic(span: ls))
+      Unanchored =>
+        match right {
+          Anchored { span: rs } =>
+            outcome_rejected(d: provenance_span_file_mismatch_diagnostic(span: rs))
+          Unanchored => outcome_accepted(value: Unanchored)
+        }
+    }
+  }
+}
+
+fn fold_node_tree_span_init(n: Node) -> Outcome<NodeSpan> {
+  outcome_accepted(value: n.span)
+}
+
+fn fold_node_tree_span_step(
+  acc: Outcome<NodeSpan>,
+  _: Edge,
+  child: Outcome<NodeSpan>
+) -> Outcome<NodeSpan> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: left, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+        Accepted { value: right, diagnostics: cd } =>
+          match merge_node_spans(left: left, right: right) {
+            Rejected { diagnostics: r } =>
+              Rejected {
+                diagnostics: rejected_with_pending(
+                  pending: diagnostics_merge(outer: ad, inner: cd),
+                  rejected: r
+                )
+              }
+            Accepted { value: merged, diagnostics: md } =>
+              Accepted {
+                value: merged,
+                diagnostics: diagnostics_merge(
+                  outer: diagnostics_merge(outer: ad, inner: cd),
+                  inner: md
+                )
+              }
+          }
+      }
+  }
+}
+
+fn fold_node_tree_span_algebra() -> NodeFold<Outcome<NodeSpan>> {
+  NodeFold {
+    init: fold_node_tree_span_init,
+    step: fold_node_tree_span_step
+  }
+}
+
+fn fold_node_tree_span(n: Node) -> Outcome<NodeSpan> {
+  fold_node(n: n, algebra: fold_node_tree_span_algebra())
+}

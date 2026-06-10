@@ -16,7 +16,7 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, Unanchored }
 import v4.std.text { String }
 import v4.std.verification {ManualAnchorAbsent,
   ManualNatAddAssociativity,
@@ -37,7 +37,9 @@ import v4.std.verification {ManualAnchorAbsent,
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node {
@@ -47,8 +49,9 @@ fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node
       Edge { label: Named { name: ^algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
       Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
       Edge { label: Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn nat_add_law(law: Symbol) -> Node {

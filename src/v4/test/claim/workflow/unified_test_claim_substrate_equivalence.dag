@@ -1,7 +1,7 @@
 // src/v4/test/claim/workflow/unified_test_claim_substrate_equivalence.dag
-// Scope: Consolidation #4553 Phase 1 substrate equivalence tranche (design §6.3).
-// Status: compile-time law — C3 modality discrimination + roster mechanical projection (E5 prep).
-// No runner / `--claim-run` execution in this tranche (E1 lands Phase 2).
+// Scope: Consolidation #4553 glob-discovery substrate equivalence (design §6.3 C9).
+// Status: runtime law — modality discrimination + glob discovery authority (replaces roster).
+// Host transport: scripts/v4-substrate-equivalence-gate.sh (--perturb-check).
 
 module v4.test.claim.workflow.unified_test_claim_substrate_equivalence
 
@@ -19,18 +19,22 @@ import v4.std.verification {
   unified_test_claim_bool_witness,
   unified_test_claim_modality
 }
-import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
-import v4.test.claim.workflow.v4_roster_pilot {
-  bool_witness_from_roster_row,
-  v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds,
-  v4_roster_pilot_row_edit_locus_narrow
+import v4.test.claim.lens_affected_set.edit_locus_resolver {
+  edit_locus_narrow_resolution_holds_symbol,
+  unified_claim_edit_locus_narrow
 }
+import v4.std.text { String }
+import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.workflow.glob_discovery {
+  glob_discovered_smoke_marker_count,
+  glob_discovery_smoke_marker_count_is_positive
+}
+// Independent transport authority for the sample marker (not read back from extraction).
+data substrate_equivalence_sample_bool_witness_entry: String = "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
 
 
 fn substrate_equivalence_sample_bool_unified_claim() -> UnifiedTestClaim {
-  bool_witness_descriptor(
-    w: bool_witness_from_roster_row(row: v4_roster_pilot_row_edit_locus_narrow)
-  )
+  unified_claim_edit_locus_narrow
 }
 
 
@@ -42,13 +46,16 @@ fn substrate_equivalence_sample_node_corpus_claim() -> UnifiedTestClaim {
 }
 
 
-fn substrate_equivalence_roster_projection_preserves_entry_function() -> Bool {
-  let w = bool_witness_from_roster_row(row: v4_roster_pilot_row_edit_locus_narrow)
-  bool_witness_matches_entry_function(
-    w: w,
-    entry: v4_roster_pilot_row_edit_locus_narrow.entry,
-    function: v4_roster_pilot_row_edit_locus_narrow.function_symbol
-  )
+fn substrate_equivalence_glob_discovery_marker_preserves_entry_function() -> Bool {
+  match unified_test_claim_bool_witness(c: substrate_equivalence_sample_bool_unified_claim()) {
+    Accepted { value: w, diagnostics: None } =>
+      bool_witness_matches_entry_function(
+        w: w,
+        entry: substrate_equivalence_sample_bool_witness_entry,
+        function: edit_locus_narrow_resolution_holds_symbol
+      )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 
@@ -69,22 +76,31 @@ fn substrate_equivalence_node_corpus_modality_discriminates() -> Bool {
 
 
 fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
-  let w = bool_witness_from_roster_row(row: v4_roster_pilot_row_edit_locus_narrow)
-  match unified_test_claim_bool_witness(c: bool_witness_descriptor(w: w)) {
+  match unified_test_claim_bool_witness(c: substrate_equivalence_sample_bool_unified_claim()) {
     Accepted { value: extracted, diagnostics: None } =>
-      bool_witness_matches_entry_function(
-        w: extracted,
-        entry: w.entry,
-        function: w.function
-      )
+      match unified_test_claim_bool_witness(c: bool_witness_descriptor(w: extracted)) {
+        Accepted { value: w, diagnostics: None } =>
+          bool_witness_matches_entry_function(
+            w: w,
+            entry: substrate_equivalence_sample_bool_witness_entry,
+            function: edit_locus_narrow_resolution_holds_symbol
+          )
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
 
 
+fn substrate_equivalence_discovery_count_pin_is_positive() -> Bool {
+  glob_discovery_smoke_marker_count_is_positive()
+    && (glob_discovered_smoke_marker_count != "")
+}
+
+
 fn substrate_equivalence_holds() -> Bool {
-  v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds()
-    && substrate_equivalence_roster_projection_preserves_entry_function()
+  substrate_equivalence_discovery_count_pin_is_positive()
+    && substrate_equivalence_glob_discovery_marker_preserves_entry_function()
     && substrate_equivalence_bool_modality_discriminates()
     && substrate_equivalence_node_corpus_modality_discriminates()
     && substrate_equivalence_unified_claim_preserves_bool_fields()

@@ -16,11 +16,13 @@ import v4.std.node {
   Conj,
   Edge,
   Named,
-  Symbol
+  Symbol,
+  Unanchored
 }
 data fact_density_anchor_hollow_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 data fact_density_anchor_fact_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -33,12 +35,14 @@ data fact_density_anchor_fact_bundle: Node = Node {
       label: Named { name: ^fact_density_anchor_signedness_field },
       target: fact_density_anchor_hollow_alias
     }
-  ]
+  ],
+  span: Unanchored
 }
 
 data fact_density_anchor_kernel_ambient_bool: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_bool } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 fn anchor_hollow_alias_read() -> SourceSpecReadFact {

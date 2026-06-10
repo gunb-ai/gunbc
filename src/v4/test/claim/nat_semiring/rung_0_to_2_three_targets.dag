@@ -13,7 +13,7 @@ module v4.test.claim.nat_semiring.rung_0_to_2_three_targets
 
 
 import v4.std.collection { List }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.text { String }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -42,7 +42,8 @@ import v4.test.claim.algebra_laws.nat_semiring {
 // per ladder rung specs §2.4 verdict reporting shape and §2.5 worker brief triple.
 data phase1_nat_semiring_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase1_nat_semiring_rung_subject_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 

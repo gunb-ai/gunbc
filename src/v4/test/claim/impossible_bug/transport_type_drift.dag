@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, Unanchored }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -36,7 +36,9 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -45,7 +47,8 @@ data shared_wire_contract_input: Node = Node {
   children: [
     Edge { label: Named { name: ^client_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
     Edge { label: Named { name: ^server_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -54,7 +57,8 @@ data falsification_wire_contract_drift: Node = Node {
   children: [
     Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
     Edge { label: Named { name: ^server_field }, target: atom_node(s: ^server_field_string_symbol) },
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -63,7 +67,8 @@ data falsification_target_contract_drift: Node = Node {
   children: [
     Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
     Edge { label: Named { name: ^target_field }, target: atom_node(s: ^target_field_bool_symbol) },
-  ]
+  ],
+  span: Unanchored
 }
 
 

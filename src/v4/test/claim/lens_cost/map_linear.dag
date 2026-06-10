@@ -16,7 +16,8 @@ import v4.std.node {
   Positional,
   Symbol,
   Transform,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.verification {
   EqualsClaim,
@@ -30,21 +31,24 @@ import v4.std.verification {
 import v4.std.witness { Holds }
 data map_linear_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^map_linear_body_atom } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data map_linear_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge { label: Positional, target: map_linear_body_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 data map_linear_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: map_linear_body }
-  ]
+  ],
+  span: Unanchored
 }
 
 fn map_linear_claim_holds() -> Bool {
@@ -61,8 +65,9 @@ fn map_linear_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

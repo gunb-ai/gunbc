@@ -16,7 +16,7 @@ import v4.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v4.std.node { Conj, Node, Symbol, TypeNode }
+import v4.std.node { Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -52,8 +52,9 @@ fn edit_locus_no_match_diagnostic() -> Diagnostic {
     reason: ^edit_locus_reason_no_match,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }),
+      children: [],
+      span: Unanchored
+}),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -64,8 +65,9 @@ fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
     reason: ^edit_locus_reason_ambiguous,
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }),
+      children: [],
+      span: Unanchored
+}),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
