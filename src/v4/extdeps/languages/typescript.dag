@@ -580,7 +580,8 @@ fn ts_mvp1_add_binary_body_node() -> Node {
         label: Positional,
         target: ts_inhabitant_atom(id: ^dag_binding_param_y)
       }
-    ]
+    ],
+    span: Unanchored
   }
 }
 
@@ -595,7 +596,8 @@ fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
         label: Named { name: arrow_body_edge },
         target: ts_mvp1_add_binary_body_node()
       }
-    ]
+    ],
+    span: Unanchored
   }
 }
 
@@ -1389,11 +1391,19 @@ fn ts_mvp1_binding_spellings() -> Map<Symbol, String> {
             map_insert(
               map_insert(
                 map_insert(
-                  map_insert(empty_map(), ^ts_binding_fn_add, "add"),
-                  ^ts_binding_param_x,
+                  map_insert(
+                    map_insert(
+                      map_insert(empty_map(), ^ts_binding_fn_add, "add"),
+                      ^ts_binding_param_x,
+                      "x"
+                    ),
+                    ^ts_binding_param_y,
+                    "y"
+                  ),
+                  ^dag_binding_param_x,
                   "x"
                 ),
-                ^ts_binding_param_y,
+                ^dag_binding_param_y,
                 "y"
               ),
               ^ts_binding_task,
