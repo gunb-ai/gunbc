@@ -1217,7 +1217,7 @@ fn match_pattern(
 
         MatchPattern::VariantPattern {
             name,
-            parent_enum: _,
+            parent_enum,
             field_bindings,
         } => {
             match value {
@@ -1423,6 +1423,11 @@ fn match_pattern(
                         bindings.extend(sub_bindings);
                     }
                     Some(bindings)
+                }
+                // Diagnostics.None is represented by the interpreter's null sentinel.
+                // Keep this parent-scoped so legacy Optional None stays rejected.
+                Value::Null if name == "None" && parent_enum.as_deref() == Some("Diagnostics") => {
+                    Some(HashMap::new())
                 }
                 // Match cardinality Optional through the canonical std surface.
                 Value::Null if name == "Absent" => Some(HashMap::new()),
