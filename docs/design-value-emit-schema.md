@@ -124,10 +124,18 @@ spelling is a fact about the *target*, declared per language. The two never meet
 through the catalog:
 
 ```
-// std: the operation identity (closed; grounded in the algebra — see Q-V1)
+// std: the operation identity — a CLOSED coproduct carrier (M4: enums, not strings;
+// illegal operations are unrepresentable, not validated away at use time). Seeded
+// producer-gated (E-10): wave-now carries only the arms a COMPREP producer emits.
+// What grounds each arm (the algebra operation) is Q-V1; the coproduct is the
+// carrier either way — arms gain algebra grounding, the carrier does not reopen.
+type CanonicalOperation
+  = OpAdd                            // wave-now (the add keystone)
+  // arms land with their producers; adding one is a substrate decision
+
 // extdeps/languages/<lang>.dag: how THIS language spells it
 type TargetOperatorRealization {
-  operation: Symbol                  // canonical op (e.g. ordered-ring add)
+  operation: CanonicalOperation
   shape: TargetOperatorShape
 }
 type TargetOperatorShape
@@ -200,13 +208,16 @@ statement-context tokens (`return`, `;` — see Q-V2) and the existing signature
 
 ## 7. Open questions — escalate, don't improvise
 
-- **Q-V1 — canonical operation identity.** Recommended: the algebra operation (ordered-ring
-  add etc.), per THESIS grounding-completeness (dispatch consumes abstract algebra facts —
-  the standing decision from the numeric-aliases gate) — not a fresh standalone op enum, and
-  never the surface token. Interim for the skeleton: the body producer's surface op atom
-  (`^dag_token_plus`) may key the catalog under a 🟡 mark whose dissolve-on is op-resolution
-  (surface op token → canonical operation at resolve, the same move idents make to
-  `binding_id`). Operator confirms the vocabulary before rows multiply across 18 models.
+- **Q-V1 — what grounds the `CanonicalOperation` arms.** The carrier is settled (§4.3: a
+  closed substrate coproduct, M4 — never a bare `Symbol`); the open question is each arm's
+  grounding. Recommended: the algebra operation (`OpAdd` grounds in ordered-ring add), per
+  THESIS grounding-completeness (dispatch consumes abstract algebra facts — the standing
+  decision from the numeric-aliases gate) — not free-floating arm names, and never the
+  surface token. Interim for the skeleton: the body producer's surface op atom
+  (`^dag_token_plus`) maps to `OpAdd` at projection entry under a 🟡 mark whose dissolve-on
+  is op-resolution (surface op token → canonical operation at resolve, the same move idents
+  make to `binding_id`). Operator confirms the grounding before rows multiply across 18
+  models.
 - **Q-V2 — statement-bodied targets.** Python/Go/TS need `return` + statement context;
   expression-bodied targets (Rust) don't. Recommended: the **function-decl production row**
   owns statement wrapping (it is syntax of the declaration, not of the value), keeping the
