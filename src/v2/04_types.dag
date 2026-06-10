@@ -2,7 +2,7 @@
 
 module v2.compiler.infer_types
 
-import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra }
+import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -115,7 +115,7 @@ fn canonical_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -
 }
 
 fn is_declared_container_alias_spelling(name: String) -> Bool {
-  match container_template_algebra(name: name) {
+  match container_template_alias_algebra(name: name) {
     Present { value: _ } => true
     Absent => false
   }

@@ -149,8 +149,23 @@ data container_template_algebra_rows: Map<String, String> = {
   "partial_function": "PartialFunction"
 }
 
+// Alias spellings only: these names lower to target collection carriers. Algebra
+// self-identities above remain comparison canonicalization, not carrier aliases.
+data container_template_alias_rows: Map<String, String> = {
+  "List": "FreeMonoid",
+  "list": "FreeMonoid",
+  "Set": "BooleanAlgebra",
+  "set": "BooleanAlgebra",
+  "Map": "PartialFunction",
+  "map": "PartialFunction"
+}
+
 fn container_template_algebra(name: String) -> String? {
   map_get(container_template_algebra_rows, name)
+}
+
+fn container_template_alias_algebra(name: String) -> String? {
+  map_get(container_template_alias_rows, name)
 }
 
 // Ordered canonical parameterized-container/algebra names (PascalCase).
