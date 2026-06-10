@@ -543,6 +543,22 @@ pub type InterpResult<T> = Result<T, InterpError>;
 /// (service_node, operation_node) pair for service dispatch.
 type ServiceOp = (Rc<Node>, Rc<Node>);
 
+/// Memo for the explicitly-verified pure structural predicates (see
+/// `is_structural_pure_fn`), keyed by (fn node address, arg Rc addresses).
+/// The keepalive vecs are load-bearing for the address keys: a memoized arg's
+/// Rc must stay alive while its address is a live key, or a freed-and-reused
+/// allocation would alias a stale entry. Scoped to an `InterpContext`, both
+/// the map and the pins drop with the evaluation instead of growing for the
+/// life of the process.
+#[derive(Default)]
+struct PureCallMemo {
+    map: HashMap<(usize, Vec<usize>), Value>,
+    // Args kept alive so their Rc addresses (used in keys) can't be freed and aliased.
+    keepalive: Vec<Value>,
+    // Resolved fn nodes kept alive for the same reason (the key includes their address).
+    keepalive_fns: Vec<Rc<Node>>,
+}
+
 pub struct InterpContext {
     /// All typed modules from the compiler pipeline.
     pub modules: Rc<Vec<Rc<TypedModule>>>,
@@ -566,6 +582,9 @@ pub struct InterpContext {
     /// the nodes alive as long as the cache, and the cache drops with the
     /// context.
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
+    /// Memo for pure structural predicates, with the same context scoping as
+    /// `data_cache` (see `PureCallMemo`).
+    pure_call_memo: std::cell::RefCell<PureCallMemo>,
 }
 
 impl InterpContext {
@@ -616,6 +635,7 @@ impl InterpContext {
             service_ops,
             dry_run,
             data_cache: std::cell::RefCell::new(HashMap::new()),
+            pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
         }
     }
 
@@ -1582,32 +1602,16 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // predicates (content_hash/well_formed/...), collapsing the emit pipeline's redundant
     // re-derivation and re-traversal. Args are kept alive so their Rc pointers can't be reused.
     if let Some(key) = pure_call_memo_key(&fn_node, &func_name, &args) {
-        if let Some(v) = pure_call_memo_get(&key) {
+        if let Some(v) = pure_call_memo_get(ctx, &key) {
             return Ok(v);
         }
         let result = call_function(ctx, &fn_node, &args, env)?;
-        pure_call_memo_put(&fn_node, key, &args, result.clone());
+        pure_call_memo_put(ctx, &fn_node, key, &args, result.clone());
         return Ok(result);
     }
     call_function(ctx, &fn_node, &args, env)
 }
 
-struct PureCallMemo {
-    map: HashMap<(usize, Vec<usize>), Value>,
-    // Args kept alive so their Rc addresses (used in keys) can't be freed and aliased.
-    keepalive: Vec<Value>,
-    // Resolved fn nodes kept alive for the same reason (the key includes their address).
-    keepalive_fns: Vec<Rc<Node>>,
-}
-thread_local! {
-    // thread-local because Value holds Rc (!Send+!Sync) so it can't live in a static.
-    static PURE_CALL_MEMO: std::cell::RefCell<PureCallMemo> =
-        std::cell::RefCell::new(PureCallMemo {
-            map: HashMap::new(),
-            keepalive: Vec::new(),
-            keepalive_fns: Vec::new(),
-        });
-}
 fn is_structural_pure_fn(name: &str) -> bool {
     matches!(
         name,
@@ -1650,23 +1654,22 @@ fn pure_call_memo_key(
     }
     Some((fid, ids))
 }
-fn pure_call_memo_get(key: &(usize, Vec<usize>)) -> Option<Value> {
-    PURE_CALL_MEMO.with(|m| m.borrow().map.get(key).cloned())
+fn pure_call_memo_get(ctx: &InterpContext, key: &(usize, Vec<usize>)) -> Option<Value> {
+    ctx.pure_call_memo.borrow().map.get(key).cloned()
 }
 fn pure_call_memo_put(
+    ctx: &InterpContext,
     fn_node: &Rc<Node>,
     key: (usize, Vec<usize>),
     args: &[(Option<String>, Value)],
     result: Value,
 ) {
-    PURE_CALL_MEMO.with(|m| {
-        let mut st = m.borrow_mut();
-        st.keepalive_fns.push(fn_node.clone());
-        for (_, v) in args {
-            st.keepalive.push(v.clone());
-        }
-        st.map.insert(key, result);
-    });
+    let mut st = ctx.pure_call_memo.borrow_mut();
+    st.keepalive_fns.push(fn_node.clone());
+    for (_, v) in args {
+        st.keepalive.push(v.clone());
+    }
+    st.map.insert(key, result);
 }
 
 // ---------------------------------------------------------------------------
