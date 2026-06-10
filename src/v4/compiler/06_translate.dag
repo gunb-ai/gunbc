@@ -4312,6 +4312,10 @@ fn translate_type_fold_init(node: Node) -> Outcome<Node> {
     diagnostics: None
   }
 }
+fn translate_computation_fold_init(node: Node) -> Outcome<Node> {
+  // T6 / E-9: Behavior sub-DAG (Arrow.body) is internal — fold structurally, not coerce.
+  translate_type_fold_init(node: node)
+}
 fn translate_fold_init(
   node: Node,
   tree: InferredTree,
@@ -4319,17 +4323,7 @@ fn translate_fold_init(
 ) -> Outcome<Node> {
   match node.kind {
     TypeNode { connective: _ } => translate_type_fold_init(node: node)
-    ComputationNode { behavior: _ } =>
-      match coerce_grounded_node(source: node, tree: tree, target: target) {
-        Accepted { value: coerced, diagnostics: d } =>
-          translate_coerced_with_atom_realization(
-            source: node,
-            coerced: coerced.target,
-            target: target,
-            pending: d
-          )
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
+    ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
   }
 }
 fn translate_mvp1_fold_init(
@@ -4349,17 +4343,7 @@ fn translate_mvp1_fold_init(
           )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
-    ComputationNode { behavior: _ } =>
-      match coerce_grounded_node(source: node, tree: tree, target: target) {
-        Accepted { value: coerced, diagnostics: d } =>
-          translate_coerced_with_atom_realization(
-            source: node,
-            coerced: coerced.target,
-            target: target,
-            pending: d
-          )
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
+    ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
   }
 }
 // Grammar-first match: does the (raw, structure-preserving) emitted node match a row in
