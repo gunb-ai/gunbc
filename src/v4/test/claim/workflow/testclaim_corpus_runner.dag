@@ -158,27 +158,11 @@ fn v4_roster_pilot_bool_witness_unified_claims() -> List<UnifiedTestClaim> {
 }
 
 
-fn unified_claim_is_node_corpus(c: UnifiedTestClaim) -> Bool {
-  match unified_test_claim_modality(c: c) {
-    UnifiedNodeCorpusModality => true
-    UnifiedBoolWitnessModality => false
-  }
-}
-
-
-fn unified_claim_is_bool_witness(c: UnifiedTestClaim) -> Bool {
-  match unified_test_claim_modality(c: c) {
-    UnifiedBoolWitnessModality => true
-    UnifiedNodeCorpusModality => false
-  }
-}
-
-
 fn manual_node_corpus_unified_claim_projection_holds() -> Bool {
   fold(
     manual_node_corpus_unified_claims(),
     init: true,
-    f: fn(acc, c) { acc && unified_claim_is_node_corpus(c: c) }
+    f: fn(acc, c) { acc && (unified_test_claim_modality(c: c) == UnifiedNodeCorpusModality) }
   )
 }
 
@@ -189,7 +173,7 @@ fn v4_roster_pilot_bool_witness_unified_claim_projection_holds() -> Bool {
     && fold(
       v4_roster_pilot_bool_witness_unified_claims(),
       init: true,
-      f: fn(acc, c) { acc && unified_claim_is_bool_witness(c: c) }
+      f: fn(acc, c) { acc && (unified_test_claim_modality(c: c) == UnifiedBoolWitnessModality) }
     )
 }
 
