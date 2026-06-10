@@ -27,8 +27,8 @@ env:
   # it parses as the string "true" (an unquoted bare `true` is a YAML bool). Drop this once every
   # pinned action ships a Node24 default. Ref: github.blog/changelog/2025-09-19-deprecation-of-node-20.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness + DAG parity) + ci_floor_emit (M1 rust+dag emit) + doc_refs (doc-authority reference gate)
-# Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness, DAG parity (ci_floor), M1 rust+dag emit (ci_floor_emit). doc_refs (touched-doc reference resolution) rolls into the `ci` aggregator.
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity, parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate (lens witnesses, parallel) + v4_lens_ci (node-frontier witnesses) + doc_refs (doc-authority reference gate)
+# Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness (ci_floor), DAG parity (ci_floor_parity), M1 rust+dag emit (ci_floor_emit), v4 lens witnesses (v4_lens_gate + v4_lens_ci). Branch protection names ci_floor + ci_floor_emit; new parallel jobs are enforced via the `ci` aggregator unless the operator adds them as required checks. doc_refs rolls into the `ci` aggregator.
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR -- authority: this workflow (.github/workflows/ci.yml) is the
   # direct hand-edited CI authority; the prior src/v4/workflow/ci.dag runner-isolation model was deleted.
@@ -255,8 +255,9 @@ jobs:
         name: affected-set-ci-receipt
         path: ${{ runner.temp }}/affected-set-ci-receipt.json
         if-no-files-found: warn
-  # §11.7.1 Class A safety floor -- stage0 freshness + bootstrap dag parity. The M1 rust+dag emit
-  # probe runs in the parallel `ci_floor_emit` job (split for concurrency; see gunb-ai/ctrl#1458).
+  # §11.7.1 Class A safety floor -- stage0 freshness receipt. DAG parity runs CONCURRENTLY in the
+  # parallel `ci_floor_parity` job; the M1 rust+dag emit probe runs in `ci_floor_emit` (gunb-ai/ctrl#1458).
+  # Job id `ci_floor` is unchanged for branch protection.
   ci_floor:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
@@ -355,25 +356,113 @@ jobs:
         restore-keys: |
           gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
     # sccache honored via the probe-decided RUSTC_WRAPPER (set in the toolchain-isolation step
-    # above): no per-step `RUSTC_WRAPPER=` override. Removing the override (a) lets the cold v2
-    # build reuse sccache-cached dep objects and (b) keeps build + stage0 + DAG-parity on ONE
-    # cargo fingerprint, so the parity `cargo test` reuses these artifacts instead of recompiling
-    # under a different wrapper. The probe already degrades to a cold build on any sccache
-    # unreachability, so this stays fail-closed (RR-L: observationally invisible + fail-closed).
+    # above): no per-step `RUSTC_WRAPPER=` override. The probe already degrades to a cold build on
+    # any sccache unreachability, so this stays fail-closed (RR-L: observationally invisible +
+    # fail-closed).
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: v2 stage0 freshness receipt
       timeout-minutes: 30
       run: bash .github/ci-floor/with-sccache-retry.sh cargo run --release -p v2-compiler --bin regen_stage0 -- --verify
-    # `--release` is load-bearing here, not cosmetic: the build + stage0 steps above compile
-    # v2-compiler in the RELEASE profile. A debug `cargo test` lives in a different profile dir
-    # (target/debug vs target/release) and shares ZERO artifacts with them, so it re-compiles the
-    # whole v2-compiler closure from scratch (~64s/run, measured run 27021002250 step 11: 69s total,
-    # of which the test itself is 0.01s). Running the parity test in release makes the "shared
-    # closure" real -- it reuses the release v2-compiler already built by stage0 and only compiles
-    # the small v2-compiler-tests crate (~5s). The receipt is profile-invariant (emit parity, no
-    # debug_assert-dependent behavior), so this is observationally invisible + fail-closed (RR-L).
+  # §11.7.1 Class A safety floor (parallel lane) -- v2 DAG emit parity receipt. Split out of
+  # `ci_floor` so parity (~159s) runs CONCURRENTLY with stage0 freshness (~120s). The parity step
+  # formerly reused release v2-compiler artifacts built in-job by stage0; this job instead relies on
+  # the shared Cargo cache (target/ in the cache path) + gunbc-bin cache to restore release artifacts
+  # so the parity test compiles only v2-compiler-tests (~5s) rather than cold-compiling the closure
+  # (~64s+). Enforced via the `ci` aggregator; operator may add `ci_floor_parity` to branch protection.
+  ci_floor_parity:
+    if: github.event.pull_request.draft != true
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 60
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts) -- NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step -- so we gate in two stages. (1) the socket's
+        # PARENT DIR must be writable (runner provisions it ghrunner:ghrunner 0755,
+        # ctrl#1419); a missing/unwritable dir -> cold build. (2) actively
+        # health-probe the server: `--start-server` is idempotent (no-op if up,
+        # else starts + WARMS it) and `--show-stats` forces the SAME client->server
+        # round-trip the compile will use. Why (2): the dir test only proves sccache
+        # COULD start, not that the server is reachable -- a lazily-started server
+        # from a prior job can be mid-idle-shutdown exactly as this job's first
+        # `rustc -vV` connects, failing the build HARD with "failed to read response
+        # header" (observed 2026-06-04, run 26985377093). Probing here catches a
+        # sick/unreachable server and degrades to a cold build (::warning) instead
+        # of a hard mid-build failure. The `&&` chain runs in an `if` condition, so
+        # a probe failure under `set -e` selects the cold branch, never aborts.
+        # Fails SAFE at every stage; dissolve-on-arrival (real fix: the modeled cache_interface projection, dsl/std/cache_interface.dag).
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      # Shared-$HOME self-hosted runners: rustup-init's default modify-path appends
+      # `. "$CARGO_HOME/env"` to ~/.bashrc and ~/.profile. With CARGO_HOME isolated to the
+      # per-job $RUNNER_TEMP (step above), that path is wiped post-job, leaving a dangling source
+      # line that errors on every interactive login and accumulates one per runner slot. Scope HOME
+      # to throwaway $RUNNER_TEMP for just this step so those writes never touch the real shared
+      # $HOME (the git-auth scrub step runs under the real HOME and is unaffected).
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (ci floor)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc binary (v4 floor)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        path: target/release/gunbc
+        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 floor)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    # `--release` is load-bearing here, not cosmetic: the build step above (or the restored target/
+    # from the Cargo cache) must provide release-profile v2-compiler artifacts. A debug `cargo test`
+    # lives in a different profile dir (target/debug vs target/release) and shares ZERO artifacts,
+    # so it re-compiles the whole v2-compiler closure from scratch (~64s/run, measured run 27021002250
+    # step 11: 69s total, of which the test itself is 0.01s). Running the parity test in release
+    # makes the "shared closure" real -- it reuses release v2-compiler from cache/build and only
+    # compiles the small v2-compiler-tests crate (~5s). The receipt is profile-invariant (emit
+    # parity, no debug_assert-dependent behavior), so this is observationally invisible +
+    # fail-closed (RR-L).
     - name: v2 DAG emit parity receipt (shared closure)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
@@ -381,8 +470,8 @@ jobs:
   # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
   # them only added wall-clock. This job needs only the `gunbc` binary (restored from the shared
   # gunbc-bin cache, or cold-built on miss); it does NOT run stage0/parity. Required on every
-  # non-draft PR -- branch protection must add `ci_floor_emit` as a required check alongside
-  # `ci_floor`. Authority/plan: gunb-ai/ctrl#1458 (Phase 3).
+  # non-draft PR -- branch protection references `ci_floor_emit` by name (unchanged).
+  # Authority/plan: gunb-ai/ctrl#1458 (Phase 3).
   ci_floor_emit:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
@@ -474,10 +563,12 @@ jobs:
         V4_M1_DAG_EMIT_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
         V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash .github/ci-floor/v4-m1-rust-emit-probe.sh
-  # Real lens-analysis CI gate. Each wired row is a Bool witness run through
-  # `gunbc run --claim-run`, then perturbed to `false` in a temp source-root so
-  # the row proves red-under-mutation before CI treats the green as coverage.
-  v4_lens_ci:
+  # Real lens-analysis CI gate (parallel lane). Each wired row is a Bool witness run through
+  # `gunbc run --claim-run`, then perturbed to `false` in a temp source-root so the row proves
+  # red-under-mutation before CI treats the green as coverage. Split out of `v4_lens_ci` so the
+  # lens gate (~39s) runs CONCURRENTLY with node-frontier witnesses (~253s) left in `v4_lens_ci`.
+  # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
+  v4_lens_gate:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
@@ -534,11 +625,68 @@ jobs:
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
+  # Affected-set node-frontier selection CI gate. Lens witnesses run CONCURRENTLY in `v4_lens_gate`;
+  # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
+  v4_lens_ci:
+    if: github.event.pull_request.draft != true
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 20
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ] \
+             && sccache --start-server >/dev/null 2>&1 \
+             && sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent, unwritable, or unreachable; building cold"
+        fi
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+      env:
+        HOME: ${{ runner.temp }}
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (v4 lens CI)
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc binary (v4 lens CI)
+      id: v4-v2-bin
+      uses: actions/cache@v5
+      with:
+        path: target/release/gunbc
+        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 lens CI)
+      if: steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: affected-set node-frontier selection must-pass discriminating witnesses
       run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
-    needs: [affected, ci_floor, ci_floor_emit, v4_lens_ci, infra_isolation, doc_refs, layering_imports]
+    needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, infra_isolation, doc_refs, layering_imports]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -553,12 +701,20 @@ jobs:
           echo "::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed."
           exit 1
         fi
+        if [[ "${{ needs.ci_floor_parity.result }}" != "success" ]]; then
+          echo "::error::ci_floor_parity job did not succeed (result=${{ needs.ci_floor_parity.result }}); ci aggregator fails closed."
+          exit 1
+        fi
         if [[ "${{ needs.ci_floor_emit.result }}" != "success" ]]; then
           echo "::error::ci_floor_emit job did not succeed (result=${{ needs.ci_floor_emit.result }}); ci aggregator fails closed."
           exit 1
         fi
+        if [[ "${{ needs.v4_lens_gate.result }}" != "success" ]]; then
+          echo "::error::v4_lens_gate job did not succeed (result=${{ needs.v4_lens_gate.result }}); v4 lens analysis coverage unverified -- ci aggregator fails closed."
+          exit 1
+        fi
         if [[ "${{ needs.v4_lens_ci.result }}" != "success" ]]; then
-          echo "::error::v4_lens_ci job did not succeed (result=${{ needs.v4_lens_ci.result }}); v4 lens analysis coverage unverified -- ci aggregator fails closed."
+          echo "::error::v4_lens_ci job did not succeed (result=${{ needs.v4_lens_ci.result }}); affected-set node-frontier coverage unverified -- ci aggregator fails closed."
           exit 1
         fi
         if [[ "${{ needs.infra_isolation.result }}" != "success" ]]; then
@@ -573,7 +729,7 @@ jobs:
           echo "::error::layering_imports gate did not succeed (result=${{ needs.layering_imports.result }}); std/ or extdeps/ has a wrong-direction compiler import -- ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness + DAG parity in ci_floor + M1 rust+dag emit in ci_floor_emit; v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor + DAG parity in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness + DAG parity) + ci_floor_emit (M1 rust+dag emit) + v4_lens_ci (discriminating v4 lens witnesses)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (discriminating v4 lens witnesses)"
