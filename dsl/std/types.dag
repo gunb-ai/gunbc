@@ -153,12 +153,13 @@ fn container_template_algebra(name: String) -> String? {
   map_get(container_template_algebra_rows, name)
 }
 
-// Ordered canonical container/algebra names (PascalCase).
-// Single authority for deterministic test generation — coercion.dag
-// imports this instead of maintaining a parallel list.
+// Ordered canonical parameterized-container/algebra names (PascalCase).
+// Single authority for deterministic test generation — coercion.dag imports
+// this instead of maintaining a parallel list. Consumers that need only
+// collection algebra surfaces must still filter through container_template_algebra.
 // Alphabetically sorted for fixed-point convergence.
 fn canonical_container_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "Map", "PartialFunction", "Set"]
+  ["BooleanAlgebra", "FreeMonoid", "List", "Map", "PartialFunction", "Set", "Witness"]
 }
 
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
