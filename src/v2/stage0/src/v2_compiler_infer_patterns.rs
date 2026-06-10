@@ -90,6 +90,7 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            binding_id: None,
         });
         let some_node = Rc::new(Node {
             name: "Some".to_string(),
@@ -110,6 +111,7 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            binding_id: None,
         });
         some_node
     }

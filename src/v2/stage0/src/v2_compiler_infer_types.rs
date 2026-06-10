@@ -76,6 +76,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        binding_id: None,
     })
 }
 
@@ -161,6 +162,7 @@ pub fn structural_carrier_template_name(
         canonical_template_name(
             Rc::new(Node {
                 name: n.name.clone(),
+                binding_id: Box::new(n.binding_id.clone()),
                 span: n.span.clone(),
                 ident_span: Some(kernel_span(n.name.clone())),
                 children: n.children.clone(),
@@ -273,6 +275,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
+                        binding_id: None,
                     }),
                     Rc::new(Node {
                         name: val_id.clone(),
@@ -295,6 +298,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
+                        binding_id: None,
                     }),
                 ]),
                 connective: Connective::NoConnective,
@@ -311,6 +315,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                binding_id: None,
             })),
             None => None,
         },
@@ -345,6 +350,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                binding_id: None,
             })]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -360,6 +366,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            binding_id: None,
         })),
         None => None,
     }
@@ -406,6 +413,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
                 message: msg.clone(),
             }),
             ident: None,
+            binding_id: None,
         })
     }
 }
@@ -442,6 +450,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    binding_id: None,
                 })]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -457,6 +466,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                binding_id: None,
             }),
             diagnostics: Rc::new(vec![]),
         }),
@@ -497,6 +507,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
+                            binding_id: None,
                         }),
                         Rc::new(Node {
                             name: val_name.clone(),
@@ -517,6 +528,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
+                            binding_id: None,
                         }),
                     ]),
                     connective: Connective::NoConnective,
@@ -533,6 +545,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    binding_id: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -572,6 +585,7 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        binding_id: None,
     })
 }
 
@@ -600,6 +614,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                binding_id: None,
             }),
             Rc::new(Node {
                 name: "second".to_string(),
@@ -620,6 +635,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                binding_id: None,
             }),
         ]),
         connective: Connective::Conj,
@@ -636,6 +652,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        binding_id: None,
     })
 }
 
@@ -659,6 +676,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        binding_id: None,
     })
 }
 
@@ -701,6 +719,7 @@ pub fn algebra_method_field(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            binding_id: None,
         })
     }
 }
@@ -729,6 +748,7 @@ pub fn enrich_base_with_fields(
         match_pattern: base.match_pattern.clone(),
         expr_data: base.expr_data.clone(),
         ident: None,
+        binding_id: None,
     })
 }
 
@@ -1893,16 +1913,40 @@ pub fn node_type_compatible(
                                     if (left_opt.clone() || right_opt.clone()) {
                                         break false;
                                     } else {
-                                        break (authored_name_at(
-                                            source_indices.clone(),
-                                            left.clone(),
-                                        )
-                                        .as_str()
-                                            == authored_name_at(
-                                                source_indices.clone(),
-                                                right.clone(),
-                                            )
-                                            .as_str());
+                                        match left.binding_id.clone() {
+                                            Some(left_binding_id) => {
+                                                match right.binding_id.clone() {
+                                                    Some(right_binding_id) => {
+                                                        break (left_binding_id.clone()
+                                                            == right_binding_id.clone());
+                                                    }
+                                                    None => {
+                                                        break (authored_name_at(
+                                                            source_indices.clone(),
+                                                            left.clone(),
+                                                        )
+                                                        .as_str()
+                                                            == authored_name_at(
+                                                                source_indices.clone(),
+                                                                right.clone(),
+                                                            )
+                                                            .as_str());
+                                                    }
+                                                }
+                                            }
+                                            None => {
+                                                break (authored_name_at(
+                                                    source_indices.clone(),
+                                                    left.clone(),
+                                                )
+                                                .as_str()
+                                                    == authored_name_at(
+                                                        source_indices.clone(),
+                                                        right.clone(),
+                                                    )
+                                                    .as_str());
+                                            }
+                                        }
                                     }
                                 }
                             }

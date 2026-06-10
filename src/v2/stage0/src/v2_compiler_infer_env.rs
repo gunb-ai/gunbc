@@ -9,7 +9,7 @@ pub use crate::v2_std_core::{
     authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
     source_text_at,
 };
-pub use crate::v2_std_core::{InternTable, NewlineIndex, Node};
+pub use crate::v2_std_core::{BindingId, InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -19,6 +19,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
+    pub decl_registry: Rc<HashMap<BindingId, Rc<TypeDeclBinding>>>,
     pub recursive_types: Rc<Vec<i64>>,
     pub recursive_type_set: Rc<HashMap<i64, bool>>,
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
@@ -31,6 +32,38 @@ pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeDeclBinding {
+    pub binding_id: Box<BindingId>,
+    pub name: String,
+    pub resolved: Rc<Node>,
+    pub provenance: Rc<SubValueRelation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BindingIdAllocator {
+    pub next_id: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BindingIdAllocResult {
+    pub binding_id: Box<BindingId>,
+    pub allocator: BindingIdAllocator,
+}
+
+pub fn empty_binding_id_allocator() -> BindingIdAllocator {
+    BindingIdAllocator { next_id: 1 }
+}
+
+pub fn alloc_binding_id(allocator: BindingIdAllocator) -> Rc<BindingIdAllocResult> {
+    Rc::new(BindingIdAllocResult {
+        binding_id: Box::new(allocator.next_id.clone()),
+        allocator: BindingIdAllocator {
+            next_id: (allocator.next_id.clone() + 1),
+        },
+    })
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
@@ -217,6 +250,12 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
                 v2_rt::rc_map_merge(acc, env.bindings.clone())
             },
         );
+        let merged_decl_registry = envs.clone().iter().cloned().fold(
+            v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
+            |acc: Rc<HashMap<BindingId, Rc<TypeDeclBinding>>>, env: Rc<TypeEnv>| {
+                v2_rt::rc_map_merge(acc, env.decl_registry.clone())
+            },
+        );
         let merged_recursive = envs
             .clone()
             .iter()
@@ -248,6 +287,7 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
         };
         Rc::new(TypeEnv {
             bindings: merged_bindings,
+            decl_registry: merged_decl_registry,
             recursive_types: merged_recursive,
             recursive_type_set: merged_recursive_set,
             inductive_fields: merged_inductive_fields,

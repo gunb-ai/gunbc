@@ -225,6 +225,35 @@ type AccountId = Refined<String>
         .expect("Refined type binding");
     let string = lookup_type_by_name(module.type_env.clone(), "String".to_string())
         .expect("String type binding");
+    let user_binding_id = user_id
+        .binding_id
+        .expect("UserId must carry declaration binding_id");
+    let account_binding_id = account_id
+        .binding_id
+        .expect("AccountId must carry declaration binding_id");
+
+    assert_ne!(
+        user_binding_id, account_binding_id,
+        "brand twins must differ on binding_id, not only spelling or ident_span"
+    );
+    assert_eq!(
+        module
+            .type_env
+            .decl_registry
+            .get(&user_binding_id)
+            .expect("UserId binding id must be registered")
+            .name,
+        "UserId"
+    );
+    assert_eq!(
+        module
+            .type_env
+            .decl_registry
+            .get(&account_binding_id)
+            .expect("AccountId binding id must be registered")
+            .name,
+        "AccountId"
+    );
 
     assert_eq!(
         user_id, same_user_id,

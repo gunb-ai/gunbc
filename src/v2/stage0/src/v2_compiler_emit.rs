@@ -565,6 +565,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: Rc::new(TypeEnv {
             bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),

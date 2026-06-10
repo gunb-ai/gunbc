@@ -58,12 +58,13 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
+pub fn with_preserved_binding_id(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: structural.name.clone(),
         ident: structural.ident.clone(),
+        binding_id: Box::new(identity.binding_id.clone()),
         span: structural.span.clone(),
-        ident_span: identity.ident_span.clone(),
+        ident_span: structural.ident_span.clone(),
         children: structural.children.clone(),
         connective: structural.connective.clone(),
         params: structural.params.clone(),
@@ -87,12 +88,13 @@ pub fn preserve_nominal_brand_on_resolve(
     brand_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if (((brand_name.clone().as_str() != "".to_string().as_str())
+    if ((((identity.binding_id.clone() != None)
+        && (brand_name.clone().as_str() != "".to_string().as_str()))
         && (brand_name.clone().as_str()
             != authored_name_at(source_indices, structural.clone()).as_str()))
         && !is_declared_container_alias_spelling(brand_name.clone()))
     {
-        with_authored_identity(identity, structural.clone())
+        with_preserved_binding_id(identity.clone(), structural.clone())
     } else {
         structural.clone()
     }
@@ -131,12 +133,13 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                         .resolved
                         .clone()
                 };
-                if (((brand.clone().as_str() != "".to_string().as_str())
+                if ((((resolved.binding_id.clone() != None)
+                    && (brand.clone().as_str() != "".to_string().as_str()))
                     && (brand.clone().as_str()
                         != authored_name_at(source_indices.clone(), structural.clone()).as_str()))
                     && !is_declared_container_alias_spelling(brand.clone()))
                 {
-                    with_authored_identity(n.clone(), structural.clone())
+                    with_preserved_binding_id(resolved.clone(), structural.clone())
                 } else {
                     if (((resolved.connective.clone() == Connective::NoConnective)
                         && ((resolved.children.clone().len() as i64) == 0))
@@ -152,7 +155,11 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                                 )
                                 .resolved
                                 .clone();
-                                with_authored_identity(n.clone(), target_resolved)
+                                if (resolved.binding_id.clone() != None) {
+                                    with_preserved_binding_id(resolved.clone(), target_resolved)
+                                } else {
+                                    target_resolved
+                                }
                             }
                             _ => resolved.clone(),
                         }
@@ -326,6 +333,7 @@ pub fn substitute_type_slots(
                                         match_pattern: child.match_pattern.clone(),
                                         expr_data: child.expr_data.clone(),
                                         ident: None,
+                                        binding_id: None,
                                     })
                                 }
                             } else {
@@ -372,6 +380,7 @@ pub fn substitute_type_slots(
                     match_pattern: n.match_pattern.clone(),
                     expr_data: n.expr_data.clone(),
                     ident: None,
+                    binding_id: None,
                 })
             }
         }
@@ -492,6 +501,7 @@ pub fn resolve_nominal_alias_rhs(
                         has_non_tail_self_call: false,
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
+                        binding_id: None,
                     }),
                     diagnostics: v2_rt::concat(arg_diags, validation.diagnostics.clone()),
                 })
@@ -563,6 +573,7 @@ pub fn resolve_node_bounded(
                                         match_pattern: None,
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
+                                        binding_id: None,
                                     }),
                                     diagnostics: base_diags,
                                 })
@@ -622,6 +633,7 @@ pub fn resolve_node_bounded(
                                                     match_pattern: None,
                                                     expr_data: Rc::new(ExprData::NoExprData),
                                                     ident: None,
+                                                    binding_id: None,
                                                 }),
                                                 diagnostics: rt_diags.clone(),
                                             })
@@ -664,6 +676,7 @@ pub fn resolve_node_bounded(
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
+                                    binding_id: None,
                                 }),
                                 diagnostics: all_diags,
                             })
@@ -770,6 +783,7 @@ pub fn resolve_node_bounded(
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
+    binding_id: None,
 }),
     diagnostics: rt_diags.clone(),
 })
@@ -819,6 +833,7 @@ pub fn resolve_node_bounded(
                                                     match_pattern: None,
                                                     expr_data: Rc::new(ExprData::NoExprData),
                                                     ident: None,
+                                                    binding_id: None,
                                                 }),
                                                 diagnostics: field_diags.clone(),
                                             })
@@ -860,6 +875,7 @@ pub fn resolve_node_bounded(
                                         match_pattern: None,
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
+                                        binding_id: None,
                                     }),
                                     diagnostics: all_diags,
                                 })
@@ -1020,6 +1036,7 @@ pub fn resolve_node_bounded(
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
                                 ident: None,
+                                binding_id: None,
                             });
                             let resolved_node = Rc::new(Node {
                                 name: type_name.clone(),
@@ -1042,6 +1059,7 @@ pub fn resolve_node_bounded(
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
                                 ident: None,
+                                binding_id: None,
                             });
                             Rc::new(NodeResolveResult {
                                 resolved: resolved_node,
@@ -1086,6 +1104,7 @@ pub fn resolve_node_bounded(
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
                                 ident: None,
+                                binding_id: None,
                             });
                             let result = Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
@@ -1109,6 +1128,7 @@ pub fn resolve_node_bounded(
                                     match_pattern: n.match_pattern.clone(),
                                     expr_data: n.expr_data.clone(),
                                     ident: None,
+                                    binding_id: None,
                                 }),
                                 diagnostics: v2_rt::concat(arity_diags, arg_diags),
                             });
@@ -1185,6 +1205,7 @@ pub fn resolve_node_bounded(
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
+                                binding_id: None,
                             });
                             let resolved_val_child = Rc::new(Node {
                                 name: val_param_name,
@@ -1207,6 +1228,7 @@ pub fn resolve_node_bounded(
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
+                                binding_id: None,
                             });
                             Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
@@ -1228,6 +1250,7 @@ pub fn resolve_node_bounded(
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
+                                    binding_id: None,
                                 }),
                                 diagnostics: v2_rt::concat(key_diags, val_diags),
                             })
@@ -1279,6 +1302,7 @@ pub fn resolve_node_bounded(
                                             match_pattern: None,
                                             expr_data: Rc::new(ExprData::NoExprData),
                                             ident: None,
+                                            binding_id: None,
                                         });
                                         Rc::new(NodeResolveResult {
                                             resolved: Rc::new(Node {
@@ -1300,6 +1324,7 @@ pub fn resolve_node_bounded(
                                                 match_pattern: None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
+                                                binding_id: None,
                                             }),
                                             diagnostics: el_diags,
                                         })
@@ -1345,8 +1370,15 @@ pub fn resolve_node_bounded(
                                             } else {
                                                 structurally_resolved
                                             };
+                                            let branded_resolved =
+                                                preserve_nominal_brand_on_resolve(
+                                                    resolved.clone(),
+                                                    final_resolved,
+                                                    authored_name(env.clone(), n.clone()),
+                                                    env.source_indices.clone(),
+                                                );
                                             Rc::new(NodeResolveResult {
-                                                resolved: final_resolved,
+                                                resolved: branded_resolved,
                                                 diagnostics: Rc::new(vec![]),
                                             })
                                         }
@@ -1494,6 +1526,7 @@ pub fn resolve_optional_node(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    binding_id: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -1571,6 +1604,7 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
                 match_pattern: authored_type.match_pattern.clone(),
                 expr_data: authored_type.expr_data.clone(),
                 ident: None,
+                binding_id: None,
             })
         } else {
             type_resolved.clone()
@@ -2900,10 +2934,12 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
+                                binding_id: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
                     ),
+                    decl_registry: e.decl_registry.clone(),
                     recursive_types: e.recursive_types.clone(),
                     recursive_type_set: e.recursive_type_set.clone(),
                     inductive_fields: e.inductive_fields.clone(),
@@ -3103,6 +3139,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
+                                binding_id: None,
                             }),
                             diagnostics: type_diags.clone(),
                         })
@@ -3159,6 +3196,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                                 match_pattern: None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
+                                                binding_id: None,
                                             }),
                                             diagnostics: type_diags.clone(),
                                         })
@@ -3200,6 +3238,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
+                                    binding_id: None,
                                 }),
                                 diagnostics: field_diags.clone(),
                             })
@@ -3255,6 +3294,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                binding_id: None,
             }),
             diagnostics: v2_rt::concat(
                 v2_rt::concat(

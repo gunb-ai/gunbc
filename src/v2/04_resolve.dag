@@ -492,7 +492,9 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           } else { resolved }
           let is_optional = n.return_cardinality == CardOptional
           let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
-          NodeResolveResult { resolved: final_resolved, diagnostics: [] }
+          let branded_resolved = preserve_nominal_brand_on_resolve(
+            identity: resolved, structural: final_resolved, brand_name: authored_name(env: env, node: n), source_indices: env.source_indices)
+          NodeResolveResult { resolved: branded_resolved, diagnostics: [] }
         None =>
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
@@ -963,6 +965,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
         resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Some { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         provenance: SubValueUnknown
       }),
+      decl_registry: e.decl_registry,
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,
       inductive_fields: e.inductive_fields,

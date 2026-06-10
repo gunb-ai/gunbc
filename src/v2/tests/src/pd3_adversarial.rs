@@ -78,6 +78,35 @@ fn caller(us: List<UserId>) -> Int {
     );
 }
 
+// Twin record declarations over the same structural field must stay distinct.
+#[test]
+fn adv_record_twins_must_reject() {
+    let source = r#"
+module pd3adv.record_twins
+
+type UserId {
+  value: String
+}
+type AccountId {
+  value: String
+}
+
+fn take_account(id: AccountId) -> String {
+  id.value
+}
+
+fn caller(uid: UserId) -> String {
+  take_account(uid)
+}
+"#;
+    let result = crate::helpers::compile_dag(source);
+    assert!(
+        has_type_mismatch(&result),
+        "PD-3 ADV: record twins must be rejected, got: {:?}",
+        crate::helpers::diagnostic_messages(&result)
+    );
+}
+
 // Twin where the value flows through a let-binding before the call.
 #[test]
 fn adv_brand_twin_via_let_must_reject() {
@@ -145,6 +174,28 @@ fn caller(xs: FreeMonoid<List<Int>>) -> Int {
     crate::helpers::assert_no_diagnostics(&result);
 }
 
+// Alias transparency must not hide a genuine element mismatch.
+#[test]
+fn adv_alias_with_element_mismatch_must_reject() {
+    let source = r#"
+module pd3adv.alias_element_mismatch
+
+fn take_list(xs: List<String>) -> Int {
+  0
+}
+
+fn caller(xs: FreeMonoid<Int>) -> Int {
+  take_list(xs)
+}
+"#;
+    let result = crate::helpers::compile_dag(source);
+    assert!(
+        has_type_mismatch(&result),
+        "PD-3 ADV: List/FreeMonoid alias must still reject element mismatch, got: {:?}",
+        crate::helpers::diagnostic_messages(&result)
+    );
+}
+
 // ── (3) OVER-REJECT same brand: UserId-for-UserId variants ──
 
 // Same brand in 2nd arg slot.
@@ -209,4 +260,26 @@ fn caller(s: String) -> Int {
 "#;
     let result = crate::helpers::compile_dag(source);
     crate::helpers::assert_no_diagnostics(&result);
+}
+
+// Plain unrelated types must still be rejected through the ordinary type gate.
+#[test]
+fn adv_plain_int_for_string_must_reject() {
+    let source = r#"
+module pd3adv.plain_bad
+
+fn take_str(s: String) -> Int {
+  0
+}
+
+fn caller(i: Int) -> Int {
+  take_str(i)
+}
+"#;
+    let result = crate::helpers::compile_dag(source);
+    assert!(
+        has_type_mismatch(&result),
+        "PD-3 ADV: plain Int for String must be rejected, got: {:?}",
+        crate::helpers::diagnostic_messages(&result)
+    );
 }
