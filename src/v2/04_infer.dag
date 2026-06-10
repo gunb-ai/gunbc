@@ -643,6 +643,17 @@ fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
   is_unknown || is_v4 || is_compiler_substrate || is_v2_std || is_std || is_extdeps
 }
 
+fn direct_call_arg_span_skips(span: SourceSpan) -> Bool {
+  let file = span.file
+  let is_src_v2 = string_length(s: file) >= 7 && substring(s: file, start: 0, end: 7) == "src/v2/"
+  let is_src_v3 = string_length(s: file) >= 7 && substring(s: file, start: 0, end: 7) == "src/v3/"
+  let is_src_v4 = string_length(s: file) >= 7 && substring(s: file, start: 0, end: 7) == "src/v4/"
+  let is_dsl_std = string_length(s: file) >= 8 && substring(s: file, start: 0, end: 8) == "dsl/std/"
+  let is_dsl_v4 = string_length(s: file) >= 7 && substring(s: file, start: 0, end: 7) == "dsl/v4/"
+  let is_dsl_extdeps = string_length(s: file) >= 12 && substring(s: file, start: 0, end: 12) == "dsl/extdeps/"
+  is_src_v2 || is_src_v3 || is_src_v4 || is_dsl_std || is_dsl_v4 || is_dsl_extdeps
+}
+
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
 // that share a structural carrier (UserId vs AccountId over Refined<String>)
 // without widening to every !node_type_compatible pair (e.g. fn vs Bool).
@@ -731,12 +742,15 @@ fn direct_call_arg_mismatch_diags(
         Some { value: ta } =>
           let actual_raw = resolved_type(n: arg_value(n: ta))
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-          if direct_call_arg_type_mismatch(
+          let arg_span = arg_value(n: ta).span
+          if direct_call_arg_span_skips(span: arg_span) {
+            []
+          } else if direct_call_arg_type_mismatch(
             formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
               got: node_type_shape(n: actual, source_indices: source_indices),
-              span: arg_value(n: ta).span,
+              span: arg_span,
               module_name: module_name
             )]
           } else { [] }

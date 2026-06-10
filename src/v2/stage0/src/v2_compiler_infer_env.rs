@@ -85,8 +85,8 @@ pub fn merge_decl_registry_state(
         ) {
             Some(binding) => match v2_rt::map_get(&acc.decl_registry.clone(), binding_id.clone()) {
                 Some(existing) => {
-                    if (existing.binding_key.clone() == binding.binding_key.clone())
-                        && (existing.name.clone().as_str() == binding.name.clone().as_str())
+                    if ((existing.binding_key.clone() == binding.binding_key.clone())
+                        && (existing.name.clone().as_str() == binding.name.clone().as_str()))
                     {
                         acc.clone()
                     } else {
