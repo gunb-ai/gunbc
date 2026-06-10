@@ -7,7 +7,6 @@ use self::ExpectedToken::*;
 use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
-use crate::v2_rt::Witness;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
@@ -21,6 +20,7 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
 pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::ParseError;

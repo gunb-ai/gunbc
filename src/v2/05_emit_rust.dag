@@ -213,7 +213,8 @@ fn rust_normalize_witness_type_text(rendered: String) -> String {
 }
 
 fn rust_witness_pattern_qualifier(scrut_type: String) -> String {
-  if string_contains(scrut_type, "v2_rt::Witness") {
+  let prefix = "v2_rt::Witness"
+  if string_length(s: scrut_type) >= string_length(s: prefix) && substring(s: scrut_type, start: 0, end: string_length(s: prefix)) == prefix {
     "v2_rt::Witness"
   } else {
     "Witness"
@@ -2480,6 +2481,7 @@ fn emit_prelude() -> String {
     "use std::collections::HashMap;\n",
     "use std::rc::Rc;\n",
     "use crate::v2_rt;\n",
+    "use crate::v2_rt::Witness;\n",
     "use crate::v2_rt::Witness::\{Holds, Violates\};")
   let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
   concat(use_line, "\n", wrapper_use)

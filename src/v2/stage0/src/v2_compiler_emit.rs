@@ -5,7 +5,6 @@ use self::BackendCapability::*;
 use self::ExprCategory::*;
 use self::FuncBodyShape::*;
 use self::TcoExprShape::*;
-use crate::v2_rt::Witness;
 pub use crate::generated_method_template_projection::{
     go_method_template_emit, python_method_template_emit, rust_method_template_emit,
 };
@@ -71,6 +70,7 @@ pub use crate::v2_compiler_languages::{
     VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::Cardinality::CardOptional;

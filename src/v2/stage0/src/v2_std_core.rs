@@ -9,7 +9,6 @@ use self::ExprData::*;
 use self::ExprErrorKind::*;
 use self::FieldAccessStyle::*;
 use self::FieldValueShape::*;
-use crate::v2_rt::Witness;
 use self::FunctionSizeEffect::*;
 use self::InferredNode::*;
 use self::MatchPattern::*;
@@ -39,6 +38,7 @@ pub use crate::std_types::{
 };
 pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
