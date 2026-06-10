@@ -47,6 +47,7 @@ import v4.std.integer_value_set {
   integer_value_set_contains,
   integer_value_set_strictly_contains,
   integer_value_set_field_extra,
+  integer_value_set_field_interval,
   integer_value_set_field_kind,
   integer_value_set_kind_interval,
   integer_value_set_kind_unbounded
