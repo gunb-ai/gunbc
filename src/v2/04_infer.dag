@@ -83,7 +83,7 @@ import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, TypeDeclBinding, TypeDeclAuthority, BindingIdAllocator,
   empty_binding_id_allocator, alloc_binding_id,
-  is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
+  is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, node_has_binding_id, merge_envs,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map
 }
@@ -769,11 +769,63 @@ fn direct_call_arg_decl_identity(n: Node, env: TypeEnv) -> Node {
   }
 }
 
+fn direct_call_node_binding(env: TypeEnv, n: Node) -> TypeBinding? {
+  match n.binding_id {
+    Present { value: binding_id } =>
+      match map_get(env.decl_registry, binding_id) {
+        Present { value: decl } =>
+          match map_get(env.bindings, decl.binding_key) {
+            Present { value: binding } =>
+              if node_has_binding_id(n: binding.resolved, binding_id: binding_id) {
+                Present { value: binding }
+              } else {
+                map_get(env.carrier_bindings, binding_id)
+              }
+            Absent => map_get(env.carrier_bindings, binding_id)
+          }
+        Absent => map_get(env.carrier_bindings, binding_id)
+      }
+    Absent => none
+  }
+}
+
+fn direct_call_bare_alias_target_name(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> String? {
+  let resolved = binding.resolved
+  if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.params |> count == 0 {
+    match resolved.inferred {
+      Present { value: Resolved { node: target } } =>
+        if target.connective == NoConnective && target.children |> count == 0 && target.params |> count == 0 {
+          Present { value: authored_name_at(source_indices: source_indices, node: target) }
+        } else { none }
+      _ => none
+    }
+  } else { none }
+}
+
+fn direct_call_transparent_alias_to(env: TypeEnv, alias_node: Node, target_name: String) -> Bool {
+  match direct_call_node_binding(env: env, n: alias_node) {
+    Present { value: binding } =>
+      match direct_call_bare_alias_target_name(binding: binding, source_indices: env.source_indices) {
+        Present { value: alias_target } => alias_target == target_name
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn direct_call_transparent_alias_pair(env: TypeEnv, left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let left_name = authored_name_at(source_indices: source_indices, node: left)
+  let right_name = authored_name_at(source_indices: source_indices, node: right)
+  direct_call_transparent_alias_to(env: env, alias_node: left, target_name: right_name)
+    || direct_call_transparent_alias_to(env: env, alias_node: right, target_name: left_name)
+}
+
 fn direct_call_decl_identity_mismatch(
   formal_identity: Node,
   actual_identity: Node,
   formal: Node,
   actual: Node,
+  env: TypeEnv,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   let formal_container = node_is_element_collection(n: formal, source_indices: source_indices)
@@ -784,6 +836,7 @@ fn direct_call_decl_identity_mismatch(
       match actual_identity.binding_id {
         Present { value: actual_binding_id } =>
           formal_binding_id != actual_binding_id && same_structural_carrier && !formal_container && !actual_container
+            && !direct_call_transparent_alias_pair(env: env, left: formal_identity, right: actual_identity, source_indices: source_indices)
         Absent => false
       }
     Absent => false
@@ -874,7 +927,7 @@ fn direct_call_product_field_names_match(formal: Node, actual: Node, source_indi
   )
 }
 
-fn direct_call_structural_pd3_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn direct_call_structural_pd3_mismatch(formal: Node, actual: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let same_structural_carrier = structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
   let both_declared_identity = formal.binding_id != none && actual.binding_id != none && same_structural_carrier
   let both_element_carriers = direct_call_element_collection_carrier(n: formal, source_indices: source_indices)
@@ -893,6 +946,7 @@ fn direct_call_structural_pd3_mismatch(formal: Node, actual: Node, source_indice
     && formal_child_count == actual_child_count
     && direct_call_product_field_names_match(formal: formal, actual: actual, source_indices: source_indices)
   (both_declared_identity || both_element_carriers || record_twin_carriers)
+    && !direct_call_transparent_alias_pair(env: env, left: formal, right: actual, source_indices: source_indices)
     && !node_type_compatible(left: formal, right: actual, source_indices: source_indices)
 }
 
@@ -908,7 +962,7 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
-    direct_call_structural_pd3_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    direct_call_structural_pd3_mismatch(formal: formal, actual: actual, env: type_env, source_indices: source_indices)
       || direct_call_plain_kernel_leaf_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
@@ -955,6 +1009,7 @@ fn direct_call_arg_mismatch_diags(
             actual_identity: actual_identity,
             formal: formal,
 	            actual: actual,
+            env: type_env,
 	            source_indices: source_indices
 	          ) || direct_call_arg_type_mismatch(
 	            formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
