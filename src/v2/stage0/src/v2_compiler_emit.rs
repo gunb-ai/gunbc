@@ -5,6 +5,7 @@ use self::BackendCapability::*;
 use self::ExprCategory::*;
 use self::FuncBodyShape::*;
 use self::TcoExprShape::*;
+use crate::v2_rt::Witness;
 pub use crate::generated_method_template_projection::{
     go_method_template_emit, python_method_template_emit, rust_method_template_emit,
 };
@@ -3847,10 +3848,10 @@ pub fn apply_bridge_method_overrides(
     overrides: Rc<HashMap<String, String>>,
 ) -> String {
     match v2_rt::lookup(&overrides, name.clone()) {
-        v2_rt::Witness::Holds {
+        Witness::Holds {
             value: replacement, ..
         } => replacement.clone(),
-        v2_rt::Witness::Violates { diagnostic: _, .. } => name.clone(),
+        Witness::Violates { diagnostic: _, .. } => name.clone(),
     }
 }
 

@@ -212,6 +212,14 @@ fn rust_normalize_witness_type_text(rendered: String) -> String {
   replace(rendered, "witness<", "v2_rt::Witness<")
 }
 
+fn rust_witness_pattern_qualifier(scrut_type: String) -> String {
+  if string_contains(scrut_type, "v2_rt::Witness") {
+    "v2_rt::Witness"
+  } else {
+    "Witness"
+  }
+}
+
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Present { value: TypeVariable { id: tv } } => tv
@@ -3569,7 +3577,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   } else {
     match resolved_parent {
       Present { value: parent } =>
-        if parent == "Witness" { concat("Witness::", rust_name) }
+        if parent == "Witness" { concat(rust_witness_pattern_qualifier(scrut_type: scrut_type), "::", rust_name) }
         else { concat(parent, "::", rust_name) }
       Absent => rust_name
     }
@@ -3796,7 +3804,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   } else {
     match resolved_parent {
       Present { value: parent } =>
-        if parent == "Witness" { concat("Witness::", rust_name) }
+        if parent == "Witness" { concat(rust_witness_pattern_qualifier(scrut_type: scrut_type), "::", rust_name) }
         else { concat(parent, "::", rust_name) }
       Absent => rust_name
     }
