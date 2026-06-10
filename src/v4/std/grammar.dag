@@ -227,6 +227,7 @@ data grammar_relation_emitted_conj_slot_missing: Symbol = ^grammar_relation_emit
 data grammar_relation_emitted_conj_slot_surplus: Symbol = ^grammar_relation_emitted_conj_slot_surplus
 data grammar_relation_emitted_not_conj: Symbol = ^grammar_relation_emitted_not_conj
 data grammar_relation_row_tokens_not_conj: Symbol = ^grammar_relation_row_tokens_not_conj
+data grammar_relation_row_backward_selection_mismatch: Symbol = ^grammar_relation_row_backward_selection_mismatch
 data grammar_root_start_production_node_projection: Symbol = ^grammar_root_start_production_node_projection
 data grammar_root_productions_node_projection: Symbol = ^grammar_root_productions_node_projection
 data grammar_root_sync_tokens_node_projection: Symbol = ^grammar_root_sync_tokens_node_projection
@@ -1276,27 +1277,27 @@ fn grammar_production_selection_predicate(direction: GrammarInterpretationDirect
   }
 }
 
-fn grammar_relation_row_slot_bijection_holds(
+fn grammar_relation_row_backward_selection(
   row: GrammarRelationRow,
   productions: List<FormalProduction>
-) -> Bool {
-  formal_production_rhs_matches_emitted_conj(
-    production: row.production,
-    productions: productions,
-    emitted: row.emitted
-  )
-}
-
-fn grammar_relation_row_backward_selection_holds(
-  row: GrammarRelationRow,
-  productions: List<FormalProduction>
-) -> Bool {
+) -> Witness<FormalProduction> {
   match formal_production_for_lhs_exact(
     productions: productions,
     lhs: row.production.lhs.identity,
     child: row.emitted
   ) {
-    Holds { value: selected } => selected == row.production
-    Violates { diagnostic: _ } => false
+    Holds { value: selected } =>
+      if selected == row.production {
+        Holds { value: selected }
+      } else {
+        Violates {
+          diagnostic: Diagnostic {
+            reason: grammar_relation_row_backward_selection_mismatch,
+            at: node_locus(node: row.emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
