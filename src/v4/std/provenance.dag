@@ -26,6 +26,7 @@ import v4.std.node {
   NodeFold,
   NodeSpan,
   SourceSpan,
+  Symbol,
   Unanchored,
   fold_node,
   merge_node_span_same_file,
