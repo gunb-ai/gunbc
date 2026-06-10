@@ -312,8 +312,8 @@ pub fn substitute_type_slots(
                                             .clone(),
                                         match_pattern: child.match_pattern.clone(),
                                         expr_data: child.expr_data.clone(),
-                                        binding_id: None,
                                         ident: None,
+                                        binding_id: None,
                                     })
                                 }
                             } else {
@@ -359,8 +359,8 @@ pub fn substitute_type_slots(
                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                     match_pattern: n.match_pattern.clone(),
                     expr_data: n.expr_data.clone(),
-                    binding_id: None,
                     ident: None,
+                    binding_id: None,
                 })
             }
         }
@@ -552,8 +552,8 @@ pub fn resolve_node_bounded(
                                         has_non_tail_self_call: false,
                                         match_pattern: None,
                                         expr_data: Rc::new(ExprData::NoExprData),
-                                        binding_id: None,
                                         ident: None,
+                                        binding_id: None,
                                     }),
                                     diagnostics: base_diags,
                                 })
@@ -612,8 +612,8 @@ pub fn resolve_node_bounded(
                                                     has_non_tail_self_call: false,
                                                     match_pattern: None,
                                                     expr_data: Rc::new(ExprData::NoExprData),
-                                                    binding_id: None,
                                                     ident: None,
+                                                    binding_id: None,
                                                 }),
                                                 diagnostics: rt_diags.clone(),
                                             })
@@ -655,8 +655,8 @@ pub fn resolve_node_bounded(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    binding_id: None,
                                     ident: None,
+                                    binding_id: None,
                                 }),
                                 diagnostics: all_diags,
                             })
@@ -762,8 +762,8 @@ pub fn resolve_node_bounded(
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    binding_id: None,
     ident: None,
+    binding_id: None,
 }),
     diagnostics: rt_diags.clone(),
 })
@@ -812,8 +812,8 @@ pub fn resolve_node_bounded(
                                                     has_non_tail_self_call: false,
                                                     match_pattern: None,
                                                     expr_data: Rc::new(ExprData::NoExprData),
-                                                    binding_id: None,
                                                     ident: None,
+                                                    binding_id: None,
                                                 }),
                                                 diagnostics: field_diags.clone(),
                                             })
@@ -854,8 +854,8 @@ pub fn resolve_node_bounded(
                                         has_non_tail_self_call: false,
                                         match_pattern: None,
                                         expr_data: Rc::new(ExprData::NoExprData),
-                                        binding_id: None,
                                         ident: None,
+                                        binding_id: None,
                                     }),
                                     diagnostics: all_diags,
                                 })
@@ -1015,8 +1015,8 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             });
                             let resolved_node = Rc::new(Node {
                                 name: type_name.clone(),
@@ -1038,8 +1038,8 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             });
                             Rc::new(NodeResolveResult {
                                 resolved: resolved_node,
@@ -1083,8 +1083,8 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             });
                             let result = Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
@@ -1107,8 +1107,8 @@ pub fn resolve_node_bounded(
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                     match_pattern: n.match_pattern.clone(),
                                     expr_data: n.expr_data.clone(),
-                                    binding_id: None,
                                     ident: None,
+                                    binding_id: None,
                                 }),
                                 diagnostics: v2_rt::concat(arity_diags, arg_diags),
                             });
@@ -1184,8 +1184,8 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             });
                             let resolved_val_child = Rc::new(Node {
                                 name: val_param_name,
@@ -1207,8 +1207,8 @@ pub fn resolve_node_bounded(
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             });
                             Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
@@ -1229,8 +1229,8 @@ pub fn resolve_node_bounded(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    binding_id: None,
                                     ident: None,
+                                    binding_id: None,
                                 }),
                                 diagnostics: v2_rt::concat(key_diags, val_diags),
                             })
@@ -1281,8 +1281,8 @@ pub fn resolve_node_bounded(
                                             has_non_tail_self_call: false,
                                             match_pattern: None,
                                             expr_data: Rc::new(ExprData::NoExprData),
-                                            binding_id: None,
                                             ident: None,
+                                            binding_id: None,
                                         });
                                         Rc::new(NodeResolveResult {
                                             resolved: Rc::new(Node {
@@ -1303,8 +1303,8 @@ pub fn resolve_node_bounded(
                                                 has_non_tail_self_call: false,
                                                 match_pattern: None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
-                                                binding_id: None,
                                                 ident: None,
+                                                binding_id: None,
                                             }),
                                             diagnostics: el_diags,
                                         })
@@ -1505,8 +1505,8 @@ pub fn resolve_optional_node(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    binding_id: None,
                     ident: None,
+                    binding_id: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -1583,8 +1583,8 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
                 has_non_tail_self_call: authored_type.has_non_tail_self_call.clone(),
                 match_pattern: authored_type.match_pattern.clone(),
                 expr_data: authored_type.expr_data.clone(),
-                binding_id: None,
                 ident: None,
+                binding_id: None,
             })
         } else {
             type_resolved.clone()
@@ -2913,8 +2913,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
@@ -3119,8 +3119,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             }),
                             diagnostics: type_diags.clone(),
                         })
@@ -3176,8 +3176,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                                 has_non_tail_self_call: false,
                                                 match_pattern: None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
-                                                binding_id: None,
                                                 ident: None,
+                                                binding_id: None,
                                             }),
                                             diagnostics: type_diags.clone(),
                                         })
@@ -3218,8 +3218,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    binding_id: None,
                                     ident: None,
+                                    binding_id: None,
                                 }),
                                 diagnostics: field_diags.clone(),
                             })
@@ -3274,8 +3274,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                binding_id: None,
                 ident: None,
+                binding_id: None,
             }),
             diagnostics: v2_rt::concat(
                 v2_rt::concat(
