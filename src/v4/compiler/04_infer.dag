@@ -10,11 +10,9 @@ import v4.std.algebra {
   BoundedLatticeMissingWitness,
   BoundedLatticeComplete,
   BoundedLatticePartial,
-  Cons,
-  Empty,
-  FreeMonoid,
   NotBoundedLatticeInstance,
   algebra_edge,
+  any,
   boolean_algebra_field_bounded_lattice,
   inhabitant_edge,
   lattice_field_join,
@@ -190,16 +188,8 @@ fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
 }
 
 // Algebra-use edges only — module/containment declaration siblings are not consumption.
-fn node_list_contains(xs: FreeMonoid<Node>, item: Node) -> Bool {
-  match xs {
-    Empty => false
-    Cons { head: current, tail: rest } =>
-      current == item || node_list_contains(xs: rest, item: item)
-  }
-}
-
-fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: FreeMonoid<Node>) -> Bool {
-  if node_list_contains(xs: partials, item: edge.target) {
+fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>) -> Bool {
+  if any(xs: partials, predicate: fn(p) { edge.target == p }) {
     match edge.label {
       Named { name: sym } =>
         sym == algebra_edge
@@ -264,22 +254,16 @@ fn infer_partial_bounded_lattice_instances_fold_init(n: Node) -> List<Node> {
 }
 
 fn infer_partial_bounded_lattice_instances_fold_step(
-  acc: FreeMonoid<Node>,
+  acc: List<Node>,
   e: Edge,
-  child: FreeMonoid<Node>,
-) -> FreeMonoid<Node> {
-  append_node_list(acc: acc, xs: child)
+  child: List<Node>,
+) -> List<Node> {
+  fold(child, init: acc, f: fn(a, p) {
+    list_snoc_item(xs: a, item: p)
+  })
 }
 
-fn append_node_list(acc: FreeMonoid<Node>, xs: FreeMonoid<Node>) -> FreeMonoid<Node> {
-  match xs {
-    Empty => acc
-    Cons { head: item, tail: rest } =>
-      append_node_list(acc: list_snoc_item(xs: acc, item: item), xs: rest)
-  }
-}
-
-fn partial_bounded_lattice_instances_in_tree(tree: Node) -> List<Node> {
+fn partial_bounded_lattice_instances_in_tree(tree: ResolvedTree) -> List<Node> {
   fold_node(
     n: tree,
     algebra: NodeFold {
@@ -373,14 +357,12 @@ fn empty_inferred_facts_entry_list() -> List<InferredFactsEntry> {
 }
 
 fn concat_inferred_facts_entries(
-  a: FreeMonoid<InferredFactsEntry>,
-  b: FreeMonoid<InferredFactsEntry>,
-) -> FreeMonoid<InferredFactsEntry> {
-  match b {
-    Empty => a
-    Cons { head: entry, tail: rest } =>
-      concat_inferred_facts_entries(a: list_snoc_item(xs: a, item: entry), b: rest)
-  }
+  a: List<InferredFactsEntry>,
+  b: List<InferredFactsEntry>,
+) -> List<InferredFactsEntry> {
+  fold(b, init: a, f: fn(acc, entry) {
+    list_snoc_item(xs: acc, item: entry)
+  })
 }
 
 fn infer_constraint_graph(n: Node) -> ConstraintGraph {
@@ -550,7 +532,7 @@ fn infer_entries_fold_step(
   }
 }
 
-fn infer_entries_for_tree(tree: Node) -> Outcome<List<InferredFactsEntry>> {
+fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
   fold_node(
     n: tree,
@@ -565,7 +547,7 @@ fn infer_entries_for_tree(tree: Node) -> Outcome<List<InferredFactsEntry>> {
   )
 }
 
-fn infer(tree: Node) -> Outcome<InferredTree> {
+fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
   match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
