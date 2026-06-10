@@ -38,6 +38,7 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   Outcome,
   Rejected,
   Unavailable,
@@ -79,6 +80,7 @@ import v4.std.node {
   connective_edge_discipline,
   content_hash,
   fold_node,
+  name_occurrences,
   Unanchored
 }
 import v4.std.witness { StructuralPropertyWitness }
@@ -330,6 +332,7 @@ data target_value_expr_field_binding: Symbol = target_value_expr_field_binding
 data target_value_expr_field_open: Symbol = target_value_expr_field_open
 data target_value_expr_field_close: Symbol = target_value_expr_field_close
 data target_value_expr_field_separator: Symbol = target_value_expr_field_separator
+data target_value_expr_operand_wire_malformed: Symbol = target_value_expr_operand_wire_malformed
 
 data target_operator_realization_field_operation: Symbol = target_operator_realization_field_operation
 data target_operator_realization_field_shape: Symbol = target_operator_realization_field_shape
@@ -780,32 +783,34 @@ fn target_bodied_arrow_compose_statement_tokens(
   )
 }
 
-fn wire_conj_named_optional_child(parent: Node, edge_name: Symbol) -> Optional<Node> {
+fn wire_conj_named_binding_field_absent(parent: Node) -> Outcome<None> {
   match parent.kind {
     TypeNode { connective: Conj } =>
-      match fold(
-        parent.children,
-        init: Absent,
-        f: fn(acc, e) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match e.label {
-                Named { name: n } =>
-                  if n == edge_name {
-                    optional_present(value: e.target)
-                  } else {
-                    acc
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        opt => opt
+      if name_occurrences(
+        name: concrete_syntax_token_field_binding,
+        children: parent.children
+      ) == 0 {
+        outcome_accepted(None)
+      } else {
+        outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
       }
-    _ => optional_absent()
+    _ =>
+      outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
   }
+}
+
+fn wire_conj_named_binding_atom(parent: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: find_named_child(root: parent, name: concrete_syntax_token_field_binding),
+    f: fn(binding_node) {
+      match binding_node.kind {
+        TypeNode { connective: Atom { identity: binding } } =>
+          outcome_accepted(binding)
+        _ =>
+          outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
+      }
+    }
+  )
 }
 
 fn concrete_syntax_token_wire_malformed_diagnostic(token: Node) -> Diagnostic {
@@ -826,44 +831,27 @@ fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxTo
           match kind_node.kind {
             TypeNode { connective: Atom { identity: kind } } =>
               if kind == concrete_syntax_token_kind_fixed {
-                match wire_conj_named_optional_child(
-                  parent: token,
-                  edge_name: concrete_syntax_token_field_binding
-                ) {
-                  Present { value: _ } =>
-                    outcome_rejected(
-                      concrete_syntax_token_wire_malformed_diagnostic(token: token)
-                    )
-                  Absent =>
+                bind_outcome(
+                  o: wire_conj_named_binding_field_absent(parent: token),
+                  f: fn(_) {
                     outcome_accepted(
                       FixedToken { token_class: token_class }
                     )
-                }
+                  }
+                )
               } else {
                 if kind == concrete_syntax_token_kind_bound {
-                  match wire_conj_named_optional_child(
-                    parent: token,
-                    edge_name: concrete_syntax_token_field_binding
-                  ) {
-                    Present { value: binding_node } =>
-                      match binding_node.kind {
-                        TypeNode { connective: Atom { identity: binding } } =>
-                          outcome_accepted(
-                            BoundToken {
-                              token_class: token_class,
-                              binding: binding
-                            }
-                          )
-                        _ =>
-                          outcome_rejected(
-                            concrete_syntax_token_wire_malformed_diagnostic(token: token)
-                          )
-                      }
-                    Absent =>
-                      outcome_rejected(
-                        concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                  bind_outcome(
+                    o: wire_conj_named_binding_atom(parent: token),
+                    f: fn(binding) {
+                      outcome_accepted(
+                        BoundToken {
+                          token_class: token_class,
+                          binding: binding
+                        }
                       )
-                  }
+                    }
+                  )
                 } else {
                   outcome_rejected(
                     concrete_syntax_token_wire_malformed_diagnostic(token: token)
@@ -1337,12 +1325,10 @@ fn target_value_expression_binding_ref(binding: Symbol) -> TargetValueExpression
       children: [
         target_model_named_edge(
           name: target_value_expr_field_binding,
-          target: Node {
-            kind: TypeNode { connective: Atom { identity: binding } },
-            children: []
-          }
+          target: target_model_type_atom_node(identity: binding)
         )
-      ]
+      ],
+      span: Unanchored
     }
   }
 }
@@ -1365,57 +1351,65 @@ fn target_value_expr_primitive_apply_operand_edges(
   )
 }
 
-fn target_value_expr_operand_wire_binding(operand_wire: Node) -> Optional<Symbol> {
+fn target_value_expr_operand_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_expr_operand_wire_malformed,
+    at: node_locus(node: wire),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_value_expr_operand_wire_binding(operand_wire: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: find_named_child(root: operand_wire, name: target_value_expr_field_binding),
+    f: fn(binding_node) {
+      match binding_node.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          outcome_accepted(id)
+        _ =>
+          outcome_rejected(
+            target_value_expr_operand_wire_malformed_diagnostic(wire: operand_wire)
+          )
+      }
+    }
+  )
+}
+
+fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
   match fold(
-    operand_wire.children,
-    init: optional_absent(),
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
     f: fn(acc, edge) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        Rejected { diagnostics: r } => acc
+        Accepted { value: bindings, diagnostics: d } =>
           match edge.label {
             Named { name: n } =>
-              if n == target_value_expr_field_binding {
-                match edge.target.kind {
-                  TypeNode { connective: Atom { identity: id } } =>
-                    optional_present(value: id)
-                  _ => acc
-                }
-              } else {
+              if n == target_value_expr_field_operation {
                 acc
+              } else if n == target_value_expr_field_operand {
+                bind_outcome(
+                  o: target_value_expr_operand_wire_binding(operand_wire: edge.target),
+                  f: fn(binding) {
+                    outcome_accepted(
+                      list_snoc_item(xs: bindings, item: binding)
+                    )
+                  }
+                )
+              } else {
+                outcome_rejected(
+                  target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                )
               }
             Positional => acc
           }
       }
     }
   ) {
-    Present { value: binding } => optional_present(value: binding)
-    Absent => optional_absent()
+    Accepted { value: bindings, diagnostics: d } =>
+      Accepted { value: bindings, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
-}
-
-fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
-  outcome_accepted(
-    fold(
-      wire.children,
-      init: Empty,
-      f: fn(acc, edge) {
-        match edge.label {
-          Named { name: n } =>
-            if n == target_value_expr_field_operand {
-              match target_value_expr_operand_wire_binding(operand_wire: edge.target) {
-                Present { value: binding } =>
-                  list_snoc_item(xs: acc, item: binding)
-                Absent => acc
-              }
-            } else {
-              acc
-            }
-          Positional => acc
-        }
-      }
-    )
-  )
 }
 
 fn target_value_expression_primitive_apply(

@@ -22,7 +22,6 @@ import v4.extdeps.languages.typescript {
   ts_inhabitant_number_node,
   ts_lex_rule,
   ts_mvp1_binding_spellings,
-  ts_mvp1_bodied_arrow_statement_scaffold,
   ts_mvp1_declared_inhabitants_root,
   ts_mvp1_selection_policy_node,
   ts_mvp1_serialize_source_node,
@@ -42,9 +41,7 @@ import v4.std.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v4.std.target_model {
   InfixToken,
   TargetModel,
-  bodied_arrow_statement_scaffold_bundle_node,
   canonical_operation_op_add,
-  target_model_edge_bodied_arrow_statement_scaffold,
   target_model_edge_declared_inhabitants,
   target_model_edge_operator_realizations,
   target_model_edge_selection_policy,
@@ -213,12 +210,6 @@ fn comprep_ts_target_model_bundle(operator_catalog: Node) -> Node {
       comprep_ts_named_edge(
         name: target_model_edge_operator_realizations,
         target: operator_catalog
-      ),
-      comprep_ts_named_edge(
-        name: target_model_edge_bodied_arrow_statement_scaffold,
-        target: bodied_arrow_statement_scaffold_bundle_node(
-          scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
-        )
       )
     ]
   )

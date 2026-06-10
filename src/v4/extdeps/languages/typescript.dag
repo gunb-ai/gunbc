@@ -174,8 +174,7 @@ import v4.std.target_model {
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
-  bodied_arrow_statement_scaffold_bundle_node,
-  target_model_edge_bodied_arrow_statement_scaffold,
+  grammar_relation_row_attach_bodied_scaffold,
   target_model_edge_operator_realizations,
   target_model_edge_value_expression_projection,
   target_operator_realization_node,
@@ -1337,7 +1336,10 @@ fn ts_mvp1_translation_rules_node() -> Node {
       ),
       ts_named_edge(
         name: ts_relation_rule_mvp1_fn_add_with_body,
-        target: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row_with_body())
+        target: grammar_relation_row_attach_bodied_scaffold(
+          row: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row_with_body()),
+          scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
+        )
       )
     ],
     span: Unanchored
@@ -1396,12 +1398,6 @@ fn ts_mvp1_target_model_node() -> Node {
       ts_named_edge(
         name: target_model_edge_operator_realizations,
         target: ts_operator_realizations_catalog_node()
-      ),
-      ts_named_edge(
-        name: target_model_edge_bodied_arrow_statement_scaffold,
-        target: bodied_arrow_statement_scaffold_bundle_node(
-          scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
-        )
       )
     ],
     span: Unanchored
