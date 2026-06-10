@@ -805,7 +805,7 @@ mod tests {
             "function add(x: number, y: number): number { return x - y; }"
         ));
         assert!(!typescript_uses_mvp1_add_execute_harness(
-            "function add(x: number, y: number): number { return x + y; }"
+            "function add(x: number, y: number): number { return x + y }"
         ));
     }
 
@@ -820,20 +820,10 @@ mod tests {
         let inputs = EmitHostTransportInputs {
             claim_input_root: "mvp1_ts_add_claim_input".into(),
         };
-        let receipt = run_emit_host_typescript(
-            EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN,
-            &inputs,
-            &work_dir,
-        )
-        .expect("run_emit_host_typescript");
+        let receipt =
+            run_emit_host_typescript(EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN, &inputs, &work_dir)
+                .expect("run_emit_host_typescript");
         assert!(receipt.exit.exit_holds(), "mvp1 add-fn must exit 0 on Node");
         runtime_value_parse_typescript(&receipt.stdout_bytes).expect("MVP-2 stdout");
-    }
-
-    #[test]
-    fn typescript_non_authority_pin_skips_execute_harness() {
-        assert!(!typescript_uses_mvp1_add_execute_harness(
-            "function add(x: number, y: number): number { return x - y; }"
-        ));
     }
 }

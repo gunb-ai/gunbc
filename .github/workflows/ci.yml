@@ -563,6 +563,11 @@ jobs:
         V4_M1_DAG_EMIT_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
         V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash .github/ci-floor/v4-m1-rust-emit-probe.sh
+    - name: MVP1 v4 typescript emit-host probe (emit_host_runner tsc + Node)
+      timeout-minutes: 15
+      env:
+        V4_MVP1_TS_EMIT_HOST_OUT: ${{ runner.temp }}/v4-ts-emit-host-probe
+      run: bash .github/ci-floor/v4-mvp1-typescript-emit-host-probe.sh
   # Real lens-analysis CI gate (parallel lane). Each wired row is a Bool witness run through
   # `gunbc run --claim-run`, then perturbed to `false` in a temp source-root so the row proves
   # red-under-mutation before CI treats the green as coverage. Split out of `v4_lens_ci` so the
