@@ -59,13 +59,19 @@ provenance needs **occurrence** identity, which structure by definition doesn't 
 
 Copy the brand-channel playbook for the provenance axis:
 
-- `Node` gains one field: an opaque **occurrence id** (allocator-issued at parse, like
-  `BindingIdAllocator`; absent/zero only for synthesized nodes pending §4.3). The id is the
-  *anchor*, not the data.
-- A per-compile **SpanIndex** carries the data: occurrence id → `Locus`
-  (`Textual { file, ByteRange }`), built where the T-8 marker sits — the parse terminal
-  boundary stamps ids and records `tok.file/start/end` into the index instead of dropping
-  them; interior nodes record the hull of their children's extents.
+- `Node` gains one field: an opaque **occurrence id** (allocator-issued at the producing
+  boundary, like `BindingIdAllocator`). The id is the *anchor*, not the data. **Every**
+  node carries one — there is no legitimate absent/zero state: a producer that creates a
+  node without stamping id + origin event is defective, fail-closed at that stage's own
+  receipt (§4.5 totality). Synthesized nodes are not an exception — they get a fresh id
+  with a `DerivedBy`/`GeneratedBy` event (§4.3).
+- A per-compile **SpanIndex** carries the data: occurrence id → **`OriginEvent`** (§4.5).
+  `FromSource { locus: Locus }` is the wave-1 variant — the `Locus`
+  (`Textual { file, ByteRange }`) lives *inside* the event, so the diagnostic.dag carrier
+  is still the span representation, but the index value is the origin event. Built where
+  the T-8 marker sits — the parse terminal boundary stamps ids and records
+  `FromSource` with `tok.file/start/end` instead of dropping them; interior nodes record
+  the hull of their children's extents.
 - **One equality rule, stated once:** occurrence ids do not participate in structural
   equality or content hashing — declared in the Node-field policy table at
   [`design-node-identity-channels.md`](design-node-identity-channels.md) (the single owner
