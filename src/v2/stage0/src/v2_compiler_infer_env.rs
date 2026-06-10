@@ -159,21 +159,33 @@ pub fn lookup_carrier_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<No
     }
 }
 
+pub fn lookup_binding_id_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
+    match node.binding_id.clone() {
+        Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id) {
+            Some(decl) => match lookup_type(env.clone(), decl.binding_key.clone()) {
+                Some(resolved) => Some(resolved),
+                None => lookup_carrier_type_for(env, node),
+            },
+            None => lookup_carrier_type_for(env, node),
+        },
+        None => None,
+    }
+}
+
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
     authored_name_at(env.source_indices.clone(), node)
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
-    let visible = match node.ident.clone() {
-        Some(id) => match lookup_type(env.clone(), id.clone()) {
-            Some(resolved) => Some(resolved),
+    match node.binding_id.clone() {
+        Some(_) => lookup_binding_id_type_for(env, node),
+        None => match node.ident.clone() {
+            Some(id) => match lookup_type(env.clone(), id.clone()) {
+                Some(resolved) => Some(resolved),
+                None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
+            },
             None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
         },
-        None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
-    };
-    match visible {
-        Some(resolved) => Some(resolved),
-        None => lookup_carrier_type_for(env, node),
     }
 }
 

@@ -133,22 +133,37 @@ fn lookup_carrier_type_for(env: TypeEnv, node: Node) -> Node? {
   }
 }
 
+fn lookup_binding_id_type_for(env: TypeEnv, node: Node) -> Node? {
+  match node.binding_id {
+    Some { value: binding_id } =>
+      match map_get(env.decl_registry, binding_id) {
+        Some { value: decl } =>
+          match lookup_type(env: env, ident: decl.binding_key) {
+            Some { value: resolved } => Some { value: resolved }
+            None => lookup_carrier_type_for(env: env, node: node)
+          }
+        None => lookup_carrier_type_for(env: env, node: node)
+      }
+    None => none
+  }
+}
+
 fn authored_name(env: TypeEnv, node: Node) -> String {
   authored_name_at(source_indices: env.source_indices, node: node)
 }
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
-  let visible = match node.ident {
-    Some { value: id } =>
-      match lookup_type(env: env, ident: id) {
-        Some { value: resolved } => Some { value: resolved }
+  match node.binding_id {
+    Some { value: _ } => lookup_binding_id_type_for(env: env, node: node)
+    None =>
+      match node.ident {
+        Some { value: id } =>
+          match lookup_type(env: env, ident: id) {
+            Some { value: resolved } => Some { value: resolved }
+            None => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
+          }
         None => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
       }
-    None => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
-  }
-  match visible {
-    Some { value: resolved } => Some { value: resolved }
-    None => lookup_carrier_type_for(env: env, node: node)
   }
 }
 

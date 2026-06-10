@@ -673,10 +673,10 @@ fn direct_call_arg_decl_identity(n: Node, env: TypeEnv) -> Node {
     None =>
       match lookup_type_for(env: env, node: n) {
         Some { value: resolved } =>
-          if n.return_cardinality == CardOptional {
-            with_optional_cardinality(n: resolved)
-          } else {
-            resolved
+          let resolved_with_cardinality = with_optional_cardinality(n: resolved)
+          match n.return_cardinality {
+            CardOptional => resolved_with_cardinality
+            _ => resolved
           }
         None => n
       }
