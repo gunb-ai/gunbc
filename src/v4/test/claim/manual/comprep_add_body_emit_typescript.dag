@@ -1,6 +1,9 @@
 // src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag
-// Scope: T6 skeleton — real Arrow.body → translated TS → add(2,3)=5 vetting consumer (#4623).
-// Status: bodied add-fn emit via value-expression projection (producer-rooted, not fixture).
+// Scope: T6 skeleton — real Arrow.body → translated TS **emit source** vetting consumer (#4623).
+// Status: emit-only receipt (INVARIANTS E-10): witnesses assert `emit(...)` source text and
+//   discriminating mutates; they do NOT execute TypeScript on Node. Runtime add(2,3)=5 for the
+//   produced DAG body is `comprep_eval_by_execution.dag`; Node exercise of emitted TS awaits
+//   emit-host wiring (see `.github/ci-floor/v4-m0-ts-emit-probe.sh` gap receipt).
 
 module v4.test.claim.manual.comprep_add_body_emit_typescript
 
@@ -475,6 +478,8 @@ fn anchor_comprep_ts_bodied_emit_accepts() -> Outcome<TargetSource> {
 
 data comprep_ts_bodied_emit_receipt: Outcome<TargetSource> = anchor_comprep_ts_bodied_emit_accepts()
 
+// E-10 emit-only green: producer-rooted bodied arrow renders the fidelity TS source string.
+// Not an execution consumer — no Node/tsc run; wrong emitted spelling fails this witness.
 fn comprep_ts_bodied_emit_add_fn_accepts_holds() -> Bool {
   match comprep_ts_bodied_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
@@ -513,6 +518,7 @@ fn comprep_ts_bodied_emit_missing_catalog_rejects() -> Bool {
   }
 }
 
+// Glob-discovered emit-source consumer for #4623 §4.5 (operand-swap / catalog-minus / missing-catalog reds co-located).
 data unified_claim_comprep_ts_bodied_emit_add_fn: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
