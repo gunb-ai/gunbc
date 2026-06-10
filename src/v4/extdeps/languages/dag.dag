@@ -9,6 +9,7 @@ module v4.extdeps.languages.dag
 import v4.std.collection { List, Set, Map, empty_map, map_insert }
 import v4.std.grammar {
   grammar_formal_terminal,
+  grammar_formal_terminal_bound,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
   ParseGrammar,
@@ -2996,6 +2997,15 @@ fn dag_grammar_sequence_from_token_classes() -> GrammarExpr {
   }
 }
 
+fn dag_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
+  match token {
+    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } =>
+      grammar_formal_terminal_bound(identity: c, binding: b)
+  }
+}
+
+// #g-bidir G.1 — FormalProduction rhs preserves BoundToken bindings (bidir slot bijection).
 fn dag_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
@@ -3003,7 +3013,7 @@ fn dag_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalG
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
+        item: dag_formal_grammar_symbol_from_token(token: token)
       )
     }
   )

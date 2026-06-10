@@ -76,7 +76,7 @@ type FormalProduction {
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: v4.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: v4.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
 // 🟡 gated — feature:grammar-well-formed-witness — FormalGrammar carries five representable invalid states: (1) start ∉ nonterminals, (2) FormalProduction.lhs not in N, (3) FormalProduction.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (FormalTerminal and FormalNonterminal both carry identity: Symbol), (5) N or Σ infinite (Set<T> is a predicate fn(T)->Bool; finiteness not enforced by the type). Dissolve-on: consumers require WellFormedFormalGrammar (below) not bare FormalGrammar; bare FormalGrammar becomes internal construction only.
 // "What is a formal grammar?"
 // Ref: https://en.wikipedia.org/wiki/Formal_grammar
@@ -135,7 +135,7 @@ fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFor
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
   = Terminal { token_class: Symbol }
   | Nonterminal { production: Symbol }
@@ -168,13 +168,13 @@ type ValidatedGrammarRoot {
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: ParseGrammar converges with FormalGrammar/LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: ParseGrammar converges with FormalGrammar/LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type ParseGrammar
   = VoidGrammar
   | ModeledGrammar { root: GrammarRoot }
 
 
-// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — bind TASKS.md T-6/T-7 — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
+// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
 type GrammarSchema {
   lex: LexRules
   grammar: ParseGrammar
@@ -1243,4 +1243,40 @@ fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
 
 fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
   grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
+}
+
+
+// #g-bidir G.2 — bidirectional interpretation modeling (design-bidirectional-coercion.md §4).
+// Status: MODELING ONLY — names the find_witness selection discipline at the syntax layer.
+// Preservation rules wire into find_witness when G.3 forward interpreter lands (02_parse
+// de-anemic owned with Mgr-CONSOLIDATION). By-execution bidir witnesses gated on emit S1.
+type GrammarInterpretationDirection
+  = GrammarInterpretBackward
+  | GrammarInterpretForward
+
+type BidirectionalGrammarObligation
+  = ObligationSlotBijection
+  | ObligationForwardDeterminism
+  | ObligationBackwardDeterminism
+  | ObligationQuotientDeclaration
+
+data grammar_selection_predicate_backward_lhs_shape: Symbol = grammar_selection_predicate_backward_lhs_shape
+data grammar_selection_predicate_forward_rhs_frontier: Symbol = grammar_selection_predicate_forward_rhs_frontier
+
+fn grammar_production_selection_predicate(direction: GrammarInterpretationDirection) -> Symbol {
+  match direction {
+    GrammarInterpretBackward => grammar_selection_predicate_backward_lhs_shape
+    GrammarInterpretForward => grammar_selection_predicate_forward_rhs_frontier
+  }
+}
+
+fn grammar_relation_row_slot_bijection_holds(
+  row: GrammarRelationRow,
+  productions: List<FormalProduction>
+) -> Bool {
+  formal_production_rhs_matches_emitted_conj(
+    production: row.production,
+    productions: productions,
+    emitted: row.emitted
+  )
 }

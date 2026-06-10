@@ -1,12 +1,25 @@
 # #g-bidir Scoping Worksheet — Bidirectional Emit/Ingest Unification
 
-> **Status:** SCOPING — map, not territory (INVARIANTS "Map vs territory"). No implementation
-> lands from this worksheet without the consumers named in §8 (E-10).
+> **Status:** RATIFIED (still-raven-546, 2026-06-10) — scoping complete; G.1/G.2 prep
+> authorized with gates below. Map, not territory (INVARIANTS "Map vs territory").
 > **Work item:** `node://adhoc-30ed95ca-9d6` (session `vivid-fox-248`).
 > **Authority:** THESIS "core flip" (emit = coerce *to*, ingest = coerce *from*, one engine);
 > `docs/design-bidirectional-coercion.md` (BIDIR dep-graph node);
 > `docs/design-value-emit-schema.md` + `docs/design-omni-emission-transport.md` (bidir-aware
 > slices); `docs/planning/rr-b-omni-ingestion-worksheet-2026-06-02.md` (B-min floor).
+
+## Ratification gates (still-raven-546, 2026-06-10)
+
+1. **Emit S1 gate:** Grammar-relation modeling (G.1 rows, G.2 selection/obligation types) may
+   land now. By-execution same-rows-both-directions witnesses and bidir-green claims wait for
+   emit S1 (#4627, lively-badger emit-through skeleton). Do not claim bidir-green before
+   emit-green.
+2. **CONSOLIDATION gate:** G.3 forward interpreter wiring into `02_parse` is stage-adoption
+   territory (Mgr-CONSOLIDATION / silent-carp). #g-bidir owns substrate modeling in
+   `std/grammar.dag`; CONSOLIDATION owns parse-stage de-anemic. Sync before either touches
+   `02_parse`.
+3. **Breadth hold:** V (value-tier), T (transport), R (integration) gated on emit S1 AND
+   operator bidir-vs-stage-adoption sequencing call.
 
 ## Guard
 
@@ -195,8 +208,8 @@ until TS round-trip through descriptor row (manager ruling 2026-06-10).
 
 | Row | Status | Required shape | Consumer |
 |---|---|---|---|
-| G.1 | Open | `add`-subset `FormalProduction` rows with named bindings in `dag.dag` | obligation folds |
-| G.2 | Open | Four obligation structural folds + discriminating red claims (dropped capture, overlapping frontier, duplicate LHS, quotient perturbation) | `TestClaim` lens verdicts |
+| G.1 | **Prep landed** | `add`-subset `FormalProduction` rows with named bindings in `dag.dag` (`dag_formal_grammar_symbol_from_token` preserves `BoundToken` bindings) | obligation folds |
+| G.2 | **Prep landed** | `GrammarInterpretationDirection`, `BidirectionalGrammarObligation`, selection predicates, `grammar_relation_row_slot_bijection_holds` in `std/grammar.dag` — modeling only; execution claims gated on emit S1 | `TestClaim` lens verdicts |
 | G.3 | Open | Forward interpreter derived over G.1 rows for `add` subset (enough for keystone surface) | replaces hand path in `02_parse` for those constructs |
 | G.4 | Open | Round-trip by execution: `add` source → tree → source, identity up to `dag` quotient | extends RTADD to **text** |
 | G.5 | Deferred | Per-construct `02_parse` dissolution beyond `add` subset | consumer-triggered ratchet |
