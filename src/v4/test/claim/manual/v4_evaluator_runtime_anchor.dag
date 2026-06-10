@@ -21,7 +21,7 @@ import v4.extdeps.runtimes.v4_evaluator {
 import v4.std.collection { List }
 import v4.std.diagnostic { Rejected }
 import v4.std.model_core { ModelCore, wave1_model_core }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime {
   ExecutionSemantics,
   InterpretationAlgebra,
@@ -91,8 +91,9 @@ data witness_v4_evaluator_transfer_fail_closed: Bool = match v4_eval_wave1_trans
 fn v4_evaluator_witness_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v4_evaluator_witness_fail_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn v4_evaluator_witness_claim_input(ok: Bool) -> Node {

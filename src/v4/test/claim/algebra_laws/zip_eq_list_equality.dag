@@ -8,7 +8,7 @@ module v4.test.claim.algebra_laws.zip_eq_list_equality
 
 
 import v4.std.algebra { Cons, Empty, FreeMonoid, zip_eq }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -26,10 +26,14 @@ fn sym_list_ab() -> FreeMonoid<Symbol> { Cons { head: ^zip_eq_sym_a, tail: Cons 
 
 
 fn zip_eq_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^zip_eq_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^zip_eq_pass_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn zip_eq_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^zip_eq_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^zip_eq_fail_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn zip_eq_claim_input(ok: Bool) -> Node {
   if ok { zip_eq_pass_node() } else { zip_eq_fail_node() }

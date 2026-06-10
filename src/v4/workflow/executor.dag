@@ -1,6 +1,8 @@
 // src/v4/workflow/executor.dag
 // Scope: dependency-frontier executor plan over v4.workflow.scheduler.
-// Status: EXEC arc slice — modeled batches only; host process transport lands downstream.
+// Status: batching authority for the v4 claim suite. The host transport
+// (src/v2/stage0/src/bin/claim_executor.rs, via batch_runner.dag) consumes these
+// batches to run claims in CI; per-job typed run-results are the gated full version.
 
 module v4.workflow.executor
 
@@ -32,14 +34,23 @@ type ExecutorBatch {
   jobs: List<ExecutorJob>
 }
 
-// 🟡 coproduct dissolution — feature:executor-host-transport-status — consumer:parallel_executor_plan
-// dissolve-on-arrival: host transport returns per-job execution verdicts and consumes ExecutorBatch plans.
+// Consumption half ARRIVED: src/v2/stage0/src/bin/claim_executor.rs reads the
+// ExecutorBatch plans this module projects (via batch_runner.dag) and runs the
+// v4 claim suite batch-by-batch — genuine batching authority, not a mirror.
+// 🟡 coproduct dissolution — feature:executor-host-run-result — consumer:claim_executor — lane:A4-command-authority
+// dissolve-on-arrival (still outstanding): host transport returns per-job
+// execution verdicts back into .dag types, replacing plan-only blocked evidence.
+// The near-term dogfood keeps verdict transport host-side (gated on A4).
 type ExecutorBlockedEvidence
   = ExecutorSchedulerBlocked { evidence: SchedulerBlockedEvidence }
   | ExecutorEmptyFrontier {}
 
-// 🟡 coproduct dissolution — feature:executor-host-run-result — consumer:parallel_executor_plan
-// dissolve-on-arrival: host transport returns typed run results for ExecutorBatch, replacing plan-only complete/blocked projection.
+// Consumption half ARRIVED: claim_executor evaluates an ExecutorRunComplete and
+// runs each ExecutorBatch in order.
+// 🟡 coproduct dissolution — feature:executor-host-run-result — consumer:claim_executor — lane:A4-command-authority
+// dissolve-on-arrival (still outstanding): host transport returns typed per-job
+// run RESULTS for ExecutorBatch back into the .dag, replacing the plan-only
+// complete/blocked projection. Bounded receipt, gated on A4 command authority.
 type ExecutorRunPlan
   = ExecutorRunComplete {
       batches: List<ExecutorBatch>,

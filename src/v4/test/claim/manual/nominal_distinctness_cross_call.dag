@@ -47,7 +47,7 @@ import v4.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -98,8 +98,9 @@ data nominal_distinct_compile_target: TargetModel = TargetModel {
 fn nominal_distinct_input_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 data nominal_distinct_records_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_records_input_symbol)
@@ -203,8 +204,9 @@ data claim_nominal_distinct_same_type_control_compiles: TestClaim = CompilesClai
 fn nominal_distinct_runtime_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^nominal_distinct_type_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn nominal_distinct_runtime_unit(node: Node) -> RuntimeValue {

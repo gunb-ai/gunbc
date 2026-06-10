@@ -22,7 +22,8 @@ import v4.std.node {
   Positional,
   Symbol,
   Transform,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.witness { Witness }
 type LensComplexityClaim {
@@ -33,21 +34,24 @@ type LensComplexityClaim {
 }
 data map_id_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^map_id_body_atom } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data map_id_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge { label: Positional, target: map_id_body_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 data map_id_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: map_id_body }
-  ]
+  ],
+  span: Unanchored
 }
 
 data map_id_claim: LensComplexityClaim = LensComplexityClaim {

@@ -53,7 +53,7 @@ import v4.std.test_claim_falsification {
   Host
 }
 import v4.std.machine { Byte }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime { RuntimeValue, RuntimePrimitive }
 import v4.std.target_model { TargetModel }
 import v4.std.text { String }
@@ -134,8 +134,9 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
 fn emit_host_rust_i64_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: emit_host_rust_i64_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn emit_host_receipt_from_source(

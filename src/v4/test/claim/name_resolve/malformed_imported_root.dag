@@ -21,7 +21,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v4.std.collection { empty_map }
-import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, Unanchored }
 import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName }
 import v4.std.verification {
   CompilesClaim,
@@ -33,10 +33,14 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn malformed_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^malformed_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^malformed_pass_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn malformed_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^malformed_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^malformed_fail_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn malformed_claim_input(ok: Bool) -> Node {
   if ok { malformed_pass_node() } else { malformed_fail_node() }
@@ -46,7 +50,9 @@ fn malformed_qn_node() -> Node {
   fold_list_node(
     xs: Cons { head: ^malformed_seg, tail: Empty },
     item_node: fn(sym) {
-      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [] }
+      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+ span: Unanchored
+}
     }
   )
 }
@@ -68,11 +74,13 @@ fn malformed_root_node() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn malformed_entry_name() -> QualifiedName {

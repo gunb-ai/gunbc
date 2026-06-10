@@ -49,17 +49,29 @@ provenance needs **occurrence** identity, which structure by definition doesn't 
 
 ## 4. Design
 
+> **Amendment (operator direction 2026-06-10, §4.5):** the index's value generalizes from
+> a bare `Locus` to a forward-stamped **origin event**, so the chain of events is total
+> over *every* node source — files, transforms, generators — not just parsed text. §4.1's
+> anchor/equality shape and §4.2's every-node rule are unchanged; §4.3 and §4.4 are
+> sharpened by it as noted inline.
+
 ### 4.1 Anchor = opaque occurrence id on Node; span data lives off-tree
 
 Copy the brand-channel playbook for the provenance axis:
 
-- `Node` gains one field: an opaque **occurrence id** (allocator-issued at parse, like
-  `BindingIdAllocator`; absent/zero only for synthesized nodes pending §4.3). The id is the
-  *anchor*, not the data.
-- A per-compile **SpanIndex** carries the data: occurrence id → `Locus`
-  (`Textual { file, ByteRange }`), built where the T-8 marker sits — the parse terminal
-  boundary stamps ids and records `tok.file/start/end` into the index instead of dropping
-  them; interior nodes record the hull of their children's extents.
+- `Node` gains one field: an opaque **occurrence id** (allocator-issued at the producing
+  boundary, like `BindingIdAllocator`). The id is the *anchor*, not the data. **Every**
+  node carries one — there is no legitimate absent/zero state: a producer that creates a
+  node without stamping id + origin event is defective, fail-closed at that stage's own
+  receipt (§4.5 totality). Synthesized nodes are not an exception — they get a fresh id
+  with a `DerivedBy`/`GeneratedBy` event (§4.3).
+- A per-compile **SpanIndex** carries the data: occurrence id → **`OriginEvent`** (§4.5).
+  `FromSource { locus: Locus }` is the wave-1 variant — the `Locus`
+  (`Textual { file, ByteRange }`) lives *inside* the event, so the diagnostic.dag carrier
+  is still the span representation, but the index value is the origin event. Built where
+  the T-8 marker sits — the parse terminal boundary stamps ids and records
+  `FromSource` with `tok.file/start/end` instead of dropping them; interior nodes record
+  the hull of their children's extents.
 - **One equality rule, stated once:** occurrence ids do not participate in structural
   equality or content hashing — declared in the Node-field policy table at
   [`design-node-identity-channels.md`](design-node-identity-channels.md) (the single owner
@@ -75,10 +87,11 @@ occurrence-grained handle they actually need.
 
 ### 4.2 Every node, not selective
 
-Stamp every parse-produced node. Selective stamping creates a second question ("which nodes
-have provenance?") that every consumer must re-answer — ambiguity with no payoff, since ids
-are a fixed-width field and the index is linear in node count. Synthesized nodes (§4.3) are
-the principled exception, not a sampling policy.
+Stamp every node. Selective stamping creates a second question ("which nodes have
+provenance?") that every consumer must re-answer — ambiguity with no payoff, since ids are
+a fixed-width field and the index is linear in node count. Parse stamps `FromSource`;
+synthesized/derived nodes stamp `DerivedBy`/`GeneratedBy` (§4.3, §4.5) — different event
+kinds, not an exemption from stamping.
 
 ### 4.3 Transport through rewrites (normalize / resolve / infer)
 
@@ -88,15 +101,20 @@ Stages that rebuild nodes transport ids by one of two declared moves — never s
   along (free with a field; this is why field-anchor beats path-keying for transport: paths
   rebase on every structural edit, ids don't).
 - **derived**: the node is synthesized from a set of source occurrences — it gets a fresh id
-  and the index records `derived_from: List<OccurrenceId>` (possibly empty). A synthesized
-  node with no derivation set resolves to a typed **Unanchored** outcome at query time —
-  fail-closed, never a fabricated span (C-9: no plausible-placeholder loci).
+  and the index records a `DerivedBy` origin event (§4.5): the **producer identity is
+  mandatory**, the `from: List<OccurrenceId>` set may be empty. A node whose chain never
+  reaches source text resolves to a typed **Unanchored** verdict at query time — fail-closed,
+  never a fabricated span (C-9: no plausible-placeholder loci) — but the verdict carries the
+  origin chain, so "no byte-range" never means "no provenance" (§4.5).
 
 ### 4.4 The span→node query (the producer PROV's consumers call)
 
 Two directions over the index:
 
-- id → `Locus`: direct map read.
+- id → `OriginEvent`, and onward to `Locus`: the index lookup yields the event (§4.5);
+  `FromSource` answers the span question directly, `DerivedBy` / `GeneratedBy` resolve
+  through the chain to the source-text frontier (or the typed `Unanchored` verdict
+  carrying the chain).
 - byte position / `ByteRange` → occurrence: per-file scan for **narrowest enclosing
   extent**; 0 enclosing ⇒ typed `NoEnclosingOccurrence` (fail-closed — an edit in
   whitespace/comments resolves to nothing, honestly); ties broken by narrowest-then-deepest.
@@ -108,6 +126,42 @@ Two directions over the index:
 `NodeLocus`-bearing diagnostic becomes *resolvable to source* via the index — which is
 precisely WRITE's "show the correct code at the right place" and SYN's
 `{locus, corrected_IR}` handoff shape.
+
+### 4.5 Origin events — facts flow forward, from every source (operator direction 2026-06-10)
+
+The operator's framing, now binding: provenance is a **clear chain of events from every
+source, not just files**. Byte-range anchoring (the T-8 case) is one origin kind among
+several, and the chain is **stamped forward** by each producer at the moment it creates a
+node — where the fact is known — never reconstructed retroactively.
+
+Concretely, the index value is an origin event, a closed coproduct (M4) over the ways a
+node comes to exist in this codebase:
+
+```
+type OriginEvent
+  = FromSource { locus: Locus }                                  // parse: file + ByteRange
+  | DerivedBy  { producer: Symbol, from: List<OccurrenceId> }    // normalize/resolve/infer/
+                                                                 //   translate/coercion derivation
+  | GeneratedBy { generator: GeneratorId, from: List<OccurrenceId> } // testgen/fixture/builder
+```
+
+- **Totality is the producer obligation:** every producer that creates a node stamps an
+  event; an id with no origin event is a producer defect (fail-closed at the stage's own
+  receipt), not a legitimate state. The producer always knows its own identity and inputs
+  at the production site — this is the "facts flow forward" discipline: stamp at the
+  authoritative boundary, exactly as parse stamps byte ranges (T-8) and resolve stamps
+  `binding_id` (#4581).
+- **`Unanchored` becomes a query verdict, not a stored fact.** "Where did this node come
+  from" is *always* answerable by walking the chain; only "what bytes" can honestly be
+  unanswerable, and the `Unanchored` verdict then carries the chain (which generator, which
+  stage, derived from what) instead of a dead end.
+- **Reference, not merge (layer-4 separation preserved):** `GeneratorProvenance` and
+  `NodeArtifactProvenance` remain separate carriers with their own grain (the measured
+  verdict stands); `GeneratedBy` *references* `GeneratorId` and `FromSource` reuses `Locus`.
+  End-to-end chain queryability comes from links, not from collapsing carriers.
+- **Cost:** same index, richer value type; `FromSource` is the only event the §5 wave-1
+  slice must populate — `DerivedBy`/`GeneratedBy` land per-stage with §4.3's transport
+  receipts, each stage adding its own stamp as it adopts ids.
 
 ## 5. Consumers and minimal slice (E-10 / seesaw)
 
@@ -121,7 +175,8 @@ precisely WRITE's "show the correct code at the right place" and SYN's
   **green** — structural equality of two identical subtrees with different ids still holds
   (the §4.1 equality rule, proven not asserted);
   **red** — position outside all spans ⇒ `NoEnclosingOccurrence`;
-  **red** — synthesized node without derivation ⇒ `Unanchored`, not a fabricated locus.
+  **red** — synthesized node whose chain never reaches source ⇒ `Unanchored` carrying its
+  origin chain (§4.5), not a fabricated locus.
 - The slice deliberately stops before normalize/resolve transport (§4.3) — that lands
   per-stage with each stage's own carried/derived receipts.
 

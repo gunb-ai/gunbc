@@ -7,7 +7,7 @@ module v4.test.claim.lens_application.application_subterm_at_empty_path
 import v4.lens.application { subterm_at }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Path, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Path, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -19,7 +19,8 @@ import v4.std.verification {
 }
 data application_subterm_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^application_subterm_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 fn application_subterm_at_empty_path_claim_holds() -> Bool {
@@ -35,8 +36,9 @@ fn application_subterm_at_empty_path_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 
