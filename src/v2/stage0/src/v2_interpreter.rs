@@ -556,6 +556,16 @@ pub struct InterpContext {
     service_ops: HashMap<String, ServiceOp>,
     /// Dry-run mode: use mock responses instead of executing services.
     pub dry_run: bool,
+    /// Cache for evaluated `data` items (immutable global constants), keyed by
+    /// the data item's node identity. Preserves structural sharing across
+    /// references so a `data` referenced N times yields ONE Value, not N
+    /// rebuilds. Scoped to this context — a `data` item's cached value is valid
+    /// exactly as long as its resolved graph is the one being evaluated, and
+    /// the context is the owner with that lifetime. Keys (`Rc::as_ptr` of nodes
+    /// in `fn_nodes`) cannot dangle or alias across graphs: `fn_nodes` holds
+    /// the nodes alive as long as the cache, and the cache drops with the
+    /// context.
+    data_cache: std::cell::RefCell<HashMap<usize, Value>>,
 }
 
 impl InterpContext {
@@ -605,6 +615,7 @@ impl InterpContext {
             fn_nodes,
             service_ops,
             dry_run,
+            data_cache: std::cell::RefCell::new(HashMap::new()),
         }
     }
 
@@ -637,7 +648,18 @@ pub fn run_with_options(
     eager_data_env: bool,
 ) -> InterpResult<Value> {
     let ctx = InterpContext::new(graph, source_indices, dry_run);
+    run_in_context(&ctx, entry_fn, eager_data_env)
+}
 
+/// Run an entry function against an existing context. Callers that evaluate
+/// many functions over the SAME resolved graph (see the `claim_batch` bin)
+/// build one `InterpContext` and loop this — sharing the per-context `data`
+/// cache and fn index across calls instead of rebuilding them per function.
+pub fn run_in_context(
+    ctx: &InterpContext,
+    entry_fn: &str,
+    eager_data_env: bool,
+) -> InterpResult<Value> {
     // Find the entry function
     let item_node = ctx
         .lookup_fn(entry_fn)
@@ -648,13 +670,13 @@ pub fn run_with_options(
     // Claim-run mode skips this — src/v4 has hundreds of TestClaim data graphs;
     // witnesses pull only what they need via lazy data-item resolution in eval_var.
     let env = if eager_data_env {
-        build_initial_env(&ctx)?
+        build_initial_env(ctx)?
     } else {
         Env::empty()
     };
 
     // Call the entry function with no arguments
-    call_function(&ctx, &item_node, &[], &env)
+    call_function(ctx, &item_node, &[], &env)
 }
 
 /// Evaluate all `data` items to build the initial environment.
@@ -850,24 +872,6 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
 // Variables
 // ---------------------------------------------------------------------------
 
-struct DataCache {
-    map: HashMap<usize, Value>,
-    // Hold the keyed data-item nodes alive so their Rc addresses can't be freed and
-    // reused by a later program in the same process (which would alias a stale entry).
-    keepalive_fns: Vec<Rc<Node>>,
-}
-thread_local! {
-    // Cache for evaluated `data` items (immutable global constants), keyed by the data
-    // item's node identity. Preserves structural sharing across references so a `data`
-    // referenced N times yields ONE Value, not N rebuilds. thread-local because Value
-    // holds Rc (!Send+!Sync) and cannot live in a static.
-    static DATA_CACHE: std::cell::RefCell<DataCache> =
-        std::cell::RefCell::new(DataCache {
-            map: HashMap::new(),
-            keepalive_fns: Vec::new(),
-        });
-}
-
 fn eval_var(
     node: &Rc<Node>,
     binding_kind: Option<&VarBindingKind>,
@@ -926,15 +930,11 @@ fn eval_var(
                     // This matches the eager-preload path (build_initial_env) which also uses
                     // Env::empty(), so lazy and eager resolution agree.
                     let key = Rc::as_ptr(fn_node) as usize;
-                    if let Some(v) = DATA_CACHE.with(|c| c.borrow().map.get(&key).cloned()) {
+                    if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
                     }
                     let v = eval_expr(body, &Env::empty(), ctx)?;
-                    DATA_CACHE.with(|c| {
-                        let mut dc = c.borrow_mut();
-                        dc.keepalive_fns.push(fn_node.clone());
-                        dc.map.insert(key, v.clone());
-                    });
+                    ctx.data_cache.borrow_mut().insert(key, v.clone());
                     return Ok(v);
                 }
             }
