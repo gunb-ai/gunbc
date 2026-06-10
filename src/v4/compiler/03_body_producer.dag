@@ -1,0 +1,176 @@
+// src/v4/compiler/03_body_producer.dag
+// Scope: COMPREP wave-1 — parse-tree / surface expression → Behavior sub-DAG; Arrow.body attachment.
+// Status: keystone producer slice — MVP add(x,y)=x+y body construction + E-9 edge attach.
+// Anchor: docs/design-computation-representation.md wave 1; INVARIANTS E-9.
+
+module v4.compiler.body_producer
+
+import v4.std.algebra { list_snoc_item }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  arrow_body_edge,
+  well_formed
+}
+import v4.std.node_query { find_arrow_body_child }
+
+data body_producer_reason_malformed_attachment: Symbol = body_producer_reason_malformed_attachment
+data body_producer_reason_post_produce_not_well_formed: Symbol = body_producer_reason_post_produce_not_well_formed
+
+fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn type_atom_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: []
+  }
+}
+
+fn computation_param_ref_node(identity: Symbol) -> Node {
+  type_atom_node(identity: identity)
+}
+
+fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      outcome_accepted(
+        value: Node {
+          kind: arrow.kind,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: Edge {
+              label: Named { name: arrow_body_edge },
+              target: body
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: body_producer_reason_malformed_attachment,
+          n: arrow
+        )
+      )
+  }
+}
+
+// MVP add body: Transform(+) with positional param references (body-scope resolve follows).
+fn produce_mvp1_add_binary_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: type_atom_node(identity: ^dag_token_plus)
+      },
+      Edge {
+        label: Positional,
+        target: computation_param_ref_node(identity: ^dag_binding_param_x)
+      },
+      Edge {
+        label: Positional,
+        target: computation_param_ref_node(identity: ^dag_binding_param_y)
+      }
+    ]
+  }
+}
+
+fn produce_mvp1_add_arrow_signature() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ]
+  }
+}
+
+fn produce_mvp1_add_arrow_with_body() -> Outcome<Node> {
+  bind_outcome(
+    o: attach_arrow_body(
+      arrow: produce_mvp1_add_arrow_signature(),
+      body: produce_mvp1_add_binary_body()
+    ),
+    f: fn(arrow_with_body) {
+      if well_formed(n: arrow_with_body) {
+        outcome_accepted(value: arrow_with_body)
+      } else {
+        outcome_rejected(
+          d: body_producer_diagnostic(
+            reason: body_producer_reason_post_produce_not_well_formed,
+            n: arrow_with_body
+          )
+        )
+      }
+    }
+  )
+}
+
+fn produce_mvp1_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: produce_mvp1_add_arrow_with_body(),
+    f: fn(arrow_with_body) {
+      outcome_accepted(
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Named { name: fn_name },
+              target: arrow_with_body
+            }
+          ]
+        }
+      )
+    }
+  )
+}
+
+fn arrow_has_body_edge(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match body.kind {
+        ComputationNode { behavior: _ } => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
