@@ -19,16 +19,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     let msgs: Vec<String> = result
         .diagnostics
         .iter()
-        .map(|d| {
-            let span = v2_compiler::v2_std_core::diagnostic_to_span(d.diagnostic.clone());
-            format!(
-                "{}:{}:{} {}",
-                d.module_name,
-                span.file,
-                span.start,
-                v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone())
-            )
-        })
+        .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
         .filter(|m| !m.starts_with("complexity: "))
         .collect();
     assert!(
