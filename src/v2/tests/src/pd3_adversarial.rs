@@ -37,21 +37,6 @@ fn compile_sources(
     v2_compiler::v2_compiler_compile::compile_sources(std::rc::Rc::new(sources), RenderTarget::Rust)
 }
 
-fn compile_resolved_sources(
-    files: &[(&str, &str)],
-) -> std::rc::Rc<v2_compiler::v2_compiler_compile::ResolvedPipelineResult> {
-    let sources = files
-        .iter()
-        .map(|(path, content)| {
-            std::rc::Rc::new(SourceFile {
-                path: (*path).to_string(),
-                content: (*content).to_string(),
-            })
-        })
-        .collect();
-    v2_compiler::v2_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources))
-}
-
 // ── (1) FALSE-ACCEPT brand-twin: harder variants than the basic positive ──
 
 // Twin in 2nd arg position — guards the enumerate/skip index pairing.
@@ -204,45 +189,6 @@ fn caller(id: Id) -> String {
         ("b.dag", mod_b),
         ("use_a_from_b.dag", use_a_from_b),
     ]);
-    let debug_a_from_b = compile_resolved_sources(&[
-        ("a.dag", mod_a),
-        ("b.dag", mod_b),
-        ("use_a_from_b.dag", use_a_from_b),
-    ]);
-    if let Some(graph) = &debug_a_from_b.graph {
-        for module in graph.modules.iter() {
-            let module_name = v2_compiler::v2_std_core::authored_name_at(
-                debug_a_from_b.source_indices.clone(),
-                module.module.clone(),
-            );
-            if module_name == "pd3adv.same_name.use_a_from_b" {
-                for (name, sig) in module.func_env.signatures.iter() {
-                    if name == "accept" {
-                        if let Some(param) = sig.params.first() {
-                            let param_ty =
-                                v2_compiler::v2_std_core::param_node_type_expr(param.clone());
-                            eprintln!(
-                                "DEBUG accept param name={} binding={:?}",
-                                v2_compiler::v2_std_core::authored_name_at(
-                                    debug_a_from_b.source_indices.clone(),
-                                    param_ty.clone(),
-                                ),
-                                param_ty.binding_id
-                            );
-                        }
-                    }
-                }
-                for binding in module.type_env.bindings.values() {
-                    if binding.name == "Id" {
-                        eprintln!(
-                            "DEBUG visible Id binding={:?} module={}",
-                            binding.resolved.binding_id, module_name
-                        );
-                    }
-                }
-            }
-        }
-    }
     assert!(
         has_type_mismatch(&reject_a_from_b),
         "PD-3 ADV: same-named Id from module b must not satisfy module a's Id, got: {:?}",
