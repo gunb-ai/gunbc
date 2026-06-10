@@ -60,6 +60,7 @@ import v4.std.node {
   EdgeDiscipline,
   Instantiation,
   LabeledEdges,
+  LoopBoundEdges,
   Named,
   NoEdges,
   Node,
