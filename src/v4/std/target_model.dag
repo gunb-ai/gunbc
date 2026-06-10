@@ -225,6 +225,9 @@ type TargetValueExpressionKind
   | TargetValueExprStringLiteral
   | TargetValueExprReferenceRcNew
   | TargetValueExprReferenceBoxNew
+  // T6 value-expression tier — COMPREP wave-3 skeleton; one kind per Behavior arm-shape.
+  | TargetValueExprBindingRef
+  | TargetValueExprPrimitiveApply
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -238,11 +241,65 @@ type TargetValueTemplateKind
   | ValueBoolLiteral
   | ValueCharUnicodeScalar
   | ValueStringLiteral
+  // T6 value-expression tier ingestion twins (land with producer-gated kinds).
+  | ValueBindingRef
+  | ValuePrimitiveApply
 
 type TargetValueTemplate {
   kind: TargetValueTemplateKind
   node: Node
 }
+
+// T6 — closed canonical operation vocabulary (substrate-owned; arms land with producers).
+type CanonicalOperation
+  = OpAdd
+
+// T6 — per-language operator spelling catalog entry.
+type TargetOperatorShape
+  = InfixToken { token: Symbol }
+  | PrefixToken { token: Symbol }
+  | CallIdent { ident: Symbol }
+  | MethodIdent { ident: Symbol }
+
+type TargetOperatorRealization {
+  operation: CanonicalOperation
+  shape: TargetOperatorShape
+}
+
+// T6 — per-language value-expression projection row (mirrors TargetTypeExpressionProjection).
+type TargetBindingRefShape {
+  ident_token: Symbol
+}
+
+type TargetPrimitiveApplyShape {
+  open: Symbol
+  close: Symbol
+  separator: Symbol
+}
+
+type TargetCallApplyShape {
+  callee_ident_token: Symbol
+  open: Symbol
+  separator: Symbol
+  close: Symbol
+}
+
+type TargetValueExpressionProjection {
+  binding_ref_form: TargetBindingRefShape
+  primitive_apply_form: TargetPrimitiveApplyShape
+  callable_apply_form: TargetCallApplyShape
+}
+
+data target_model_edge_value_expression_projection: Symbol = target_model_edge_value_expression_projection
+data target_model_edge_operator_realizations: Symbol = target_model_edge_operator_realizations
+
+data target_value_expr_field_binding_ref: Symbol = target_value_expr_field_binding_ref
+data target_value_expr_field_primitive_apply: Symbol = target_value_expr_field_primitive_apply
+data target_value_expr_field_callable_apply: Symbol = target_value_expr_field_callable_apply
+data target_value_expr_field_ident_token: Symbol = target_value_expr_field_ident_token
+data target_value_expr_field_operation: Symbol = target_value_expr_field_operation
+data target_value_expr_field_operand: Symbol = target_value_expr_field_operand
+data target_value_expr_field_binding: Symbol = target_value_expr_field_binding
 
 type TargetConstructorTemplate
   = CtorTemplateUnit {}
