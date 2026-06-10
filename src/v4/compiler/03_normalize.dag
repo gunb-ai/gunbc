@@ -6,7 +6,7 @@
 
 module v4.compiler.normalize
 
-import v4.std.algebra { list_snoc_item }
+import v4.std.algebra { Empty, list_snoc_item }
 import v4.std.collection { Absent, Present, optional_absent, optional_present }
 import v4.std.grammar { ParseTree }
 
@@ -209,7 +209,7 @@ fn normalize_node(n: Node) -> Outcome<Node> {
   }
 }
 
-fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
+fn normalize(parse_tree: Node) -> Outcome<Node> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>

@@ -5,7 +5,7 @@
 
 module v4.std.lexing
 
-import v4.std.algebra { fold_list }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
@@ -81,13 +81,15 @@ fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   }
 }
 
+fn lex_rule_list_token_class_member(rules: FreeMonoid<LexRule>, token_class: Symbol) -> Bool {
+  match rules {
+    Empty => false
+    Cons { head: rule, tail: rest } =>
+      lex_rule_token_class_member(rule: rule, token_class: token_class) ||
+      lex_rule_list_token_class_member(rules: rest, token_class: token_class)
+  }
+}
 
 fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
-  fold_list(
-    xs: rules.rules,
-    empty: false,
-    cons: fn(acc, rule) {
-      acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
-    }
-  )
+  lex_rule_list_token_class_member(rules: rules.rules, token_class: token_class)
 }

@@ -12,7 +12,7 @@ import v4.compiler.infer {
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
-import v4.std.algebra { fold_list }
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection {
   List,
@@ -553,13 +553,18 @@ fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
 }
 
 fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
-  fold_list(
+  node_list_digest(
     xs: test_claim_evaluation_nodes(c: c),
-    empty: content_hash(n: test_claim_cache_digest_tag_node(tag: test_claim_cache_claim_digest_tag)),
-    cons: fn(acc, n) {
-      combine_hash(a: acc, b: content_hash(n: n))
-    }
+    acc: content_hash(n: test_claim_cache_digest_tag_node(tag: test_claim_cache_claim_digest_tag))
   )
+}
+
+fn node_list_digest(xs: FreeMonoid<Node>, acc: Hash) -> Hash {
+  match xs {
+    Empty => acc
+    Cons { head: n, tail: rest } =>
+      node_list_digest(xs: rest, acc: combine_hash(a: acc, b: content_hash(n: n)))
+  }
 }
 
 // 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of Diagnostic / Correction / Locus / TestClaim) replaces hand-rolled coproduct digest folds below.
@@ -727,14 +732,19 @@ fn ranking_dimension_digest(d: RankingDimension) -> Hash {
 fn termination_proof_digest(proof: TerminationProof) -> Hash {
   combine_hash(
     a: ranking_dimension_digest(d: proof.strict),
-    b: fold_list(
+    b: ranking_dimension_list_digest(
       xs: proof.non_increasing,
-      empty: test_claim_symbol_digest(sym: test_claim_cache_termination_non_increasing_empty_tag),
-      cons: fn(acc, d) {
-        combine_hash(a: acc, b: ranking_dimension_digest(d: d))
-      }
+      acc: test_claim_symbol_digest(sym: test_claim_cache_termination_non_increasing_empty_tag)
     )
   )
+}
+
+fn ranking_dimension_list_digest(xs: FreeMonoid<RankingDimension>, acc: Hash) -> Hash {
+  match xs {
+    Empty => acc
+    Cons { head: d, tail: rest } =>
+      ranking_dimension_list_digest(xs: rest, acc: combine_hash(a: acc, b: ranking_dimension_digest(d: d)))
+  }
 }
 
 fn witness_cache_holds_digest(payload: Hash) -> Hash {

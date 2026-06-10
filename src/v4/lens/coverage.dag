@@ -46,6 +46,7 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   NonEmptyDiagnostics,
+  None,
   Rejected,
   Outcome,
   Textual,
@@ -291,7 +292,7 @@ fn l6_coverage_key_eq(a: L6CoverageKey, b: L6CoverageKey) -> Bool {
     type_construction_subject_eq(a: a.subject, b: b.subject)
 }
 
-fn l7_coverage_key_eq(a: L7CoverageKey, b: L7CoverageKey) -> Bool {
+fn l7_coverage_key_eq(a: AlgebraLawSubject, b: AlgebraLawSubject) -> Bool {
   algebra_law_subject_eq(a: a, b: b)
 }
 

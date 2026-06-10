@@ -192,7 +192,7 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 }
 
 
-fn build_program_namespace(tree: NormalizedTree, lm: DagLanguageModel) -> Namespace {
+fn build_program_namespace(tree: Node, lm: DagLanguageModel) -> Namespace {
   Namespace {
     bindings: add_module_named_exports(root: tree, acc: empty_map()),
     canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
@@ -578,7 +578,7 @@ fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
 }
 
 
-fn resolve(tree: NormalizedTree, lm: DagLanguageModel) -> Outcome<ResolvedTree> {
+fn resolve(tree: Node, lm: DagLanguageModel) -> Outcome<Node> {
   resolve_with_namespace(
     tree: tree,
     namespace: build_program_namespace(tree: tree, lm: lm)
@@ -586,7 +586,7 @@ fn resolve(tree: NormalizedTree, lm: DagLanguageModel) -> Outcome<ResolvedTree> 
 }
 
 
-fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome<ResolvedTree> {
+fn resolve_with_namespace(tree: Node, namespace: Namespace) -> Outcome<Node> {
   if well_formed(n: tree) {
     resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace))
   } else {

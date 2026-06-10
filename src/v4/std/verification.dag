@@ -16,6 +16,7 @@ import v4.std.diagnostic {
   Diagnostic,
   Extent,
   Locus,
+  None,
   NodeLocus,
   NonEmptyDiagnostics,
   PortLocus,

@@ -20,7 +20,7 @@
 module v4.std.verdict
 
 
-import v4.std.algebra { Magma, Monoid, Semigroup, is_empty }
+import v4.std.algebra { Cons, Empty, FreeMonoid, Magma, Monoid, Semigroup }
 import v4.std.collection { List, Optional, Absent }
 import v4.std.diagnostic { Diagnostic, Outcome }
 import v4.std.nat { Nat, Succ, Zero, nat_add }
@@ -114,13 +114,23 @@ fn verdict_tally_total(t: VerdictTally) -> Nat {
 // Fail-closed on empty list: the caller supplies the empty_verdict to enforce
 // the desired policy (typically Fail with a context-specific diagnostic).
 fn verdict_fold<Subj, T>(
-  rs: List<Verdict<Subj, T>>,
+  rs: FreeMonoid<Verdict<Subj, T>>,
   empty_verdict: Verdict<Subj, T>
 ) -> Verdict<Subj, T> {
-  match is_empty(xs: rs) {
-    true => empty_verdict
-    false => fold(rs, init: Pass, f: fn(acc, v) {
-      verdict_combine(a: acc, b: v)
-    })
+  match rs {
+    Empty => empty_verdict
+    Cons { head: first, tail: rest } =>
+      verdict_fold_non_empty(rs: rest, acc: verdict_combine(a: Pass, b: first))
+  }
+}
+
+fn verdict_fold_non_empty<Subj, T>(
+  rs: FreeMonoid<Verdict<Subj, T>>,
+  acc: Verdict<Subj, T>
+) -> Verdict<Subj, T> {
+  match rs {
+    Empty => acc
+    Cons { head: next, tail: rest } =>
+      verdict_fold_non_empty(rs: rest, acc: verdict_combine(a: acc, b: next))
   }
 }

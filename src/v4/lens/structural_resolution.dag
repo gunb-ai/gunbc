@@ -16,7 +16,7 @@ import v4.compiler.infer {
   InferredTree,
   infer_facts_lookup_miss
 }
-import v4.std.algebra { bag_eq, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v4.compiler.resolve {
   resolve_reason_unbound_symbol
 }
@@ -31,6 +31,7 @@ import v4.std.dependency {
 }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
+import v4.std.diagnostic { Diagnostic }
 import v4.std.witness { Holds, Violates, Witness }
 
 // 🟢 projection carrier — Practice 11: binding status is computed from
@@ -134,9 +135,23 @@ fn structural_resolution_fact(
   dependencies: List<DependencyView>
 ) -> StructuralResolutionFact {
   StructuralResolutionFact {
-    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_snoc_item(xs: acc, item: structural_resolution_classify(tree: tree, view: view))
-    })
+    dependencies: structural_resolution_classify_all(tree: tree, dependencies: dependencies, acc: Empty)
+  }
+}
+
+fn structural_resolution_classify_all(
+  tree: InferredTree,
+  dependencies: FreeMonoid<DependencyView>,
+  acc: FreeMonoid<ClassifiedDependencyView<StructuralResolutionStatus>>,
+) -> FreeMonoid<ClassifiedDependencyView<StructuralResolutionStatus>> {
+  match dependencies {
+    Empty => acc
+    Cons { head: view, tail: rest } =>
+      structural_resolution_classify_all(
+        tree: tree,
+        dependencies: rest,
+        acc: list_snoc_item(xs: acc, item: structural_resolution_classify(tree: tree, view: view))
+      )
   }
 }
 
@@ -195,5 +210,21 @@ fn structural_resolution_classified_eq(
 // dissolve-on-arrival: T-13 lens driver / generated TestClaim supplies canonical
 // equality or content_hash for lens facts; multiset compare is compile-only until B2.
 fn fact_eq(a: StructuralResolutionFact, b: StructuralResolutionFact) -> Bool {
-  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: structural_resolution_classified_eq)
+  structural_resolution_classified_list_eq(left: a.dependencies, right: b.dependencies)
+}
+
+fn structural_resolution_classified_list_eq(
+  left: FreeMonoid<ClassifiedDependencyView<StructuralResolutionStatus>>,
+  right: FreeMonoid<ClassifiedDependencyView<StructuralResolutionStatus>>,
+) -> Bool {
+  match left {
+    Empty => match right { Empty => true  Cons { head: _, tail: _ } => false }
+    Cons { head: left_head, tail: left_tail } =>
+      match right {
+        Empty => false
+        Cons { head: right_head, tail: right_tail } =>
+          structural_resolution_classified_eq(a: left_head, b: right_head) &&
+          structural_resolution_classified_list_eq(left: left_tail, right: right_tail)
+      }
+  }
 }

@@ -76,7 +76,7 @@ fn make_generated_artifact(base: Artifact, at: Locus) -> Outcome<GeneratedArtifa
 // is not statically known. Keeps total (List-returning) testgen producers total (no
 // `Outcome` cascade) while non-generated kinds remain unrepresentable in
 // `GeneratorProvenance` (the field type is `GeneratedArtifact`, never a raw `Artifact`).
-fn test_claim_generated_artifact(id: Symbol, file_path: String) -> GeneratedArtifact {
+fn test_claim_generated_artifact(id: GeneratorId, file_path: String) -> GeneratedArtifact {
   GeneratedArtifact {
     refined: Refined {
       base: Artifact { kind: TestClaimArtifact, id: id, file_path: file_path }
