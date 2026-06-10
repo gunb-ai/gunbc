@@ -69,7 +69,14 @@ v4_glob_discovery_project_distributed_markers() {
       V4_GLOB_DISCOVERY_ROWS+="${label}"$'\t'"${entry}"$'\t'"${function}"$'\n'
       V4_GLOB_DISCOVERY_ROW_COUNT=$((V4_GLOB_DISCOVERY_ROW_COUNT + 1))
     done < <(project_marker_file "$file")
-  done < <(rg -l '^data unified_claim_.*: UnifiedTestClaim = BoolWitnessClaim' "$claims_root" --glob '*.dag' | sort)
+  done < <(
+    find "$claims_root" -type f -name '*.dag' -print \
+      | LC_ALL=C sort \
+      | while IFS= read -r candidate; do
+          grep -qE '^data unified_claim_[A-Za-z0-9_]+: UnifiedTestClaim = BoolWitnessClaim' "$candidate" \
+            && printf '%s\n' "$candidate"
+        done
+  )
 
   if [[ "$V4_GLOB_DISCOVERY_ROW_COUNT" -eq 0 ]]; then
     echo "error: glob discovery projection is empty under ${claims_root}" >&2

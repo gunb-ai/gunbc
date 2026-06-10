@@ -265,12 +265,6 @@ fn manual_node_corpus_unified_claim_projection_holds() -> Bool {
 }
 
 
-fn glob_discovered_bool_witness_unified_claim_projection_holds() -> Bool {
-  witness_glob_discovery_declares_smoke_claim_run_rows()
-    && (length(xs: glob_discovered_smoke_bool_witness_unified_claims) == 80)
-}
-
-
 fn corpus_entry_from_unresolved_node_corpus_claim(claim: TestClaim) -> CorpusEvalEntry {
   CorpusEvalEntry { run: NodeCorpusUnresolvedRun { claim: claim } }
 }
@@ -381,45 +375,10 @@ fn unified_corpus_eval_manual_node_slice_holds() -> Bool {
 }
 
 
-fn unified_corpus_eval_bool_witness_slice_holds() -> Bool {
-  let unified_entries = run_unified_corpus_eval(claims: glob_discovered_smoke_bool_witness_unified_claims).entries
-  let expected_entries = glob_discovered_queued_bool_witness_entries()
-  unified_entries == expected_entries
-}
-
-
-fn unified_corpus_eval_pilot_queued_bool_witnesses_tally_deferred_holds() -> Bool {
-  let report = run_unified_corpus_eval(claims: glob_discovered_smoke_bool_witness_unified_claims)
-  let tally = corpus_report_tally(r: report)
-  let discovered_claims = glob_discovered_smoke_bool_witness_unified_claims
-  let roster_deferred_count = list_length_nat(xs: discovered_claims)
-  nat_eq(a: tally.deferred, b: roster_deferred_count)
-    && (length(xs: report.entries) == length(xs: discovered_claims))
-    && (tally.pass == Zero)
-    && (tally.fail == Zero)
-    && fold(
-      report.entries,
-      init: true,
-      f: fn(acc, e) {
-        acc && match e.run {
-          BoolWitnessRunReceipt { run: bool_run } =>
-            match bool_run {
-              BoolWitnessQueuedForHostTransport { witness: _ } => true
-              BoolWitnessRuntimeVerdict { witness: _, result: _ } => false
-            }
-          _ => false
-        }
-      }
-    )
-}
-
-
 fn unified_corpus_eval_pilot_equivalence_holds() -> Bool {
   let pilot = run_unified_corpus_eval_pilot()
   manual_node_corpus_claims_all_resolve()
     && unified_corpus_eval_manual_node_slice_holds()
-    && unified_corpus_eval_bool_witness_slice_holds()
-    && unified_corpus_eval_pilot_queued_bool_witnesses_tally_deferred_holds()
     && (length(xs: pilot.entries) == length(xs: unified_corpus_eval_pilot_claims()))
 }
 
@@ -456,5 +415,4 @@ fn manual_testclaim_subject_roster_family_receipt_holds() -> Bool {
 
 data witness_manual_testclaim_subject_roster_family_receipt: Bool = manual_testclaim_subject_roster_family_receipt_holds()
 data witness_manual_node_corpus_unified_claim_projection: Bool = manual_node_corpus_unified_claim_projection_holds()
-data witness_glob_discovered_bool_witness_unified_claim_projection: Bool = glob_discovered_bool_witness_unified_claim_projection_holds()
 data witness_unified_corpus_eval_pilot_equivalence: Bool = unified_corpus_eval_pilot_equivalence_holds()

@@ -27,5 +27,4 @@ fn witness_glob_discovery_smoke_marker_count_is_positive() -> Bool {
 }
 
 
-data witness_glob_discovery_smoke_marker_count_is_positive: Bool =
-  witness_glob_discovery_smoke_marker_count_is_positive()
+data witness_glob_discovery_smoke_marker_count_is_positive: Bool = witness_glob_discovery_smoke_marker_count_is_positive()
