@@ -114,17 +114,6 @@ fn node_span_anchored(span: SourceSpan) -> NodeSpan {
   Anchored { span: span }
 }
 
-fn node_span_same_file(left: NodeSpan, right: NodeSpan) -> Bool {
-  match left {
-    Unanchored => true
-    Anchored { span: ls } =>
-      match right {
-        Unanchored => true
-        Anchored { span: rs } => ls.file == rs.file
-      }
-  }
-}
-
 // Precondition: node_span_same_file(left, right); cross-file callers must use v4.std.provenance.merge_node_spans.
 fn merge_node_span_same_file(left: NodeSpan, right: NodeSpan) -> NodeSpan {
   match left {
@@ -154,6 +143,31 @@ fn fold_node_span_coproduct<R>(span: NodeSpan, algebra: NodeSpanFold<R>) -> R {
     Unanchored => algebra.on_unanchored()
     Anchored { span: s } => algebra.on_anchored(s)
   }
+}
+
+// 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): canonical NodeSpan same-file query surface.
+fn node_span_same_file(left: NodeSpan, right: NodeSpan) -> Bool {
+  fold_node_span_coproduct(
+    span: left,
+    algebra: NodeSpanFold {
+      on_unanchored: fn() {
+        true
+      },
+      on_anchored: fn(ls) {
+        fold_node_span_coproduct(
+          span: right,
+          algebra: NodeSpanFold {
+            on_unanchored: fn() {
+              true
+            },
+            on_anchored: fn(rs) {
+              ls.file == rs.file
+            }
+          }
+        )
+      }
+    }
+  )
 }
 
 // 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): canonical NodeSpan coproduct query surface.
