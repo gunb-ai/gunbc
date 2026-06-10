@@ -103,6 +103,46 @@ fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
     );
 }
 
+/// Discriminates the Rust emitter's Witness-only lowering boundary.
+#[test]
+fn rust_emitter_lowers_holds_violates_only_for_witness_parent() {
+    let info = empty_emit_graph_info();
+    let empty_bindings = Rc::new(vec![]);
+    let empty_path = Rc::new(vec![]);
+    let empty_shared = Rc::new(std::collections::BTreeSet::new());
+    let empty_indices = Rc::new(std::collections::HashMap::new());
+
+    let non_witness = emit_variant_pattern(
+        "Holds".to_string(),
+        Some("NonWitness".to_string()),
+        empty_bindings.clone(),
+        empty_path.clone(),
+        empty_shared.clone(),
+        "".to_string(),
+        empty_indices.clone(),
+        info.clone(),
+    );
+    assert_eq!(
+        non_witness, "NonWitness::Holds",
+        "non-Witness Holds must stay on its declared enum surface"
+    );
+
+    let witness = emit_variant_pattern(
+        "Holds".to_string(),
+        Some("Witness".to_string()),
+        empty_bindings,
+        empty_path,
+        empty_shared,
+        "".to_string(),
+        empty_indices,
+        info,
+    );
+    assert_eq!(
+        witness, "v2_rt::Witness::Holds",
+        "Witness Holds must lower to the runtime Witness enum"
+    );
+}
+
 #[test]
 fn map_get_matches_witness_lookup_to_present_absent() {
     let src = r#"module test.witness_map_get

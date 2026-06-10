@@ -3483,9 +3483,7 @@ fn emit_pattern(pattern: MatchPattern, path_prefix: List<String>, shared_types: 
 
 fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
   let scrut_is_known_enum = scrut_type != "" && is_enum_type_name(type_name: scrut_type, type_summaries: type_summaries)
-  if name == "Holds" || name == "Violates" {
-    Present { value: "Witness" }
-  } else if parent_enum != none {
+  if parent_enum != none {
     parent_enum
   } else if scrut_is_known_enum {
     Present { value: scrut_type }
