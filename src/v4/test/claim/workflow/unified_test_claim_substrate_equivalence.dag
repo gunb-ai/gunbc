@@ -19,12 +19,20 @@ import v4.std.verification {
   unified_test_claim_bool_witness,
   unified_test_claim_modality
 }
-import v4.test.claim.lens_affected_set.edit_locus_resolver { unified_claim_edit_locus_narrow }
+import v4.test.claim.lens_affected_set.edit_locus_resolver {
+  edit_locus_narrow_resolution_holds_symbol,
+  unified_claim_edit_locus_narrow
+}
+import v4.std.text { String }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
 import v4.test.claim.workflow.glob_discovery {
   glob_discovered_smoke_marker_count,
   glob_discovery_smoke_marker_count_is_positive
 }
+// Independent transport authority for the sample marker (not read back from extraction).
+data substrate_equivalence_sample_bool_witness_entry: String = "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag"
+
+
 fn substrate_equivalence_sample_bool_unified_claim() -> UnifiedTestClaim {
   unified_claim_edit_locus_narrow
 }
@@ -41,12 +49,11 @@ fn substrate_equivalence_sample_node_corpus_claim() -> UnifiedTestClaim {
 fn substrate_equivalence_glob_discovery_marker_preserves_entry_function() -> Bool {
   match unified_test_claim_bool_witness(c: substrate_equivalence_sample_bool_unified_claim()) {
     Accepted { value: w, diagnostics: None } =>
-      (w.entry == "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag")
-        && bool_witness_matches_entry_function(
-          w: w,
-          entry: w.entry,
-          function: w.function
-        )
+      bool_witness_matches_entry_function(
+        w: w,
+        entry: substrate_equivalence_sample_bool_witness_entry,
+        function: edit_locus_narrow_resolution_holds_symbol
+      )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -75,8 +82,8 @@ fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
         Accepted { value: w, diagnostics: None } =>
           bool_witness_matches_entry_function(
             w: w,
-            entry: extracted.entry,
-            function: extracted.function
+            entry: substrate_equivalence_sample_bool_witness_entry,
+            function: edit_locus_narrow_resolution_holds_symbol
           )
         Rejected { diagnostics: _ } => false
       }
