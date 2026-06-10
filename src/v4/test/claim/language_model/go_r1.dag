@@ -6,7 +6,6 @@
 
 module v4.test.claim.language_model.go_r1
 
-import v4.extdeps.languages.go { go_surface_spelling_int }
 import v4.lens.leaf_model_verification {
   go_leaf_model_fact_atom,
   go_r1_fixture,
@@ -41,14 +40,10 @@ import v4.std.verification {
   Boundary,
   manual_claim_anchor
 }
-
-data go_r1_claim_bool_true: Symbol = go_r1_claim_bool_true
-data go_r1_claim_bool_false: Symbol = go_r1_claim_bool_false
-
 fn go_r1_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: go_r1_claim_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: go_r1_claim_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^go_r1_claim_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^go_r1_claim_bool_false } }, children: [] }
   }
 }
 
@@ -58,7 +53,7 @@ data claim_go_r1_fixture_pair_wired: TestClaim = EqualsClaim {
   lhs: go_r1_claim_bool_atom(b: true),
   rhs: go_r1_claim_bool_atom(
     b: go_r1_fixture().claim_id == leaf_model_claim_go_r1_int_surface_spelling
-      && go_r1_fixture().fact_anchor == go_leaf_model_fact_atom(id: go_surface_spelling_int)
+      && go_r1_fixture().fact_anchor == go_leaf_model_fact_atom(id: ^go_surface_spelling_int)
       && go_r1_fixture().happy.source == go_r1_happy_fixture_source
       && go_r1_fixture().expected_happy_verdict == TargetCompileAccepted
       && go_r1_fixture().falsification.fixture.source == go_r1_falsification_fixture_source
@@ -66,13 +61,10 @@ data claim_go_r1_fixture_pair_wired: TestClaim = EqualsClaim {
   ),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
-
-data go_r1_pending_verification_reason: Symbol = go_r1_pending_verification_reason
-
 fn go_r1_pending_verification_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: go_r1_pending_verification_reason,
-    at: Textual { file: go_r1_pending_verification_reason, extent: WholeFile },
+    reason: ^go_r1_pending_verification_reason,
+    at: Textual { file: ^go_r1_pending_verification_reason, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

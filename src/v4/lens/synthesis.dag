@@ -19,6 +19,7 @@
 module v4.lens.synthesis
 
 
+import v4.lens.application { AdvisoryLens }
 import v4.lens.complexity {
   ComplexityBound,
   SizedLinearClass,
@@ -46,11 +47,6 @@ import v4.std.diagnostic {
 import v4.std.node { Node, Symbol }
 import v4.std.report { Report, SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
 import v4.std.witness { Holds, Violates }
-
-
-data synthesis_no_technique_reason_symbol: Symbol = synthesis_no_technique_reason_symbol
-
-
 // 🟢 coproduct — closed set. STOP-and-escalate if a 6th variant is needed.
 type LowerBoundTechnique
   = DecisionTree
@@ -84,7 +80,7 @@ type SynthesisOutcome
 
 fn synthesis_no_technique_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: synthesis_no_technique_reason_symbol,
+    reason: ^synthesis_no_technique_reason_symbol,
     at: node_locus(node: n),
     correction: Unavailable { reason: AmbiguousIntent }
   }
@@ -206,6 +202,22 @@ fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<Repo
           outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
       }
   }
+}
+
+fn decision_tree_synthesis_lens_read(n: Node) -> List<Report> {
+  synthesis_lens(n: n, declared_technique: DecisionTree)
+}
+
+data decision_tree_synthesis_advisory_lens: AdvisoryLens = AdvisoryLens {
+  read: decision_tree_synthesis_lens_read
+}
+
+fn information_theoretic_synthesis_lens_read(n: Node) -> List<Report> {
+  synthesis_lens(n: n, declared_technique: InformationTheoretic)
+}
+
+data information_theoretic_synthesis_advisory_lens: AdvisoryLens = AdvisoryLens {
+  read: information_theoretic_synthesis_lens_read
 }
 
 // Companion: surfaces diagnostics for the declared technique — both upstream complexity

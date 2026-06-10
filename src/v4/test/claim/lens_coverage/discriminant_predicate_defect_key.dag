@@ -21,11 +21,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data discriminant_predicate_symbol: Symbol = discriminant_predicate_symbol
-
 data discriminant_predicate_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: discriminant_predicate_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^discriminant_predicate_symbol } },
   children: []
 }
 

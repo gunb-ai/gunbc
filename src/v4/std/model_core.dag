@@ -43,6 +43,20 @@ type ModelCorePrimitiveFactAxis
   | ModelCoreFactAxisSurfaceSpelling {}
   | ModelCoreFactAxisOverflowDisposition {}
 
+// 🟡 predicate-dissolution interim — feature:model-core-primitive-fact-axis-role-classification — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: derive axis-role predicates from shared projection receipts and the closed fact-axis coproduct; forbidden: untracked parallel role-classifier predicates.
+fn model_core_primitive_fact_axis_is_surface(axis: Symbol) -> Bool {
+  axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {})
+}
+
+// 🟡 predicate-dissolution interim — feature:model-core-primitive-fact-axis-role-classification — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: derive axis-role predicates from shared projection receipts and the closed fact-axis coproduct; forbidden: untracked parallel role-classifier predicates.
+fn model_core_primitive_fact_axis_is_core(axis: Symbol) -> Bool {
+  (axis == discriminant(v: ModelCoreFactAxisEncoding {}))
+    || (axis == discriminant(v: ModelCoreFactAxisWidth {}))
+    || (axis == discriminant(v: ModelCoreFactAxisSignedness {}))
+    || (axis == discriminant(v: ModelCoreFactAxisRange {}))
+    || (axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}))
+}
+
 
 type PrimitiveFactBundle {
   substrate_carrier: Node

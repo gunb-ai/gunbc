@@ -16,8 +16,6 @@ import v4.extdeps.languages.rust {
   rust_reference_layer_tokens,
   rust_sg2_binding_spellings,
   rust_sg2_type_expr_target_model,
-  rust_sg_rc_ctor_box_new,
-  rust_sg_rc_ctor_rc_new,
   rust_type_expression_projection
 }
 import v4.std.target_model {
@@ -59,10 +57,11 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier1,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
-data sg_rc_pass_sym: Symbol = sg_rc_pass_sym
-data sg_rc_fail_sym: Symbol = sg_rc_fail_sym
 data sg_rc_fail_text: String = ""
 data sg_rc_expected_rc_diagnostics: String = "Rc<Diagnostics>"
 data sg_rc_expected_owned_diagnostics: String = "Diagnostics"
@@ -74,14 +73,14 @@ data sg_rc_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 
 fn sg_rc_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg_rc_pass_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg_rc_pass_sym } },
     children: []
   }
 }
 
 fn sg_rc_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sg_rc_fail_sym } },
+    kind: TypeNode { connective: Atom { identity: ^sg_rc_fail_sym } },
     children: []
   }
 }
@@ -107,8 +106,8 @@ fn sg_rc_ctor_binding_spelling(binding: Symbol, expected: String) -> Bool {
 }
 
 fn sg_rc_ctor_spellings_in_binding_map() -> Bool {
-  sg_rc_ctor_binding_spelling(binding: rust_sg_rc_ctor_rc_new, expected: "Rc::new")
-  && sg_rc_ctor_binding_spelling(binding: rust_sg_rc_ctor_box_new, expected: "Box::new")
+  sg_rc_ctor_binding_spelling(binding: ^rust_sg_rc_ctor_rc_new, expected: "Rc::new")
+  && sg_rc_ctor_binding_spelling(binding: ^rust_sg_rc_ctor_box_new, expected: "Box::new")
 }
 
 fn sg_rc_target() -> TargetModel {
@@ -204,7 +203,7 @@ fn sg_rc_diagnostics_identity_value() -> TargetValueExpression {
 fn sg_rc_value_expr_ctor_identity(expr: TargetValueExpression) -> Symbol {
   match expr.node.kind {
     TypeNode { connective: Atom { identity: id } } => id
-    _ => sg_rc_fail_sym
+    _ => ^sg_rc_fail_sym
   }
 }
 
@@ -525,4 +524,22 @@ data claim_sg_rc_ctor_spellings: TestClaim = EqualsClaim {
   lhs: sg_rc_claim_input(ok: sg_rc_ctor_spellings_in_binding_map()),
   rhs: sg_rc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `sg_rc_f6_round_trip_owned` so glob discovery finds the witness without the central roster.
+data unified_claim_sg_rc_f6_owned: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
+    function: sg_rc_f6_round_trip_owned
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `sg_rc_value_rc_wrap_tagged` so glob discovery finds the witness without the central roster.
+data unified_claim_sg_rc_value_rc_wrap_tagged: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
+    function: sg_rc_value_rc_wrap_tagged
+  }
 }

@@ -24,10 +24,11 @@ import v4.std.lexing { Token }
 import v4.std.node { Symbol }
 import v4.compiler.parse { token_position_indices }
 
-
-data parse_table_probe_class: Symbol = parse_table_probe_class
-
-
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 fn parse_table_token(class: Symbol) -> Token {
   Token { class: class, lexeme: Empty, file: class, start: 0, end: 0 }
 }
@@ -37,8 +38,8 @@ fn parse_table_token(class: Symbol) -> Token {
 // fold seeded with [0], snoc-ing length(acc) per token: [0] → [0,1] → [0,1,2]. The fix
 // produces exactly N+1 = 3 entries with NO duplicate final append (which would give 4).
 data parse_table_two_tokens: List<Token> = Cons {
-  head: parse_table_token(class: parse_table_probe_class),
-  tail: Cons { head: parse_table_token(class: parse_table_probe_class), tail: Empty }
+  head: parse_table_token(class: ^parse_table_probe_class),
+  tail: Cons { head: parse_table_token(class: ^parse_table_probe_class), tail: Empty }
 }
 
 data parse_table_empty_tokens: List<Token> = Empty
@@ -51,4 +52,13 @@ fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
   (length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 3)
     && (length(xs: token_position_indices(tokens: parse_table_empty_tokens)) == 1)
     && ((length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 4) == false)
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `parse_table_token_position_indices_no_extra_append_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_parse_table_token_position_indices: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/parse/parse_table_claims.dag",
+    function: parse_table_token_position_indices_no_extra_append_holds
+  }
 }

@@ -5,9 +5,7 @@
 
 module v4.test.claim.lens_testgen.shadow_ci_receipt
 
-
 import v4.lens.testgen {
-  testgen_default_profile_ref,
   testgen_run_receipt_outcome,
   testgen_run_receipt_carries_profile_roster
 }
@@ -21,14 +19,11 @@ import v4.std.verification {
   TestClaim,
   Tier1,
   Unit,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
-
-
-data lens_testgen_shadow_ci_ok: Symbol = lens_testgen_shadow_ci_ok
-data lens_testgen_shadow_ci_failed: Symbol = lens_testgen_shadow_ci_failed
-
-
 fn lens_testgen_shadow_ci_marker_node(marker: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: marker } },
@@ -36,32 +31,37 @@ fn lens_testgen_shadow_ci_marker_node(marker: Symbol) -> Node {
   }
 }
 
-
 fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
-  match testgen_run_receipt_outcome(profile_ref: testgen_default_profile_ref) {
+  match testgen_run_receipt_outcome(profile_ref: ^testgen_default_profile_ref) {
     Accepted { value: receipt, diagnostics: _ } =>
       testgen_run_receipt_carries_profile_roster(receipt: receipt)
     Rejected { diagnostics: _ } => false
   }
 }
 
-
 fn lens_testgen_shadow_ci_rhs() -> Node {
   if lens_testgen_shadow_ci_run_receipt_holds() {
-    lens_testgen_shadow_ci_marker_node(marker: lens_testgen_shadow_ci_ok)
+    lens_testgen_shadow_ci_marker_node(marker: ^lens_testgen_shadow_ci_ok)
   } else {
-    lens_testgen_shadow_ci_marker_node(marker: lens_testgen_shadow_ci_failed)
+    lens_testgen_shadow_ci_marker_node(marker: ^lens_testgen_shadow_ci_failed)
   }
 }
-
 
 data claim_lens_testgen_shadow_ci_run_receipt: TestClaim = EqualsClaim {
   label: "lens_testgen/shadow_ci_receipt: TestgenRunReceipt carries profile-selected scheduled generators",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: lens_testgen_shadow_ci_marker_node(marker: lens_testgen_shadow_ci_ok),
+  lhs: lens_testgen_shadow_ci_marker_node(marker: ^lens_testgen_shadow_ci_ok),
   rhs: lens_testgen_shadow_ci_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data witness_lens_testgen_shadow_ci_run_receipt_green: Bool = lens_testgen_shadow_ci_run_receipt_holds()
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_lens_testgen_shadow_ci_run_receipt_green` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_testgen_shadow_ci: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag",
+    function: witness_lens_testgen_shadow_ci_run_receipt_green
+  }
+}

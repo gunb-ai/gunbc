@@ -33,14 +33,10 @@ import v4.std.verification {
   Boundary,
   manual_claim_anchor
 }
-
-data python_r2b_claim_bool_true: Symbol = python_r2b_claim_bool_true
-data python_r2b_claim_bool_false: Symbol = python_r2b_claim_bool_false
-
 fn python_r2b_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: python_r2b_claim_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: python_r2b_claim_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^python_r2b_claim_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^python_r2b_claim_bool_false } }, children: [] }
   }
 }
 
@@ -56,13 +52,10 @@ data claim_python_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
   ),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
-
-data python_r2b_pending_verification_reason: Symbol = python_r2b_pending_verification_reason
-
 fn python_r2b_pending_verification_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: python_r2b_pending_verification_reason,
-    at: Textual { file: python_r2b_pending_verification_reason, extent: WholeFile },
+    reason: ^python_r2b_pending_verification_reason,
+    at: Textual { file: ^python_r2b_pending_verification_reason, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

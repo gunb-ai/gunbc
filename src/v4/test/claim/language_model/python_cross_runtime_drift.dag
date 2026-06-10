@@ -7,9 +7,6 @@
 
 module v4.test.claim.language_model.python_cross_runtime_drift
 
-import v4.extdeps.languages.python { python_repr_int_arbitrary_precision }
-import v4.extdeps.languages.rust { rust_repr_integer_twos_complement }
-import v4.extdeps.languages.go { go_repr_twos_complement_integer }
 import v4.lens.leaf_model_verification {
   python_cross_runtime_drift_probe,
   python_cross_runtime_drift_python_source,
@@ -33,14 +30,10 @@ import v4.std.verification {
   Boundary,
   manual_claim_anchor
 }
-
-data python_cross_runtime_drift_claim_bool_true: Symbol = python_cross_runtime_drift_claim_bool_true
-data python_cross_runtime_drift_claim_bool_false: Symbol = python_cross_runtime_drift_claim_bool_false
-
 fn python_cross_runtime_drift_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: python_cross_runtime_drift_claim_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: python_cross_runtime_drift_claim_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^python_cross_runtime_drift_claim_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ^python_cross_runtime_drift_claim_bool_false } }, children: [] }
   }
 }
 
@@ -49,9 +42,9 @@ fn python_cross_runtime_drift_claim_bool_atom(b: Bool) -> Node {
 // predicates live in helper fns that receive the probe.
 fn python_cross_runtime_drift_probe_is_wired(p: LeafModelCrossRuntimeDriftProbe) -> Bool {
   p.claim_id == leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
-    && p.arbitrary_precision_fact == python_repr_int_arbitrary_precision
-    && p.fixed_width_rust_fact == rust_repr_integer_twos_complement
-    && p.fixed_width_go_fact == go_repr_twos_complement_integer
+    && p.arbitrary_precision_fact == ^python_repr_int_arbitrary_precision
+    && p.fixed_width_rust_fact == ^rust_repr_integer_twos_complement
+    && p.fixed_width_go_fact == ^go_repr_twos_complement_integer
     && p.arbitrary_precision_source == python_cross_runtime_drift_python_source
     && p.fixed_width_rust_source == python_cross_runtime_drift_rust_source
     && p.fixed_width_go_source == python_cross_runtime_drift_go_source

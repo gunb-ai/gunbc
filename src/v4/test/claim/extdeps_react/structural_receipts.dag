@@ -57,6 +57,12 @@ import v4.std.algebra { Cons, Empty, length }
 import v4.std.logic { Bool }
 
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 data react_probe_cross_decl_ref: ReactCrossDeclRef = react_probe_cross_decl_ref
 
 fn react_probe_props_site() -> ReactPropsSite {
@@ -344,5 +350,68 @@ fn extdeps_react_create_element_child_element_arm_wraps_react_element_holds() ->
         Fragment { key: _, children: _ } => false
       }
     Text { text_value_ref: _ } => false
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_extdeps_react_use_memo_callback_deps: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+    function: extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `extdeps_react_effect_hooks_require_setup_ref_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_extdeps_react_effect_setup_ref: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+    function: extdeps_react_effect_hooks_require_setup_ref_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `extdeps_react_host_element_declares_key_and_ref_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_extdeps_react_host_key_ref: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+    function: extdeps_react_host_element_declares_key_and_ref_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `extdeps_react_composite_element_declares_key_and_ref_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_extdeps_react_composite_key_ref: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+    function: extdeps_react_composite_element_declares_key_and_ref_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `extdeps_react_fragment_arm_declares_key_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_extdeps_react_fragment_key: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+    function: extdeps_react_fragment_arm_declares_key_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `extdeps_react_element_children_are_list_create_element_child_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_extdeps_react_element_children: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+    function: extdeps_react_element_children_are_list_create_element_child_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `extdeps_react_create_element_child_element_arm_wraps_react_element_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_extdeps_react_child_element_wraps: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
+    function: extdeps_react_create_element_child_element_arm_wraps_react_element_holds
   }
 }

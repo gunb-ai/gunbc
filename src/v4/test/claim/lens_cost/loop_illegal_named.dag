@@ -30,23 +30,18 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Violates }
-
-data loop_illegal_named_body_atom: Symbol = loop_illegal_named_body_atom
-data loop_illegal_named_measure_atom: Symbol = loop_illegal_named_measure_atom
-data loop_illegal_named_extra_atom: Symbol = loop_illegal_named_extra_atom
-
 data loop_illegal_named_body_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: loop_illegal_named_body_atom } },
+  kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_body_atom } },
   children: []
 }
 
 data loop_illegal_named_measure_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: loop_illegal_named_measure_atom } },
+  kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_measure_atom } },
   children: []
 }
 
 data loop_illegal_named_extra_leaf: Node = Node {
-  kind: TypeNode { connective: Atom { identity: loop_illegal_named_extra_atom } },
+  kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_extra_atom } },
   children: []
 }
 
@@ -55,7 +50,7 @@ data loop_illegal_named_input: Node = Node {
   children: [
     Edge { label: Positional, target: loop_illegal_named_body_leaf },
     Edge { label: Named { name: loop_bound_edge }, target: loop_illegal_named_measure_leaf },
-    Edge { label: Named { name: loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
+    Edge { label: Named { name: ^loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
   ]
 }
 

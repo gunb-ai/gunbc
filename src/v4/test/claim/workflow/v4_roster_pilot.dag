@@ -6,54 +6,273 @@ module v4.test.claim.workflow.v4_roster_pilot
 
 
 import v4.std.algebra { count_equal, length }
-import v4.std.collection { List }
+import v4.std.collection { Absent, List, Map, Present, empty_map, map_get, map_insert }
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
+import v4.std.node { Symbol }
 import v4.std.text { String }
+import v4.std.verification { BoolWitness }
+
+
+// Witness Symbol pins — structural nullary fn () -> Bool identity (substrate authority; `function` String is shell transport only).
+data caret_sigil_surface_witness_holds: Symbol = caret_sigil_surface_witness_holds
+data coordination_obligation_exchange_arm_sharp_holds: Symbol = coordination_obligation_exchange_arm_sharp_holds
+data coordination_obligation_settlement_arm_sharp_holds: Symbol = coordination_obligation_settlement_arm_sharp_holds
+data discriminant_intrinsic_is_payload_blind_and_arm_sharp: Symbol = discriminant_intrinsic_is_payload_blind_and_arm_sharp
+data edit_locus_fail_closed_holds: Symbol = edit_locus_fail_closed_holds
+data edit_locus_narrow_resolution_holds: Symbol = edit_locus_narrow_resolution_holds
+data edit_locus_source_provenance_affected_set_wire_holds: Symbol = edit_locus_source_provenance_affected_set_wire_holds
+data edit_locus_source_provenance_producer_holds: Symbol = edit_locus_source_provenance_producer_holds
+data edit_locus_source_provenance_producer_rejects_malformed_source_holds: Symbol = edit_locus_source_provenance_producer_rejects_malformed_source_holds
+data extdeps_react_composite_element_declares_key_and_ref_holds: Symbol = extdeps_react_composite_element_declares_key_and_ref_holds
+data extdeps_react_create_element_child_element_arm_wraps_react_element_holds: Symbol = extdeps_react_create_element_child_element_arm_wraps_react_element_holds
+data extdeps_react_effect_hooks_require_setup_ref_holds: Symbol = extdeps_react_effect_hooks_require_setup_ref_holds
+data extdeps_react_element_children_are_list_create_element_child_holds: Symbol = extdeps_react_element_children_are_list_create_element_child_holds
+data extdeps_react_fragment_arm_declares_key_holds: Symbol = extdeps_react_fragment_arm_declares_key_holds
+data extdeps_react_host_element_declares_key_and_ref_holds: Symbol = extdeps_react_host_element_declares_key_and_ref_holds
+data extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds: Symbol = extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds
+data lens_affected_set_irt1_boundary_prune_holds: Symbol = lens_affected_set_irt1_boundary_prune_holds
+data lens_affected_set_irt1_empty_diff_frontier_holds: Symbol = lens_affected_set_irt1_empty_diff_frontier_holds
+data lens_affected_set_irt1_fail_closed_absorption_holds: Symbol = lens_affected_set_irt1_fail_closed_absorption_holds
+data lens_affected_set_irt1_fail_closed_pending_escalation_holds: Symbol = lens_affected_set_irt1_fail_closed_pending_escalation_holds
+data lens_application_introspect_advisory_holds: Symbol = lens_application_introspect_advisory_holds
+data lens_application_synthesis_gap_enforce_rejection_holds: Symbol = lens_application_synthesis_gap_enforce_rejection_holds
+data lens_application_synthesis_gap_polynomial_holds: Symbol = lens_application_synthesis_gap_polynomial_holds
+data lens_idempotency_write_effect_holds: Symbol = lens_idempotency_write_effect_holds
+data lens_identical_variant_payload_unrealized_scaffold_holds: Symbol = lens_identical_variant_payload_unrealized_scaffold_holds
+data lens_structural_similarity_unrealized_scaffold_holds: Symbol = lens_structural_similarity_unrealized_scaffold_holds
+data lens_table_decision_tree_unrealized_scaffold_holds: Symbol = lens_table_decision_tree_unrealized_scaffold_holds
+data lens_registry_required_ids_resolve_holds: Symbol = lens_registry_required_ids_resolve_holds
+data lens_registry_singleton_row_counts_holds: Symbol = lens_registry_singleton_row_counts_holds
+data map_lookup_miss_violates_and_hit_holds: Symbol = map_lookup_miss_violates_and_hit_holds
+data map_structural_key_equality_holds: Symbol = map_structural_key_equality_holds
+data mvp1_dag_add_emit_ingest_round_trip_holds: Symbol = mvp1_dag_add_emit_ingest_round_trip_holds
+data mvp1_go_emit_add_fn_accepts_holds: Symbol = mvp1_go_emit_add_fn_accepts_holds
+data mvp1_python_emit_add_fn_accepts_holds: Symbol = mvp1_python_emit_add_fn_accepts_holds
+data mvp1_rust_emit_add_fn_accepts_holds: Symbol = mvp1_rust_emit_add_fn_accepts_holds
+data mvp1_ts_emit_add_fn_accepts_holds: Symbol = mvp1_ts_emit_add_fn_accepts_holds
+data parse_table_token_position_indices_no_extra_append_holds: Symbol = parse_table_token_position_indices_no_extra_append_holds
+data scheduler_runnable_frontier_claims_hold: Symbol = scheduler_runnable_frontier_claims_hold
+data sg_rc_f6_round_trip_owned: Symbol = sg_rc_f6_round_trip_owned
+data sg_rc_value_rc_wrap_tagged: Symbol = sg_rc_value_rc_wrap_tagged
+data text_host_string_empty_roundtrip_holds: Symbol = text_host_string_empty_roundtrip_holds
+data text_host_string_field_text_holds: Symbol = text_host_string_field_text_holds
+data text_host_string_roundtrip_holds: Symbol = text_host_string_roundtrip_holds
+data text_string_freemonoid_carrier_holds: Symbol = text_string_freemonoid_carrier_holds
+data ts_g2_sg1_symbol_carrier_holds: Symbol = ts_g2_sg1_symbol_carrier_holds
+data ts_g2_sg5_absence_fail_closed_holds: Symbol = ts_g2_sg5_absence_fail_closed_holds
+data witness_cross_target_python_to_rust_i32_rejects: Symbol = witness_cross_target_python_to_rust_i32_rejects
+data witness_cross_target_python_to_rust_i32_would_lose_information: Symbol = witness_cross_target_python_to_rust_i32_would_lose_information
+data witness_cross_target_rust_i32_to_python_int_accepts: Symbol = witness_cross_target_rust_i32_to_python_int_accepts
+data witness_claim_crux_substrate_gap: Symbol = witness_claim_crux_substrate_gap
+data integer_interval_bound_compare_orders_pointer_width_bounds: Symbol = integer_interval_bound_compare_orders_pointer_width_bounds
+data witness_claim_task_id_surfaces_distinct: Symbol = witness_claim_task_id_surfaces_distinct
+data witness_grounding_terminal_gate_runtime_authoritative_discriminates: Symbol = witness_grounding_terminal_gate_runtime_authoritative_discriminates
+data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Symbol = witness_integer_interval_bound_compare_orders_pointer_width_bounds
+data witness_integer_value_set_accepts_i16_subset_i32: Symbol = witness_integer_value_set_accepts_i16_subset_i32
+data witness_integer_value_set_accepts_i32_subset_python_int: Symbol = witness_integer_value_set_accepts_i32_subset_python_int
+data witness_integer_value_set_accepts_u8_subset_i16: Symbol = witness_integer_value_set_accepts_u8_subset_i16
+data witness_integer_value_set_interval_containment_rejects_malformed_payload: Symbol = witness_integer_value_set_interval_containment_rejects_malformed_payload
+data witness_integer_value_set_refuses_incompatible_unknown: Symbol = witness_integer_value_set_refuses_incompatible_unknown
+data witness_integer_value_set_rejects_malformed_interval_payload: Symbol = witness_integer_value_set_rejects_malformed_interval_payload
+data witness_integer_value_set_rejects_unbounded_with_extra_field: Symbol = witness_integer_value_set_rejects_unbounded_with_extra_field
+data witness_integer_value_set_reverse_is_strict_coarsening: Symbol = witness_integer_value_set_reverse_is_strict_coarsening
+data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Symbol = witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green
+data witness_lens_testgen_scheduled_generators_carry_provenance_green: Symbol = witness_lens_testgen_scheduled_generators_carry_provenance_green
+data witness_lens_testgen_schedules_dag_input_surface_green: Symbol = witness_lens_testgen_schedules_dag_input_surface_green
+data witness_lens_testgen_shadow_ci_run_receipt_green: Symbol = witness_lens_testgen_shadow_ci_run_receipt_green
+data witness_lens_idempotency_family_gate_closed: Symbol = witness_lens_idempotency_family_gate_closed
+data witness_lens_parallelism_family_gate_closed: Symbol = witness_lens_parallelism_family_gate_closed
+data witness_model_core_bool_fact_lookup_discriminates: Symbol = witness_model_core_bool_fact_lookup_discriminates
+data witness_project_to_core_derives_preserves_ambiguity: Symbol = witness_project_to_core_derives_preserves_ambiguity
+data witness_project_to_core_drops_nested_surface: Symbol = witness_project_to_core_drops_nested_surface
+data witness_project_to_core_real_dispatch_accepts_sibling: Symbol = witness_project_to_core_real_dispatch_accepts_sibling
+data witness_project_to_core_real_dispatch_rejects_wrong_core: Symbol = witness_project_to_core_real_dispatch_rejects_wrong_core
+data witness_project_to_core_rejects_core_only_under_surface: Symbol = witness_project_to_core_rejects_core_only_under_surface
+data witness_project_to_core_rejects_different_connective_same_core_children: Symbol = witness_project_to_core_rejects_different_connective_same_core_children
+data witness_project_to_core_rejects_nested_core_difference: Symbol = witness_project_to_core_rejects_nested_core_difference
+data witness_project_to_core_rejects_surface_only_empty_core: Symbol = witness_project_to_core_rejects_surface_only_empty_core
+data witness_sg2_arrow_holds: Symbol = witness_sg2_arrow_holds
+data witness_sg2_projection_falsification_holds: Symbol = witness_sg2_projection_falsification_holds
+data parallel_executor_claims_hold: Symbol = parallel_executor_claims_hold
+
+
+fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
+  let m0 = empty_map()
+  let m1 = map_insert(m0, edit_locus_narrow_resolution_holds, "edit_locus_narrow_resolution_holds")
+  let m2 = map_insert(m1, edit_locus_fail_closed_holds, "edit_locus_fail_closed_holds")
+  let m2a = map_insert(m2, edit_locus_source_provenance_producer_holds, "edit_locus_source_provenance_producer_holds")
+  let m2b = map_insert(m2a, edit_locus_source_provenance_affected_set_wire_holds, "edit_locus_source_provenance_affected_set_wire_holds")
+  let m2c = map_insert(m2b, edit_locus_source_provenance_producer_rejects_malformed_source_holds, "edit_locus_source_provenance_producer_rejects_malformed_source_holds")
+  let m3 = map_insert(m2c, witness_lens_testgen_scheduled_generators_carry_provenance_green, "witness_lens_testgen_scheduled_generators_carry_provenance_green")
+  let m4 = map_insert(m3, witness_lens_testgen_shadow_ci_run_receipt_green, "witness_lens_testgen_shadow_ci_run_receipt_green")
+  let m5 = map_insert(m4, witness_lens_testgen_schedules_dag_input_surface_green, "witness_lens_testgen_schedules_dag_input_surface_green")
+  let m6 = map_insert(m5, witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green, "witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green")
+  let m7 = map_insert(m6, witness_model_core_bool_fact_lookup_discriminates, "witness_model_core_bool_fact_lookup_discriminates")
+  let m8 = map_insert(m7, witness_grounding_terminal_gate_runtime_authoritative_discriminates, "witness_grounding_terminal_gate_runtime_authoritative_discriminates")
+  let m9 = map_insert(m8, ts_g2_sg1_symbol_carrier_holds, "ts_g2_sg1_symbol_carrier_holds")
+  let m10 = map_insert(m9, ts_g2_sg5_absence_fail_closed_holds, "ts_g2_sg5_absence_fail_closed_holds")
+  let m11 = map_insert(m10, discriminant_intrinsic_is_payload_blind_and_arm_sharp, "discriminant_intrinsic_is_payload_blind_and_arm_sharp")
+  let m12 = map_insert(m11, caret_sigil_surface_witness_holds, "caret_sigil_surface_witness_holds")
+  let m13 = map_insert(m12, sg_rc_f6_round_trip_owned, "sg_rc_f6_round_trip_owned")
+  let m14 = map_insert(m13, witness_sg2_arrow_holds, "witness_sg2_arrow_holds")
+  let m15 = map_insert(m14, witness_sg2_projection_falsification_holds, "witness_sg2_projection_falsification_holds")
+  let m16 = map_insert(m15, text_string_freemonoid_carrier_holds, "text_string_freemonoid_carrier_holds")
+  let m17 = map_insert(m16, text_host_string_roundtrip_holds, "text_host_string_roundtrip_holds")
+  let m18 = map_insert(m17, text_host_string_empty_roundtrip_holds, "text_host_string_empty_roundtrip_holds")
+  let m19 = map_insert(m18, text_host_string_field_text_holds, "text_host_string_field_text_holds")
+  let m20 = map_insert(m19, extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds, "extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds")
+  let m21 = map_insert(m20, extdeps_react_effect_hooks_require_setup_ref_holds, "extdeps_react_effect_hooks_require_setup_ref_holds")
+  let m22 = map_insert(m21, extdeps_react_host_element_declares_key_and_ref_holds, "extdeps_react_host_element_declares_key_and_ref_holds")
+  let m23 = map_insert(m22, extdeps_react_composite_element_declares_key_and_ref_holds, "extdeps_react_composite_element_declares_key_and_ref_holds")
+  let m24 = map_insert(m23, extdeps_react_fragment_arm_declares_key_holds, "extdeps_react_fragment_arm_declares_key_holds")
+  let m25 = map_insert(m24, extdeps_react_element_children_are_list_create_element_child_holds, "extdeps_react_element_children_are_list_create_element_child_holds")
+  let m26 = map_insert(m25, extdeps_react_create_element_child_element_arm_wraps_react_element_holds, "extdeps_react_create_element_child_element_arm_wraps_react_element_holds")
+  let m27 = map_insert(m26, mvp1_rust_emit_add_fn_accepts_holds, "mvp1_rust_emit_add_fn_accepts_holds")
+  let m28 = map_insert(m27, mvp1_dag_add_emit_ingest_round_trip_holds, "mvp1_dag_add_emit_ingest_round_trip_holds")
+  let m29 = map_insert(m28, mvp1_python_emit_add_fn_accepts_holds, "mvp1_python_emit_add_fn_accepts_holds")
+  let m30 = map_insert(m29, mvp1_go_emit_add_fn_accepts_holds, "mvp1_go_emit_add_fn_accepts_holds")
+  let m31 = map_insert(m30, mvp1_ts_emit_add_fn_accepts_holds, "mvp1_ts_emit_add_fn_accepts_holds")
+  let m32 = map_insert(m31, coordination_obligation_exchange_arm_sharp_holds, "coordination_obligation_exchange_arm_sharp_holds")
+  let m33 = map_insert(m32, coordination_obligation_settlement_arm_sharp_holds, "coordination_obligation_settlement_arm_sharp_holds")
+  let m34 = map_insert(m33, parse_table_token_position_indices_no_extra_append_holds, "parse_table_token_position_indices_no_extra_append_holds")
+  let m35 = map_insert(m34, lens_application_introspect_advisory_holds, "lens_application_introspect_advisory_holds")
+  let m36 = map_insert(m35, lens_application_synthesis_gap_polynomial_holds, "lens_application_synthesis_gap_polynomial_holds")
+  let m37 = map_insert(m36, lens_application_synthesis_gap_enforce_rejection_holds, "lens_application_synthesis_gap_enforce_rejection_holds")
+  let m38 = map_insert(m37, lens_idempotency_write_effect_holds, "lens_idempotency_write_effect_holds")
+  let m39 = map_insert(m38, lens_identical_variant_payload_unrealized_scaffold_holds, "lens_identical_variant_payload_unrealized_scaffold_holds")
+  let m39a = map_insert(m39, lens_structural_similarity_unrealized_scaffold_holds, "lens_structural_similarity_unrealized_scaffold_holds")
+  let m39b = map_insert(m39a, lens_table_decision_tree_unrealized_scaffold_holds, "lens_table_decision_tree_unrealized_scaffold_holds")
+  let m40 = map_insert(m39b, lens_affected_set_irt1_boundary_prune_holds, "lens_affected_set_irt1_boundary_prune_holds")
+  let m41 = map_insert(m40, lens_affected_set_irt1_fail_closed_pending_escalation_holds, "lens_affected_set_irt1_fail_closed_pending_escalation_holds")
+  let m42 = map_insert(m41, lens_affected_set_irt1_fail_closed_absorption_holds, "lens_affected_set_irt1_fail_closed_absorption_holds")
+  let m43 = map_insert(m42, lens_affected_set_irt1_empty_diff_frontier_holds, "lens_affected_set_irt1_empty_diff_frontier_holds")
+  let m44 = map_insert(m43, lens_registry_required_ids_resolve_holds, "lens_registry_required_ids_resolve_holds")
+  let m45 = map_insert(m44, lens_registry_singleton_row_counts_holds, "lens_registry_singleton_row_counts_holds")
+  let m46 = map_insert(m45, map_lookup_miss_violates_and_hit_holds, "map_lookup_miss_violates_and_hit_holds")
+  let m47 = map_insert(m46, map_structural_key_equality_holds, "map_structural_key_equality_holds")
+  let m48 = map_insert(m47, witness_claim_task_id_surfaces_distinct, "witness_claim_task_id_surfaces_distinct")
+  let m49 = map_insert(m48, witness_claim_crux_substrate_gap, "witness_claim_crux_substrate_gap")
+  let m50 = map_insert(m49, sg_rc_value_rc_wrap_tagged, "sg_rc_value_rc_wrap_tagged")
+  let m51 = map_insert(m50, witness_lens_idempotency_family_gate_closed, "witness_lens_idempotency_family_gate_closed")
+  let m52 = map_insert(m51, witness_lens_parallelism_family_gate_closed, "witness_lens_parallelism_family_gate_closed")
+  let m53 = map_insert(m52, witness_project_to_core_real_dispatch_accepts_sibling, "witness_project_to_core_real_dispatch_accepts_sibling")
+  let m54 = map_insert(m53, witness_project_to_core_real_dispatch_rejects_wrong_core, "witness_project_to_core_real_dispatch_rejects_wrong_core")
+  let m55 = map_insert(m54, witness_project_to_core_rejects_surface_only_empty_core, "witness_project_to_core_rejects_surface_only_empty_core")
+  let m56 = map_insert(m55, witness_project_to_core_rejects_core_only_under_surface, "witness_project_to_core_rejects_core_only_under_surface")
+  let m57 = map_insert(m56, witness_project_to_core_derives_preserves_ambiguity, "witness_project_to_core_derives_preserves_ambiguity")
+  let m58 = map_insert(m57, witness_project_to_core_drops_nested_surface, "witness_project_to_core_drops_nested_surface")
+  let m59 = map_insert(m58, witness_project_to_core_rejects_nested_core_difference, "witness_project_to_core_rejects_nested_core_difference")
+  let m60 = map_insert(m59, witness_project_to_core_rejects_different_connective_same_core_children, "witness_project_to_core_rejects_different_connective_same_core_children")
+  let m61 = map_insert(m60, witness_integer_value_set_accepts_i32_subset_python_int, "witness_integer_value_set_accepts_i32_subset_python_int")
+  let m62 = map_insert(m61, witness_integer_value_set_accepts_i16_subset_i32, "witness_integer_value_set_accepts_i16_subset_i32")
+  let m63 = map_insert(m62, witness_integer_value_set_accepts_u8_subset_i16, "witness_integer_value_set_accepts_u8_subset_i16")
+  let m64 = map_insert(m63, witness_integer_value_set_rejects_malformed_interval_payload, "witness_integer_value_set_rejects_malformed_interval_payload")
+  let m65 = map_insert(m64, witness_integer_value_set_interval_containment_rejects_malformed_payload, "witness_integer_value_set_interval_containment_rejects_malformed_payload")
+  let m66 = map_insert(m65, witness_integer_value_set_reverse_is_strict_coarsening, "witness_integer_value_set_reverse_is_strict_coarsening")
+  let m67 = map_insert(m66, witness_integer_value_set_refuses_incompatible_unknown, "witness_integer_value_set_refuses_incompatible_unknown")
+  let m68 = map_insert(m67, witness_integer_interval_bound_compare_orders_pointer_width_bounds, "witness_integer_interval_bound_compare_orders_pointer_width_bounds")
+  let m69 = map_insert(m68, witness_integer_value_set_rejects_unbounded_with_extra_field, "witness_integer_value_set_rejects_unbounded_with_extra_field")
+  let m70 = map_insert(m69, witness_cross_target_rust_i32_to_python_int_accepts, "witness_cross_target_rust_i32_to_python_int_accepts")
+  let m71 = map_insert(m70, witness_cross_target_python_to_rust_i32_would_lose_information, "witness_cross_target_python_to_rust_i32_would_lose_information")
+  let m72 = map_insert(m71, witness_cross_target_python_to_rust_i32_rejects, "witness_cross_target_python_to_rust_i32_rejects")
+  let m73 = map_insert(m72, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
+  map_insert(m73, parallel_executor_claims_hold, "parallel_executor_claims_hold")
+}
 
 
 type V4RosterPilotClaimRunRow {
   label: String
   entry: String
+  // 🟡 gated — feature:v4-roster-pilot-symbol-transport-bridge — shell `function` String is transport projection of `function_symbol` via `v4_roster_pilot_witness_function_spellings`; dissolve-on: Phase 4 CI transport consumes Symbol authority; forbidden: independent `function` edits diverging from spellings map.
   function: String
+  function_symbol: Symbol
+}
+
+
+// Mechanical registry projection — consolidation #4553 Phase 1 (not a hand-maintained parallel list).
+fn bool_witness_from_roster_row(row: V4RosterPilotClaimRunRow) -> BoolWitness {
+  BoolWitness { entry: row.entry, function: row.function_symbol }
+}
+
+
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
+// dissolve-on: bootstrap Witness<V> dispatch at Map.lookup (substrate Witness at v4.std.collection:70);
+// site: v4_roster_pilot_row_function_transport_matches_symbol spellings bridge.
+fn v4_roster_pilot_row_function_transport_matches_symbol(row: V4RosterPilotClaimRunRow) -> Bool {
+  match map_get(m: v4_roster_pilot_witness_function_spellings(), key: row.function_symbol) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: spelling } => row.function == spelling
+      Absent => false
+    }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 
 data v4_roster_pilot_row_edit_locus_narrow: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "edit-locus narrow resolution",
   entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
-  function: "edit_locus_narrow_resolution_holds"
+  function: "edit_locus_narrow_resolution_holds",
+  function_symbol: edit_locus_narrow_resolution_holds
 }
 
 data v4_roster_pilot_row_edit_locus_fail_closed: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "edit-locus fail closed",
   entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
-  function: "edit_locus_fail_closed_holds"
+  function: "edit_locus_fail_closed_holds",
+  function_symbol: edit_locus_fail_closed_holds
+}
+
+data v4_roster_pilot_row_edit_locus_source_provenance_producer: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "edit-locus source provenance producer",
+  entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+  function: "edit_locus_source_provenance_producer_holds",
+  function_symbol: edit_locus_source_provenance_producer_holds
+}
+
+data v4_roster_pilot_row_edit_locus_source_provenance_wire: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "edit-locus source provenance affected-set wire",
+  entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+  function: "edit_locus_source_provenance_affected_set_wire_holds",
+  function_symbol: edit_locus_source_provenance_affected_set_wire_holds
+}
+
+data v4_roster_pilot_row_edit_locus_source_provenance_rejects_malformed: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "edit-locus source provenance rejects malformed source",
+  entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+  function: "edit_locus_source_provenance_producer_rejects_malformed_source_holds",
+  function_symbol: edit_locus_source_provenance_producer_rejects_malformed_source_holds
 }
 
 data v4_roster_pilot_row_generator_provenance: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "generator provenance",
   entry: "src/v4/test/claim/lens_testgen/generator_provenance.dag",
-  function: "witness_lens_testgen_scheduled_generators_carry_provenance_green"
+  function: "witness_lens_testgen_scheduled_generators_carry_provenance_green",
+  function_symbol: witness_lens_testgen_scheduled_generators_carry_provenance_green
 }
 
 // W4 fold-delete: F.2-P2 shadow CI TestgenRunReceipt roster witness (mutation-proven).
 data v4_roster_pilot_row_lens_testgen_shadow_ci: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens_testgen shadow CI run receipt",
   entry: "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag",
-  function: "witness_lens_testgen_shadow_ci_run_receipt_green"
+  function: "witness_lens_testgen_shadow_ci_run_receipt_green",
+  function_symbol: witness_lens_testgen_shadow_ci_run_receipt_green
 }
 
 // W4 fold-delete: T-19 scheduled LBE .dag input surface witness (mutation-proven).
 data v4_roster_pilot_row_lens_testgen_dag_input_scheduled: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens_testgen scheduled dag input surface",
   entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
-  function: "witness_lens_testgen_schedules_dag_input_surface_green"
+  function: "witness_lens_testgen_schedules_dag_input_surface_green",
+  function_symbol: witness_lens_testgen_schedules_dag_input_surface_green
 }
 
 data v4_roster_pilot_row_lens_testgen_dag_input_bootstrap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens_testgen bootstrap dag input surface",
   entry: "src/v4/test/claim/lens_testgen/dag_input_surface.dag",
-  function: "witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green"
+  function: "witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green",
+  function_symbol: witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green
 }
 
 // W3 A-fold-delete: model_core bool fact lookup discriminating fold-witness (mutation-proven).
@@ -61,7 +280,8 @@ data v4_roster_pilot_row_lens_testgen_dag_input_bootstrap: V4RosterPilotClaimRun
 data v4_roster_pilot_row_model_core_bool_fact_lookup: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "model_core bool fact lookup discriminates",
   entry: "src/v4/test/claim/std_model_core/bool_fact_lookup.dag",
-  function: "witness_model_core_bool_fact_lookup_discriminates"
+  function: "witness_model_core_bool_fact_lookup_discriminates",
+  function_symbol: witness_model_core_bool_fact_lookup_discriminates
 }
 
 // W3 A-fold-delete: grounding RR-A terminal-pass gate fold-witness (mutation-proven).
@@ -69,31 +289,36 @@ data v4_roster_pilot_row_model_core_bool_fact_lookup: V4RosterPilotClaimRunRow =
 data v4_roster_pilot_row_grounding_terminal_gate: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "grounding terminal-pass gate runtime-authoritative",
   entry: "src/v4/test/claim/std_grounding/terminal_gate.dag",
-  function: "witness_grounding_terminal_gate_runtime_authoritative_discriminates"
+  function: "witness_grounding_terminal_gate_runtime_authoritative_discriminates",
+  function_symbol: witness_grounding_terminal_gate_runtime_authoritative_discriminates
 }
 
 data v4_roster_pilot_row_grounding_ts_symbol_carrier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "grounding_typescript SG-1 symbol carrier",
   entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
-  function: "ts_g2_sg1_symbol_carrier_holds"
+  function: "ts_g2_sg1_symbol_carrier_holds",
+  function_symbol: ts_g2_sg1_symbol_carrier_holds
 }
 
 data v4_roster_pilot_row_grounding_ts_absence_fail_closed: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "grounding_typescript SG-5 absence fail-closed",
   entry: "src/v4/test/claim/grounding_typescript/sg_claims.dag",
-  function: "ts_g2_sg5_absence_fail_closed_holds"
+  function: "ts_g2_sg5_absence_fail_closed_holds",
+  function_symbol: ts_g2_sg5_absence_fail_closed_holds
 }
 
 data v4_roster_pilot_row_discriminant_intrinsic: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "discriminant intrinsic payload-blind arm-sharp",
   entry: "src/v4/test/claim/manual/discriminant_intrinsic.dag",
-  function: "discriminant_intrinsic_is_payload_blind_and_arm_sharp"
+  function: "discriminant_intrinsic_is_payload_blind_and_arm_sharp",
+  function_symbol: discriminant_intrinsic_is_payload_blind_and_arm_sharp
 }
 
 data v4_roster_pilot_row_caret_sigil_surface: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "caret sigil ^IDENT literal + ^(Expr) discriminant sugar",
   entry: "src/v4/test/claim/manual/caret_sigil_surface.dag",
-  function: "caret_sigil_surface_witness_holds"
+  function: "caret_sigil_surface_witness_holds",
+  function_symbol: caret_sigil_surface_witness_holds
 }
 
 // ctrl#1476 B3-Gap2 (SG-RC probe wire-decode call-site fix). Only the owned round-trip is
@@ -101,7 +326,18 @@ data v4_roster_pilot_row_caret_sigil_surface: V4RosterPilotClaimRunRow = V4Roste
 data v4_roster_pilot_row_sg_rc_f6_owned: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "sg-rc f6 round-trip owned (ctrl#1476 B3-Gap2)",
   entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
-  function: "sg_rc_f6_round_trip_owned"
+  function: "sg_rc_f6_round_trip_owned",
+  function_symbol: sg_rc_f6_round_trip_owned
+}
+
+// CRASH->GREEN: self-named *_atom Symbol decls (target_model.dag L246-252) fix.
+// The value-expr Rc-wrap path content_hashes a node whose Atom identity was a
+// builder-fn Value::Fn (RHS dropped the _atom suffix) -> atom_identity_hash crash.
+data v4_roster_pilot_row_sg_rc_value_rc_wrap_tagged: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "sg-rc value Rc-wrap node content_hash (atom_identity_hash crash fix)",
+  entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
+  function: "sg_rc_value_rc_wrap_tagged",
+  function_symbol: sg_rc_value_rc_wrap_tagged
 }
 
 // T3 Phase A (ctrl#1489) — SG-2 green-on-current claim-run witnesses only (mutation-proven).
@@ -109,13 +345,15 @@ data v4_roster_pilot_row_sg_rc_f6_owned: V4RosterPilotClaimRunRow = V4RosterPilo
 data v4_roster_pilot_row_sg2_arrow: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "sg2 type-expr Arrow projects (X) -> Y",
   entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
-  function: "witness_sg2_arrow_holds"
+  function: "witness_sg2_arrow_holds",
+  function_symbol: witness_sg2_arrow_holds
 }
 
 data v4_roster_pilot_row_sg2_projection_falsification: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "sg2 type-expr projection falsification fail-closed",
   entry: "src/v4/test/claim/manual/sg2_type_expression_projection.dag",
-  function: "witness_sg2_projection_falsification_holds"
+  function: "witness_sg2_projection_falsification_holds",
+  function_symbol: witness_sg2_projection_falsification_holds
 }
 
 // Exemplar E1: v4.std.text smoke→witness migration (fold-delete W1). Discriminating
@@ -125,68 +363,79 @@ data v4_roster_pilot_row_sg2_projection_falsification: V4RosterPilotClaimRunRow 
 data v4_roster_pilot_row_std_text_freemonoid_carrier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "std_text String FreeMonoid<Char> carrier",
   entry: "src/v4/test/claim/std_text/carrier_claims.dag",
-  function: "text_string_freemonoid_carrier_holds"
+  function: "text_string_freemonoid_carrier_holds",
+  function_symbol: text_string_freemonoid_carrier_holds
 }
 
 data v4_roster_pilot_row_std_text_roundtrip: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "std_text HostStringText constructor/projection round-trip",
   entry: "src/v4/test/claim/std_text/carrier_claims.dag",
-  function: "text_host_string_roundtrip_holds"
+  function: "text_host_string_roundtrip_holds",
+  function_symbol: text_host_string_roundtrip_holds
 }
 
 data v4_roster_pilot_row_std_text_empty_roundtrip: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "std_text HostStringText empty round-trip (projection returns stored text)",
   entry: "src/v4/test/claim/std_text/carrier_claims.dag",
-  function: "text_host_string_empty_roundtrip_holds"
+  function: "text_host_string_empty_roundtrip_holds",
+  function_symbol: text_host_string_empty_roundtrip_holds
 }
 
 data v4_roster_pilot_row_std_text_field_text: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "std_text HostStringText record field text:String",
   entry: "src/v4/test/claim/std_text/carrier_claims.dag",
-  function: "text_host_string_field_text_holds"
+  function: "text_host_string_field_text_holds",
+  function_symbol: text_host_string_field_text_holds
 }
 
 // Exemplar E2: v4.extdeps.frameworks.react A-class structural receipts (7 witnesses).
 data v4_roster_pilot_row_extdeps_react_use_memo_callback_deps: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "extdeps_react UseMemo/UseCallback required List deps",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds"
+  function: "extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds",
+  function_symbol: extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds
 }
 
 data v4_roster_pilot_row_extdeps_react_effect_setup_ref: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "extdeps_react effect hooks require setup_ref",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_effect_hooks_require_setup_ref_holds"
+  function: "extdeps_react_effect_hooks_require_setup_ref_holds",
+  function_symbol: extdeps_react_effect_hooks_require_setup_ref_holds
 }
 
 data v4_roster_pilot_row_extdeps_react_host_key_ref: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "extdeps_react ReactHostElement key and ref fields",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_host_element_declares_key_and_ref_holds"
+  function: "extdeps_react_host_element_declares_key_and_ref_holds",
+  function_symbol: extdeps_react_host_element_declares_key_and_ref_holds
 }
 
 data v4_roster_pilot_row_extdeps_react_composite_key_ref: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "extdeps_react ReactCompositeElement key and ref fields",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_composite_element_declares_key_and_ref_holds"
+  function: "extdeps_react_composite_element_declares_key_and_ref_holds",
+  function_symbol: extdeps_react_composite_element_declares_key_and_ref_holds
 }
 
 data v4_roster_pilot_row_extdeps_react_fragment_key: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "extdeps_react Fragment arm declares key",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_fragment_arm_declares_key_holds"
+  function: "extdeps_react_fragment_arm_declares_key_holds",
+  function_symbol: extdeps_react_fragment_arm_declares_key_holds
 }
 
 data v4_roster_pilot_row_extdeps_react_element_children: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "extdeps_react element children are List<ReactCreateElementChild>",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_element_children_are_list_create_element_child_holds"
+  function: "extdeps_react_element_children_are_list_create_element_child_holds",
+  function_symbol: extdeps_react_element_children_are_list_create_element_child_holds
 }
 
 data v4_roster_pilot_row_extdeps_react_child_element_wraps: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "extdeps_react CreateElementChild Element wraps ReactElement",
   entry: "src/v4/test/claim/extdeps_react/structural_receipts.dag",
-  function: "extdeps_react_create_element_child_element_arm_wraps_react_element_holds"
+  function: "extdeps_react_create_element_child_element_arm_wraps_react_element_holds",
+  function_symbol: extdeps_react_create_element_child_element_arm_wraps_react_element_holds
 }
 
 // R2 keystone execution cert — emit(add) must produce the canonical rust_mvp1 add-fn source
@@ -194,32 +443,37 @@ data v4_roster_pilot_row_extdeps_react_child_element_wraps: V4RosterPilotClaimRu
 data v4_roster_pilot_row_mvp1_rust_emit_add_fn: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "mvp1 rust emit add-fn (R2 grammar-inverse execution)",
   entry: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
-  function: "mvp1_rust_emit_add_fn_accepts_holds"
+  function: "mvp1_rust_emit_add_fn_accepts_holds",
+  function_symbol: mvp1_rust_emit_add_fn_accepts_holds
 }
 
 // RTADD (ctrl#1489 D1) — dag add keystone emit→ingest round-trip via shared find_witness fold.
 data v4_roster_pilot_row_mvp1_dag_add_round_trip: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "mvp1 dag add emit→ingest round-trip (RTADD ctrl#1489)",
   entry: "src/v4/test/claim/manual/mvp1_dag_add_round_trip.dag",
-  function: "mvp1_dag_add_emit_ingest_round_trip_holds"
+  function: "mvp1_dag_add_emit_ingest_round_trip_holds",
+  function_symbol: mvp1_dag_add_emit_ingest_round_trip_holds
 }
 
 data v4_roster_pilot_row_mvp1_python_emit_add_fn: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "mvp1 python emit add-fn (T1 grammar-inverse execution)",
   entry: "src/v4/test/claim/manual/mvp1_python_add_translate.dag",
-  function: "mvp1_python_emit_add_fn_accepts_holds"
+  function: "mvp1_python_emit_add_fn_accepts_holds",
+  function_symbol: mvp1_python_emit_add_fn_accepts_holds
 }
 
 data v4_roster_pilot_row_mvp1_go_emit_add_fn: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "mvp1 go emit add-fn (T1 grammar-inverse execution)",
   entry: "src/v4/test/claim/manual/mvp1_go_add_translate.dag",
-  function: "mvp1_go_emit_add_fn_accepts_holds"
+  function: "mvp1_go_emit_add_fn_accepts_holds",
+  function_symbol: mvp1_go_emit_add_fn_accepts_holds
 }
 
 data v4_roster_pilot_row_mvp1_typescript_emit_add_fn: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "mvp1 typescript emit add-fn (T1 grammar-inverse execution)",
   entry: "src/v4/test/claim/manual/mvp1_typescript_add_translate.dag",
-  function: "mvp1_ts_emit_add_fn_accepts_holds"
+  function: "mvp1_ts_emit_add_fn_accepts_holds",
+  function_symbol: mvp1_ts_emit_add_fn_accepts_holds
 }
 
 // T1 tranche = rust (T0) + python/go/ts only. C++ deferred to T3 (TargetTypeExpressionProjection
@@ -234,13 +488,15 @@ data v4_roster_pilot_row_mvp1_typescript_emit_add_fn: V4RosterPilotClaimRunRow =
 data v4_roster_pilot_row_coordination_obligation_exchange: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "coordination obligation table exchange arm-sharp",
   entry: "src/v4/test/claim/extdeps/coordination_claims.dag",
-  function: "coordination_obligation_exchange_arm_sharp_holds"
+  function: "coordination_obligation_exchange_arm_sharp_holds",
+  function_symbol: coordination_obligation_exchange_arm_sharp_holds
 }
 
 data v4_roster_pilot_row_coordination_obligation_settlement: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "coordination obligation table settlement arm-sharp",
   entry: "src/v4/test/claim/extdeps/coordination_claims.dag",
-  function: "coordination_obligation_settlement_arm_sharp_holds"
+  function: "coordination_obligation_settlement_arm_sharp_holds",
+  function_symbol: coordination_obligation_settlement_arm_sharp_holds
 }
 
 // Wave-A W1: v4.compiler.parse token_position_indices smoke→witness (iii) A-fold-delete.
@@ -250,7 +506,8 @@ data v4_roster_pilot_row_coordination_obligation_settlement: V4RosterPilotClaimR
 data v4_roster_pilot_row_parse_table_token_position_indices: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "parse_table token_position_indices no-extra-append",
   entry: "src/v4/test/claim/parse/parse_table_claims.dag",
-  function: "parse_table_token_position_indices_no_extra_append_holds"
+  function: "parse_table_token_position_indices_no_extra_append_holds",
+  function_symbol: parse_table_token_position_indices_no_extra_append_holds
 }
 
 // Runtime-completeness: native-map miss -> Witness Violates bridge (v2_interpreter.rs
@@ -261,7 +518,8 @@ data v4_roster_pilot_row_parse_table_token_position_indices: V4RosterPilotClaimR
 data v4_roster_pilot_row_map_lookup_miss_witness_violates: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "native-map miss presents as Witness Violates (Null bridge)",
   entry: "src/v4/test/claim/manual/map_lookup_miss_witness_violates.dag",
-  function: "map_lookup_miss_violates_and_hit_holds"
+  function: "map_lookup_miss_violates_and_hit_holds",
+  function_symbol: map_lookup_miss_violates_and_hit_holds
 }
 
 // Structural-key Map== is extensional set equality (decidable): a non-String-key map
@@ -272,26 +530,162 @@ data v4_roster_pilot_row_map_lookup_miss_witness_violates: V4RosterPilotClaimRun
 data v4_roster_pilot_row_map_structural_key_equality: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "structural-key Map== is extensional set equality",
   entry: "src/v4/test/claim/manual/map_structural_key_equality.dag",
-  function: "map_structural_key_equality_holds"
-}
-
-// DERIVABLE-COERCION gap-proof acceptance test (nickname-triple CRUX matrix).
-data v4_roster_pilot_row_derivable_coercion_crux_substrate_gap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
-  label: "derivable_coercion CRUX substrate gap (no faithful sibling rule)",
-  entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
-  function: "witness_crux_substrate_gap"
+  function: "map_structural_key_equality_holds",
+  function_symbol: map_structural_key_equality_holds
 }
 
 data v4_roster_pilot_row_derivable_coercion_surfaces_distinct: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "derivable_coercion executing claim distinct surfaces",
   entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
-  function: "witness_claim_task_id_surfaces_distinct"
+  function: "witness_claim_task_id_surfaces_distinct",
+  function_symbol: witness_claim_task_id_surfaces_distinct
 }
 
 data v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "derivable_coercion executing claim CRUX substrate gap",
   entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
-  function: "witness_claim_crux_substrate_gap"
+  function: "witness_claim_crux_substrate_gap",
+  function_symbol: witness_claim_crux_substrate_gap
+}
+
+data v4_roster_pilot_row_project_to_core_accepts_sibling: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core dispatch accepts same-core sibling",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_real_dispatch_accepts_sibling",
+  function_symbol: witness_project_to_core_real_dispatch_accepts_sibling
+}
+
+data v4_roster_pilot_row_project_to_core_rejects_wrong_core: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core dispatch rejects wrong-core candidate",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_real_dispatch_rejects_wrong_core",
+  function_symbol: witness_project_to_core_real_dispatch_rejects_wrong_core
+}
+
+data v4_roster_pilot_row_project_to_core_rejects_empty_core: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core dispatch rejects surface-only empty core",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_rejects_surface_only_empty_core",
+  function_symbol: witness_project_to_core_rejects_surface_only_empty_core
+}
+
+data v4_roster_pilot_row_project_to_core_rejects_surface_wrapped_core: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core rejects core hidden under surface",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_rejects_core_only_under_surface",
+  function_symbol: witness_project_to_core_rejects_core_only_under_surface
+}
+
+data v4_roster_pilot_row_project_to_core_preserves_ambiguity: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core dispatch preserves ambiguity diagnostic",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_derives_preserves_ambiguity",
+  function_symbol: witness_project_to_core_derives_preserves_ambiguity
+}
+
+data v4_roster_pilot_row_project_to_core_drops_nested_surface: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core drops nested surface facts",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_drops_nested_surface",
+  function_symbol: witness_project_to_core_drops_nested_surface
+}
+
+data v4_roster_pilot_row_project_to_core_rejects_nested_core_difference: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core rejects nested core differences",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_rejects_nested_core_difference",
+  function_symbol: witness_project_to_core_rejects_nested_core_difference
+}
+
+data v4_roster_pilot_row_project_to_core_rejects_different_connective_same_core_children: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "find_witness project_to_core rejects different connective same core children",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_project_to_core_rejects_different_connective_same_core_children",
+  function_symbol: witness_project_to_core_rejects_different_connective_same_core_children
+}
+
+data v4_roster_pilot_row_integer_value_set_accepts_subset: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer value-set containment accepts i32 subset python-int",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_accepts_i32_subset_python_int",
+  function_symbol: witness_integer_value_set_accepts_i32_subset_python_int
+}
+
+data v4_roster_pilot_row_integer_value_set_accepts_proper_subrange: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer value-set containment accepts proper fixed-width subrange",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_accepts_i16_subset_i32",
+  function_symbol: witness_integer_value_set_accepts_i16_subset_i32
+}
+
+data v4_roster_pilot_row_integer_value_set_accepts_cross_signed_subrange: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer value-set containment accepts cross-signed valid subrange",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_accepts_u8_subset_i16",
+  function_symbol: witness_integer_value_set_accepts_u8_subset_i16
+}
+
+data v4_roster_pilot_row_integer_value_set_rejects_malformed_interval: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer value-set containment rejects malformed interval payload",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_rejects_malformed_interval_payload",
+  function_symbol: witness_integer_value_set_rejects_malformed_interval_payload
+}
+
+data v4_roster_pilot_row_integer_value_set_interval_rejects_malformed_interval: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer interval containment rejects malformed interval payload",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_interval_containment_rejects_malformed_payload",
+  function_symbol: witness_integer_value_set_interval_containment_rejects_malformed_payload
+}
+
+data v4_roster_pilot_row_integer_value_set_reverse_strict: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer value-set containment detects reverse strict coarsening",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_reverse_is_strict_coarsening",
+  function_symbol: witness_integer_value_set_reverse_is_strict_coarsening
+}
+
+data v4_roster_pilot_row_integer_value_set_refuses_incompatible: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer value-set containment refuses incompatible unknown core",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_refuses_incompatible_unknown",
+  function_symbol: witness_integer_value_set_refuses_incompatible_unknown
+}
+
+data v4_roster_pilot_row_integer_interval_bound_compare_orders_pointer_width_bounds: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer interval bound compare orders pointer-width bounds",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_interval_bound_compare_orders_pointer_width_bounds",
+  function_symbol: witness_integer_interval_bound_compare_orders_pointer_width_bounds
+}
+
+data v4_roster_pilot_row_integer_value_set_rejects_unbounded_with_extra_field: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "integer value-set containment rejects unbounded with extra field",
+  entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+  function: "witness_integer_value_set_rejects_unbounded_with_extra_field",
+  function_symbol: witness_integer_value_set_rejects_unbounded_with_extra_field
+}
+
+data v4_roster_pilot_row_cross_target_rust_i32_python_int_widens: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "cross-target rust i32 to python int refinement widening accepts",
+  entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
+  function: "witness_cross_target_rust_i32_to_python_int_accepts",
+  function_symbol: witness_cross_target_rust_i32_to_python_int_accepts
+}
+
+data v4_roster_pilot_row_cross_target_python_int_rust_i32_narrows: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "cross-target python int to rust i32 narrowing reports WouldLoseInformation",
+  entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
+  function: "witness_cross_target_python_to_rust_i32_would_lose_information",
+  function_symbol: witness_cross_target_python_to_rust_i32_would_lose_information
+}
+
+data v4_roster_pilot_row_cross_target_python_int_rust_i32_exact_rejects: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "cross-target python unbounded int to rust i32 exact rule rejects NoTargetCandidate",
+  entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
+  function: "witness_cross_target_python_to_rust_i32_rejects",
+  function_symbol: witness_cross_target_python_to_rust_i32_rejects
 }
 
 // Wave-A W2: lens smoke→witness fold-delete (application, idempotency, identical_variant,
@@ -301,61 +695,120 @@ data v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap: V4RosterPi
 data v4_roster_pilot_row_lens_application_introspect_advisory: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens application introspect advisory demotion",
   entry: "src/v4/test/claim/lens_application/sg_claims.dag",
-  function: "lens_application_introspect_advisory_holds"
+  function: "lens_application_introspect_advisory_holds",
+  function_symbol: lens_application_introspect_advisory_holds
 }
 
 data v4_roster_pilot_row_lens_application_synthesis_gap: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens application synthesis gap polynomial advisory",
   entry: "src/v4/test/claim/lens_application/sg_claims.dag",
-  function: "lens_application_synthesis_gap_polynomial_holds"
+  function: "lens_application_synthesis_gap_polynomial_holds",
+  function_symbol: lens_application_synthesis_gap_polynomial_holds
+}
+
+data v4_roster_pilot_row_lens_application_synthesis_gap_enforce: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens application synthesis gap enforce rejection",
+  entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+  function: "lens_application_synthesis_gap_enforce_rejection_holds",
+  function_symbol: lens_application_synthesis_gap_enforce_rejection_holds
 }
 
 data v4_roster_pilot_row_lens_idempotency_write_effect: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens idempotency write-effect witness",
   entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
-  function: "lens_idempotency_write_effect_holds"
+  function: "lens_idempotency_write_effect_holds",
+  function_symbol: lens_idempotency_write_effect_holds
+}
+
+data v4_roster_pilot_row_lens_idempotency_family_gate: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens idempotency family gate closed",
+  entry: "src/v4/test/claim/workflow/lens_idempotency_family_eval.dag",
+  function: "witness_lens_idempotency_family_gate_closed",
+  function_symbol: witness_lens_idempotency_family_gate_closed
+}
+
+data v4_roster_pilot_row_lens_parallelism_family_gate: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens parallelism family gate closed",
+  entry: "src/v4/test/claim/workflow/lens_parallelism_family_eval.dag",
+  function: "witness_lens_parallelism_family_gate_closed",
+  function_symbol: witness_lens_parallelism_family_gate_closed
 }
 
 data v4_roster_pilot_row_lens_identical_variant_unrealized: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens identical_variant_payload unrealized scaffold",
   entry: "src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag",
-  function: "lens_identical_variant_payload_unrealized_scaffold_holds"
+  function: "lens_identical_variant_payload_unrealized_scaffold_holds",
+  function_symbol: lens_identical_variant_payload_unrealized_scaffold_holds
+}
+
+data v4_roster_pilot_row_lens_structural_similarity_unrealized: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens structural_similarity unrealized scaffold",
+  entry: "src/v4/test/claim/lens_structural_similarity/sg_claims.dag",
+  function: "lens_structural_similarity_unrealized_scaffold_holds",
+  function_symbol: lens_structural_similarity_unrealized_scaffold_holds
+}
+
+data v4_roster_pilot_row_lens_table_decision_tree_unrealized: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "lens table_decision_tree unrealized scaffold",
+  entry: "src/v4/test/claim/lens_table_decision_tree/sg_claims.dag",
+  function: "lens_table_decision_tree_unrealized_scaffold_holds",
+  function_symbol: lens_table_decision_tree_unrealized_scaffold_holds
 }
 
 data v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens affected_set IRT-1 boundary prune",
   entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
-  function: "lens_affected_set_irt1_boundary_prune_holds"
+  function: "lens_affected_set_irt1_boundary_prune_holds",
+  function_symbol: lens_affected_set_irt1_boundary_prune_holds
 }
 
 data v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens affected_set IRT-1 fail-closed pending escalation",
   entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
-  function: "lens_affected_set_irt1_fail_closed_pending_escalation_holds"
+  function: "lens_affected_set_irt1_fail_closed_pending_escalation_holds",
+  function_symbol: lens_affected_set_irt1_fail_closed_pending_escalation_holds
 }
 
 data v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens affected_set IRT-1 fail-closed absorption",
   entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
-  function: "lens_affected_set_irt1_fail_closed_absorption_holds"
+  function: "lens_affected_set_irt1_fail_closed_absorption_holds",
+  function_symbol: lens_affected_set_irt1_fail_closed_absorption_holds
 }
 
 data v4_roster_pilot_row_lens_affected_set_irt1_empty_diff: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens affected_set IRT-1 empty diff frontier",
   entry: "src/v4/test/claim/lens_affected_set/sg_claims.dag",
-  function: "lens_affected_set_irt1_empty_diff_frontier_holds"
+  function: "lens_affected_set_irt1_empty_diff_frontier_holds",
+  function_symbol: lens_affected_set_irt1_empty_diff_frontier_holds
 }
 
 data v4_roster_pilot_row_lens_registry_required_ids_resolve: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens registry required ids resolve",
   entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
-  function: "lens_registry_required_ids_resolve_holds"
+  function: "lens_registry_required_ids_resolve_holds",
+  function_symbol: lens_registry_required_ids_resolve_holds
 }
 
 data v4_roster_pilot_row_lens_registry_singleton_row_counts: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
   label: "lens registry singleton row counts",
   entry: "src/v4/test/claim/lens_registry/sg_claims.dag",
-  function: "lens_registry_singleton_row_counts_holds"
+  function: "lens_registry_singleton_row_counts_holds",
+  function_symbol: lens_registry_singleton_row_counts_holds
+}
+
+data v4_roster_pilot_row_scheduler_runnable_frontier: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "scheduler runnable frontier respects dependency order",
+  entry: "src/v4/test/claim/manual/scheduler_runnable_frontier.dag",
+  function: "scheduler_runnable_frontier_claims_hold",
+  function_symbol: scheduler_runnable_frontier_claims_hold
+}
+
+data v4_roster_pilot_row_parallel_executor: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
+  label: "parallel executor batches independent runnable jobs",
+  entry: "src/v4/test/claim/manual/parallel_executor.dag",
+  function: "parallel_executor_claims_hold",
+  function_symbol: parallel_executor_claims_hold
 }
 
 data v4_roster_pilot_row_impossible_bug_release_demos: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow {
@@ -368,6 +821,9 @@ data v4_roster_pilot_row_impossible_bug_release_demos: V4RosterPilotClaimRunRow 
 data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_edit_locus_narrow,
   v4_roster_pilot_row_edit_locus_fail_closed,
+  v4_roster_pilot_row_edit_locus_source_provenance_producer,
+  v4_roster_pilot_row_edit_locus_source_provenance_wire,
+  v4_roster_pilot_row_edit_locus_source_provenance_rejects_malformed,
   v4_roster_pilot_row_generator_provenance,
   v4_roster_pilot_row_lens_testgen_shadow_ci,
   v4_roster_pilot_row_lens_testgen_dag_input_scheduled,
@@ -379,6 +835,7 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_discriminant_intrinsic,
   v4_roster_pilot_row_caret_sigil_surface,
   v4_roster_pilot_row_sg_rc_f6_owned,
+  v4_roster_pilot_row_sg_rc_value_rc_wrap_tagged,
   v4_roster_pilot_row_sg2_arrow,
   v4_roster_pilot_row_sg2_projection_falsification,
   v4_roster_pilot_row_std_text_freemonoid_carrier,
@@ -402,8 +859,13 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_parse_table_token_position_indices,
   v4_roster_pilot_row_lens_application_introspect_advisory,
   v4_roster_pilot_row_lens_application_synthesis_gap,
+  v4_roster_pilot_row_lens_application_synthesis_gap_enforce,
   v4_roster_pilot_row_lens_idempotency_write_effect,
+  v4_roster_pilot_row_lens_idempotency_family_gate,
+  v4_roster_pilot_row_lens_parallelism_family_gate,
   v4_roster_pilot_row_lens_identical_variant_unrealized,
+  v4_roster_pilot_row_lens_structural_similarity_unrealized,
+  v4_roster_pilot_row_lens_table_decision_tree_unrealized,
   v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune,
   v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending,
   v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption,
@@ -413,13 +875,50 @@ data v4_roster_pilot_claim_run_rows: List<V4RosterPilotClaimRunRow> = [
   v4_roster_pilot_row_impossible_bug_release_demos,
   v4_roster_pilot_row_map_lookup_miss_witness_violates,
   v4_roster_pilot_row_map_structural_key_equality,
-  v4_roster_pilot_row_derivable_coercion_crux_substrate_gap,
   v4_roster_pilot_row_derivable_coercion_surfaces_distinct,
-  v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap
+  v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap,
+  v4_roster_pilot_row_scheduler_runnable_frontier,
+  v4_roster_pilot_row_parallel_executor,
+  v4_roster_pilot_row_project_to_core_accepts_sibling,
+  v4_roster_pilot_row_project_to_core_rejects_wrong_core,
+  v4_roster_pilot_row_project_to_core_rejects_empty_core,
+  v4_roster_pilot_row_project_to_core_rejects_surface_wrapped_core,
+  v4_roster_pilot_row_project_to_core_preserves_ambiguity,
+  v4_roster_pilot_row_project_to_core_drops_nested_surface,
+  v4_roster_pilot_row_project_to_core_rejects_nested_core_difference,
+  v4_roster_pilot_row_project_to_core_rejects_different_connective_same_core_children,
+  v4_roster_pilot_row_integer_value_set_accepts_subset,
+  v4_roster_pilot_row_integer_value_set_accepts_proper_subrange,
+  v4_roster_pilot_row_integer_value_set_accepts_cross_signed_subrange,
+  v4_roster_pilot_row_integer_value_set_rejects_malformed_interval,
+  v4_roster_pilot_row_integer_value_set_interval_rejects_malformed_interval,
+  v4_roster_pilot_row_integer_value_set_reverse_strict,
+  v4_roster_pilot_row_integer_value_set_refuses_incompatible,
+  v4_roster_pilot_row_integer_interval_bound_compare_orders_pointer_width_bounds,
+  v4_roster_pilot_row_integer_value_set_rejects_unbounded_with_extra_field,
+  v4_roster_pilot_row_cross_target_rust_i32_python_int_widens,
+  v4_roster_pilot_row_cross_target_python_int_rust_i32_narrows,
+  v4_roster_pilot_row_cross_target_python_int_rust_i32_exact_rejects
 ]
 
+
+fn v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds() -> Bool {
+  fold(
+    v4_roster_pilot_claim_run_rows,
+    init: true,
+    f: fn(acc, row) {
+      acc && v4_roster_pilot_row_function_transport_matches_symbol(row: row)
+    }
+  )
+}
+
+
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
+<<<<<<< HEAD
 data v4_roster_pilot_claim_run_row_count: String = "50"
+=======
+data v4_roster_pilot_claim_run_row_count: String = "79"
+>>>>>>> origin/main
 
 
 fn v4_roster_pilot_row_matches(
@@ -445,6 +944,9 @@ fn v4_roster_pilot_claim_run_list_contains_once(
 fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
   v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_narrow)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_fail_closed)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_source_provenance_producer)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_source_provenance_wire)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_edit_locus_source_provenance_rejects_malformed)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_generator_provenance)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_testgen_shadow_ci)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_testgen_dag_input_scheduled)
@@ -456,6 +958,7 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_discriminant_intrinsic)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_caret_sigil_surface)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg_rc_f6_owned)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg_rc_value_rc_wrap_tagged)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg2_arrow)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_sg2_projection_falsification)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_std_text_freemonoid_carrier)
@@ -479,8 +982,13 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_parse_table_token_position_indices)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_introspect_advisory)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_synthesis_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_application_synthesis_gap_enforce)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_idempotency_write_effect)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_idempotency_family_gate)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_parallelism_family_gate)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_identical_variant_unrealized)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_structural_similarity_unrealized)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_table_decision_tree_unrealized)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_pending)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_lens_affected_set_irt1_fail_closed_absorption)
@@ -490,15 +998,42 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_impossible_bug_release_demos)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_map_lookup_miss_witness_violates)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_map_structural_key_equality)
-    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_crux_substrate_gap)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_surfaces_distinct)
     && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_scheduler_runnable_frontier)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_parallel_executor)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_accepts_sibling)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_wrong_core)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_empty_core)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_surface_wrapped_core)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_preserves_ambiguity)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_drops_nested_surface)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_nested_core_difference)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_project_to_core_rejects_different_connective_same_core_children)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_accepts_subset)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_accepts_proper_subrange)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_accepts_cross_signed_subrange)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_rejects_malformed_interval)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_interval_rejects_malformed_interval)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_reverse_strict)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_refuses_incompatible)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_interval_bound_compare_orders_pointer_width_bounds)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_integer_value_set_rejects_unbounded_with_extra_field)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_cross_target_rust_i32_python_int_widens)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_cross_target_python_int_rust_i32_narrows)
+    && v4_roster_pilot_claim_run_list_contains_once(row: v4_roster_pilot_row_cross_target_python_int_rust_i32_exact_rejects)
 }
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
+<<<<<<< HEAD
   (length(xs: v4_roster_pilot_claim_run_rows) == 50)
     && (v4_roster_pilot_claim_run_row_count == "50")
+=======
+  (length(xs: v4_roster_pilot_claim_run_rows) == 79)
+    && (v4_roster_pilot_claim_run_row_count == "79")
+    && v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds()
+>>>>>>> origin/main
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
@@ -509,6 +1044,21 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_edit_locus_fail_closed,
       entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
       function: "edit_locus_fail_closed_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_edit_locus_source_provenance_producer,
+      entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+      function: "edit_locus_source_provenance_producer_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_edit_locus_source_provenance_wire,
+      entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+      function: "edit_locus_source_provenance_affected_set_wire_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_edit_locus_source_provenance_rejects_malformed,
+      entry: "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag",
+      function: "edit_locus_source_provenance_producer_rejects_malformed_source_holds"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_generator_provenance,
@@ -564,6 +1114,11 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_sg_rc_f6_owned,
       entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
       function: "sg_rc_f6_round_trip_owned"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_sg_rc_value_rc_wrap_tagged,
+      entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
+      function: "sg_rc_value_rc_wrap_tagged"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_sg2_arrow,
@@ -681,14 +1236,39 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "lens_application_synthesis_gap_polynomial_holds"
     )
     && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_application_synthesis_gap_enforce,
+      entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+      function: "lens_application_synthesis_gap_enforce_rejection_holds"
+    )
+    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_lens_idempotency_write_effect,
       entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
       function: "lens_idempotency_write_effect_holds"
     )
     && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_idempotency_family_gate,
+      entry: "src/v4/test/claim/workflow/lens_idempotency_family_eval.dag",
+      function: "witness_lens_idempotency_family_gate_closed"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_parallelism_family_gate,
+      entry: "src/v4/test/claim/workflow/lens_parallelism_family_eval.dag",
+      function: "witness_lens_parallelism_family_gate_closed"
+    )
+    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_lens_identical_variant_unrealized,
       entry: "src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag",
       function: "lens_identical_variant_payload_unrealized_scaffold_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_structural_similarity_unrealized,
+      entry: "src/v4/test/claim/lens_structural_similarity/sg_claims.dag",
+      function: "lens_structural_similarity_unrealized_scaffold_holds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_lens_table_decision_tree_unrealized,
+      entry: "src/v4/test/claim/lens_table_decision_tree/sg_claims.dag",
+      function: "lens_table_decision_tree_unrealized_scaffold_holds"
     )
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_lens_affected_set_irt1_boundary_prune,
@@ -736,11 +1316,6 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       function: "map_structural_key_equality_holds"
     )
     && v4_roster_pilot_row_matches(
-      row: v4_roster_pilot_row_derivable_coercion_crux_substrate_gap,
-      entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
-      function: "witness_crux_substrate_gap"
-    )
-    && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_derivable_coercion_surfaces_distinct,
       entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
       function: "witness_claim_task_id_surfaces_distinct"
@@ -749,5 +1324,115 @@ fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
       row: v4_roster_pilot_row_derivable_coercion_claim_crux_substrate_gap,
       entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
       function: "witness_claim_crux_substrate_gap"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_scheduler_runnable_frontier,
+      entry: "src/v4/test/claim/manual/scheduler_runnable_frontier.dag",
+      function: "scheduler_runnable_frontier_claims_hold"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_parallel_executor,
+      entry: "src/v4/test/claim/manual/parallel_executor.dag",
+      function: "parallel_executor_claims_hold"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_accepts_sibling,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_real_dispatch_accepts_sibling"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_rejects_wrong_core,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_real_dispatch_rejects_wrong_core"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_rejects_empty_core,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_rejects_surface_only_empty_core"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_rejects_surface_wrapped_core,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_rejects_core_only_under_surface"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_preserves_ambiguity,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_derives_preserves_ambiguity"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_drops_nested_surface,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_drops_nested_surface"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_rejects_nested_core_difference,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_rejects_nested_core_difference"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_project_to_core_rejects_different_connective_same_core_children,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_project_to_core_rejects_different_connective_same_core_children"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_accepts_subset,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_accepts_i32_subset_python_int"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_accepts_proper_subrange,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_accepts_i16_subset_i32"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_accepts_cross_signed_subrange,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_accepts_u8_subset_i16"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_rejects_malformed_interval,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_rejects_malformed_interval_payload"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_interval_rejects_malformed_interval,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_interval_containment_rejects_malformed_payload"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_reverse_strict,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_reverse_is_strict_coarsening"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_refuses_incompatible,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_refuses_incompatible_unknown"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_interval_bound_compare_orders_pointer_width_bounds,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_interval_bound_compare_orders_pointer_width_bounds"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_integer_value_set_rejects_unbounded_with_extra_field,
+      entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+      function: "witness_integer_value_set_rejects_unbounded_with_extra_field"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_cross_target_rust_i32_python_int_widens,
+      entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
+      function: "witness_cross_target_rust_i32_to_python_int_accepts"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_cross_target_python_int_rust_i32_narrows,
+      entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
+      function: "witness_cross_target_python_to_rust_i32_would_lose_information"
+    )
+    && v4_roster_pilot_row_matches(
+      row: v4_roster_pilot_row_cross_target_python_int_rust_i32_exact_rejects,
+      entry: "src/v4/test/claim/manual/mvp_int_cross_target_coercion.dag",
+      function: "witness_cross_target_python_to_rust_i32_rejects"
     )
 }

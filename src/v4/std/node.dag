@@ -82,7 +82,9 @@ type Edge {
   target: Node
 }
 // 🟡 gated — substrate-shape bridge (docs/modeling-discipline.md Practice 2/10) — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
-data loop_bound_edge: Symbol = loop_bound_edge
+data loop_bound_edge: Symbol = ^loop_bound_edge
+// 🟢 TERMINAL — E-9/DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
+data arrow_body_edge: Symbol = ^arrow_body_edge
 type Node {
   kind: NodeKind
   children: List<Edge>
@@ -103,12 +105,14 @@ type EdgeDiscipline
   | PositionalEdges
   // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: Loop edge discipline as EdgeDiscipline arm consumed by edges_conform and content_hash canonicalization; forbidden: parallel PositionalEdges classifier for Loop outside loop_behavior_edges_conform.
   | LoopBoundEdges
+  // 🟢 TERMINAL — COMPREP wave 0/1: Arrow signature positional edges + optional Arrow.body named edge (design-computation-representation.md; INVARIANTS E-9).
+  | ArrowBodyEdges
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } => NoEdges
     Conj => LabeledEdges
     Disj => LabeledEdges
-    Arrow => PositionalEdges
+    Arrow => ArrowBodyEdges
     Cardinality => PositionalEdges
     Instantiation => PositionalEdges
   }
@@ -147,8 +151,7 @@ fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-positional-count — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop positional-child count query; forbidden: parallel ad-hoc Loop arity predicates outside well_formed.
-fn loop_positional_child_count(children: List<Edge>) -> Int {
+fn positional_child_count(children: List<Edge>) -> Int {
   fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Positional => acc + 1
@@ -156,32 +159,46 @@ fn loop_positional_child_count(children: List<Edge>) -> Int {
     }
   })
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-positional-count — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop positional-child count query; forbidden: parallel ad-hoc Loop arity predicates outside well_formed.
+fn loop_positional_child_count(children: List<Edge>) -> Int {
+  positional_child_count(children: children)
+}
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
 fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && (sym == loop_bound_edge)
+      Named { name: sym } => acc && (sym == ^loop_bound_edge)
     }
   })
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
-  let bound_edges = name_occurrences(name: loop_bound_edge, children: children)
+  let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
   (bound_edges == 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-bound-measure-target — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop loop_bound_edge target projection shared by cardinality witness; forbidden: parallel ad-hoc loop_bound_edge extraction outside well_formed/cardinality.
-type LoopMeasureTargetLookup
+// 🟢 TERMINAL — COMPREP: Arrow positional signature edges + at most one Arrow.body edge.
+fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      Named { name: sym } => acc && (sym == ^arrow_body_edge)
+    }
+  })
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-named-edge-target-lookup — bind COMPREP wave-0 / node-behavior-loop-bound-measure-target — dissolve-on-arrival: substrate canonical single Named-edge target projection shared by well_formed validation, cardinality witness, and node_query diagnostics; forbidden: parallel ad-hoc single-named-edge extraction outside std.node/std.node_query.
+type NamedEdgeTargetLookup
   = Found { target: Node }
   | Ambiguous
   | Absent
-fn loop_bound_measure_target(children: List<Edge>) -> LoopMeasureTargetLookup {
+
+fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTargetLookup {
   fold(children, init: Absent, f: fn(acc, e) {
     match e.label {
       Named { name: sym } =>
-        if sym == loop_bound_edge {
+        if sym == name {
           match acc {
             Absent => Found { target: e.target }
             Found { target: _ } => Ambiguous
@@ -194,13 +211,44 @@ fn loop_bound_measure_target(children: List<Edge>) -> LoopMeasureTargetLookup {
     }
   })
 }
+
+fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^arrow_body_edge)
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 / INVARIANTS P5) — feature: arrow-body-external-realization-target — owner: COMPREP wave-0 (#4616) — lane: std.node ArrowBodyEdges well_formed target-shape (E-9/DB-14) — dissolve-on-arrival: extend this predicate to admit the extdeps ExternalRealization carrier on Arrow.body when v4.extdeps primitive wiring lands (DB-14: declared Arrow.body + target bindings); wave-0 admits ComputationNode only because the body producer exercises internal Behavior sub-DAGs; forbidden: parallel Arrow.body target-shape predicates outside arrow_body_target_is_valid_realization.
+fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
+  match target.kind {
+    ComputationNode { behavior: _ } => true
+    _ => false
+  }
+}
+
+fn arrow_body_target_conforms(children: List<Edge>) -> Bool {
+  match arrow_body_target_lookup(children: children) {
+    Absent => true
+    Found { target: t } => arrow_body_target_is_valid_realization(target: t)
+    Ambiguous => false
+  }
+}
+
+fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
+  let body_edges = name_occurrences(name: ^arrow_body_edge, children: children)
+  (body_edges <= 1)
+  && arrow_signature_edges_conform(children: children)
+  && (positional_child_count(children: children) >= 1)
+  && arrow_body_target_conforms(children: children)
+}
+fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_bound_edge)
+}
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query scoped to Loop parents; forbidden: edge-label-only loop_bound_edge skip outside Loop.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
       match e.label {
         Positional => true
-        Named { name: sym } => sym != loop_bound_edge
+        Named { name: sym } => sym != ^loop_bound_edge
       }
     _ =>
       match e.label {
@@ -224,6 +272,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
       all_edges_named(children: children) && all_names_distinct(children: children)
     PositionalEdges => all_edges_positional(children: children)
     LoopBoundEdges => loop_behavior_edges_conform(children: children)
+    ArrowBodyEdges => arrow_body_edges_conform(children: children)
   }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-connective-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Connective arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
@@ -232,8 +281,7 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
     Atom { identity: _ } => edges_conform(children: children, d: NoEdges)
     Conj => edges_conform(children: children, d: LabeledEdges)
     Disj => edges_conform(children: children, d: LabeledEdges)
-    Arrow =>
-      edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Arrow => arrow_body_edges_conform(children: children)
     Cardinality =>
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Instantiation =>
@@ -276,21 +324,21 @@ fn is_empty_conj_root(n: Node) -> Bool {
     _ => false
   }
 }
-data canonical_tag_atom: Symbol = canonical_tag_atom
-data canonical_tag_conj: Symbol = canonical_tag_conj
-data canonical_tag_disj: Symbol = canonical_tag_disj
-data canonical_tag_arrow: Symbol = canonical_tag_arrow
-data canonical_tag_cardinality: Symbol = canonical_tag_cardinality
-data canonical_tag_instantiation: Symbol = canonical_tag_instantiation
-data canonical_tag_value: Symbol = canonical_tag_value
-data canonical_tag_transform: Symbol = canonical_tag_transform
-data canonical_tag_branch: Symbol = canonical_tag_branch
-data canonical_tag_loop: Symbol = canonical_tag_loop
-data canonical_tag_bind: Symbol = canonical_tag_bind
-data canonical_tag_type_node: Symbol = canonical_tag_type_node
-data canonical_tag_computation_node: Symbol = canonical_tag_computation_node
-data canonical_tag_named_edge: Symbol = canonical_tag_named_edge
-data canonical_tag_positional_edge: Symbol = canonical_tag_positional_edge
+data canonical_tag_atom: Symbol = ^canonical_tag_atom
+data canonical_tag_conj: Symbol = ^canonical_tag_conj
+data canonical_tag_disj: Symbol = ^canonical_tag_disj
+data canonical_tag_arrow: Symbol = ^canonical_tag_arrow
+data canonical_tag_cardinality: Symbol = ^canonical_tag_cardinality
+data canonical_tag_instantiation: Symbol = ^canonical_tag_instantiation
+data canonical_tag_value: Symbol = ^canonical_tag_value
+data canonical_tag_transform: Symbol = ^canonical_tag_transform
+data canonical_tag_branch: Symbol = ^canonical_tag_branch
+data canonical_tag_loop: Symbol = ^canonical_tag_loop
+data canonical_tag_bind: Symbol = ^canonical_tag_bind
+data canonical_tag_type_node: Symbol = ^canonical_tag_type_node
+data canonical_tag_computation_node: Symbol = ^canonical_tag_computation_node
+data canonical_tag_named_edge: Symbol = ^canonical_tag_named_edge
+data canonical_tag_positional_edge: Symbol = ^canonical_tag_positional_edge
 
 
 fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
@@ -311,23 +359,50 @@ fn node_edge_discipline(n: Node) -> EdgeDiscipline {
 fn named_edge_sort_key(e: Edge) -> Symbol {
   match e.label {
     Named { name: sym } => sym
-    Positional => canonical_tag_positional_edge
+    Positional => ^canonical_tag_positional_edge
   }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-content-hash-canonicalization — bind B1-CANON content_hash — dissolve-on-arrival: Loop/LabeledEdges child reorder scoped to content_hash merkle fold; forbidden: parallel ad-hoc loop_bound_edge placement canonicalization outside this surface.
+fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
+}
+fn arrow_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  filter(children, e => match e.label {
+    Named { name: sym } => sym == ^arrow_body_edge
+    Positional => false
+  })
+}
+fn arrow_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  sort_by(
+    filter(children, e => match e.label {
+      Named { name: sym } => sym != ^arrow_body_edge
+      Positional => false
+    }),
+    e => named_edge_sort_key(e: e)
+  )
+}
+fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Edge> {
+  concat(
+    arrow_signature_edges_for_content_hash(children: children),
+    concat(
+      arrow_other_named_edges_for_content_hash(children: children),
+      arrow_body_edges_for_content_hash(children: children)
+    )
+  )
+}
 fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
 }
 fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, e => match e.label {
-    Named { name: sym } => sym == loop_bound_edge
+    Named { name: sym } => sym == ^loop_bound_edge
     Positional => false
   })
 }
 fn loop_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   sort_by(
     filter(children, e => match e.label {
-      Named { name: sym } => sym != loop_bound_edge
+      Named { name: sym } => sym != ^loop_bound_edge
       Positional => false
     }),
     e => named_edge_sort_key(e: e)
@@ -351,6 +426,11 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
       }
     NoEdges => n
     PositionalEdges => n
+    ArrowBodyEdges =>
+      Node {
+        kind: n.kind,
+        children: canonicalize_arrow_children_for_content_hash(children: n.children)
+      }
     LoopBoundEdges =>
       Node {
         kind: n.kind,
@@ -371,25 +451,25 @@ fn canonical_hash_of_connective(c: Connective) -> Hash {
   match c {
     Atom { identity: sym } =>
       hash_combine(
-        a: atom_identity_hash(s: canonical_tag_atom),
+        a: atom_identity_hash(s: ^canonical_tag_atom),
         b: atom_identity_hash(s: sym)
       )
-    Conj => atom_identity_hash(s: canonical_tag_conj)
-    Disj => atom_identity_hash(s: canonical_tag_disj)
-    Arrow => atom_identity_hash(s: canonical_tag_arrow)
-    Cardinality => atom_identity_hash(s: canonical_tag_cardinality)
-    Instantiation => atom_identity_hash(s: canonical_tag_instantiation)
+    Conj => atom_identity_hash(s: ^canonical_tag_conj)
+    Disj => atom_identity_hash(s: ^canonical_tag_disj)
+    Arrow => atom_identity_hash(s: ^canonical_tag_arrow)
+    Cardinality => atom_identity_hash(s: ^canonical_tag_cardinality)
+    Instantiation => atom_identity_hash(s: ^canonical_tag_instantiation)
   }
 }
 
 
 fn canonical_hash_of_behavior(b: Behavior) -> Hash {
   match b {
-    Value => atom_identity_hash(s: canonical_tag_value)
-    Transform => atom_identity_hash(s: canonical_tag_transform)
-    Branch => atom_identity_hash(s: canonical_tag_branch)
-    Loop => atom_identity_hash(s: canonical_tag_loop)
-    Bind => atom_identity_hash(s: canonical_tag_bind)
+    Value => atom_identity_hash(s: ^canonical_tag_value)
+    Transform => atom_identity_hash(s: ^canonical_tag_transform)
+    Branch => atom_identity_hash(s: ^canonical_tag_branch)
+    Loop => atom_identity_hash(s: ^canonical_tag_loop)
+    Bind => atom_identity_hash(s: ^canonical_tag_bind)
   }
 }
 
@@ -398,12 +478,12 @@ fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
   match kind {
     TypeNode { connective: c } =>
       hash_combine(
-        a: atom_identity_hash(s: canonical_tag_type_node),
+        a: atom_identity_hash(s: ^canonical_tag_type_node),
         b: canonical_hash_of_connective(c: c)
       )
     ComputationNode { behavior: b } =>
       hash_combine(
-        a: atom_identity_hash(s: canonical_tag_computation_node),
+        a: atom_identity_hash(s: ^canonical_tag_computation_node),
         b: canonical_hash_of_behavior(b: b)
       )
   }
@@ -414,10 +494,10 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
   match label {
     Named { name: sym } =>
       hash_combine(
-        a: atom_identity_hash(s: canonical_tag_named_edge),
+        a: atom_identity_hash(s: ^canonical_tag_named_edge),
         b: atom_identity_hash(s: sym)
       )
-    Positional => atom_identity_hash(s: canonical_tag_positional_edge)
+    Positional => atom_identity_hash(s: ^canonical_tag_positional_edge)
   }
 }
 
@@ -428,28 +508,28 @@ fn combine_hash(a: Hash, b: Hash) -> Hash {
 }
 
 
-data canonical_tag_scalar_int_zero: Symbol = canonical_tag_scalar_int_zero
-data canonical_tag_scalar_int_one: Symbol = canonical_tag_scalar_int_one
-data canonical_tag_scalar_int_neg: Symbol = canonical_tag_scalar_int_neg
-data canonical_tag_scalar_int_pos: Symbol = canonical_tag_scalar_int_pos
-data canonical_tag_scalar_int_succ: Symbol = canonical_tag_scalar_int_succ
-data canonical_tag_byte_offset_zero: Symbol = canonical_tag_byte_offset_zero
-data canonical_tag_byte_offset_byte: Symbol = canonical_tag_byte_offset_byte
-data canonical_tag_byte_offset_neg: Symbol = canonical_tag_byte_offset_neg
-data canonical_tag_byte_limb_out_of_range: Symbol = canonical_tag_byte_limb_out_of_range
-data canonical_tag_byte_offset_out_of_ceiling: Symbol = canonical_tag_byte_offset_out_of_ceiling
-data canonical_tag_byte_offset_overflow_peel_exhausted: Symbol = canonical_tag_byte_offset_overflow_peel_exhausted
-data canonical_tag_byte_offset_overflow_residual_unrepresentable: Symbol = canonical_tag_byte_offset_overflow_residual_unrepresentable
-data canonical_tag_byte_offset_overflow_residual_discarded_high_zero: Symbol = canonical_tag_byte_offset_overflow_residual_discarded_high_zero
-data canonical_tag_byte_offset_overflow_residual_discarded_high_band: Symbol = canonical_tag_byte_offset_overflow_residual_discarded_high_band
-data canonical_tag_byte_offset_overflow_residual_discarded_high_truncated: Symbol = canonical_tag_byte_offset_overflow_residual_discarded_high_truncated
-data canonical_tag_byte_offset_residual_quotient_limb_pair: Symbol = canonical_tag_byte_offset_residual_quotient_limb_pair
-data canonical_tag_byte_offset_residual_quotient_magnitude: Symbol = canonical_tag_byte_offset_residual_quotient_magnitude
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
 // Interim magnitude ceiling: post-ceiling residual 256^(9+k) needs shift k (claim band through k=28 / offset 256^37).
 // Full P2 on unbounded Int offsets requires dissolve-on bounded ByteOffset carrier (coproduct marks above).
 data byte_offset_residual_quotient_magnitude_max_shift: Int = 28
-data canonical_tag_byte_offset_cache_digest_ineligible: Symbol = canonical_tag_byte_offset_cache_digest_ineligible
+data canonical_tag_scalar_int_zero: Symbol = ^canonical_tag_scalar_int_zero
+data canonical_tag_scalar_int_one: Symbol = ^canonical_tag_scalar_int_one
+data canonical_tag_scalar_int_neg: Symbol = ^canonical_tag_scalar_int_neg
+data canonical_tag_scalar_int_pos: Symbol = ^canonical_tag_scalar_int_pos
+data canonical_tag_scalar_int_succ: Symbol = ^canonical_tag_scalar_int_succ
+data canonical_tag_byte_offset_zero: Symbol = ^canonical_tag_byte_offset_zero
+data canonical_tag_byte_offset_byte: Symbol = ^canonical_tag_byte_offset_byte
+data canonical_tag_byte_offset_neg: Symbol = ^canonical_tag_byte_offset_neg
+data canonical_tag_byte_limb_out_of_range: Symbol = ^canonical_tag_byte_limb_out_of_range
+data canonical_tag_byte_offset_out_of_ceiling: Symbol = ^canonical_tag_byte_offset_out_of_ceiling
+data canonical_tag_byte_offset_overflow_peel_exhausted: Symbol = ^canonical_tag_byte_offset_overflow_peel_exhausted
+data canonical_tag_byte_offset_overflow_residual_unrepresentable: Symbol = ^canonical_tag_byte_offset_overflow_residual_unrepresentable
+data canonical_tag_byte_offset_overflow_residual_discarded_high_zero: Symbol = ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero
+data canonical_tag_byte_offset_overflow_residual_discarded_high_band: Symbol = ^canonical_tag_byte_offset_overflow_residual_discarded_high_band
+data canonical_tag_byte_offset_overflow_residual_discarded_high_truncated: Symbol = ^canonical_tag_byte_offset_overflow_residual_discarded_high_truncated
+data canonical_tag_byte_offset_residual_quotient_limb_pair: Symbol = ^canonical_tag_byte_offset_residual_quotient_limb_pair
+data canonical_tag_byte_offset_residual_quotient_magnitude: Symbol = ^canonical_tag_byte_offset_residual_quotient_magnitude
+data canonical_tag_byte_offset_cache_digest_ineligible: Symbol = ^canonical_tag_byte_offset_cache_digest_ineligible
 data byte_offset_cache_digest_max_limbs: Int = 9
 // Bounded overflow tail after the 9-limb ceiling — P4-safe remainder encoding for over-ceiling offsets (also caps overflow_quotient_peel).
 // Four limbs cover the 256^4 remainder at the first over-ceiling offset (256^9) without peel exhaustion recursion.
@@ -479,22 +559,20 @@ type ByteOffsetCacheKey
     }
 
 
-data canonical_tag_byte_offset_cache_key_eligible: Symbol = canonical_tag_byte_offset_cache_key_eligible
-data canonical_tag_byte_offset_cache_key_ineligible: Symbol = canonical_tag_byte_offset_cache_key_ineligible
 
 
 // Byte limb 0..255 only: fail-closed before Peano recursion (P4 bounded substrate).
 fn byte_limb_hash_peano_digest(limb: Int) -> Hash {
   if limb < 0 || limb > 255 {
-    atom_identity_hash(s: canonical_tag_byte_limb_out_of_range)
+    atom_identity_hash(s: ^canonical_tag_byte_limb_out_of_range)
   } else if limb == 0 {
-    atom_identity_hash(s: canonical_tag_scalar_int_zero)
+    atom_identity_hash(s: ^canonical_tag_scalar_int_zero)
   } else {
     if limb == 1 {
-      atom_identity_hash(s: canonical_tag_scalar_int_one)
+      atom_identity_hash(s: ^canonical_tag_scalar_int_one)
     } else {
       combine_hash(
-        a: atom_identity_hash(s: canonical_tag_scalar_int_succ),
+        a: atom_identity_hash(s: ^canonical_tag_scalar_int_succ),
         b: byte_limb_hash_peano_digest(limb: limb - 1)
       )
     }
@@ -504,7 +582,7 @@ fn byte_limb_hash_peano_digest(limb: Int) -> Hash {
 
 fn byte_offset_byte_digest(b: Int) -> Hash {
   combine_hash(
-    a: atom_identity_hash(s: canonical_tag_byte_offset_byte),
+    a: atom_identity_hash(s: ^canonical_tag_byte_offset_byte),
     b: byte_limb_hash_peano_digest(limb: b)
   )
 }
@@ -539,7 +617,7 @@ fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_st
 fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
   if quotient < 256 * 256 {
     combine_hash(
-      a: atom_identity_hash(s: canonical_tag_byte_offset_residual_quotient_limb_pair),
+      a: atom_identity_hash(s: ^canonical_tag_byte_offset_residual_quotient_limb_pair),
       b: combine_hash(
         a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
         b: byte_offset_byte_digest(b: quotient / 256)
@@ -547,7 +625,7 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
     )
   } else {
     combine_hash(
-      a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_residual_discarded_high_truncated),
+      a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_residual_discarded_high_truncated),
       b: combine_hash(
         a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
         b: byte_offset_byte_digest(b: (quotient / 256) - (quotient / 65536) * 256)
@@ -560,7 +638,7 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
 // P4: fixed windows over residual quotient (0..max_shift by 4) — interim distinctness for ineligible witnesses.
 fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
   combine_hash(
-    a: atom_identity_hash(s: canonical_tag_byte_offset_residual_quotient_magnitude),
+    a: atom_identity_hash(s: ^canonical_tag_byte_offset_residual_quotient_magnitude),
     b: combine_hash(
       a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 0),
       b: combine_hash(
@@ -597,10 +675,10 @@ fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
 fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_remaining: Int) -> Hash {
   if limbs_remaining == 0 {
     if quotient == 0 {
-      atom_identity_hash(s: canonical_tag_byte_offset_zero)
+      atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
       combine_hash(
-        a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_peel_exhausted),
+        a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_peel_exhausted),
         b: combine_hash(
           a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
           b: byte_offset_byte_digest(b: quotient / 256)
@@ -610,7 +688,7 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
       byte_offset_residual_quotient_limb_pair_digest(quotient: quotient)
     }
   } else if quotient == 0 {
-    atom_identity_hash(s: canonical_tag_byte_offset_zero)
+    atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
   } else {
     combine_hash(
       a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
@@ -627,10 +705,10 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
 fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining: Int) -> Hash {
   if limbs_remaining == 0 {
     if quotient == 0 {
-      atom_identity_hash(s: canonical_tag_byte_offset_zero)
+      atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
     } else if quotient < 256 * 256 {
       combine_hash(
-        a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_peel_exhausted),
+        a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_peel_exhausted),
         b: combine_hash(
           a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
           b: byte_offset_byte_digest(b: quotient / 256)
@@ -643,7 +721,7 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
       )
     }
   } else if quotient == 0 {
-    atom_identity_hash(s: canonical_tag_byte_offset_zero)
+    atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
   } else {
     combine_hash(
       a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
@@ -659,10 +737,10 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
 // Quotient bands above the two-limb exhausted-residual suffix (fail-closed witness material, not cache-eligible).
 fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> Hash {
   if quotient < 65536 {
-    atom_identity_hash(s: canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
+    atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
   } else {
     combine_hash(
-      a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_residual_discarded_high_band),
+      a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_residual_discarded_high_band),
       b: byte_offset_overflow_quotient_high_band_digest(
         quotient: quotient / 65536,
         limbs_remaining: byte_offset_cache_digest_overflow_limbs
@@ -677,7 +755,7 @@ fn byte_offset_cache_digest_ineligible_witness_digest(
   boundary_tag: Symbol,
   quotient: Int
 ) -> Hash {
-  if boundary_tag == canonical_tag_byte_offset_overflow_residual_unrepresentable {
+  if boundary_tag == ^canonical_tag_byte_offset_overflow_residual_unrepresentable {
     byte_offset_cache_digest_ineligible_hash(
       within_ceiling_digest: combine_hash(
         a: within_ceiling_digest,
@@ -702,7 +780,7 @@ fn byte_offset_cache_digest_ineligible_hash(
   boundary_tag: Symbol
 ) -> Hash {
   combine_hash(
-    a: atom_identity_hash(s: canonical_tag_byte_offset_cache_digest_ineligible),
+    a: atom_identity_hash(s: ^canonical_tag_byte_offset_cache_digest_ineligible),
     b: combine_hash(
       a: within_ceiling_digest,
       b: atom_identity_hash(s: boundary_tag)
@@ -719,12 +797,12 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
   if limbs_remaining == 0 {
     if quotient == 0 {
       ByteOffsetWithinCeiling {
-        digest: atom_identity_hash(s: canonical_tag_byte_offset_zero)
+        digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
       }
     } else if quotient < 256 * 256 {
       ByteOffsetWithinCeiling {
         digest: combine_hash(
-          a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_peel_exhausted),
+          a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_peel_exhausted),
           b: combine_hash(
             a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
             b: byte_offset_byte_digest(b: quotient / 256)
@@ -734,19 +812,19 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
     } else {
       ByteOffsetCacheDigestIneligible {
         within_ceiling_digest: combine_hash(
-          a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_peel_exhausted),
+          a: atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_peel_exhausted),
           b: combine_hash(
             a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
             b: byte_offset_byte_digest(b: (quotient / 256) - (quotient / 65536) * 256)
           )
         ),
-        boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
+        boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
         residual_quotient: quotient
       }
     }
   } else if quotient == 0 {
     ByteOffsetWithinCeiling {
-      digest: atom_identity_hash(s: canonical_tag_byte_offset_zero)
+      digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
     }
   } else {
     match byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
@@ -782,7 +860,7 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
             a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
             b: within_ceiling_digest
           ),
-          boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
+          boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
           residual_quotient: quotient
         }
     }
@@ -828,7 +906,7 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffset
         } =>
           ByteOffsetCacheDigestIneligible {
             within_ceiling_digest: combine_hash(a: prefix, b: peel_within_ceiling_digest),
-            boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
+            boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
             residual_quotient: tail
           }
       }
@@ -887,7 +965,7 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
         ByteOffsetWithinCeiling { digest: tail_digest } =>
           ByteOffsetCacheEligible {
             digest: combine_hash(
-              a: atom_identity_hash(s: canonical_tag_byte_offset_out_of_ceiling),
+              a: atom_identity_hash(s: ^canonical_tag_byte_offset_out_of_ceiling),
               b: combine_hash(
                 a: within_ceiling_digest,
                 b: tail_digest
@@ -899,13 +977,13 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
           quotient: _
         } =>
           ByteOffsetCacheIneligible {
-            boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
+            boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
             witness: byte_offset_cache_digest_ineligible_witness_digest(
               within_ceiling_digest: combine_hash(
                 a: within_ceiling_digest,
                 b: tail_within_ceiling_digest
               ),
-              boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
+              boundary_tag: ^canonical_tag_byte_offset_overflow_residual_unrepresentable,
               quotient: quotient
             )
           }
@@ -922,17 +1000,17 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
   if limbs_remaining == 0 {
     if i == 0 {
       ByteOffsetWithinCeiling {
-        digest: atom_identity_hash(s: canonical_tag_byte_offset_zero)
+        digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
       }
     } else {
       ByteOffsetOverCeiling {
-        within_ceiling_digest: atom_identity_hash(s: canonical_tag_byte_offset_zero),
+        within_ceiling_digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero),
         quotient: i
       }
     }
   } else if i == 0 {
     ByteOffsetWithinCeiling {
-      digest: atom_identity_hash(s: canonical_tag_byte_offset_zero)
+      digest: atom_identity_hash(s: ^canonical_tag_byte_offset_zero)
     }
   } else {
     match byte_offset_cache_digest_nonneg_bounded_authority(
@@ -989,7 +1067,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
       ByteOffsetWithinCeiling { digest: digest } =>
         ByteOffsetWithinCeiling {
           digest: combine_hash(
-            a: atom_identity_hash(s: canonical_tag_byte_offset_neg),
+            a: atom_identity_hash(s: ^canonical_tag_byte_offset_neg),
             b: digest
           )
         }
@@ -999,7 +1077,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
       } =>
         ByteOffsetOverCeiling {
           within_ceiling_digest: combine_hash(
-            a: atom_identity_hash(s: canonical_tag_byte_offset_neg),
+            a: atom_identity_hash(s: ^canonical_tag_byte_offset_neg),
             b: within_ceiling_digest
           ),
           quotient: quotient
@@ -1011,7 +1089,7 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
       } =>
         ByteOffsetCacheDigestIneligible {
           within_ceiling_digest: combine_hash(
-            a: atom_identity_hash(s: canonical_tag_byte_offset_neg),
+            a: atom_identity_hash(s: ^canonical_tag_byte_offset_neg),
             b: within_ceiling_digest
           ),
           boundary_tag: boundary_tag,
@@ -1025,18 +1103,20 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
 
 
 // SG-7: structural Node projection for CI / T-22 cache-hash consumers — single authority (no ci.dag parallel tree).
-data byte_offset_proj_key_eligible_edge: Symbol = byte_offset_proj_key_eligible_edge
-data byte_offset_proj_key_ineligible_edge: Symbol = byte_offset_proj_key_ineligible_edge
-data byte_offset_proj_authority_edge: Symbol = byte_offset_proj_authority_edge
-data byte_offset_proj_boundary_edge: Symbol = byte_offset_proj_boundary_edge
-data byte_offset_proj_within_ceiling_edge: Symbol = byte_offset_proj_within_ceiling_edge
-data byte_offset_proj_over_ceiling_edge: Symbol = byte_offset_proj_over_ceiling_edge
-data byte_offset_proj_ineligible_authority_edge: Symbol = byte_offset_proj_ineligible_authority_edge
-data byte_offset_proj_out_of_ceiling_edge: Symbol = byte_offset_proj_out_of_ceiling_edge
-data byte_offset_proj_byte_limb_edge: Symbol = byte_offset_proj_byte_limb_edge
-data byte_offset_proj_neg_edge: Symbol = byte_offset_proj_neg_edge
-data byte_offset_proj_succ_edge: Symbol = byte_offset_proj_succ_edge
-data byte_offset_proj_pred_edge: Symbol = byte_offset_proj_pred_edge
+data canonical_tag_byte_offset_cache_key_eligible: Symbol = ^canonical_tag_byte_offset_cache_key_eligible
+data canonical_tag_byte_offset_cache_key_ineligible: Symbol = ^canonical_tag_byte_offset_cache_key_ineligible
+data byte_offset_proj_key_eligible_edge: Symbol = ^byte_offset_proj_key_eligible_edge
+data byte_offset_proj_key_ineligible_edge: Symbol = ^byte_offset_proj_key_ineligible_edge
+data byte_offset_proj_authority_edge: Symbol = ^byte_offset_proj_authority_edge
+data byte_offset_proj_boundary_edge: Symbol = ^byte_offset_proj_boundary_edge
+data byte_offset_proj_within_ceiling_edge: Symbol = ^byte_offset_proj_within_ceiling_edge
+data byte_offset_proj_over_ceiling_edge: Symbol = ^byte_offset_proj_over_ceiling_edge
+data byte_offset_proj_ineligible_authority_edge: Symbol = ^byte_offset_proj_ineligible_authority_edge
+data byte_offset_proj_out_of_ceiling_edge: Symbol = ^byte_offset_proj_out_of_ceiling_edge
+data byte_offset_proj_byte_limb_edge: Symbol = ^byte_offset_proj_byte_limb_edge
+data byte_offset_proj_neg_edge: Symbol = ^byte_offset_proj_neg_edge
+data byte_offset_proj_succ_edge: Symbol = ^byte_offset_proj_succ_edge
+data byte_offset_proj_pred_edge: Symbol = ^byte_offset_proj_pred_edge
 
 
 fn node_offset_atom(sym: Symbol) -> Node {
@@ -1063,19 +1143,19 @@ fn node_offset_conj(children: List<Edge>) -> Node {
 // P4 bounded Peano limb tree — mirrors `byte_limb_hash_peano_digest` for B1 content_hash (no digest aliasing).
 fn byte_offset_byte_limb_projection_node(limb: Int) -> Node {
   if limb < 0 || limb > 255 {
-    node_offset_atom(sym: canonical_tag_byte_limb_out_of_range)
+    node_offset_atom(sym: ^canonical_tag_byte_limb_out_of_range)
   } else if limb == 0 {
-    node_offset_atom(sym: canonical_tag_scalar_int_zero)
+    node_offset_atom(sym: ^canonical_tag_scalar_int_zero)
   } else if limb == 1 {
-    node_offset_atom(sym: canonical_tag_scalar_int_one)
+    node_offset_atom(sym: ^canonical_tag_scalar_int_one)
   } else {
     node_offset_conj(children: [
       node_offset_named_edge(
-        name: byte_offset_proj_succ_edge,
-        target: node_offset_atom(sym: canonical_tag_scalar_int_succ)
+        name: ^byte_offset_proj_succ_edge,
+        target: node_offset_atom(sym: ^canonical_tag_scalar_int_succ)
       ),
       node_offset_named_edge(
-        name: byte_offset_proj_pred_edge,
+        name: ^byte_offset_proj_pred_edge,
         target: byte_offset_byte_limb_projection_node(limb: limb - 1)
       )
     ])
@@ -1087,42 +1167,42 @@ fn byte_offset_byte_limb_projection_node(limb: Int) -> Node {
 fn byte_offset_digest_nonneg_projection_bounded(i: Int, limbs_remaining: Int) -> Node {
   if limbs_remaining <= 0 {
     if i == 0 {
-      node_offset_atom(sym: canonical_tag_byte_offset_zero)
+      node_offset_atom(sym: ^canonical_tag_byte_offset_zero)
     } else {
       node_offset_conj(children: [
         node_offset_named_edge(
-          name: byte_offset_proj_out_of_ceiling_edge,
-          target: node_offset_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
+          name: ^byte_offset_proj_out_of_ceiling_edge,
+          target: node_offset_atom(sym: ^canonical_tag_byte_offset_out_of_ceiling)
         ),
         node_offset_named_edge(
-          name: byte_offset_proj_authority_edge,
-          target: node_offset_atom(sym: canonical_tag_byte_offset_zero)
+          name: ^byte_offset_proj_authority_edge,
+          target: node_offset_atom(sym: ^canonical_tag_byte_offset_zero)
         ),
         node_offset_named_edge(
-          name: byte_offset_proj_byte_limb_edge,
+          name: ^byte_offset_proj_byte_limb_edge,
           target: byte_offset_byte_limb_projection_node(limb: i - (i / 256) * 256)
         )
       ])
     }
   } else if i == 0 {
-    node_offset_atom(sym: canonical_tag_byte_offset_zero)
+    node_offset_atom(sym: ^canonical_tag_byte_offset_zero)
   } else if i <= 255 {
     byte_offset_byte_limb_projection_node(limb: i)
   } else {
     node_offset_conj(children: [
       node_offset_named_edge(
-        name: byte_offset_proj_out_of_ceiling_edge,
-        target: node_offset_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
+        name: ^byte_offset_proj_out_of_ceiling_edge,
+        target: node_offset_atom(sym: ^canonical_tag_byte_offset_out_of_ceiling)
       ),
       node_offset_named_edge(
-        name: byte_offset_proj_authority_edge,
+        name: ^byte_offset_proj_authority_edge,
         target: byte_offset_digest_nonneg_projection_bounded(
           i: i / 256,
           limbs_remaining: limbs_remaining - 1
         )
       ),
       node_offset_named_edge(
-        name: byte_offset_proj_byte_limb_edge,
+        name: ^byte_offset_proj_byte_limb_edge,
         target: byte_offset_byte_limb_projection_node(limb: i - (i / 256) * 256)
       )
     ])
@@ -1134,11 +1214,11 @@ fn byte_offset_cache_digest_authority_projection_node(i: Int) -> Node {
   if i < 0 {
     node_offset_conj(children: [
       node_offset_named_edge(
-        name: byte_offset_proj_neg_edge,
-        target: node_offset_atom(sym: canonical_tag_byte_offset_neg)
+        name: ^byte_offset_proj_neg_edge,
+        target: node_offset_atom(sym: ^canonical_tag_byte_offset_neg)
       ),
       node_offset_named_edge(
-        name: byte_offset_proj_authority_edge,
+        name: ^byte_offset_proj_authority_edge,
         target: byte_offset_digest_nonneg_projection_bounded(
           i: 0 - i,
           limbs_remaining: byte_offset_cache_digest_max_limbs
@@ -1161,26 +1241,26 @@ fn byte_offset_cache_key_projection_node(i: Int) -> Node {
         ByteOffsetWithinCeiling { digest: _ } =>
           node_offset_conj(children: [
             node_offset_named_edge(
-              name: byte_offset_proj_key_eligible_edge,
-              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_eligible)
+              name: ^byte_offset_proj_key_eligible_edge,
+              target: node_offset_atom(sym: ^canonical_tag_byte_offset_cache_key_eligible)
             ),
             node_offset_named_edge(
-              name: byte_offset_proj_within_ceiling_edge,
+              name: ^byte_offset_proj_within_ceiling_edge,
               target: byte_offset_cache_digest_authority_projection_node(i: i)
             )
           ])
         ByteOffsetOverCeiling { within_ceiling_digest: _, quotient: _ } =>
           node_offset_conj(children: [
             node_offset_named_edge(
-              name: byte_offset_proj_key_eligible_edge,
-              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_eligible)
+              name: ^byte_offset_proj_key_eligible_edge,
+              target: node_offset_atom(sym: ^canonical_tag_byte_offset_cache_key_eligible)
             ),
             node_offset_named_edge(
-              name: byte_offset_proj_over_ceiling_edge,
-              target: node_offset_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
+              name: ^byte_offset_proj_over_ceiling_edge,
+              target: node_offset_atom(sym: ^canonical_tag_byte_offset_out_of_ceiling)
             ),
             node_offset_named_edge(
-              name: byte_offset_proj_authority_edge,
+              name: ^byte_offset_proj_authority_edge,
               target: byte_offset_cache_digest_authority_projection_node(i: i)
             )
           ])
@@ -1191,15 +1271,15 @@ fn byte_offset_cache_key_projection_node(i: Int) -> Node {
         } =>
           node_offset_conj(children: [
             node_offset_named_edge(
-              name: byte_offset_proj_key_eligible_edge,
-              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_eligible)
+              name: ^byte_offset_proj_key_eligible_edge,
+              target: node_offset_atom(sym: ^canonical_tag_byte_offset_cache_key_eligible)
             ),
             node_offset_named_edge(
-              name: byte_offset_proj_ineligible_authority_edge,
-              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_digest_ineligible)
+              name: ^byte_offset_proj_ineligible_authority_edge,
+              target: node_offset_atom(sym: ^canonical_tag_byte_offset_cache_digest_ineligible)
             ),
             node_offset_named_edge(
-              name: byte_offset_proj_boundary_edge,
+              name: ^byte_offset_proj_boundary_edge,
               target: node_offset_atom(sym: boundary_tag)
             )
           ])
@@ -1207,16 +1287,16 @@ fn byte_offset_cache_key_projection_node(i: Int) -> Node {
     ByteOffsetCacheIneligible { boundary_tag: boundary_tag, witness: _ } =>
       node_offset_conj(children: [
         node_offset_named_edge(
-          name: byte_offset_proj_key_ineligible_edge,
-          target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_ineligible)
+          name: ^byte_offset_proj_key_ineligible_edge,
+          target: node_offset_atom(sym: ^canonical_tag_byte_offset_cache_key_ineligible)
         ),
         node_offset_named_edge(
-          name: byte_offset_proj_boundary_edge,
+          name: ^byte_offset_proj_boundary_edge,
           target: node_offset_atom(sym: boundary_tag)
         ),
         node_offset_named_edge(
-          name: byte_offset_proj_ineligible_authority_edge,
-          target: node_offset_atom(sym: canonical_tag_byte_offset_cache_digest_ineligible)
+          name: ^byte_offset_proj_ineligible_authority_edge,
+          target: node_offset_atom(sym: ^canonical_tag_byte_offset_cache_digest_ineligible)
         )
       ])
   }
@@ -1233,7 +1313,7 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
   match key {
     ByteOffsetCacheEligible { digest: digest } =>
       combine_hash(
-        a: atom_identity_hash(s: canonical_tag_byte_offset_cache_key_eligible),
+        a: atom_identity_hash(s: ^canonical_tag_byte_offset_cache_key_eligible),
         b: digest
       )
     ByteOffsetCacheIneligible {
@@ -1241,7 +1321,7 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
       witness: witness
     } =>
       combine_hash(
-        a: atom_identity_hash(s: canonical_tag_byte_offset_cache_key_ineligible),
+        a: atom_identity_hash(s: ^canonical_tag_byte_offset_cache_key_ineligible),
         b: combine_hash(
           a: atom_identity_hash(s: boundary_tag),
           b: witness

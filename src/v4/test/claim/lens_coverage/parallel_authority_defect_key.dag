@@ -21,11 +21,8 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-
-data parallel_authority_symbol: Symbol = parallel_authority_symbol
-
 data parallel_authority_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: parallel_authority_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^parallel_authority_symbol } },
   children: []
 }
 

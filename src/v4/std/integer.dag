@@ -14,7 +14,9 @@ import v4.std.algebra {
   Cons,
   Empty,
   fold_list_node,
+  FreeMonoid,
   Group,
+  length,
   Magma,
   Monoid,
   OrderedRing,
@@ -23,7 +25,7 @@ import v4.std.algebra {
   Semigroup
 }
 import v4.std.collection { List }
-import v4.std.diagnostic {Correction, Diagnostic, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable}
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.machine {
   MachineWidth,
@@ -125,33 +127,340 @@ type IntegerIntervalSpec {
   inclusive_max: IntegerIntervalBound
 }
 
-data integer_interval_field_inclusive_min: Symbol = integer_interval_field_inclusive_min
-data integer_interval_field_inclusive_max: Symbol = integer_interval_field_inclusive_max
-data integer_bound_field_kind: Symbol = integer_bound_field_kind
-data integer_bound_field_sign: Symbol = integer_bound_field_sign
-data integer_bound_field_magnitude: Symbol = integer_bound_field_magnitude
-data integer_bound_field_signedness: Symbol = integer_bound_field_signedness
-data integer_bound_field_endpoint: Symbol = integer_bound_field_endpoint
-data integer_tag_bound_concrete: Symbol = integer_tag_bound_concrete
-data integer_tag_bound_zero: Symbol = integer_tag_bound_zero
-data integer_tag_bound_pointer_width: Symbol = integer_tag_bound_pointer_width
-data integer_tag_bound_negative: Symbol = integer_tag_bound_negative
-data integer_tag_bound_nonnegative: Symbol = integer_tag_bound_nonnegative
-data integer_tag_signed: Symbol = integer_tag_signed
-data integer_tag_unsigned: Symbol = integer_tag_unsigned
-data integer_tag_range_inclusive_min: Symbol = integer_tag_range_inclusive_min
-data integer_tag_range_inclusive_max: Symbol = integer_tag_range_inclusive_max
-data integer_tag_digit_0: Symbol = integer_tag_digit_0
-data integer_tag_digit_1: Symbol = integer_tag_digit_1
-data integer_tag_digit_2: Symbol = integer_tag_digit_2
-data integer_tag_digit_3: Symbol = integer_tag_digit_3
-data integer_tag_digit_4: Symbol = integer_tag_digit_4
-data integer_tag_digit_5: Symbol = integer_tag_digit_5
-data integer_tag_digit_6: Symbol = integer_tag_digit_6
-data integer_tag_digit_7: Symbol = integer_tag_digit_7
-data integer_tag_digit_8: Symbol = integer_tag_digit_8
-data integer_tag_digit_9: Symbol = integer_tag_digit_9
+data integer_standard_integer_type_decode_invalid: Symbol = integer_standard_integer_type_decode_invalid
 
+fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: integer_standard_integer_type_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn decimal_digit_value(d: DecimalDigit) -> Int {
+  match d {
+    D0 => 0
+    D1 => 1
+    D2 => 2
+    D3 => 3
+    D4 => 4
+    D5 => 5
+    D6 => 6
+    D7 => 7
+    D8 => 8
+    D9 => 9
+  }
+}
+
+fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> Ordering {
+  int_compare(a: decimal_digit_value(d: left), b: decimal_digit_value(d: right))
+}
+
+fn decimal_digit_list_compare(left: FreeMonoid<DecimalDigit>, right: FreeMonoid<DecimalDigit>) -> Ordering {
+  match left {
+    Empty => match right {
+      Empty => Equal
+      Cons { head: _, tail: _ } => Less
+    }
+    Cons { head: left_head, tail: left_tail } => match right {
+      Empty => Greater
+      Cons { head: right_head, tail: right_tail } =>
+        match decimal_digit_compare(left: left_head, right: right_head) {
+          Equal => decimal_digit_list_compare(left: left_tail, right: right_tail)
+          Less => Less
+          Greater => Greater
+        }
+    }
+  }
+}
+
+fn decimal_nonzero_magnitude_compare(left: DecimalNonZeroMagnitude, right: DecimalNonZeroMagnitude) -> Ordering {
+  let left_len = 1 + length(xs: left.tail)
+  let right_len = 1 + length(xs: right.tail)
+  if left_len < right_len {
+    Less
+  } else if left_len > right_len {
+    Greater
+  } else {
+    match decimal_digit_compare(
+      left: integer_nonzero_decimal_digit_widen(digit: left.lead),
+      right: integer_nonzero_decimal_digit_widen(digit: right.lead)
+    ) {
+      Equal => decimal_digit_list_compare(left: left.tail, right: right.tail)
+      Less => Less
+      Greater => Greater
+    }
+  }
+}
+
+fn ordering_invert(ordering: Ordering) -> Ordering {
+  match ordering {
+    Less => Greater
+    Equal => Equal
+    Greater => Less
+  }
+}
+
+// 🟡 coproduct dissolution — feature:standard-integer-type-decode — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: interval-spec containment consumes StandardIntegerType once, not a hand-rolled Node dispatch table.
+type StandardIntegerType
+  = Int128
+  | Int64
+  | Int32
+  | Int16
+  | Int8
+  | UInt128
+  | UInt64
+  | UInt32
+  | UInt16
+  | UInt8
+
+fn integer_standard_integer_type_interval_spec(standard_integer_type: StandardIntegerType) -> IntegerIntervalSpec {
+  match standard_integer_type {
+    Int128 => int128_interval_spec()
+    Int64 => int64_interval_spec()
+    Int32 => int32_interval_spec()
+    Int16 => int16_interval_spec()
+    Int8 => int8_interval_spec()
+    UInt128 => uint128_interval_spec()
+    UInt64 => uint64_interval_spec()
+    UInt32 => uint32_interval_spec()
+    UInt16 => uint16_interval_spec()
+    UInt8 => uint8_interval_spec()
+  }
+}
+
+fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntegerType> {
+  if node == integer_interval_spec_node(spec: int128_interval_spec()) {
+    Accepted { value: Int128, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: int64_interval_spec()) {
+    Accepted { value: Int64, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: int32_interval_spec()) {
+    Accepted { value: Int32, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: int16_interval_spec()) {
+    Accepted { value: Int16, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: int8_interval_spec()) {
+    Accepted { value: Int8, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint128_interval_spec()) {
+    Accepted { value: UInt128, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint64_interval_spec()) {
+    Accepted { value: UInt64, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint32_interval_spec()) {
+    Accepted { value: UInt32, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint16_interval_spec()) {
+    Accepted { value: UInt16, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint8_interval_spec()) {
+    Accepted { value: UInt8, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
+      )
+    }
+  }
+}
+
+fn integer_pointer_width_bound_compare(
+  left_signedness: Signedness,
+  left_endpoint: IntegerRangeEndpoint,
+  right_signedness: Signedness,
+  right_endpoint: IntegerRangeEndpoint
+) -> Ordering {
+  match left_signedness {
+    Signed => match right_signedness {
+      Signed => match left_endpoint {
+        IntegerRangeInclusiveMin => match right_endpoint {
+          IntegerRangeInclusiveMin => Equal
+          IntegerRangeInclusiveMax => Less
+        }
+        IntegerRangeInclusiveMax => match right_endpoint {
+          IntegerRangeInclusiveMin => Greater
+          IntegerRangeInclusiveMax => Equal
+        }
+      }
+      Unsigned => Less
+    }
+    Unsigned => match right_signedness {
+      Signed => Greater
+      Unsigned => match left_endpoint {
+        IntegerRangeInclusiveMin => match right_endpoint {
+          IntegerRangeInclusiveMin => Equal
+          IntegerRangeInclusiveMax => Less
+        }
+        IntegerRangeInclusiveMax => match right_endpoint {
+          IntegerRangeInclusiveMin => Greater
+          IntegerRangeInclusiveMax => Equal
+        }
+      }
+    }
+  }
+}
+
+fn integer_concrete_zero_compare_to_pointer_width(
+  right_signedness: Signedness,
+  right_endpoint: IntegerRangeEndpoint
+) -> Ordering {
+  match right_signedness {
+    Signed => match right_endpoint {
+      IntegerRangeInclusiveMin => Greater
+      IntegerRangeInclusiveMax => Less
+    }
+    Unsigned => match right_endpoint {
+      IntegerRangeInclusiveMin => Equal
+      IntegerRangeInclusiveMax => Less
+    }
+  }
+}
+
+fn integer_concrete_bound_compare_to_pointer_width(
+  left_sign: IntegerBoundSign,
+  right_signedness: Signedness,
+  right_endpoint: IntegerRangeEndpoint
+) -> Ordering {
+  match right_signedness {
+    Signed => match right_endpoint {
+      IntegerRangeInclusiveMin => Greater
+      IntegerRangeInclusiveMax => Less
+    }
+    Unsigned => match right_endpoint {
+      IntegerRangeInclusiveMin => match left_sign {
+        IntegerBoundNegative => Less
+        IntegerBoundNonNegative => Greater
+      }
+      IntegerRangeInclusiveMax => Less
+    }
+  }
+}
+
+fn integer_interval_bound_compare(left: IntegerIntervalBound, right: IntegerIntervalBound) -> Ordering {
+  match left {
+    IntegerConcreteZero => match right {
+      IntegerConcreteZero => Equal
+      IntegerConcreteBound { sign, magnitude: _ } => match sign {
+        IntegerBoundNegative => Greater
+        IntegerBoundNonNegative => Less
+      }
+      IntegerPointerWidthBound { signedness, endpoint } =>
+        integer_concrete_zero_compare_to_pointer_width(
+          right_signedness: signedness,
+          right_endpoint: endpoint
+        )
+    }
+    IntegerConcreteBound { sign: left_sign, magnitude: left_magnitude } => match right {
+      IntegerConcreteZero => match left_sign {
+        IntegerBoundNegative => Less
+        IntegerBoundNonNegative => Greater
+      }
+      IntegerConcreteBound { sign: right_sign, magnitude: right_magnitude } => match left_sign {
+        IntegerBoundNegative => match right_sign {
+          IntegerBoundNegative => match decimal_nonzero_magnitude_compare(left: left_magnitude, right: right_magnitude) {
+            Equal => Equal
+            Less => Greater
+            Greater => Less
+          }
+          IntegerBoundNonNegative => Less
+        }
+        IntegerBoundNonNegative => match right_sign {
+          IntegerBoundNegative => Greater
+          IntegerBoundNonNegative => decimal_nonzero_magnitude_compare(left: left_magnitude, right: right_magnitude)
+        }
+      }
+      IntegerPointerWidthBound { signedness, endpoint } =>
+        integer_concrete_bound_compare_to_pointer_width(
+          left_sign: left_sign,
+          right_signedness: signedness,
+          right_endpoint: endpoint
+        )
+    }
+    IntegerPointerWidthBound { signedness: left_signedness, endpoint: left_endpoint } =>
+      match right {
+        IntegerConcreteZero =>
+          ordering_invert(ordering: integer_concrete_zero_compare_to_pointer_width(
+            right_signedness: left_signedness,
+            right_endpoint: left_endpoint
+          ))
+        IntegerConcreteBound { sign: right_sign, magnitude: right_magnitude } =>
+          ordering_invert(ordering: integer_concrete_bound_compare_to_pointer_width(
+            left_sign: right_sign,
+            right_signedness: left_signedness,
+            right_endpoint: left_endpoint
+          ))
+        IntegerPointerWidthBound { signedness: right_signedness, endpoint: right_endpoint } =>
+          integer_pointer_width_bound_compare(
+            left_signedness: left_signedness,
+            left_endpoint: left_endpoint,
+            right_signedness: right_signedness,
+            right_endpoint: right_endpoint
+          )
+      }
+  }
+}
+
+fn integer_interval_bound_less_or_equal(left: IntegerIntervalBound, right: IntegerIntervalBound) -> Bool {
+  match integer_interval_bound_compare(left: left, right: right) {
+    Less => true
+    Equal => true
+    Greater => false
+  }
+}
+
+// 🟡 predicate dissolution — feature:integer-interval-family-gates — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: these Bool helpers are interim role classifiers for the closed IntegerIntervalBound / IntegerIntervalSpec family and should collapse into the shared typed containment path.
+fn integer_interval_bound_is_pointer_width(bound: IntegerIntervalBound) -> Bool {
+  match bound {
+    IntegerPointerWidthBound { signedness: _, endpoint: _ } => true
+    IntegerConcreteZero => false
+    IntegerConcreteBound { sign: _, magnitude: _ } => false
+  }
+}
+
+fn integer_interval_spec_is_pointer_width(spec: IntegerIntervalSpec) -> Bool {
+  integer_interval_bound_is_pointer_width(bound: spec.inclusive_min)
+    && integer_interval_bound_is_pointer_width(bound: spec.inclusive_max)
+}
+
+fn integer_interval_spec_is_concrete(spec: IntegerIntervalSpec) -> Bool {
+  !integer_interval_bound_is_pointer_width(bound: spec.inclusive_min)
+    && !integer_interval_bound_is_pointer_width(bound: spec.inclusive_max)
+}
+
+fn integer_interval_spec_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
+  if integer_interval_spec_is_concrete(spec: container) {
+    integer_interval_spec_is_concrete(spec: contained)
+      && integer_interval_bound_less_or_equal(left: container.inclusive_min, right: contained.inclusive_min)
+      && integer_interval_bound_less_or_equal(left: contained.inclusive_max, right: container.inclusive_max)
+  } else if integer_interval_spec_is_pointer_width(spec: container) {
+    integer_interval_spec_is_pointer_width(spec: contained)
+      && integer_interval_bound_less_or_equal(left: container.inclusive_min, right: contained.inclusive_min)
+      && integer_interval_bound_less_or_equal(left: contained.inclusive_max, right: container.inclusive_max)
+  } else {
+    false
+  }
+}
+fn integer_interval_spec_strictly_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
+  integer_interval_spec_contains(container: container, contained: contained)
+    && !integer_interval_spec_contains(container: contained, contained: container)
+}
+
+fn integer_interval_spec_contains_decoded_node(container: IntegerIntervalSpec, contained: StandardIntegerType) -> Bool {
+  integer_interval_spec_contains(
+    container: container,
+    contained: integer_standard_integer_type_interval_spec(standard_integer_type: contained)
+  )
+}
+
+fn integer_interval_spec_node_contains(container: Node, contained: Node) -> Bool {
+  match integer_standard_integer_type_from_node(node: container) {
+    Accepted { value: decoded_container, diagnostics: None } =>
+      match integer_standard_integer_type_from_node(node: contained) {
+        Accepted { value: decoded_contained, diagnostics: None } =>
+          integer_interval_spec_contains_decoded_node(
+            container: integer_standard_integer_type_interval_spec(standard_integer_type: decoded_container),
+            contained: decoded_contained
+          )
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
 fn integer_interval(
   inclusive_min: IntegerIntervalBound,
   inclusive_max: IntegerIntervalBound
@@ -277,37 +586,37 @@ fn integer_named_edge(name: Symbol, target: Node) -> Edge {
 
 fn integer_bound_sign_node(sign: IntegerBoundSign) -> Node {
   match sign {
-    IntegerBoundNegative => integer_inhabitant_atom(id: integer_tag_bound_negative)
-    IntegerBoundNonNegative => integer_inhabitant_atom(id: integer_tag_bound_nonnegative)
+    IntegerBoundNegative => integer_inhabitant_atom(id: ^integer_tag_bound_negative)
+    IntegerBoundNonNegative => integer_inhabitant_atom(id: ^integer_tag_bound_nonnegative)
   }
 }
 
 fn integer_signedness_node(signedness: Signedness) -> Node {
   match signedness {
-    Signed => integer_inhabitant_atom(id: integer_tag_signed)
-    Unsigned => integer_inhabitant_atom(id: integer_tag_unsigned)
+    Signed => integer_inhabitant_atom(id: ^integer_tag_signed)
+    Unsigned => integer_inhabitant_atom(id: ^integer_tag_unsigned)
   }
 }
 
 fn integer_range_endpoint_node(endpoint: IntegerRangeEndpoint) -> Node {
   match endpoint {
-    IntegerRangeInclusiveMin => integer_inhabitant_atom(id: integer_tag_range_inclusive_min)
-    IntegerRangeInclusiveMax => integer_inhabitant_atom(id: integer_tag_range_inclusive_max)
+    IntegerRangeInclusiveMin => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_min)
+    IntegerRangeInclusiveMax => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_max)
   }
 }
 
 fn integer_decimal_digit_node(digit: DecimalDigit) -> Node {
   match digit {
-    D0 => integer_inhabitant_atom(id: integer_tag_digit_0)
-    D1 => integer_inhabitant_atom(id: integer_tag_digit_1)
-    D2 => integer_inhabitant_atom(id: integer_tag_digit_2)
-    D3 => integer_inhabitant_atom(id: integer_tag_digit_3)
-    D4 => integer_inhabitant_atom(id: integer_tag_digit_4)
-    D5 => integer_inhabitant_atom(id: integer_tag_digit_5)
-    D6 => integer_inhabitant_atom(id: integer_tag_digit_6)
-    D7 => integer_inhabitant_atom(id: integer_tag_digit_7)
-    D8 => integer_inhabitant_atom(id: integer_tag_digit_8)
-    D9 => integer_inhabitant_atom(id: integer_tag_digit_9)
+    D0 => integer_inhabitant_atom(id: ^integer_tag_digit_0)
+    D1 => integer_inhabitant_atom(id: ^integer_tag_digit_1)
+    D2 => integer_inhabitant_atom(id: ^integer_tag_digit_2)
+    D3 => integer_inhabitant_atom(id: ^integer_tag_digit_3)
+    D4 => integer_inhabitant_atom(id: ^integer_tag_digit_4)
+    D5 => integer_inhabitant_atom(id: ^integer_tag_digit_5)
+    D6 => integer_inhabitant_atom(id: ^integer_tag_digit_6)
+    D7 => integer_inhabitant_atom(id: ^integer_tag_digit_7)
+    D8 => integer_inhabitant_atom(id: ^integer_tag_digit_8)
+    D9 => integer_inhabitant_atom(id: ^integer_tag_digit_9)
   }
 }
 
@@ -357,8 +666,8 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         integer_named_edge(
-          name: integer_bound_field_kind,
-          target: integer_inhabitant_atom(id: integer_tag_bound_zero)
+          name: ^integer_bound_field_kind,
+          target: integer_inhabitant_atom(id: ^integer_tag_bound_zero)
         )
       ]
     }
@@ -366,15 +675,15 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         integer_named_edge(
-          name: integer_bound_field_kind,
-          target: integer_inhabitant_atom(id: integer_tag_bound_concrete)
+          name: ^integer_bound_field_kind,
+          target: integer_inhabitant_atom(id: ^integer_tag_bound_concrete)
         ),
         integer_named_edge(
-          name: integer_bound_field_sign,
+          name: ^integer_bound_field_sign,
           target: integer_bound_sign_node(sign: sign)
         ),
         integer_named_edge(
-          name: integer_bound_field_magnitude,
+          name: ^integer_bound_field_magnitude,
           target: integer_decimal_nonzero_node(magnitude: magnitude)
         )
       ]
@@ -383,15 +692,15 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         integer_named_edge(
-          name: integer_bound_field_kind,
-          target: integer_inhabitant_atom(id: integer_tag_bound_pointer_width)
+          name: ^integer_bound_field_kind,
+          target: integer_inhabitant_atom(id: ^integer_tag_bound_pointer_width)
         ),
         integer_named_edge(
-          name: integer_bound_field_signedness,
+          name: ^integer_bound_field_signedness,
           target: integer_signedness_node(signedness: signedness)
         ),
         integer_named_edge(
-          name: integer_bound_field_endpoint,
+          name: ^integer_bound_field_endpoint,
           target: integer_range_endpoint_node(endpoint: endpoint)
         )
       ]
@@ -404,11 +713,11 @@ fn integer_interval_spec_node(spec: IntegerIntervalSpec) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       integer_named_edge(
-        name: integer_interval_field_inclusive_min,
+        name: ^integer_interval_field_inclusive_min,
         target: integer_interval_bound_node(bound: spec.inclusive_min)
       ),
       integer_named_edge(
-        name: integer_interval_field_inclusive_max,
+        name: ^integer_interval_field_inclusive_max,
         target: integer_interval_bound_node(bound: spec.inclusive_max)
       )
     ]
@@ -461,12 +770,9 @@ data int_ordered_ring: OrderedRing<Int> = OrderedRing {
   },
   compare: int_compare
 }
-data integer_div_by_zero: Symbol = integer_div_by_zero
-data integer_modulo_by_zero: Symbol = integer_modulo_by_zero
-
 fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: integer_div_by_zero,
+    reason: ^integer_div_by_zero,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }
@@ -474,7 +780,7 @@ fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
 
 fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: integer_modulo_by_zero,
+    reason: ^integer_modulo_by_zero,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }

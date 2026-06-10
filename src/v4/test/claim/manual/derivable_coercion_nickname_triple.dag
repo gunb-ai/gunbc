@@ -30,6 +30,7 @@ import v4.std.find_witness {
   PreservationPredicate,
   UniqueOnly,
   find_witness,
+  find_witness_derives,
   find_witness_reason_no_candidate,
   preservation_rule_constraint_satisfaction,
   preservation_rule_exact_structural_equality_zip_fold,
@@ -45,7 +46,10 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   Unit,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 
 fn task_id_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
@@ -88,6 +92,21 @@ fn find_witness_sibling_rejects(source: Node, target: Node, rule: Symbol) -> Boo
   !find_witness_sibling_accepts(source: source, target: target, rule: rule)
 }
 
+fn find_witness_dispatch_accepts(source: Node, target: Node) -> Bool {
+  match find_witness_derives(
+    source_facts: source,
+    candidates: task_id_candidate_set(
+      candidates: [target],
+      closedness_evidence: target
+    ),
+    derivation_algebra: source,
+    multiplicity_policy: UniqueOnly
+  ) {
+    Accepted { value: fw, diagnostics: _ } => fw.candidate == target
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // --- Preconditions (sibling shape) -------------------------------------------------
 
 data witness_task_id_surfaces_distinct: Bool = (task_id_api_inhabitant_node() != task_id_db_inhabitant_node()) && (task_id_api_inhabitant_node() != task_id_wire_inhabitant_node()) && (task_id_db_inhabitant_node() != task_id_wire_inhabitant_node())
@@ -124,7 +143,24 @@ data witness_matrix_constraint_db_to_wire_accepts: Bool = find_witness_sibling_a
 
 data witness_matrix_constraint_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: preservation_rule_constraint_satisfaction)
 
-// --- CRUX verdict: no faithful rule derives siblings (accept sibling AND reject wrong-core) ---
+// --- CRUX verdict: the dispatch derives siblings when find_witness gains a faithful rule. ---
+
+data witness_dispatch_api_to_db_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node())
+
+data witness_dispatch_api_to_wire_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node())
+
+data witness_dispatch_db_to_wire_accepts: Bool = find_witness_dispatch_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node())
+
+data witness_dispatch_api_to_account_id_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node())
+
+fn find_witness_dispatch_faithful_for_siblings() -> Bool {
+  witness_dispatch_api_to_db_accepts
+    && witness_dispatch_api_to_wire_accepts
+    && witness_dispatch_db_to_wire_accepts
+    && !witness_dispatch_api_to_account_id_accepts
+}
+
+// Legacy matrix controls: no pre-existing rule should be made faithful by this PR.
 
 fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
   if rule == preservation_rule_exact_structural_equality_zip_fold {
@@ -147,7 +183,7 @@ fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
   }
 }
 
-data witness_crux_substrate_gap: Bool = !preservation_rule_faithful_for_siblings(rule: preservation_rule_exact_structural_equality_zip_fold) && !preservation_rule_faithful_for_siblings(rule: preservation_rule_refinement_widening) && !preservation_rule_faithful_for_siblings(rule: preservation_rule_constraint_satisfaction)
+data witness_crux_substrate_gap: Bool = !find_witness_dispatch_faithful_for_siblings()
 
 // Same-layer reflexivity control (exact rule still works for identity).
 data witness_matrix_exact_api_to_api_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node(), rule: preservation_rule_exact_structural_equality_zip_fold)
@@ -175,9 +211,9 @@ data claim_task_id_surfaces_distinct: TestClaim = EqualsClaim {
 }
 
 data claim_crux_substrate_gap: TestClaim = EqualsClaim {
-  label: "manual/derivable_coercion: CRUX — no faithful preservation rule derives nickname siblings (substrate gap)",
+  label: "manual/derivable_coercion: CRUX — find_witness dispatch derives nickname siblings and rejects wrong-core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: derivable_coercion_claim_lhs(ok: witness_crux_substrate_gap),
+  lhs: derivable_coercion_claim_lhs(ok: !witness_crux_substrate_gap),
   rhs: derivable_coercion_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -218,4 +254,22 @@ data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match
   Pass => true
   Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_claim_task_id_surfaces_distinct` so glob discovery finds the witness without the central roster.
+data unified_claim_derivable_coercion_surfaces_distinct: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+    function: witness_claim_task_id_surfaces_distinct
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_claim_crux_substrate_gap` so glob discovery finds the witness without the central roster.
+data unified_claim_derivable_coercion_claim_crux_substrate_gap: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+    function: witness_claim_crux_substrate_gap
+  }
 }

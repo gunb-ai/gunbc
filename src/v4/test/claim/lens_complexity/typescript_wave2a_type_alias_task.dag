@@ -16,10 +16,6 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Cardinality, Edge, Node, Positional, Symbol, TypeNode }
 import v4.std.witness { Witness }
-
-data ts_wave2a_task_complexity_file: Symbol = ts_wave2a_task_complexity_file
-data ts_wave2a_task_complexity_reason: Symbol = ts_wave2a_task_complexity_reason
-
 type LensComplexityClaim {
   input: Node
   expected_cost: SymbolicCost
@@ -41,8 +37,8 @@ data ts_wave2a_task_complexity_claim: LensComplexityClaim = LensComplexityClaim 
     size_var: SizeVariable { source: ts_wave2a_task_complexity_input }
   ),
   falsification: Diagnostic {
-    reason: ts_wave2a_task_complexity_reason,
-    at: Textual { file: ts_wave2a_task_complexity_file, extent: WholeFile },
+    reason: ^ts_wave2a_task_complexity_reason,
+    at: Textual { file: ^ts_wave2a_task_complexity_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
