@@ -2,7 +2,7 @@
 
 module v2.compiler.infer
 
-import std.types { SourceSpan, container_param_name }
+import std.types { SourceSpan, container_param_name, kernel_type_set, is_kernel_type }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
@@ -26,7 +26,6 @@ import v2.std.core {
   ErrorNode, make_error_node, is_error_diagnostic,
   InternalError, TypeMismatch, VariantCollision,
   resource_use_name_at, resource_use_resource,
-  kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
@@ -5265,6 +5264,10 @@ fn collect_import_bindings_for_import(acc: Map<Int, TypeBinding>, imp: ResolvedI
     match map_get(env.bindings, ident) {
       Some { value: binding } =>
         if imp.module_path == "std.types" && is_type_variable_name(name: name) {
+          bacc
+        } else if import_allows_type_binding(imp: imp, binding: binding, env: env) {
+          map_insert(bacc, ident, binding)
+        } else if map_get(bacc, ident) != none {
           bacc
         } else {
           map_insert(bacc, ident, binding)

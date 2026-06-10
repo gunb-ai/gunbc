@@ -68,15 +68,13 @@ pub fn preserve_nominal_brand_on_resolve(
     brand_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if ((((identity.binding_id.clone() != None)
+    if (((identity.binding_id.clone() != None)
         && (brand_name.clone().as_str() != "".to_string().as_str()))
-        && (brand_name.clone().as_str()
-            != authored_name_at(source_indices, structural.clone()).as_str()))
         && !is_declared_container_alias_spelling(brand_name.clone()))
     {
-        with_preserved_binding_id(identity.clone(), structural.clone())
+        with_preserved_binding_id(identity.clone(), structural)
     } else {
-        structural.clone()
+        structural
     }
 }
 

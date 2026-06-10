@@ -30,8 +30,8 @@ use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
-pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{container_param_name, is_kernel_type, kernel_type_set};
 pub use crate::v2_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v2_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v2_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -138,16 +138,16 @@ pub use crate::v2_std_core::{
     foreach_body, foreach_collection, foreach_variable_at, has_child_named, has_inferred,
     if_condition, if_else_branch, if_then_branch, import_is_all, index_base, index_expr, int_type,
     intern, intern_str, is_child_accessor_in_model, is_compiler_error, is_container_type,
-    is_error_diagnostic, is_kernel_type, is_property_contraction, is_tree_size_reducing,
-    kernel_type_set, lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_span, make_text_part_node, make_transport_node,
-    map_children, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, module_node, no_span, node_name_span, node_with_binding_id,
-    none_type, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
-    string_type, unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
+    is_error_diagnostic, is_property_contraction, is_tree_size_reducing, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, local_transport_node,
+    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
+    make_field_binding_node, make_field_init_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_span, make_text_part_node, make_transport_node, map_children,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, module_node, no_span, node_name_span, node_with_binding_id, none_type,
+    param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
+    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     BindingId, CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv,

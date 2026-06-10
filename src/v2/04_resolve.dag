@@ -61,7 +61,7 @@ fn preserve_nominal_brand_on_resolve(
   brand_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> Node {
-  if identity.binding_id != none && brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
+  if identity.binding_id != none && brand_name != ""
     && !is_declared_container_alias_spelling(name: brand_name) {
     with_preserved_binding_id(identity: identity, structural: structural)
   } else { structural }
