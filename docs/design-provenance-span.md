@@ -87,10 +87,11 @@ occurrence-grained handle they actually need.
 
 ### 4.2 Every node, not selective
 
-Stamp every parse-produced node. Selective stamping creates a second question ("which nodes
-have provenance?") that every consumer must re-answer — ambiguity with no payoff, since ids
-are a fixed-width field and the index is linear in node count. Synthesized nodes (§4.3) are
-the principled exception, not a sampling policy.
+Stamp every node. Selective stamping creates a second question ("which nodes have
+provenance?") that every consumer must re-answer — ambiguity with no payoff, since ids are
+a fixed-width field and the index is linear in node count. Parse stamps `FromSource`;
+synthesized/derived nodes stamp `DerivedBy`/`GeneratedBy` (§4.3, §4.5) — different event
+kinds, not an exemption from stamping.
 
 ### 4.3 Transport through rewrites (normalize / resolve / infer)
 
@@ -110,9 +111,10 @@ Stages that rebuild nodes transport ids by one of two declared moves — never s
 
 Two directions over the index:
 
-- id → `Locus`: read the origin event (§4.5); `FromSource` answers directly, `DerivedBy` /
-  `GeneratedBy` resolve through the chain to the source-text frontier (or the typed
-  `Unanchored` verdict carrying the chain).
+- id → `OriginEvent`, and onward to `Locus`: the index lookup yields the event (§4.5);
+  `FromSource` answers the span question directly, `DerivedBy` / `GeneratedBy` resolve
+  through the chain to the source-text frontier (or the typed `Unanchored` verdict
+  carrying the chain).
 - byte position / `ByteRange` → occurrence: per-file scan for **narrowest enclosing
   extent**; 0 enclosing ⇒ typed `NoEnclosingOccurrence` (fail-closed — an edit in
   whitespace/comments resolves to nothing, honestly); ties broken by narrowest-then-deepest.
