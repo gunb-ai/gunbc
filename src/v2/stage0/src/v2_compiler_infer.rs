@@ -1012,12 +1012,21 @@ pub fn type_node_is_callable(n: Rc<Node>) -> bool {
 
 pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
     {
+        let is_unknown = (module_name.as_str() == "".to_string().as_str());
         let is_v4 = ((v2_rt::string_length(&module_name) >= 3)
             && (v2_rt::substring(&module_name, 0, 3).as_str() == "v4.".to_string().as_str()));
         let is_compiler_substrate = ((v2_rt::string_length(&module_name) >= 13)
             && (v2_rt::substring(&module_name, 0, 13).as_str()
                 == "v2.compiler.".to_string().as_str()));
-        (is_v4 || is_compiler_substrate)
+        let is_v2_std = ((v2_rt::string_length(&module_name) >= 7)
+            && (v2_rt::substring(&module_name, 0, 7).as_str()
+                == "v2.std.".to_string().as_str()));
+        let is_std = ((v2_rt::string_length(&module_name) >= 4)
+            && (v2_rt::substring(&module_name, 0, 4).as_str() == "std.".to_string().as_str()));
+        let is_extdeps = ((v2_rt::string_length(&module_name) >= 8)
+            && (v2_rt::substring(&module_name, 0, 8).as_str()
+                == "extdeps.".to_string().as_str()));
+        ((((is_unknown || is_v4) || is_compiler_substrate) || is_v2_std) || is_std) || is_extdeps
     }
 }
 
@@ -1096,7 +1105,8 @@ pub fn direct_call_arg_type_mismatch(
     if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
         false
     } else {
-        (nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
+        (!node_type_compatible(formal.clone(), actual.clone(), source_indices.clone())
+            || nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
             || container_element_nominal_brand_mismatch(
                 formal.clone(),
                 actual.clone(),

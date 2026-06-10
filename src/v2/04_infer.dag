@@ -634,9 +634,13 @@ fn type_node_is_callable(n: Node) -> Bool {
 // Dissolution trigger: ROADMAP.md Active Deferrals row PD-3-DOGFOOD
 // (delete when v4-lens-ci + v4-m1-rust-emit-probe pass without this skip).
 fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
+  let is_unknown = module_name == ""
   let is_v4 = string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v4."
   let is_compiler_substrate = string_length(s: module_name) >= 13 && substring(s: module_name, start: 0, end: 13) == "v2.compiler."
-  is_v4 || is_compiler_substrate
+  let is_v2_std = string_length(s: module_name) >= 7 && substring(s: module_name, start: 0, end: 7) == "v2.std."
+  let is_std = string_length(s: module_name) >= 4 && substring(s: module_name, start: 0, end: 4) == "std."
+  let is_extdeps = string_length(s: module_name) >= 8 && substring(s: module_name, start: 0, end: 8) == "extdeps."
+  is_unknown || is_v4 || is_compiler_substrate || is_v2_std || is_std || is_extdeps
 }
 
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches

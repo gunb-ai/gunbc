@@ -84,13 +84,21 @@ pub fn merge_decl_registry_state(
             binding_id.clone(),
         ) {
             Some(binding) => match v2_rt::map_get(&acc.decl_registry.clone(), binding_id.clone()) {
-                Some(_) => Rc::new(DeclRegistryMergeState {
-                    decl_registry: acc.decl_registry.clone(),
-                    duplicate_decl_ids: v2_rt::rc_list_push(
-                        acc.duplicate_decl_ids.clone(),
-                        binding_id.clone(),
-                    ),
-                }),
+                Some(existing) => {
+                    if (existing.binding_key.clone() == binding.binding_key.clone())
+                        && (existing.name.clone().as_str() == binding.name.clone().as_str())
+                    {
+                        acc.clone()
+                    } else {
+                        Rc::new(DeclRegistryMergeState {
+                            decl_registry: acc.decl_registry.clone(),
+                            duplicate_decl_ids: v2_rt::rc_list_push(
+                                acc.duplicate_decl_ids.clone(),
+                                binding_id.clone(),
+                            ),
+                        })
+                    }
+                }
                 None => Rc::new(DeclRegistryMergeState {
                     decl_registry: v2_rt::rc_map_insert(
                         acc.decl_registry.clone(),

@@ -62,10 +62,14 @@ fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<Int, T
     match map_get(incoming, binding_id) {
       Some { value: binding } =>
         match map_get(acc.decl_registry, binding_id) {
-          Some { value: _ } =>
-            DeclRegistryMergeState {
-              decl_registry: acc.decl_registry,
-              duplicate_decl_ids: list_push(acc.duplicate_decl_ids, binding_id)
+          Some { value: existing } =>
+            if existing.binding_key == binding.binding_key && existing.name == binding.name {
+              acc
+            } else {
+              DeclRegistryMergeState {
+                decl_registry: acc.decl_registry,
+                duplicate_decl_ids: list_push(acc.duplicate_decl_ids, binding_id)
+              }
             }
           None =>
             DeclRegistryMergeState {
