@@ -106,8 +106,7 @@ cat > "$js_fixture" <<EOF
 ${canonical_source}
 const result = add(2, 3);
 if (result !== 5) {
-  console.error("add(2,3) expected 5 got", result);
-  process.exit(1);
+  throw new Error("add(2,3) expected 5 got " + result);
 }
 EOF
 
