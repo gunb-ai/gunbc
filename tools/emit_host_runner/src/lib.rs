@@ -223,6 +223,11 @@ pub fn runtime_value_parse_go(bytes: &[u8]) -> Result<(), RuntimeValueParseFailu
     runtime_value_parse_rust(bytes)
 }
 
+/// Brief T / typescript host row: same MVP-2 five-byte stdout contract as rust/python/go rows.
+pub fn runtime_value_parse_typescript(bytes: &[u8]) -> Result<(), RuntimeValueParseFailure> {
+    runtime_value_parse_rust(bytes)
+}
+
 /// MVP-2 / eval_runtime_mvp alignment: five stdout bytes denote runtime value `5`.
 pub fn runtime_value_parse_rust(bytes: &[u8]) -> Result<(), RuntimeValueParseFailure> {
     const EXPECTED: usize = 5;
@@ -539,6 +544,35 @@ pub fn python3_binary() -> String {
     std::env::var("GUNBC_PYTHON")
         .or_else(|_| std::env::var("V4_PHASE1_NAT_SEMIRING_PYTHON"))
         .unwrap_or_else(|_| "python3".to_string())
+}
+
+/// Node binary for typescript host row — override via `GUNBC_NODE`.
+pub fn node_binary() -> String {
+    std::env::var("GUNBC_NODE").unwrap_or_else(|_| "node".to_string())
+}
+
+/// Aligns with `emit_host_typescript_authority_pin` / `ts_mvp1_source_text` (`typescript.dag`).
+pub const EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN: &str =
+    "function add(x: number, y: number): number { return x + y; }";
+
+/// `npx -p` package pin for the typescript host row (matches M0 probe).
+pub const EMIT_HOST_TYPESCRIPT_TSC_PACKAGE: &str = "typescript@5.9.2";
+
+/// Transport harness appended after gunbc-emitted mvp1 add-fn source (not part of emitted text).
+const TYPESCRIPT_MVP1_ADD_EXECUTE_HARNESS: &str = r#"
+const __gunbc_add_probe = add(2, 3);
+if (__gunbc_add_probe !== 5) {
+  process.exit(1);
+}
+process.stdout.write(Buffer.alloc(5));
+"#;
+
+fn typescript_fixture_source(source: &str) -> String {
+    if source == EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN {
+        format!("{source}{TYPESCRIPT_MVP1_ADD_EXECUTE_HARNESS}")
+    } else {
+        source.to_string()
+    }
 }
 
 /// Run `source` as a Python script in `work_dir`, capture stdout/stderr.

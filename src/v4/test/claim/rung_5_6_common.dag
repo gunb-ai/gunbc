@@ -8,6 +8,7 @@ module v4.test.claim.rung_5_6_common
 import v4.compiler.emit_host {
   emit_host_go_authority_pin,
   emit_host_python_authority_pin,
+  emit_host_typescript_authority_pin,
   run_test_claim_emit_vs_eval
 }
 import v4.compiler.eval {
@@ -39,6 +40,14 @@ data rung56_emit_host_go_target_model: TargetModel = TargetModel {
   lex: VoidLexRules,
   binding_spellings: empty_map(),
   authority_source_text: emit_host_go_authority_pin
+}
+
+
+data rung56_emit_host_typescript_target_model: TargetModel = TargetModel {
+  bundle: rung34_emit_host_target_bundle,
+  lex: VoidLexRules,
+  binding_spellings: empty_map(),
+  authority_source_text: emit_host_typescript_authority_pin
 }
 
 
