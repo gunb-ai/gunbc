@@ -321,7 +321,7 @@ fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node
 }
 
 fn enrich_base_with_fields(name: String, base: Node, fields: List<Node>) -> Node {
-  Node { name: name, span: base.span, ident_span: base.ident_span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  Node { name: name, ident: base.ident, binding_id: base.binding_id, span: base.span, ident_span: base.ident_span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
 }
 
 fn placeholder_type_node(name: String) -> Node {

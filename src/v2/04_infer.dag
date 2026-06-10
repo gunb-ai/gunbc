@@ -5209,7 +5209,8 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
     }
   } else {
     Node {
-      name: n.name, span: n.span, ident_span: n.ident_span,
+      name: n.name, ident: n.ident, binding_id: n.binding_id,
+      span: n.span, ident_span: n.ident_span,
       children: n.children |> map(c => substitute_generics(n: c, subst: subst, source_indices: source_indices)),
       connective: n.connective,
       params: n.params |> map(p => substitute_generics(n: p, subst: subst, source_indices: source_indices)),
@@ -5845,7 +5846,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let reannotated_items = map(typed_items, item =>
     if item.is_self_recursive && item.body != none {
       Node {
-        name: item.name, span: item.span, ident_span: item.ident_span,
+        name: item.name, ident: item.ident, binding_id: item.binding_id,
+        span: item.span, ident_span: item.ident_span,
         children: item.children, params: item.params,
         inferred: item.inferred, return_cardinality: item.return_cardinality,
         uses: item.uses,
