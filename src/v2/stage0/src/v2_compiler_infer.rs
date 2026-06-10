@@ -913,7 +913,7 @@ pub fn rejects_string_for_optional_coproduct_field(
         let expected_is_optional_coproduct = ((expected.return_cardinality.clone()
             == Cardinality::CardOptional)
             && (expected_inner.connective.clone() == Connective::Disj));
-        let got_is_string = got.name.as_str() == "String".to_string().as_str();
+        let got_is_string = (got.name.clone().as_str() == "String".to_string().as_str());
         (expected_is_optional_coproduct && got_is_string)
     }
 }
@@ -5397,7 +5397,7 @@ pub fn infer_record_lit(
                     {
                         Some(sf) => {
                             let ft = resolved_type(sf.clone());
-                            if ft.ident_span.clone() != None {
+                            if (ft.ident_span.clone() != None) {
                                 Some(ft.clone())
                             } else {
                                 None
@@ -5415,16 +5415,35 @@ pub fn infer_record_lit(
                     let field_type_diags = match field_expected.clone() {
                         Some(expected_node) => {
                             let got_node = resolved_type(ar_typed.clone());
+                            let expected_decl =
+                                lookup_type_for(scope.type_env.clone(), expected_node.clone());
+                            let expected_diag_node = match expected_decl.clone() {
+                                Some(decl_node) => decl_node.clone(),
+                                None => expected_node.clone(),
+                            };
                             let string_optional_reject =
                                 rejects_string_for_optional_coproduct_field(
                                     expected_node.clone(),
                                     got_node.clone(),
                                     scope.type_env.clone().source_indices.clone(),
                                 );
+                            let got_is_string =
+                                (got_node.name.clone().as_str() == "String".to_string().as_str());
+                            let named_optional_coproduct_string_reject =
+                                match expected_node.return_cardinality.clone() {
+                                    Cardinality::CardOptional => match got_is_string.clone() {
+                                        true => {
+                                            (expected_diag_node.connective.clone()
+                                                == Connective::Disj)
+                                        }
+                                        false => false,
+                                    },
+                                    _ => false,
+                                };
                             if string_optional_reject.clone() {
                                 Rc::new(vec![type_mismatch_error(
                                     node_type_shape(
-                                        expected_node.clone(),
+                                        expected_diag_node.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                     ),
                                     node_type_shape(
@@ -5435,7 +5454,22 @@ pub fn infer_record_lit(
                                     scope.module_name.clone(),
                                 )])
                             } else {
-                                Rc::new(vec![])
+                                if named_optional_coproduct_string_reject.clone() {
+                                    Rc::new(vec![type_mismatch_error(
+                                        node_type_shape(
+                                            expected_diag_node.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ),
+                                        node_type_shape(
+                                            got_node.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ),
+                                        ar_typed.span.clone(),
+                                        scope.module_name.clone(),
+                                    )])
+                                } else {
+                                    Rc::new(vec![])
+                                }
                             }
                         }
                         None => Rc::new(vec![]),
