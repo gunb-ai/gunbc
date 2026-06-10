@@ -8457,7 +8457,7 @@ pub fn collect_pattern_string_guards(
                 field_bindings: fbs,
                 ..
             } => {
-                if ((n.clone().as_str() == "Some".to_string().as_str())
+                if ((n.clone().as_str() == "Present".to_string().as_str())
                     && ((fbs.clone().len() as i64) == 1))
                 {
                     match fbs.clone().first().cloned() {
@@ -8482,7 +8482,8 @@ pub fn collect_pattern_string_guards(
                             } else {
                                 {
                                     let __tco_0 = fb_pat.clone();
-                                    let __tco_1 = v2_rt::rc_list_push(path_prefix, n.clone());
+                                    let __tco_1 =
+                                        v2_rt::rc_list_push(path_prefix, "Some".to_string());
                                     pattern = __tco_0;
                                     path_prefix = __tco_1;
                                     continue;
@@ -8642,8 +8643,8 @@ pub fn pattern_parent_enum(
     {
         let scrut_is_known_enum = ((scrut_type.clone().as_str() != "".to_string().as_str())
             && is_enum_type_name(scrut_type.clone(), type_summaries));
-        if ((name.clone().as_str() == "Some".to_string().as_str())
-            || (name.clone().as_str() == "None".to_string().as_str()))
+        if ((name.clone().as_str() == "Present".to_string().as_str())
+            || (name.clone().as_str() == "Absent".to_string().as_str()))
         {
             None
         } else {
@@ -8700,8 +8701,8 @@ pub fn emit_variant_pattern(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let resolved_parent = if ((name.clone().as_str() == "Some".to_string().as_str())
-            || (name.clone().as_str() == "None".to_string().as_str()))
+        let resolved_parent = if ((name.clone().as_str() == "Present".to_string().as_str())
+            || (name.clone().as_str() == "Absent".to_string().as_str()))
         {
             None
         } else {
@@ -8712,14 +8713,23 @@ pub fn emit_variant_pattern(
                 emit_info.type_summaries.clone(),
             )
         };
+        let rust_name = if (name.clone().as_str() == "Present".to_string().as_str()) {
+            "Some".to_string()
+        } else {
+            if (name.clone().as_str() == "Absent".to_string().as_str()) {
+                "None".to_string()
+            } else {
+                name.clone()
+            }
+        };
         let qualified = match resolved_parent.clone() {
             Some(parent) => v2_rt::concat(
                 v2_rt::concat(parent.clone(), "::".to_string()),
-                name.clone(),
+                rust_name.clone(),
             ),
-            None => name.clone(),
+            None => rust_name.clone(),
         };
-        if ((name.clone().as_str() == "Some".to_string().as_str())
+        if ((name.clone().as_str() == "Present".to_string().as_str())
             && ((field_bindings.clone().len() as i64) == 1))
         {
             match field_bindings.clone().first().cloned() {
@@ -8731,7 +8741,7 @@ pub fn emit_variant_pattern(
                         {
                             let inner_pat = emit_pattern(
                                 fb_pat.clone(),
-                                v2_rt::rc_list_push(path_prefix.clone(), name.clone()),
+                                v2_rt::rc_list_push(path_prefix.clone(), rust_name.clone()),
                                 shared_types.clone(),
                                 scrut_type.clone(),
                                 source_indices.clone(),
@@ -9112,8 +9122,8 @@ pub fn analyze_rc_pattern(
             field_bindings: fbs,
             ..
         } => {
-            if ((n.clone().as_str() == "Some".to_string().as_str())
-                || (n.clone().as_str() == "None".to_string().as_str()))
+            if ((n.clone().as_str() == "Present".to_string().as_str())
+                || (n.clone().as_str() == "Absent".to_string().as_str()))
             {
                 if ((fbs.clone().len() as i64) == 1) {
                     match fbs.clone().first().cloned() {
@@ -9128,7 +9138,7 @@ pub fn analyze_rc_pattern(
                             Rc::new(RcPatternAnalysis {
                                 matches_rc_variant: false,
                                 matches_option_rc_variant: ((n.clone().as_str()
-                                    == "Some".to_string().as_str())
+                                    == "Present".to_string().as_str())
                                     && inner.matches_rc_variant.clone()),
                                 needs_rc_pattern: inner.needs_rc_pattern.clone(),
                                 ref_bound_fields: Rc::new(vec![]),
@@ -9320,8 +9330,8 @@ pub fn emit_variant_pattern_rc_aware(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let resolved_parent = if ((name.clone().as_str() == "Some".to_string().as_str())
-            || (name.clone().as_str() == "None".to_string().as_str()))
+        let resolved_parent = if ((name.clone().as_str() == "Present".to_string().as_str())
+            || (name.clone().as_str() == "Absent".to_string().as_str()))
         {
             None
         } else {
@@ -9332,14 +9342,23 @@ pub fn emit_variant_pattern_rc_aware(
                 emit_info.type_summaries.clone(),
             )
         };
+        let rust_name = if (name.clone().as_str() == "Present".to_string().as_str()) {
+            "Some".to_string()
+        } else {
+            if (name.clone().as_str() == "Absent".to_string().as_str()) {
+                "None".to_string()
+            } else {
+                name.clone()
+            }
+        };
         let qualified = match resolved_parent.clone() {
             Some(parent) => v2_rt::concat(
                 v2_rt::concat(parent.clone(), "::".to_string()),
-                name.clone(),
+                rust_name.clone(),
             ),
-            None => name.clone(),
+            None => rust_name.clone(),
         };
-        if ((name.clone().as_str() == "Some".to_string().as_str())
+        if ((name.clone().as_str() == "Present".to_string().as_str())
             && ((field_bindings.clone().len() as i64) == 1))
         {
             match field_bindings.clone().first().cloned() {
@@ -9358,7 +9377,7 @@ pub fn emit_variant_pattern_rc_aware(
                             );
                             let inner_pat = emit_pattern_rc_aware(
                                 fb_pat.clone(),
-                                v2_rt::rc_list_push(path_prefix.clone(), name.clone()),
+                                v2_rt::rc_list_push(path_prefix.clone(), rust_name.clone()),
                                 inner_analysis.clone(),
                                 shared_types.clone(),
                                 scrut_type.clone(),
@@ -9760,8 +9779,8 @@ pub fn rc_pattern_preludes(
             field_bindings: fbs,
             ..
         } => {
-            if ((n.clone().as_str() == "Some".to_string().as_str())
-                || (n.clone().as_str() == "None".to_string().as_str()))
+            if ((n.clone().as_str() == "Present".to_string().as_str())
+                || (n.clone().as_str() == "Absent".to_string().as_str()))
             {
                 if ((fbs.clone().len() as i64) == 1) {
                     match fbs.clone().first().cloned() {
@@ -14812,8 +14831,8 @@ pub fn is_already_optional(
             }
             ExprData::ExprRecordLit { parent_enum: _, .. } => match tn {
                 Some(name) => {
-                    ((name.clone().as_str() == "Some".to_string().as_str())
-                        || (name.clone().as_str() == "None".to_string().as_str()))
+                    ((name.clone().as_str() == "Present".to_string().as_str())
+                        || (name.clone().as_str() == "Absent".to_string().as_str()))
                 }
                 None => false,
             },
@@ -15298,20 +15317,29 @@ pub fn emit_typed_record_lit(
                         }
                     }
                 };
-                let display_tn = if ((tn.clone().as_str() == "Some".to_string().as_str())
-                    || (tn.clone().as_str() == "None".to_string().as_str()))
+                let rust_tn = if (tn.clone().as_str() == "Present".to_string().as_str()) {
+                    "Some".to_string()
+                } else {
+                    if (tn.clone().as_str() == "Absent".to_string().as_str()) {
+                        "None".to_string()
+                    } else {
+                        tn.clone()
+                    }
+                };
+                let display_tn = if ((tn.clone().as_str() == "Present".to_string().as_str())
+                    || (tn.clone().as_str() == "Absent".to_string().as_str()))
                 {
-                    tn.clone()
+                    rust_tn
                 } else {
                     match effective_parent.clone() {
                         Some(resolved_parent_enum) => v2_rt::concat(
                             v2_rt::concat(resolved_parent_enum.clone(), "::".to_string()),
-                            tn.clone(),
+                            rust_tn,
                         ),
-                        None => tn.clone(),
+                        None => rust_tn,
                     }
                 };
-                if ((tn.clone().as_str() == "Some".to_string().as_str())
+                if ((tn.clone().as_str() == "Present".to_string().as_str())
                     && ((fields.clone().len() as i64) == 1))
                 {
                     match fields.clone().first().cloned() {

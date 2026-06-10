@@ -68,7 +68,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
+pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = extract_optional_inner_node(scrut.clone());
         let value_field = Rc::new(Node {
@@ -91,10 +91,10 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let some_node = Rc::new(Node {
-            name: "Some".to_string(),
+        let present_node = Rc::new(Node {
+            name: "Present".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span("Some".to_string())),
+            ident_span: Some(kernel_span("Present".to_string())),
             children: Rc::new(vec![value_field]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -111,7 +111,7 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        some_node
+        present_node
     }
 }
 
@@ -202,37 +202,6 @@ pub fn variant_not_found_result(
     )]))
 }
 
-pub fn optional_match_variant_canonical_name(variant_name: String) -> String {
-    if ((variant_name.clone().as_str() == "Some".to_string().as_str())
-        || (variant_name.clone().as_str() == "Present".to_string().as_str()))
-    {
-        "Present".to_string()
-    } else {
-        if ((variant_name.clone().as_str() == "None".to_string().as_str())
-            || (variant_name.clone().as_str() == "Absent".to_string().as_str()))
-        {
-            "Absent".to_string()
-        } else {
-            variant_name.clone()
-        }
-    }
-}
-
-pub fn optional_match_variant_legacy_name(variant_name: String) -> String {
-    {
-        let canonical = optional_match_variant_canonical_name(variant_name.clone());
-        if (canonical.clone().as_str() == "Present".to_string().as_str()) {
-            "Some".to_string()
-        } else {
-            if (canonical.clone().as_str() == "Absent".to_string().as_str()) {
-                "None".to_string()
-            } else {
-                variant_name.clone()
-            }
-        }
-    }
-}
-
 pub fn lookup_variant_in_type(
     scrut: Rc<PatternSubject>,
     variant_name: String,
@@ -263,20 +232,18 @@ pub fn lookup_variant_in_type(
                 node_lookup_failed(Rc::new(vec![]))
             } else {
                 {
-                    let optional_variant_name =
-                        optional_match_variant_canonical_name(variant_name.clone());
-                    let optional_cardinality_bridge = (scrut_opt.clone()
+                    let optional_cardinality_subject = (scrut_opt.clone()
                         && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
                             != "Optional".to_string().as_str()));
-                    if (optional_cardinality_bridge.clone()
-                        && (optional_variant_name.clone().as_str()
-                            == "Present".to_string().as_str()))
+                    if (optional_cardinality_subject.clone()
+                        && (variant_name.clone().as_str() == "Present".to_string().as_str()))
                     {
-                        node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
+                        node_lookup_resolved(synthesize_optional_present_variant(
+                            scrut_node.clone(),
+                        ))
                     } else {
-                        if (optional_cardinality_bridge.clone()
-                            && (optional_variant_name.clone().as_str()
-                                == "Absent".to_string().as_str()))
+                        if (optional_cardinality_subject.clone()
+                            && (variant_name.clone().as_str() == "Absent".to_string().as_str()))
                         {
                             node_lookup_resolved(none_type())
                         } else {
@@ -427,15 +394,7 @@ pub fn check_match_exhaustiveness(
                             .clone()
                             {
                                 MatchPattern::VariantPattern { name: n, .. } => {
-                                    v2_rt::rc_map_insert(
-                                        acc.clone(),
-                                        if resolved_is_optional.clone() {
-                                            optional_match_variant_canonical_name(n.clone())
-                                        } else {
-                                            n.clone()
-                                        },
-                                        true,
-                                    )
+                                    v2_rt::rc_map_insert(acc.clone(), n.clone(), true)
                                 }
                                 MatchPattern::LitPattern { value: v, .. } => {
                                     match (*v.clone()).clone() {

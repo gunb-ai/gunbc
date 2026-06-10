@@ -70,8 +70,7 @@ pub use crate::v2_compiler_infer_method::{
 use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_patterns::{
     check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
-    lookup_variant_in_type, optional_match_variant_canonical_name,
-    optional_match_variant_legacy_name, pattern_binding_type, pattern_subject_from_inferred,
+    lookup_variant_in_type, pattern_binding_type, pattern_subject_from_inferred,
     pattern_subject_from_node,
 };
 pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
@@ -1692,9 +1691,7 @@ pub fn annotate_pattern_parent_enums(
                         node: resolved_scrut_node,
                         ..
                     } => {
-                        let optional_variant_name =
-                            optional_match_variant_canonical_name(variant_name.clone());
-                        let optional_cardinality_bridge =
+                        let optional_cardinality_subject =
                             ((resolved_scrut_node.return_cardinality.clone()
                                 == Cardinality::CardOptional)
                                 && (authored_name_at(
@@ -1703,10 +1700,9 @@ pub fn annotate_pattern_parent_enums(
                                 )
                                 .as_str()
                                     != "Optional".to_string().as_str()));
-                        if (optional_cardinality_bridge.clone()
-                            && ((optional_variant_name.clone().as_str()
-                                == "Present".to_string().as_str())
-                                || (optional_variant_name.clone().as_str()
+                        if (optional_cardinality_subject
+                            && ((variant_name.clone().as_str() == "Present".to_string().as_str())
+                                || (variant_name.clone().as_str()
                                     == "Absent".to_string().as_str())))
                         {
                             Some("Optional".to_string())
@@ -1728,28 +1724,7 @@ pub fn annotate_pattern_parent_enums(
                     PatternSubject::PatternDynamic { span: _, .. } => None,
                     PatternSubject::PatternLookupBlocked => None,
                 };
-                let annotated_variant_name = match (*resolved_scrut.clone()).clone() {
-                    PatternSubject::PatternResolved {
-                        node: resolved_scrut_node,
-                        ..
-                    } => {
-                        let optional_cardinality_bridge =
-                            ((resolved_scrut_node.return_cardinality.clone()
-                                == Cardinality::CardOptional)
-                                && (authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    resolved_scrut_node.clone(),
-                                )
-                                .as_str()
-                                    != "Optional".to_string().as_str()));
-                        if optional_cardinality_bridge.clone() {
-                            optional_match_variant_legacy_name(variant_name.clone())
-                        } else {
-                            variant_name.clone()
-                        }
-                    }
-                    _ => variant_name.clone(),
-                };
+                let annotated_variant_name = variant_name.clone();
                 let variant_lookup = lookup_variant_in_type(
                     resolved_scrut.clone(),
                     variant_name.clone(),
@@ -7516,7 +7491,7 @@ let arm_ctx = match variant_arm_ctx.clone() {
     None => if scrut_has_inductive.clone() {
                     match (*arm_pattern(arm_node.clone())).clone() {
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => match scrut_inducing_field.clone() {
-    Some(ind_field) => if (vname.clone().as_str() == "Some".to_string().as_str()) {
+    Some(ind_field) => if (vname.clone().as_str() == "Present".to_string().as_str()) {
                         bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| match (*field_binding_pattern(fb.clone())).clone() {
     MatchPattern::Bind { name: bname, .. } => Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),

@@ -2222,7 +2222,8 @@ fn optional_match_with_some_and_none_is_rejected() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|msg| msg.contains("variant 'Some'") || msg.contains("Present")),
+        msgs.iter()
+            .any(|msg| msg.contains("variant 'Some'") || msg.contains("Present")),
         "legacy Some/None Optional arms should be rejected, got {:?}",
         msgs
     );

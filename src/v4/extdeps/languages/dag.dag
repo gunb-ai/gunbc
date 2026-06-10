@@ -6,7 +6,7 @@
 
 module v4.extdeps.languages.dag
 
-import v4.std.collection { List, Set, Map, empty_map, map_insert }
+import v4.std.collection { Absent, List, Set, Map, Present, empty_map, map_insert }
 import v4.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
@@ -2401,14 +2401,14 @@ fn emit_import_decl_emitted_node(
   Node {
     kind: TypeNode { connective: Conj },
     children: match import_block {
-      Some { value: block } =>
+      Present { value: block } =>
         list_append(
           left: prefix,
           right: [
             dag_named_edge(name: ^dag_surface_import_decl_block, target: block)
           ]
         )
-      None => prefix
+      Absent => prefix
     }
   }
 }
@@ -2432,8 +2432,8 @@ fn emit_row_import_decl(
       import_block: import_block
     ),
     tokens: match import_block {
-      Some { value: block } => list_append(left: prefix, right: [block])
-      None => prefix
+      Present { value: block } => list_append(left: prefix, right: [block])
+      Absent => prefix
     }
   )
 }
