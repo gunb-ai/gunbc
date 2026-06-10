@@ -5303,7 +5303,7 @@ fn stamp_hidden_dependency_refs(n: Node, dep_env: TypeEnv, source_indices: Map<S
     match lookup_type_binding_by_name_in_env(env: dep_env, name: name) {
       Some { value: binding } =>
         if binding.resolved.binding_id != none {
-          node_with_preserved_binding_id(identity: binding.resolved, structural: rebuilt)
+          binding.resolved
         } else { rebuilt }
       None => rebuilt
     }
@@ -5352,8 +5352,15 @@ fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: Type
 
 fn add_node_dependency_closure(state: CarrierClosureState, n: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> CarrierClosureState {
   let stamped = stamp_hidden_dependency_refs(n: n, dep_env: dep_env, source_indices: source_indices)
+  let name = authored_name_at(source_indices: source_indices, node: stamped)
+  let with_self = if name != "" {
+    match lookup_type_binding_by_name_in_env(env: dep_env, name: name) {
+      Some { value: self_binding } => add_type_binding_dependency_closure(state: state, binding: self_binding, dep_env: dep_env, source_indices: source_indices)
+      None => state
+    }
+  } else { state }
   let deps = node_type_deps(n: stamped, source_indices: source_indices)
-  fold(deps, init: state, f: (acc, dep_name) =>
+  fold(deps, init: with_self, f: (acc, dep_name) =>
     match lookup_type_binding_by_name_in_env(env: dep_env, name: dep_name) {
       Some { value: dep_binding } => add_type_binding_dependency_closure(state: acc, binding: dep_binding, dep_env: dep_env, source_indices: source_indices)
       None => acc

@@ -10980,7 +10980,7 @@ pub fn stamp_hidden_dependency_refs(
         match lookup_type_binding_by_name_in_env(dep_env.clone(), name.clone()) {
             Some(binding) => {
                 if binding.resolved.binding_id.clone() != None {
-                    node_with_preserved_binding_id(binding.resolved.clone(), rebuilt.clone())
+                    binding.resolved.clone()
                 } else {
                     rebuilt
                 }
@@ -11075,20 +11075,36 @@ pub fn add_node_dependency_closure(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CarrierClosureState> {
     let stamped = stamp_hidden_dependency_refs(n, dep_env.clone(), source_indices.clone());
+    let name = authored_name_at(source_indices.clone(), stamped.clone());
+    let with_self = if name.clone().as_str() != "".to_string().as_str() {
+        match lookup_type_binding_by_name_in_env(dep_env.clone(), name.clone()) {
+            Some(self_binding) => add_type_binding_dependency_closure(
+                state.clone(),
+                self_binding.clone(),
+                dep_env.clone(),
+                source_indices.clone(),
+            ),
+            None => state.clone(),
+        }
+    } else {
+        state.clone()
+    };
     let deps = node_type_deps(stamped, source_indices.clone());
-    deps.iter()
-        .cloned()
-        .fold(state, |acc: Rc<CarrierClosureState>, dep_name: String| {
-            match lookup_type_binding_by_name_in_env(dep_env.clone(), dep_name.clone()) {
-                Some(dep_binding) => add_type_binding_dependency_closure(
-                    acc.clone(),
-                    dep_binding.clone(),
-                    dep_env.clone(),
-                    source_indices.clone(),
-                ),
-                None => acc.clone(),
-            }
-        })
+    deps.iter().cloned().fold(
+        with_self,
+        |acc: Rc<CarrierClosureState>, dep_name: String| match lookup_type_binding_by_name_in_env(
+            dep_env.clone(),
+            dep_name.clone(),
+        ) {
+            Some(dep_binding) => add_type_binding_dependency_closure(
+                acc.clone(),
+                dep_binding.clone(),
+                dep_env.clone(),
+                source_indices.clone(),
+            ),
+            None => acc.clone(),
+        },
+    )
 }
 
 pub fn collect_import_carrier_bindings_for_import(
