@@ -43,8 +43,7 @@ data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_const
 data preservation_rule_exact_structural_equality_zip_fold: Symbol = preservation_rule_exact_structural_equality_zip_fold
 data preservation_rule_refinement_widening: Symbol = preservation_rule_refinement_widening
 data preservation_rule_project_to_core: Symbol = preservation_rule_project_to_core
-data preservation_rule_type_expr_projection_discipline_zip_fold: Symbol =
-  preservation_rule_type_expr_projection_discipline_zip_fold
+data preservation_rule_type_expr_projection_discipline_zip_fold: Symbol = preservation_rule_type_expr_projection_discipline_zip_fold
 type CandidateSet {
   candidates: List<Node>
   closedness: StructuralPropertyWitness
