@@ -1452,14 +1452,34 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       match map_get(scope.locals, name) {
         Some { value: binding } =>
           let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-          ok_infer(texpr: make_named_expr_node(
+          let local_typed = make_named_expr_node(
             name: name,
             expr_data: ExprVar { binding_kind: Some { value: binding_kind } },
             children: [],
             inferred: Some { value: Resolved { node: binding.resolved } },
             span: span,
             name_span: span
-          ))
+          )
+          let expected_local_diags = match expected {
+            Some { value: expected_node } =>
+              if rejects_string_for_optional_coproduct_field(
+                expected: expected_node,
+                got: binding.resolved,
+                source_indices: scope.type_env.source_indices
+              ) {
+                [type_mismatch_error(
+                  expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
+                  got: node_type_shape(n: binding.resolved, source_indices: scope.type_env.source_indices),
+                  span: span,
+                  module_name: scope.module_name
+                )]
+              } else { [] }
+            None => []
+          }
+          InferResult {
+            typed: local_typed,
+            diagnostics: expected_local_diags
+          }
         None =>
           let expected_variant_parent = match expected {
             Some { value: expected_node } =>
