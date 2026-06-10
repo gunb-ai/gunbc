@@ -14932,25 +14932,33 @@ pub fn is_already_optional(
                 _ => false,
             },
             ExprData::ExprVar {
-                binding_kind: _, ..
+                binding_kind: binding_kind,
+                ..
             } => {
-                if (((n.clone().as_str() == "none".to_string().as_str())
-                    || (n.clone().as_str() == "None".to_string().as_str()))
+                if (((n.clone().as_str() == "Present".to_string().as_str())
                     || (n.clone().as_str() == "Absent".to_string().as_str()))
+                    && (variant_parent_from_binding_kind(binding_kind.clone()).as_deref()
+                        == Some("Optional".to_string()).as_deref()))
                 {
                     true
                 } else {
-                    match texpr.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: rt, .. }) => {
-                            (rt.return_cardinality.clone() == Cardinality::CardOptional)
-                        }
-                        _ => match v2_rt::map_get(&scope.locals.clone(), n.clone()) {
-                            Some(binding) => {
-                                (binding.resolved.clone().return_cardinality.clone()
-                                    == Cardinality::CardOptional)
+                    if ((n.clone().as_str() == "none".to_string().as_str())
+                        || (n.clone().as_str() == "None".to_string().as_str()))
+                    {
+                        true
+                    } else {
+                        match texpr.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => {
+                                (rt.return_cardinality.clone() == Cardinality::CardOptional)
                             }
-                            None => false,
-                        },
+                            _ => match v2_rt::map_get(&scope.locals.clone(), n.clone()) {
+                                Some(binding) => {
+                                    (binding.resolved.clone().return_cardinality.clone()
+                                        == Cardinality::CardOptional)
+                                }
+                                None => false,
+                            },
+                        }
                     }
                 }
             }
