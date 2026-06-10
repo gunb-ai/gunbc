@@ -85,11 +85,14 @@ import v4.std.runtime {
 import v4.std.witness { Holds, Witness }
 import v4.std.verdict { Pass }
 import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
   CompilesClaim,
   ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
+  UnifiedTestClaim,
   Unit,
   manual_claim_anchor
 }
@@ -566,4 +569,24 @@ fn comprep_eval_swapped_operands_claim_passes() -> Bool {
       expected: comprep_eval_literal_five_node()
     )
   )
+}
+
+// COMPREP wave-1 runtime keystone, single Bool witness: source-ingested add executes its
+// Arrow.body through eval callee dispatch (green, result == 5) AND the swapped-operand body
+// fails the run (the discriminating red). Both arms in one witness so a single roster row /
+// glob-discovered marker gates the executed consumer (INVARIANTS E-10).
+fn comprep_eval_by_execution_keystone_holds() -> Bool {
+  comprep_eval_source_ingested_add_executes_holds()
+    && comprep_eval_direct_runtime_holds()
+    && comprep_eval_swapped_operands_red_holds()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `comprep_eval_by_execution_keystone_holds` so glob discovery finds the
+// executed witness without depending solely on the central roster.
+data unified_claim_comprep_eval_by_execution: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/comprep_eval_by_execution.dag",
+    function: comprep_eval_by_execution_keystone_holds
+  }
 }
