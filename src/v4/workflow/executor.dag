@@ -47,7 +47,7 @@ type ExecutorRunPlan
     }
   | ExecutorRunRunnable {
       batch: ExecutorBatch,
-      batches: List<ExecutorBatch>,
+      prior_batches: List<ExecutorBatch>,
       scheduled: List<Node>,
       remaining: List<Node>
     }
@@ -124,7 +124,7 @@ fn executor_plan_from_scheduler_plan(scheduler_plan: SchedulerPlan) -> ExecutorR
     }
     SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: layers } => ExecutorRunRunnable {
       batch: executor_batch_for_frontier(frontier: frontier),
-      batches: executor_batches_for_layers(layers: layers),
+      prior_batches: executor_prior_batches_for_runnable_layers(layers: layers, frontier: frontier),
       scheduled: scheduled_nodes,
       remaining: remaining
     }
@@ -164,6 +164,20 @@ fn executor_batches_for_layers(layers: List<ReadinessLayer>) -> List<ExecutorBat
       batches: acc,
       batch: executor_batch_for_frontier(frontier: RunnableFrontier { ready: layer.ready })
     )
+  })
+}
+
+fn executor_prior_batches_for_runnable_layers(
+  layers: List<ReadinessLayer>,
+  frontier: RunnableFrontier
+) -> List<ExecutorBatch> {
+  fold(layers, init: [], f: fn(acc, layer) {
+    let batch = executor_batch_for_frontier(frontier: RunnableFrontier { ready: layer.ready })
+    if batch == executor_batch_for_frontier(frontier: frontier) {
+      acc
+    } else {
+      executor_append_batch(batches: acc, batch: batch)
+    }
   })
 }
 
