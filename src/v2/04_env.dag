@@ -139,7 +139,11 @@ fn authored_name(env: TypeEnv, node: Node) -> String {
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
   let visible = match node.ident {
-    Some { value: id } => lookup_type(env: env, ident: id)
+    Some { value: id } =>
+      match lookup_type(env: env, ident: id) {
+        Some { value: resolved } => Some { value: resolved }
+        None => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
+      }
     None => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
   }
   match visible {
