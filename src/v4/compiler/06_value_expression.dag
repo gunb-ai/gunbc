@@ -227,9 +227,23 @@ fn value_expr_wave1_add_signature_matches(arrow: Node) -> Bool {
   }
 }
 
+fn value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match body.kind {
+        ComputationNode { behavior: Transform } => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn value_expr_arrow_body_scope_binding_valid(arrow: Node, binding: Symbol) -> Bool {
-  value_expr_wave1_add_signature_matches(arrow: arrow)
-    && (binding == ^dag_binding_param_x || binding == ^dag_binding_param_y)
+  (binding == ^dag_binding_param_x || binding == ^dag_binding_param_y)
+    && (
+      value_expr_wave1_add_signature_matches(arrow: arrow)
+      || value_expr_arrow_has_transform_body(arrow: arrow)
+    )
 }
 
 fn value_expr_arrow_body_scope_binding(
@@ -702,14 +716,7 @@ fn value_expression_to_concrete_tokens(
 // arrow_has_transform_body, translate_node bodied bypass, and serialize bodied branches — forbidden:
 // steady-state Bool predicates over ComputationNode behavior Transform for emit dispatch.
 fn arrow_has_transform_body(arrow: Node) -> Bool {
-  match find_arrow_body_child(root: arrow) {
-    Accepted { value: body, diagnostics: _ } =>
-      match body.kind {
-        ComputationNode { behavior: Transform } => true
-        _ => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
+  value_expr_arrow_has_transform_body(arrow: arrow)
 }
 
 fn project_arrow_body_to_value_expression(arrow: Node) -> Outcome<TargetValueExpression> {
