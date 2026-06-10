@@ -57,15 +57,14 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 // Variant lookup
 // =========================================================================
 
-// Temporary bridge: synthesize a "Some { value: T }" variant node for
-// Optional pattern matching. Optional is still represented as
-// [inner_type, None] — no explicit "Some" child. Track in the roadmap until
-// pattern lookup gains a fully structural Optional subject.
-fn synthesize_optional_some_variant(scrut: Node) -> Node {
+// Synthesize the canonical `Present { value: T }` variant node for cardinality
+// Optional pattern matching. Optional is represented by `return_cardinality`;
+// it has no explicit `Present` child in the v2 type node.
+fn synthesize_optional_present_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
   let value_field = Node { name: "value", span: scrut.span, ident_span: Some { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let some_node = Node { name: "Some", span: scrut.span, ident_span: Some { value: kernel_span(name: "Some") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  some_node
+  let present_node = Node { name: "Present", span: scrut.span, ident_span: Some { value: kernel_span(name: "Present") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  present_node
 }
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
@@ -127,27 +126,6 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   )
 }
 
-fn optional_match_variant_canonical_name(variant_name: String) -> String {
-  if variant_name == "Some" || variant_name == "Present" {
-    "Present"
-  } else if variant_name == "None" || variant_name == "Absent" {
-    "Absent"
-  } else {
-    variant_name
-  }
-}
-
-fn optional_match_variant_legacy_name(variant_name: String) -> String {
-  let canonical = optional_match_variant_canonical_name(variant_name: variant_name)
-  if canonical == "Present" {
-    "Some"
-  } else if canonical == "Absent" {
-    "None"
-  } else {
-    variant_name
-  }
-}
-
 fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
@@ -159,11 +137,10 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         node_lookup_failed(diagnostics: [])
       } else {
-        let optional_variant_name = optional_match_variant_canonical_name(variant_name: variant_name)
-        let optional_cardinality_bridge = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
-        if optional_cardinality_bridge && optional_variant_name == "Present" {
-          node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
-        } else if optional_cardinality_bridge && optional_variant_name == "Absent" {
+        let optional_cardinality_subject = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
+        if optional_cardinality_subject && variant_name == "Present" {
+          node_lookup_resolved(node: synthesize_optional_present_variant(scrut: scrut_node))
+        } else if optional_cardinality_subject && variant_name == "Absent" {
           node_lookup_resolved(node: none_type)
         } else {
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
@@ -246,7 +223,7 @@ fn check_match_exhaustiveness(
       let covered_set = arms |> fold(init: empty_map(), f: (acc, arm) =>
         match arm_pattern(n: arm) {
           VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
-            map_insert(acc, if resolved_is_optional { optional_match_variant_canonical_name(variant_name: n) } else { n }, true)
+            map_insert(acc, n, true)
           LitPattern { value: v } => match v {
             LitBool { value: b } => if b { map_insert(acc, "True", true) } else { map_insert(acc, "False", true) }
             _ => acc
