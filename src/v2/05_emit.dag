@@ -668,11 +668,7 @@ fn named_type_vars_in_node(n: Node) -> List<String> {
 
 fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
-  let base = if target == Rust && (tn == "Witness" || tn == "witness") {
-    "v2_rt::Witness"
-  } else {
-    coerce_primitive_type(target: target, dag_name: tn)
-  }
+  let base = coerce_primitive_type(target: target, dag_name: tn)
   let explicit_params = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
   let inferred_params = if explicit_params |> count == 0 { named_type_vars_in_node(n: n) } else { [] }
   let param_names = concat(explicit_params, inferred_params)
@@ -849,8 +845,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     let is_container = node_is_collection(n: n, source_indices: source_indices)
     let base = if is_container {
       emit_container(kind: to_snake(name: tn), inner: child_str, target: target)
-    } else if target == Rust && (tn == "Witness" || tn == "witness") {
-      concat("v2_rt::Witness<", child_str, ">")
     } else {
       let type_base = coerce_primitive_type(target: target, dag_name: tn)
       let spec = language_spec(target: target)
