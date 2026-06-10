@@ -133,13 +133,25 @@ fn lookup_carrier_type_for(env: TypeEnv, node: Node) -> Node? {
   }
 }
 
+fn node_has_binding_id(n: Node, binding_id: BindingId) -> Bool {
+  match n.binding_id {
+    Some { value: actual } => actual == binding_id
+    None => false
+  }
+}
+
 fn lookup_binding_id_type_for(env: TypeEnv, node: Node) -> Node? {
   match node.binding_id {
     Some { value: binding_id } =>
       match map_get(env.decl_registry, binding_id) {
         Some { value: decl } =>
           match lookup_type(env: env, ident: decl.binding_key) {
-            Some { value: resolved } => Some { value: resolved }
+            Some { value: resolved } =>
+              if node_has_binding_id(n: resolved, binding_id: binding_id) {
+                Some { value: resolved }
+              } else {
+                lookup_carrier_type_for(env: env, node: node)
+              }
             None => lookup_carrier_type_for(env: env, node: node)
           }
         None => lookup_carrier_type_for(env: env, node: node)
