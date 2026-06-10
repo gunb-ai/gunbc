@@ -4,7 +4,7 @@
 
 module v4.test.claim.provenance.occurrence_id_model
 
-import v4.std.diagnostic { ByteRange, Textual, WholeFile }
+import v4.std.diagnostic { ByteRange, NodeLocus, PortLocus, Textual, WholeFile }
 import v4.std.node { Symbol }
 import v4.std.occurrence_id {
   alloc_occurrence_id,
@@ -55,11 +55,16 @@ fn span_index_from_source_round_trip_holds() -> Bool {
     Holds { value: got } =>
       match got {
         FromSource { locus: got_locus } =>
-          (got_locus.file == occurrence_model_file)
-            && match got_locus.extent {
-              ByteRange { start: s, end: e } => (s == 0) && (e == 12)
-              WholeFile => false
-            }
+          match got_locus {
+            Textual { file: f, extent: ext } =>
+              (f == occurrence_model_file)
+                && match ext {
+                  ByteRange { start: s, end: e } => (s == 0) && (e == 12)
+                  WholeFile => false
+                }
+            NodeLocus { anchor: _ } => false
+            PortLocus { anchor: _ } => false
+          }
         DerivedBy { producer: _, from: _ } => false
         GeneratedBy { generator: _, from: _ } => false
       }
