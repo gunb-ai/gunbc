@@ -753,14 +753,14 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
 fn serialize_source_tokens_fold_child(serialize_source: Node) -> Optional<Node> {
   fold(
     serialize_source.children,
-    init: Absent,
+    init: optional_absent(),
     f: fn(acc, e) {
       match acc {
         Present { value: _ } => acc
         Absent =>
           match e.label {
             Named { name: n } =>
-              if n == grammar_relation_field_tokens { Present { value: e.target } } else { acc }
+              if n == grammar_relation_field_tokens { optional_present(value: e.target) } else { acc }
             Positional => acc
           }
       }
