@@ -1807,8 +1807,10 @@ pub fn node_type_compatible(
                         let right_is_container =
                             node_is_element_collection(right.clone(), source_indices.clone());
                         if (left_is_container && right_is_container) {
-                            if (authored_name_at(source_indices.clone(), left.clone()).as_str()
-                                != authored_name_at(source_indices.clone(), right.clone()).as_str())
+                            if (canonical_template_name(left.clone(), source_indices.clone())
+                                .as_str()
+                                != canonical_template_name(right.clone(), source_indices.clone())
+                                    .as_str())
                             {
                                 break false;
                             } else {
