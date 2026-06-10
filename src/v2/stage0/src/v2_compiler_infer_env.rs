@@ -160,11 +160,24 @@ pub fn lookup_carrier_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<No
     }
 }
 
+pub fn node_has_binding_id(n: Rc<Node>, binding_id: BindingId) -> bool {
+    match n.binding_id.clone() {
+        Some(actual) => (actual.clone() == binding_id),
+        None => false,
+    }
+}
+
 pub fn lookup_binding_id_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.binding_id.clone() {
         Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
             Some(decl) => match lookup_type(env.clone(), decl.binding_key.clone()) {
-                Some(resolved) => Some(resolved.clone()),
+                Some(resolved) => {
+                    if node_has_binding_id(resolved.clone(), binding_id.clone()) {
+                        Some(resolved.clone())
+                    } else {
+                        lookup_carrier_type_for(env.clone(), node.clone())
+                    }
+                }
                 None => lookup_carrier_type_for(env.clone(), node.clone()),
             },
             None => lookup_carrier_type_for(env.clone(), node.clone()),

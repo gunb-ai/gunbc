@@ -567,7 +567,29 @@ fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source
   expected_is_optional_coproduct && got_is_string
 }
 
-fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Node> {
+fn expected_variant_node(expected: Node?, variant_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match expected {
+    Some { value: exp } =>
+      let parent = with_required_cardinality(n: exp)
+      if parent.connective == Disj {
+        parent.children |> filter(v => authored_name_at(source_indices: source_indices, node: v) == variant_name) |> first
+      } else { none }
+    None => none
+  }
+}
+
+fn expected_variant_parent_name(expected: Node?, variant_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match expected_variant_node(expected: expected, variant_name: variant_name, source_indices: source_indices) {
+    Some { value: _ } =>
+      match expected {
+        Some { value: exp } => Some { value: authored_name_at(source_indices: source_indices, node: with_required_cardinality(n: exp)) }
+        None => none
+      }
+    None => none
+  }
+}
+
+fn record_lit_expected_fields(type_name: String?, scope: InferScope, expected: Node?) -> List<Node> {
   match type_name {
     Some { value: tn } =>
       match lookup_type_by_name(env: scope.type_env, name: tn) {
@@ -583,7 +605,11 @@ fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Nod
                   }
                 None => []
               }
-            None => []
+            None =>
+              match expected_variant_node(expected: expected, variant_name: tn, source_indices: scope.type_env.source_indices) {
+                Some { value: variant } => variant.children
+                None => []
+              }
           }
       }
     None => []
@@ -2276,7 +2302,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     ExprRecordLit { parent_enum: _ } =>
       let span = texpr.span
       let field_inits = texpr.children
-      infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope)
+      infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected)
 
     ExprListLit =>
       let span = texpr.span
@@ -2688,7 +2714,8 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
                             field_inits: [payload_init],
                             span: span,
                             name_span: name_span,
-                            scope: scope
+                            scope: scope,
+                            expected: none
                           ) }
                       }
                     None => none
@@ -2712,8 +2739,8 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
 }
 
 
-fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult {
-  let struct_fields = record_lit_expected_fields(type_name: type_name, scope: scope)
+fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+  let struct_fields = record_lit_expected_fields(type_name: type_name, scope: scope, expected: expected)
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
@@ -2776,6 +2803,11 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
     let local_variant_parent = lookup_variant_parent_enum(scope: scope, name: type_name.value)
+    let expected_variant_parent = expected_variant_parent_name(expected: expected, variant_name: type_name.value, source_indices: scope.type_env.source_indices)
+    let effective_variant_parent = match local_variant_parent {
+      Some { value: _ } => local_variant_parent
+      None => expected_variant_parent
+    }
     let effective_lookup = match type_lookup {
       Some { value: _ } => type_lookup
       None =>
@@ -2783,7 +2815,15 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         match local_lookup {
           Some { value: local_node } =>
             lookup_type_for(env: scope.type_env, node: local_node)
-          None => None
+          None =>
+            match expected_variant_node(expected: expected, variant_name: type_name.value, source_indices: scope.type_env.source_indices) {
+              Some { value: _ } =>
+                match expected {
+                  Some { value: exp } => Some { value: with_required_cardinality(n: exp) }
+                  None => None
+                }
+              None => None
+            }
         }
     }
     let raw_resolved = match effective_lookup {
@@ -2791,7 +2831,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       None => error_type
     }
     let expected_optional_parent = Some { value: "Optional" }
-    let is_some_ctor = type_name.value == "Some" && local_variant_parent == expected_optional_parent
+    let is_some_ctor = type_name.value == "Some" && effective_variant_parent == expected_optional_parent
     let resolved_node = if is_some_ctor {
       let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
       match val_field {
@@ -2811,7 +2851,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let rl_name = match type_name { Some { value: tn_val } => tn_val  None => "" }
     let texpr = make_named_expr_node(
       name: rl_name,
-      expr_data: ExprRecordLit { parent_enum: local_variant_parent },
+      expr_data: ExprRecordLit { parent_enum: effective_variant_parent },
       children: typed_field_nodes2,
       inferred: Some { value: Resolved { node: resolved_node } },
       span: span,
