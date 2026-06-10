@@ -55,6 +55,11 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KnownMethodResolution {
     pub semantics: Option<Rc<MethodSemantics>>,
@@ -457,9 +462,7 @@ pub fn map_lookup_result_type(
     if (authored_name_at(source_indices.clone(), product).as_str() == "Map".to_string().as_str()) {
         match product_field_result_type(field) {
             Some(raw) => {
-                if (authored_name_at(source_indices.clone(), raw.clone()).as_str()
-                    == "Witness".to_string().as_str())
-                {
+                if is_witness_type_name(authored_name_at(source_indices.clone(), raw.clone())) {
                     Some(raw.clone())
                 } else {
                     Some(

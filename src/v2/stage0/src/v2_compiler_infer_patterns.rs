@@ -33,6 +33,11 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeLookupResult {
     pub status: Rc<NodeLookupStatus>,
@@ -352,10 +357,10 @@ pub fn lookup_variant_in_type(
                     let optional_cardinality_subject = (scrut_opt.clone()
                         && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
                             != "Optional".to_string().as_str()));
-                    let witness_subject =
-                        ((authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
-                            == "Witness".to_string().as_str())
-                            && ((scrut_node.children.clone().len() as i64) == 1));
+                    let witness_subject = (is_witness_type_name(authored_name_at(
+                        source_indices.clone(),
+                        scrut_node.clone(),
+                    )) && ((scrut_node.children.clone().len() as i64) == 1));
                     if (optional_cardinality_subject.clone()
                         && (variant_name.clone().as_str() == "Present".to_string().as_str()))
                     {
@@ -494,10 +499,10 @@ pub fn check_match_exhaustiveness(
         let is_coproduct = (resolved.connective.clone() == Connective::Disj);
         let resolved_is_optional =
             (resolved.return_cardinality.clone() == Cardinality::CardOptional);
-        let resolved_is_witness =
-            ((authored_name_at(env.source_indices.clone(), resolved.clone()).as_str()
-                == "Witness".to_string().as_str())
-                && ((resolved.children.clone().len() as i64) == 1));
+        let resolved_is_witness = (is_witness_type_name(authored_name_at(
+            env.source_indices.clone(),
+            resolved.clone(),
+        )) && ((resolved.children.clone().len() as i64) == 1));
         if ((is_coproduct || resolved_is_optional.clone()) || resolved_is_witness.clone()) {
             {
                 let variant_names = if resolved_is_optional.clone() {

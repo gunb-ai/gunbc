@@ -8473,10 +8473,12 @@ pub fn collect_pattern_string_guards(
         match (*pattern).clone() {
             MatchPattern::VariantPattern {
                 name: n,
+                parent_enum: parent,
                 field_bindings: fbs,
                 ..
             } => {
-                if ((n.clone().as_str() == "Present".to_string().as_str())
+                if (((n.clone().as_str() == "Present".to_string().as_str())
+                    && (parent.clone().as_deref() == Some("Optional".to_string()).as_deref()))
                     && ((fbs.clone().len() as i64) == 1))
                 {
                     match fbs.clone().first().cloned() {
@@ -14916,10 +14918,14 @@ pub fn is_already_optional(
                     }
                 }
             }
-            ExprData::ExprRecordLit { parent_enum: _, .. } => match tn {
+            ExprData::ExprRecordLit {
+                parent_enum: parent,
+                ..
+            } => match tn {
                 Some(name) => {
-                    ((name.clone().as_str() == "Present".to_string().as_str())
-                        || (name.clone().as_str() == "Absent".to_string().as_str()))
+                    ((parent.clone().as_deref() == Some("Optional".to_string()).as_deref())
+                        && ((name.clone().as_str() == "Present".to_string().as_str())
+                            || (name.clone().as_str() == "Absent".to_string().as_str())))
                 }
                 None => false,
             },

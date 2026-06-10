@@ -3422,8 +3422,8 @@ fn collect_field_binding_string_guards(field_bindings: List<Node>, path_prefix: 
 
 fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match pattern {
-    VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
-      if n == "Present" && fbs |> count == 1 {
+    VariantPattern { name: n, parent_enum: parent, field_bindings: fbs } =>
+      if n == "Present" && parent == Present { value: "Optional" } && fbs |> count == 1 {
         match fbs |> first {
           Present { value: fb } =>
             let fb_pat = field_binding_pattern(n: fb)
@@ -5550,9 +5550,9 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
             }
         }
       }
-    ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: parent } =>
       match tn {
-        Present { value: name } => name == "Present" || name == "Absent"
+        Present { value: name } => parent == Present { value: "Optional" } && (name == "Present" || name == "Absent")
         Absent => false
       }
     ExprFieldAccess { summary: fa_summary } =>

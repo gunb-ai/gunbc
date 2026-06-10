@@ -160,6 +160,11 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemContribution {
     pub resolved_item: Rc<Node>,
@@ -1708,11 +1713,12 @@ pub fn annotate_pattern_parent_enums(
                                 == Cardinality::CardOptional)
                                 && (scrutinee_name.clone().as_str()
                                     != "Optional".to_string().as_str()));
-                        let witness_container_subject = ((scrutinee_name.clone().as_str()
-                            == "Witness".to_string().as_str())
-                            && ((variant_name.clone().as_str() == "Holds".to_string().as_str())
-                                || (variant_name.clone().as_str()
-                                    == "Violates".to_string().as_str())));
+                        let witness_container_subject =
+                            (is_witness_type_name(scrutinee_name.clone())
+                                && ((variant_name.clone().as_str()
+                                    == "Holds".to_string().as_str())
+                                    || (variant_name.clone().as_str()
+                                        == "Violates".to_string().as_str())));
                         if (optional_cardinality_subject
                             && ((variant_name.clone().as_str() == "Present".to_string().as_str())
                                 || (variant_name.clone().as_str()
