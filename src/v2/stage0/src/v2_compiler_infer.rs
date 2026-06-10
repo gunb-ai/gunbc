@@ -913,8 +913,7 @@ pub fn rejects_string_for_optional_coproduct_field(
         let expected_is_optional_coproduct = ((expected.return_cardinality.clone()
             == Cardinality::CardOptional)
             && (expected_inner.connective.clone() == Connective::Disj));
-        let got_is_string =
-            (authored_name_at(source_indices, got).as_str() == "String".to_string().as_str());
+        let got_is_string = got.name.as_str() == "String".to_string().as_str();
         (expected_is_optional_coproduct && got_is_string)
     }
 }
@@ -5398,12 +5397,10 @@ pub fn infer_record_lit(
                     {
                         Some(sf) => {
                             let ft = resolved_type(sf.clone());
-                            match ft.ident_span.clone() {
-                                Some(_) => Some(ft.clone()),
-                                None => match ft.return_cardinality.clone() {
-                                    Cardinality::CardOptional => Some(ft.clone()),
-                                    _ => None,
-                                },
+                            if ft.ident_span.clone() != None {
+                                Some(ft.clone())
+                            } else {
+                                None
                             }
                         }
                         None => None,
@@ -5424,11 +5421,6 @@ pub fn infer_record_lit(
                                     got_node.clone(),
                                     scope.type_env.clone().source_indices.clone(),
                                 );
-                            let incompatible_field = !node_type_compatible(
-                                expected_node.clone(),
-                                got_node.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            );
                             if string_optional_reject.clone() {
                                 Rc::new(vec![type_mismatch_error(
                                     node_type_shape(
@@ -5443,22 +5435,7 @@ pub fn infer_record_lit(
                                     scope.module_name.clone(),
                                 )])
                             } else {
-                                if incompatible_field.clone() {
-                                    Rc::new(vec![type_mismatch_error(
-                                        node_type_shape(
-                                            expected_node.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                        node_type_shape(
-                                            got_node.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                        ar_typed.span.clone(),
-                                        scope.module_name.clone(),
-                                    )])
-                                } else {
-                                    Rc::new(vec![])
-                                }
+                                Rc::new(vec![])
                             }
                         }
                         None => Rc::new(vec![]),

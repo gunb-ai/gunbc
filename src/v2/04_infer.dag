@@ -563,7 +563,7 @@ fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source
   // general record-field type-check path.
   let expected_inner = with_required_cardinality(n: expected)
   let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_inner.connective == Disj
-  let got_is_string = authored_name_at(source_indices: source_indices, node: got) == "String"
+  let got_is_string = got.name == "String"
   expected_is_optional_coproduct && got_is_string
 }
 
@@ -2783,14 +2783,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Some { value: sf } =>
         let ft = resolved_type(n: sf)
-        match ft.ident_span {
-          Some { value: _ } => Some { value: ft }
-          None =>
-            match ft.return_cardinality {
-              CardOptional => Some { value: ft }
-              _ => none
-            }
-        }
+        if ft.ident_span != none { Some { value: ft } } else { none }
       None => none
     }
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
@@ -2809,8 +2802,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
           got: got_node,
           source_indices: scope.type_env.source_indices
         )
-        let got_name = authored_name_at(source_indices: scope.type_env.source_indices, node: got_node)
-        let got_is_string = got_name == "String"
+        let got_is_string = got_node.name == "String"
         let named_optional_coproduct_string_reject = match expected_node.return_cardinality {
           CardOptional =>
             match got_is_string {
