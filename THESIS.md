@@ -269,13 +269,16 @@ Self-hosting is not one capability; it's four. All four are targets.
 
    **Scope (narrowed):** gunbc does not model its own work-direction
    (briefs, cycles, retirement) as `.dag` data. This facet claims only
-   lens self-application to the build/CI pipeline (`bootstrap.dag`,
-   `ci.dag`). The `workflow/` substrate for **facet 4 lens
-   self-application** is `{ bootstrap, ci }` only. **Product release
-   distribution** (RELEASE_TODO §5 Phase 1) adds a bounded third workflow
-   model `src/v4/workflow/release.dag` (`v4.workflow.release_dist`) —
-   GH Releases binary matrix + hand-synced `release.yml` until YamlStatic
-   emission; it does not expand facet-4 lens scope.
+   lens self-application to the build/CI pipeline. The six live
+   `src/v4/workflow/` files are: `bootstrap.dag` (build orchestration),
+   `lens_ci_gate.dag` (CI pass/fail gate; replaced the deleted `ci.dag`
+   descriptive-only mirror), `affected_set_selection.dag` (CI
+   affected-set authority), `scheduler.dag`, `cli.dag`, and `release.dag`
+   (`v4.workflow.release_dist` — GH Releases binary matrix + hand-synced
+   `release.yml` until YamlStatic emission). The **facet-4 lens
+   self-application scope** is the CI-pipeline files: `{ bootstrap,
+   lens_ci_gate, affected_set_selection }`. `scheduler`, `cli`, and
+   `release` are in-tree workflow files but do not expand facet-4 scope.
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
 target-language detail, or pipeline/contract test assertion — stays at
