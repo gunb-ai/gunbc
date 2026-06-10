@@ -6113,6 +6113,46 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
   }
 }
 
+fn collect_imported_variants_from_parent(item_acc: VariantFoldState, imp: ResolvedImport, parent_node: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> VariantFoldState {
+  if parent_node.connective == Disj {
+    let parent_name = authored_name_at(source_indices: source_indices, node: parent_node)
+    let parent_imported = import_allows_binding_name(imp: imp, name: parent_name)
+    parent_node.children |> fold(init: item_acc, f: (vacc, child) =>
+      let child_name = authored_name_at(source_indices: source_indices, node: child)
+      let child_imported = parent_imported || (imp.specific_names |> any(n => n == child_name))
+      if child_imported {
+        match map_get(vacc.locals, child_name) {
+          Present { value: prev } =>
+            let prev_parent_name = authored_name_at(source_indices: source_indices, node: prev.resolved)
+            if prev_parent_name != parent_name {
+              VariantFoldState {
+                locals: vacc.locals,
+                collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: parent_name, span: no_span() }, module_name: module_name))
+              }
+            } else { vacc }
+          Absent =>
+            VariantFoldState {
+              locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: parent_node, provenance: SubValueUnknown }),
+              collisions: vacc.collisions
+            }
+        }
+      } else { vacc }
+    )
+  } else { item_acc }
+}
+
+fn collect_imported_variants_from_module(acc: VariantFoldState, imp: ResolvedImport, typed_parent: TypedModule, module_name: String) -> VariantFoldState {
+  typed_parent.items |> fold(init: acc, f: (item_acc, decl_item) =>
+    collect_imported_variants_from_parent(
+      item_acc: item_acc,
+      imp: imp,
+      parent_node: decl_item,
+      source_indices: typed_parent.type_env.source_indices,
+      module_name: module_name
+    )
+  )
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     resolved_imports: List<ResolvedImport>,
@@ -6131,33 +6171,7 @@ fn build_module_context(contributions: List<ItemContribution>,
 	  let variant_fold = fold(resolved_imports, init: VariantFoldState { locals: empty_map(), collisions: empty_map() }, f: (acc, imp) =>
 	    match map_get(parent_index, imp.module_path) {
 	      Present { value: typed_parent } =>
-	        fold(typed_parent.items, init: acc, f: (item_acc, item) =>
-	          if item.connective == Disj {
-	            let parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: item)
-	            let parent_imported = import_allows_binding_name(imp: imp, name: parent_name)
-	            fold(item.children, init: item_acc, f: (vacc, child) =>
-	              let child_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: child)
-	              let child_imported = parent_imported || (imp.specific_names |> any(n => n == child_name))
-	              if child_imported {
-	                match map_get(vacc.locals, child_name) {
-	                  Present { value: prev } =>
-	                    let prev_parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: prev.resolved)
-	                    if prev_parent_name != parent_name {
-	                      VariantFoldState {
-	                        locals: vacc.locals,
-	                        collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: parent_name, span: no_span() }, module_name: module_name))
-	                      }
-	                    } else { vacc }
-	                  Absent =>
-	                    VariantFoldState {
-	                      locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: item, provenance: SubValueUnknown }),
-	                      collisions: vacc.collisions
-	                    }
-	                }
-	              } else { vacc }
-	            )
-	          } else { item_acc }
-	        )
+	        collect_imported_variants_from_module(acc: acc, imp: imp, typed_parent: typed_parent, module_name: module_name)
 	      Absent => acc
 	    }
 	  )
