@@ -567,12 +567,23 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
         children: sort_by(n.children, e => named_edge_sort_key(e: e)),
         span: Unanchored
       }
-    NoEdges => n
-    PositionalEdges => n
+    NoEdges =>
+      Node {
+        kind: n.kind,
+        children: n.children,
+        span: Unanchored
+      }
+    PositionalEdges =>
+      Node {
+        kind: n.kind,
+        children: n.children,
+        span: Unanchored
+      }
     ArrowBodyEdges =>
       Node {
         kind: n.kind,
-        children: canonicalize_arrow_children_for_content_hash(children: n.children)
+        children: canonicalize_arrow_children_for_content_hash(children: n.children),
+        span: Unanchored
       }
     LoopBoundEdges =>
       Node {

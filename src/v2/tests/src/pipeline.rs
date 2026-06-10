@@ -891,6 +891,11 @@ fn dag_emit_from_resolved_matches_compile_sources_for_v4_slice() {
         "resolved-to-DAG emit files must match standalone --target dag files byte-for-byte"
     );
 
+    // CI blind spot: v2-compiler's `compiler_tests` lib harness is otherwise dormant in
+    // ci_floor (only this parity receipt runs v2-compiler-tests). Compile-check it here so
+    // Rc call-site regressions in compiler_tests_rust.dag turn RED without a new CI step.
+    crate::v2_compiler_lib_test::assert_v2_compiler_lib_tests_compile();
+
     // R2 add-emit keystone (`r2_emit_add_named_test`) no longer rides this receipt: the
     // cert's transitive v4 closure (55 modules post T-8) drives compile_to_resolved past
     // ci_floor runner memory when invoked here (SIGKILL). Standing coverage lives in
