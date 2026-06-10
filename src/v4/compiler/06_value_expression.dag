@@ -55,6 +55,7 @@ import v4.std.target_model {
   ConcreteSyntaxToken,
   FixedToken,
   InfixToken,
+  canonical_operation_equal,
   canonical_operation_from_wire_node,
   canonical_operation_op_add,
   TargetModel,
@@ -65,9 +66,11 @@ import v4.std.target_model {
   decode_value_expression_projection_bundle,
   target_model_edge_operator_realizations,
   target_model_edge_value_expression_projection,
-  operator_realization_catalog_lookup,
   target_operator_realization_catalog_ambiguous,
   target_operator_realization_catalog_miss,
+  target_operator_realization_from_wire_row,
+  target_operator_realization_row_edge,
+  target_operator_realization_row_wire_schema_valid,
   target_value_expr_field_binding,
   target_value_expr_field_operation,
   target_value_expr_field_operand,
@@ -365,27 +368,139 @@ fn value_expression_projection_from_target(
   )
 }
 
-fn operator_realization_lookup(
-  catalog: Node,
-  operation: CanonicalOperation
-) -> Outcome<TargetOperatorRealization> {
-  match target_operator_realization_lookup_in_catalog(
-    catalog: catalog,
-    operation: operation
-  ) {
-    Accepted { value: row, diagnostics: d } => Accepted { value: row, diagnostics: d }
-    Rejected { diagnostics: NonEmptyDiagnostics { head: d, tail: _ } } =>
+type TargetOperatorRealizationLookup
+  = TargetOperatorRealizationMissing
+  | TargetOperatorRealizationUnique { realization: TargetOperatorRealization }
+  | TargetOperatorRealizationAmbiguous
+
+fn value_expr_operator_catalog_wire_schema_valid(catalog: Node) -> Outcome<Bool> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: true,
+        f: fn(acc, e) {
+          if acc {
+            match e.label {
+              Positional => false
+              Named { name: n } =>
+                if n == target_operator_realization_row_edge {
+                  match target_operator_realization_row_wire_schema_valid(row: e.target) {
+                    Accepted { value: _, diagnostics: _ } => true
+                    Rejected { diagnostics: _ } => false
+                  }
+                } else {
+                  false
+                }
+            }
+          } else {
+            false
+          }
+        }
+      ) {
+        true => outcome_accepted(true)
+        false =>
+          outcome_rejected(
+            value_expr_diagnostic(
+              reason: value_expr_reason_operator_catalog_miss,
+              node: catalog
+            )
+          )
+      }
+    _ =>
       outcome_rejected(
         value_expr_diagnostic(
-          reason: if d.reason == target_operator_realization_catalog_ambiguous {
-            value_expr_reason_operator_catalog_ambiguous
-          } else {
-            value_expr_reason_operator_catalog_miss
-          },
+          reason: value_expr_reason_operator_catalog_miss,
           node: catalog
         )
       )
   }
+}
+
+fn target_operator_realization_lookup_step(
+  acc: TargetOperatorRealizationLookup,
+  row: Node,
+  operation: CanonicalOperation
+) -> TargetOperatorRealizationLookup {
+  match target_operator_realization_from_wire_row(row: row) {
+    Accepted { value: realization, diagnostics: _ } =>
+      if canonical_operation_equal(left: realization.operation, right: operation) {
+        match acc {
+          TargetOperatorRealizationUnique { realization: _ } =>
+            TargetOperatorRealizationAmbiguous
+          TargetOperatorRealizationAmbiguous => TargetOperatorRealizationAmbiguous
+          TargetOperatorRealizationMissing =>
+            TargetOperatorRealizationUnique { realization: realization }
+        }
+      } else {
+        acc
+      }
+    Rejected { diagnostics: _ } => acc
+  }
+}
+
+fn operator_realization_catalog_lookup(
+  catalog: Node,
+  operation: CanonicalOperation
+) -> Outcome<TargetOperatorRealization> {
+  bind_outcome(
+    o: value_expr_operator_catalog_wire_schema_valid(catalog: catalog),
+    f: fn(_) {
+      match catalog.kind {
+        TypeNode { connective: Conj } =>
+          match fold(
+            catalog.children,
+            init: TargetOperatorRealizationMissing,
+            f: fn(acc, e) {
+              match e.label {
+                Named { name: n } =>
+                  if n == target_operator_realization_row_edge {
+                    target_operator_realization_lookup_step(
+                      acc: acc,
+                      row: e.target,
+                      operation: operation
+                    )
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+            }
+          ) {
+            TargetOperatorRealizationMissing =>
+              outcome_rejected(
+                value_expr_diagnostic(
+                  reason: value_expr_reason_operator_catalog_miss,
+                  node: catalog
+                )
+              )
+            TargetOperatorRealizationUnique { realization: row } =>
+              outcome_accepted(row)
+            TargetOperatorRealizationAmbiguous =>
+              outcome_rejected(
+                value_expr_diagnostic(
+                  reason: value_expr_reason_operator_catalog_ambiguous,
+                  node: catalog
+                )
+              )
+          }
+        _ =>
+          outcome_rejected(
+            value_expr_diagnostic(
+              reason: value_expr_reason_operator_catalog_miss,
+              node: catalog
+            )
+          )
+      }
+    }
+  )
+}
+
+fn operator_realization_lookup(
+  catalog: Node,
+  operation: CanonicalOperation
+) -> Outcome<TargetOperatorRealization> {
+  operator_realization_catalog_lookup(catalog: catalog, operation: operation)
 }
 
 fn operator_realization_catalog_from_target(target: TargetModel) -> Outcome<Node> {
