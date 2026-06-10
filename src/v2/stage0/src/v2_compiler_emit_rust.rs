@@ -251,7 +251,7 @@ pub fn rust_named_type_base(name: String) -> String {
     if ((name.clone().as_str() == "Witness".to_string().as_str())
         || (name.clone().as_str() == "witness".to_string().as_str()))
     {
-        "v2_rt::Witness".to_string()
+        "Witness".to_string()
     } else {
         coerce_primitive_type(RenderTarget::Rust, name.clone())
     }
@@ -8789,7 +8789,7 @@ pub fn emit_variant_pattern(
             match resolved_parent.clone() {
                 Some(parent) => {
                     if (parent.clone().as_str() == "Witness".to_string().as_str()) {
-                        v2_rt::concat("v2_rt::Witness::".to_string(), rust_name.clone())
+                        v2_rt::concat("Witness::".to_string(), rust_name.clone())
                     } else {
                         v2_rt::concat(
                             v2_rt::concat(parent.clone(), "::".to_string()),
@@ -9422,7 +9422,7 @@ pub fn emit_variant_pattern_rc_aware(
             match resolved_parent.clone() {
                 Some(parent) => {
                     if (parent.clone().as_str() == "Witness".to_string().as_str()) {
-                        v2_rt::concat("v2_rt::Witness::".to_string(), rust_name.clone())
+                        v2_rt::concat("Witness::".to_string(), rust_name.clone())
                     } else {
                         v2_rt::concat(
                             v2_rt::concat(parent.clone(), "::".to_string()),

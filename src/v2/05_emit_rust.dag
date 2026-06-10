@@ -202,7 +202,7 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
 
 fn rust_named_type_base(name: String) -> String {
   if name == "Witness" || name == "witness" {
-    "v2_rt::Witness"
+    "Witness"
   } else {
     coerce_primitive_type(target: Rust, dag_name: name)
   }
@@ -3569,7 +3569,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   } else {
     match resolved_parent {
       Present { value: parent } =>
-        if parent == "Witness" { concat("v2_rt::Witness::", rust_name) }
+        if parent == "Witness" { concat("Witness::", rust_name) }
         else { concat(parent, "::", rust_name) }
       Absent => rust_name
     }
@@ -3796,7 +3796,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   } else {
     match resolved_parent {
       Present { value: parent } =>
-        if parent == "Witness" { concat("v2_rt::Witness::", rust_name) }
+        if parent == "Witness" { concat("Witness::", rust_name) }
         else { concat(parent, "::", rust_name) }
       Absent => rust_name
     }
