@@ -29,17 +29,18 @@ data occurrence_model_file: Symbol = ^occurrence_model_file
 
 fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
-  let (id0, alloc1) = alloc_occurrence_id(alloc: alloc0)
-  let (id1, alloc2) = alloc_occurrence_id(alloc: alloc1)
-  let (id2, _) = alloc_occurrence_id(alloc: alloc2)
-  !occurrence_id_eq(left: id0, right: id1)
-    && !occurrence_id_eq(left: id1, right: id2)
-    && !occurrence_id_eq(left: id0, right: id2)
+  let r0 = alloc_occurrence_id(alloc: alloc0)
+  let r1 = alloc_occurrence_id(alloc: r0.alloc)
+  let r2 = alloc_occurrence_id(alloc: r1.alloc)
+  !occurrence_id_eq(left: r0.id, right: r1.id)
+    && !occurrence_id_eq(left: r1.id, right: r2.id)
+    && !occurrence_id_eq(left: r0.id, right: r2.id)
 }
 
 fn span_index_from_source_round_trip_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
-  let (id, _) = alloc_occurrence_id(alloc: alloc0)
+  let minted = alloc_occurrence_id(alloc: alloc0)
+  let id = minted.id
   let locus = Textual {
     file: occurrence_model_file,
     extent: ByteRange { start: 0, end: 12 }
