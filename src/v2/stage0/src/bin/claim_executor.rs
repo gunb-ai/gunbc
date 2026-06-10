@@ -136,6 +136,18 @@ struct ClaimResult {
 }
 
 fn run_one_claim(source_roots: Vec<String>, claim: ClaimRef) -> ClaimResult {
+    // Fail-closed sentinel: the plan projects an empty-`entry` ClaimRef for any
+    // unmapped suite node or non-complete executor plan (see batch_runner.dag).
+    // It carries no resolvable witness, so it is a hard error — never a vacuous
+    // pass.
+    if claim.entry.is_empty() {
+        return ClaimResult {
+            function: claim.function,
+            ok: false,
+            detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
+                .to_string(),
+        };
+    }
     let (graph, source_indices) = match resolve_entry_graph(&source_roots, &claim.entry) {
         Ok(pair) => pair,
         Err(msg) => {
@@ -250,6 +262,14 @@ fn run() -> Result<ExitCode, ExitCode> {
         plan_entry,
         plan_function
     );
+
+    // Fail closed on a zero-batch plan: an empty run is never a successful run.
+    // A non-complete executor state is projected as a sentinel batch (not []),
+    // but guard here too so no plan shape can become a vacuous exit-0.
+    if batches.is_empty() {
+        eprintln!("claim_executor: executor plan produced 0 batches — failing closed");
+        return Err(ExitCode::from(1));
+    }
 
     // 2. Run batch by batch (executor ordering); claims within a batch in
     //    parallel. The batch boundary is a barrier: batch N+1 starts only after

@@ -126,4 +126,31 @@ if grep -q "batch 2" <<<"$out_fc"; then
 fi
 echo "fail-closed OK (executor ordering gates execution)"
 
+echo "== perturb/degenerate: an empty suite (0 batches) must fail closed, not pass on 0 claims =="
+rm -rf "$tmp/v4"
+cp -r src/v4 "$tmp/v4"
+python3 - "$tmp/v4/test/claim/workflow/batch_runner.dag" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+needle = """data bre_suite_nodes: List<Node> = [
+  bre_core_node,
+  bre_a_node,
+  bre_b_node
+]"""
+if needle not in s:
+    raise SystemExit("perturb: suite-nodes anchor not found")
+open(p, "w").write(s.replace(needle, "data bre_suite_nodes: List<Node> = []"))
+PY
+set +e
+out_empty="$("$bin" --source-root "$tmp/v4" --plan-entry "$tmp/v4/test/claim/workflow/batch_runner.dag" 2>&1)"
+code_empty=$?
+set -e
+echo "$out_empty"
+if [[ "$code_empty" -eq 0 ]]; then
+  echo "FAIL: a 0-batch executor plan exited 0 (vacuous pass)" >&2
+  exit 1
+fi
+echo "degenerate OK (empty plan fails closed)"
+
 echo "ALL OK"
