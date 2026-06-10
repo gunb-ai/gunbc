@@ -4026,17 +4026,16 @@ fn translate_target_atom_realization_for_carrier(
 fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
   match shell.kind {
     TypeNode { connective: Conj } =>
-      Node {
-        kind: shell.kind,
+      node_rebuild(
+        n: shell,
         children: list_snoc_item(
           xs: shell.children,
           item: target_model_named_edge(
             name: target_model_edge_value_expression,
             target: value
           )
-        ),
-        span: Unanchored
-}
+        )
+      )
     _ => shell
   }
 }
@@ -4369,9 +4368,7 @@ fn project_type_expression_subtree(
           ),
           f: fn(children) {
             Accepted {
-              value: Node { kind: ComputationNode { behavior: b }, children: children,
- span: Unanchored
-},
+              value: node_rebuild(n: node, children: children),
               diagnostics: None
             }
           }
