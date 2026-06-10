@@ -14837,8 +14837,8 @@ pub fn is_already_optional(
             ExprData::ExprVar {
                 binding_kind: _, ..
             } => {
-                if ((n.clone().as_str() == "none".to_string().as_str())
-                    || (n.clone().as_str() == "None".to_string().as_str())
+                if (((n.clone().as_str() == "none".to_string().as_str())
+                    || (n.clone().as_str() == "None".to_string().as_str()))
                     || (n.clone().as_str() == "Absent".to_string().as_str()))
                 {
                     true
