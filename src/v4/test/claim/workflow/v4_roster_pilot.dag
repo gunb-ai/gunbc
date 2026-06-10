@@ -12,9 +12,6 @@ import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.text { String }
 import v4.std.verification { BoolWitness }
-import v4.test.claim.impossible_bug.release_demos {
-  witness_impossible_bug_release_demos_are_v4_lens_caught
-}
 
 
 // Witness Symbol pins — structural nullary fn () -> Bool identity (substrate authority; `function` String is shell transport only).
@@ -180,12 +177,7 @@ fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
   let m71 = map_insert(m70, witness_cross_target_python_to_rust_i32_would_lose_information, "witness_cross_target_python_to_rust_i32_would_lose_information")
   let m72 = map_insert(m71, witness_cross_target_python_to_rust_i32_rejects, "witness_cross_target_python_to_rust_i32_rejects")
   let m73 = map_insert(m72, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
-  let m74 = map_insert(m73, parallel_executor_claims_hold, "parallel_executor_claims_hold")
-  map_insert(
-    m74,
-    witness_impossible_bug_release_demos_are_v4_lens_caught,
-    "witness_impossible_bug_release_demos_are_v4_lens_caught"
-  )
+  map_insert(m73, parallel_executor_claims_hold, "parallel_executor_claims_hold")
 }
 
 

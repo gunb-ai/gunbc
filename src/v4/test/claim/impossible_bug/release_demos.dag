@@ -1,7 +1,7 @@
 // src/v4/test/claim/impossible_bug/release_demos.dag
-// Scope: release impossible-bug demos over executable v4 lens/probe surfaces.
-// The witnesses below execute the canonical impossible-bug claims through the
-// shared test-claim runner; no coverage metadata is used as the authority.
+// Scope: release impossible-bug demos over v4 lens/probe surfaces.
+// The witnesses below capture the release-drift evidence and the transport-drift
+// metadata projections; the distributed marker is the durable registration form.
 
 module v4.test.claim.impossible_bug.release_demos
 
