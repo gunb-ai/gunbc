@@ -11,7 +11,7 @@ import v4.lens.testgen {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -27,8 +27,9 @@ import v4.std.verification {
 fn lens_testgen_shadow_ci_marker_node(marker: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: marker } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {

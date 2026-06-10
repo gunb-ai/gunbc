@@ -26,7 +26,7 @@ import v4.std.dependency {
 }
 import v4.std.diagnostic { Accepted, None }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -55,7 +55,8 @@ data idempotency_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^idempotency_root_symbol } },
   children: [
     Edge { label: Named { name: ^idempotency_edge_symbol }, target: idempotency_child }
-  ]
+  ],
+  span: Unanchored
 }
 
 data idempotency_dependency: DependencyView = DependencyView {
@@ -115,15 +116,17 @@ data idempotency_write_effect_claim_passes: Bool = idempotency_write_effect_clai
 fn idempotency_claim_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^idempotency_claim_pass_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn idempotency_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^idempotency_claim_fail_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn idempotency_claim_input(ok: Bool) -> Node {

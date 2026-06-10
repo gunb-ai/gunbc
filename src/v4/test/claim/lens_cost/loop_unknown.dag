@@ -6,7 +6,7 @@ module v4.test.claim.lens_cost.loop_unknown
 
 import v4.lens.cost { cost_lens }
 import v4.std.logic { Bool }
-import v4.std.node { ComputationNode, Conj, Loop, Node, TypeNode }
+import v4.std.node { ComputationNode, Conj, Loop, Node, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -20,7 +20,8 @@ import v4.std.witness { Violates }
 
 data loop_unknown_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 fn loop_unknown_claim_holds() -> Bool {
@@ -36,8 +37,9 @@ fn loop_unknown_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

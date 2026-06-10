@@ -90,7 +90,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
@@ -316,8 +317,9 @@ data java_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 fn java_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn java_int_kind_node(kind: JavaIntKind) -> Node {
@@ -361,8 +363,9 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
         ),
         java_named_edge(name: ^java_scalar_field_kind, target: java_int_kind_node(kind: kind)),
         java_named_edge(name: ^java_scalar_field_width, target: java_int_width_node(width: width))
-      ]
-    }
+      ],
+      span: Unanchored
+}
     FloatScalar { width } => Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -371,8 +374,9 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
           target: java_inhabitant_atom(id: ^java_tag_scalar_float)
         ),
         java_named_edge(name: ^java_scalar_field_width, target: java_float_width_node(width: width))
-      ]
-    }
+      ],
+      span: Unanchored
+}
     BoolScalar => java_inhabitant_atom(id: ^java_tag_scalar_bool)
     VoidScalar => java_inhabitant_atom(id: ^java_tag_scalar_void)
   }
@@ -422,8 +426,9 @@ fn java_integer_facts_node(facts: JavaIntegerPrimitiveFacts) -> Node {
           scalar: IntScalar { kind: facts.signedness, width: facts.width }
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_float_facts_node(facts: JavaFloatPrimitiveFacts) -> Node {
@@ -447,8 +452,9 @@ fn java_float_facts_node(facts: JavaFloatPrimitiveFacts) -> Node {
         name: ^java_facts_field_scalar_classifier,
         target: java_scalar_node(scalar: FloatScalar { width: facts.width })
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_noninteger_facts_node(facts: JavaNonIntegerPrimitiveFacts) -> Node {
@@ -473,8 +479,9 @@ fn java_noninteger_facts_node(facts: JavaNonIntegerPrimitiveFacts) -> Node {
         name: ^java_facts_field_representation,
         target: java_inhabitant_atom(id: facts.representation)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_integer_inhabitant_node(id: Symbol, facts: JavaIntegerPrimitiveFacts) -> Node {
@@ -486,8 +493,9 @@ fn java_integer_inhabitant_node(id: Symbol, facts: JavaIntegerPrimitiveFacts) ->
         name: ^java_inhabitant_field_facts,
         target: java_integer_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_float_inhabitant_node(id: Symbol, facts: JavaFloatPrimitiveFacts) -> Node {
@@ -499,8 +507,9 @@ fn java_float_inhabitant_node(id: Symbol, facts: JavaFloatPrimitiveFacts) -> Nod
         name: ^java_inhabitant_field_facts,
         target: java_float_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_noninteger_inhabitant_node(id: Symbol, facts: JavaNonIntegerPrimitiveFacts) -> Node {
@@ -512,8 +521,9 @@ fn java_noninteger_inhabitant_node(id: Symbol, facts: JavaNonIntegerPrimitiveFac
         name: ^java_inhabitant_field_facts,
         target: java_noninteger_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_inhabitant_byte_node() -> Node { java_integer_inhabitant_node(id: ^java_inhabitant_byte, facts: java_facts_byte) }
@@ -533,8 +543,9 @@ fn java_void_declared_inhabitant_node() -> Node {
         name: ^java_inhabitant_field_facts,
         target: java_scalar_node(scalar: VoidScalar)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_named_edge(name: Symbol, target: Node) -> Edge {
@@ -559,8 +570,9 @@ fn java_declared_inhabitants_root() -> Node {
       java_named_edge(name: ^java_inhabitant_field_boolean, target: java_inhabitant_boolean_node()),
       java_named_edge(name: ^java_inhabitant_field_char, target: java_inhabitant_char_node()),
       java_named_edge(name: ^java_inhabitant_field_void, target: java_void_declared_inhabitant_node()),
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_mvp1_selection_policy_node() -> Node {
@@ -574,8 +586,9 @@ fn java_mvp1_emitted_add_method_node() -> Node {
       Edge { label: Positional, target: java_inhabitant_int_node() },
       Edge { label: Positional, target: java_inhabitant_int_node() },
       Edge { label: Positional, target: java_inhabitant_int_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_mvp1_source_text_authority() -> String {
@@ -625,8 +638,9 @@ fn java_mvp1_serialize_source_node() -> Node {
   let _authority = java_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: java_mvp1_serialize_source_children()
-  }
+    children: java_mvp1_serialize_source_children(),
+    span: Unanchored
+}
 }
 
 fn java_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -720,8 +734,9 @@ fn java_grammar_relation_row_node(row: JavaGrammarRelationRow) -> Node {
           token_to_node: java_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_mvp1_translation_rules_node() -> Node {
@@ -732,8 +747,9 @@ fn java_mvp1_translation_rules_node() -> Node {
         name: ^java_relation_rule_mvp1_method_add,
         target: java_grammar_relation_row_node(row: java_mvp1_grammar_relation_row())
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_mvp1_target_model_node() -> Node {
@@ -756,8 +772,9 @@ fn java_mvp1_target_model_node() -> Node {
         name: target_model_edge_serialize_source,
         target: java_mvp1_serialize_source_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_mvp1_binding_spellings() -> Map<Symbol, String> {
@@ -1811,8 +1828,9 @@ fn java_wrapping_integer_algebra_witness_node(facts: JavaIntegerPrimitiveFacts) 
         name: ^java_facts_field_overflow_release,
         target: java_overflow_node(overflow: facts.overflow_release)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_bool_algebra_witness_node() -> Node {
@@ -1827,8 +1845,9 @@ fn java_bool_algebra_witness_node() -> Node {
         name: ^java_facts_field_std_projection,
         target: java_symbol_node(id: java_facts_boolean.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_wrapping_integer_algebra_inhabitance(facts: JavaIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -1882,8 +1901,9 @@ fn java_model_core_law_node(witness: Node, algebra: Node, key: JavaModelCoreLawK
         name: model_core_wave1_law_field_kind,
         target: java_inhabitant_atom(id: discriminant(v: key))
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn java_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {

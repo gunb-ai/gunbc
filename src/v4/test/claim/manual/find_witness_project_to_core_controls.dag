@@ -53,7 +53,7 @@ import v4.std.integer_value_set {
   integer_value_set_kind_unbounded
 }
 import v4.std.model_core { ModelCoreFactAxisEncoding, ModelCoreFactAxisSurfaceSpelling }
-import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.refinement_widening_predicate {
   refinement_widening_predicate_algebra_for_value_sets,
   refinement_widening_preservation_holds
@@ -151,8 +151,9 @@ fn surface_only_node(surface: Symbol) -> Node {
         label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [] }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 data witness_project_to_core_rejects_surface_only_empty_core: Bool = match find_witness_derives(
@@ -185,8 +186,9 @@ fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
           ]
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 data witness_project_to_core_rejects_core_only_under_surface: Bool = match find_witness_derives(
@@ -222,8 +224,9 @@ fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> N
           ]
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 data witness_project_to_core_drops_nested_surface: Bool = match find_witness_derives(
@@ -261,8 +264,9 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
       }
-    ]
-  },
+    ],
+    span: Unanchored
+},
   candidates: control_candidate_set(
     candidates: [
       Node {
@@ -272,8 +276,9 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
             label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
             target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
           }
-        ]
-      }
+        ],
+        span: Unanchored
+}
     ],
     closedness_evidence: Node {
       kind: TypeNode { connective: Disj },
@@ -282,8 +287,9 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
           label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
           target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
         }
-      ]
-    }
+      ],
+      span: Unanchored
+}
   ),
   derivation_algebra: Node {
     kind: TypeNode { connective: Conj },
@@ -292,8 +298,9 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
       }
-    ]
-  },
+    ],
+    span: Unanchored
+},
   multiplicity_policy: UniqueOnly
 ) {
   Accepted { value: _, diagnostics: _ } => false
@@ -345,8 +352,9 @@ fn malformed_interval_value_set() -> Node {
   integer_interval_value_set_node(
     interval: Node {
       kind: TypeNode { connective: Atom { identity: ^malformed_interval_payload } },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   )
 }
 
@@ -368,8 +376,9 @@ fn unbounded_value_set_with_extra_field() -> Node {
           children: []
         }
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn integer_value_set_rejects_malformed_interval_payload_control() -> Bool {

@@ -7,7 +7,7 @@
 module v4.std.algebra
 
 
-import v4.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, Unanchored }
 type Magma<T> {
   op: fn(T, T) -> T
 }
@@ -121,15 +121,18 @@ fn fold_list_node<T>(
 ) -> Node {
   fold_list_right(
     xs: xs,
-    empty: Node { kind: TypeNode { connective: Conj }, children: [] },
+    empty: Node { kind: TypeNode { connective: Conj }, children: [],
+ span: Unanchored
+},
     snoc: fn(tail_node, item) {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge { label: Named { name: fold_list_node_head }, target: item_node(item) },
           Edge { label: Named { name: fold_list_node_tail }, target: tail_node },
-        ]
-      }
+        ],
+        span: Unanchored
+}
     }
   )
 }
@@ -182,7 +185,9 @@ data free_monoid_type_fixpoint: Symbol = free_monoid_type_fixpoint
 
 
 fn algebra_empty_conj() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [] }
+  Node { kind: TypeNode { connective: Conj }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -194,7 +199,8 @@ fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
       children: [
         Edge { label: Named { name: free_monoid_type_fixpoint }, target: algebra_empty_conj() },
       ],
-    },
+      span: Unanchored
+},
     inhabitant: inhabitant,
   )
 }
@@ -215,11 +221,13 @@ fn free_monoid_type_node(inhabitant: Node) -> Node {
               label: Named { name: free_monoid_field_tail },
               target: free_monoid_tail_type_fixpoint(inhabitant: inhabitant),
             },
-          ]
-        },
+          ],
+          span: Unanchored
+},
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -230,8 +238,9 @@ fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
       Edge { label: Positional, target: domain },
       Edge { label: Positional, target: domain },
       Edge { label: Positional, target: codomain },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -241,8 +250,9 @@ fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
     children: [
       Edge { label: Positional, target: domain },
       Edge { label: Positional, target: codomain },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -253,8 +263,9 @@ fn ordering_type_node() -> Node {
       Edge { label: Named { name: ordering_variant_less }, target: algebra_empty_conj() },
       Edge { label: Named { name: ordering_variant_equal }, target: algebra_empty_conj() },
       Edge { label: Named { name: ordering_variant_greater }, target: algebra_empty_conj() },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -266,8 +277,9 @@ fn magma_type_node(inhabitant: Node) -> Node {
         label: Named { name: magma_field_op },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -276,8 +288,9 @@ fn semigroup_type_node(inhabitant: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: semigroup_field_magma }, target: magma_type_node(inhabitant: inhabitant) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -287,8 +300,9 @@ fn monoid_type_node(inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: monoid_field_semigroup }, target: semigroup_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: monoid_field_identity }, target: inhabitant },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -297,8 +311,9 @@ fn commutative_monoid_type_node(inhabitant: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: commutative_monoid_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -311,8 +326,9 @@ fn group_type_node(inhabitant: Node) -> Node {
         label: Named { name: group_field_inverse },
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -321,8 +337,9 @@ fn abelian_group_type_node(inhabitant: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: abelian_group_field_group }, target: group_type_node(inhabitant: inhabitant) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -332,8 +349,9 @@ fn semiring_type_node(inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: semiring_field_add }, target: commutative_monoid_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: semiring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -342,8 +360,9 @@ fn commutative_semiring_type_node(inhabitant: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: commutative_semiring_field_semiring }, target: semiring_type_node(inhabitant: inhabitant) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -353,8 +372,9 @@ fn ring_type_node(inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -363,8 +383,9 @@ fn commutative_ring_type_node(inhabitant: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: commutative_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -377,8 +398,9 @@ fn ordered_ring_type_node(inhabitant: Node) -> Node {
         label: Named { name: ordered_ring_field_compare },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -388,17 +410,22 @@ fn field_type_node(inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn field_reciprocal_operation_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_operation } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_operation } }, children: [],
+ span: Unanchored
+}
 }
 
 
 fn field_reciprocal_nonzero_precondition_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_nonzero_precondition } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_nonzero_precondition } }, children: [],
+ span: Unanchored
+}
 }
 
 fn approximate_field_type_node(inhabitant: Node) -> Node {
@@ -423,8 +450,9 @@ fn approximate_field_type_node(inhabitant: Node) -> Node {
         label: Named { name: approximate_field_field_compare },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -440,8 +468,9 @@ fn lattice_type_node(inhabitant: Node) -> Node {
         label: Named { name: lattice_field_join },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -452,8 +481,9 @@ fn bounded_lattice_type_node(inhabitant: Node) -> Node {
       Edge { label: Named { name: bounded_lattice_field_lattice }, target: lattice_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: bounded_lattice_field_top }, target: inhabitant },
       Edge { label: Named { name: bounded_lattice_field_bottom }, target: inhabitant },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -469,8 +499,9 @@ fn boolean_algebra_type_node(inhabitant: Node) -> Node {
         label: Named { name: boolean_algebra_field_complement },
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -480,8 +511,9 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: algebra_edge }, target: algebra },
       Edge { label: Named { name: inhabitant_edge }, target: inhabitant },
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 

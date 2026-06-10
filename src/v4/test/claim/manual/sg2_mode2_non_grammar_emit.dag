@@ -50,7 +50,8 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  content_hash
+  content_hash,
+  Unanchored
 }
 import v4.std.target_model {
   OwnershipAtFunctionReturn,
@@ -83,15 +84,17 @@ data sg2_mode2_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 fn sg2_mode2_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg2_mode2_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg2_mode2_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg2_mode2_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg2_mode2_claim_input(ok: Bool) -> Node {
@@ -227,18 +230,21 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_outcome } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       },
       Edge {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_node } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn sg2_mode2_lex_only_absent_from_binding_spellings() -> Bool {

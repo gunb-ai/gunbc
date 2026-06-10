@@ -85,7 +85,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.target_model {
   grammar_relation_field_emitted,
@@ -290,8 +291,9 @@ data ecmascript_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 fn ecmascript_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn ecmascript_named_edge(name: Symbol, target: Node) -> Edge {
@@ -314,8 +316,9 @@ fn ecmascript_number_facts_node(facts: EcmascriptNumberPrimitiveFacts) -> Node {
         name: ^ecmascript_facts_field_std_projection,
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_bigint_facts_node(facts: EcmascriptBigIntPrimitiveFacts) -> Node {
@@ -334,8 +337,9 @@ fn ecmascript_bigint_facts_node(facts: EcmascriptBigIntPrimitiveFacts) -> Node {
         name: ^ecmascript_facts_field_std_projection,
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_boolean_facts_node(facts: EcmascriptBooleanPrimitiveFacts) -> Node {
@@ -354,8 +358,9 @@ fn ecmascript_boolean_facts_node(facts: EcmascriptBooleanPrimitiveFacts) -> Node
         name: ^ecmascript_facts_field_std_projection,
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_symbol_facts_node(facts: EcmascriptSymbolPrimitiveFacts) -> Node {
@@ -374,8 +379,9 @@ fn ecmascript_symbol_facts_node(facts: EcmascriptSymbolPrimitiveFacts) -> Node {
         name: ^ecmascript_facts_field_std_projection,
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_string_facts_node(facts: EcmascriptStringPrimitiveFacts) -> Node {
@@ -394,8 +400,9 @@ fn ecmascript_string_facts_node(facts: EcmascriptStringPrimitiveFacts) -> Node {
         name: ^ecmascript_facts_field_std_projection,
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_singleton_facts_node(facts: EcmascriptSingletonPrimitiveFacts) -> Node {
@@ -414,8 +421,9 @@ fn ecmascript_singleton_facts_node(facts: EcmascriptSingletonPrimitiveFacts) -> 
         name: ^ecmascript_facts_field_std_projection,
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_number_spec_facts(facts: EcmascriptNumberPrimitiveFacts) -> Map<Symbol, Node> {
@@ -681,8 +689,9 @@ fn ecmascript_number_algebra_witness_node(facts: EcmascriptNumberPrimitiveFacts)
         name: ^ecmascript_facts_field_std_projection,
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_bigint_algebra_witness_node(facts: EcmascriptBigIntPrimitiveFacts) -> Node {
@@ -701,8 +710,9 @@ fn ecmascript_bigint_algebra_witness_node(facts: EcmascriptBigIntPrimitiveFacts)
         name: ^ecmascript_facts_field_std_projection,
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_boolean_algebra_witness_node(facts: EcmascriptBooleanPrimitiveFacts) -> Node {
@@ -721,8 +731,9 @@ fn ecmascript_boolean_algebra_witness_node(facts: EcmascriptBooleanPrimitiveFact
         name: ^ecmascript_facts_field_std_projection,
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_number_algebra_inhabitance(facts: EcmascriptNumberPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -808,8 +819,9 @@ fn ecmascript_inhabitant_node(id: Symbol, facts: Node) -> Node {
     children: [
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_atom, target: ecmascript_inhabitant_atom(id: id)),
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_facts, target: facts)
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_number_inhabitant_node() -> Node {
@@ -832,8 +844,9 @@ fn ecmascript_declared_inhabitants_root() -> Node {
     children: [
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_number, target: ecmascript_number_inhabitant_node()),
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_bigint, target: ecmascript_bigint_inhabitant_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_mvp1_selection_policy_node() -> Node {
@@ -847,8 +860,9 @@ fn ecmascript_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
       Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
       Edge { label: Positional, target: ecmascript_number_inhabitant_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
@@ -879,8 +893,9 @@ fn ecmascript_mvp1_serialize_source_children() -> List<Edge> {
 fn ecmascript_mvp1_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: ecmascript_mvp1_serialize_source_children()
-  }
+    children: ecmascript_mvp1_serialize_source_children(),
+    span: Unanchored
+}
 }
 
 // --- FormalProduction authority (flat rhs) + GrammarExpr operational shim (parse.dag) ---
@@ -1065,8 +1080,9 @@ fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> No
           token_to_node: ecmascript_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_mvp1_translation_rules_node() -> Node {
@@ -1077,8 +1093,9 @@ fn ecmascript_mvp1_translation_rules_node() -> Node {
         name: ^ecmascript_relation_rule_mvp1_fn_add,
         target: ecmascript_grammar_relation_row_node(row: ecmascript_mvp1_grammar_relation_row())
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_mvp1_target_model_node() -> Node {
@@ -1089,8 +1106,9 @@ fn ecmascript_mvp1_target_model_node() -> Node {
       ecmascript_named_edge(name: target_model_edge_declared_inhabitants, target: ecmascript_declared_inhabitants_root()),
       ecmascript_named_edge(name: target_model_edge_translation_rules, target: ecmascript_mvp1_translation_rules_node()),
       ecmascript_named_edge(name: target_model_edge_serialize_source, target: ecmascript_mvp1_serialize_source_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ecmascript_mvp1_binding_spellings() -> Map<Symbol, String> {

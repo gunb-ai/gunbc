@@ -32,6 +32,8 @@ import v4.std.node {
   TypeNode,
   Value,
   arrow_body_edge,
+  node_rebuild,
+  node_unanchored,
   well_formed
 }
 import v4.std.node_query { find_arrow_body_child }
@@ -48,10 +50,10 @@ fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
 }
 
 fn type_atom_node(identity: Symbol) -> Node {
-  Node {
+  node_unanchored(
     kind: TypeNode { connective: Atom { identity: identity } },
     children: []
-  }
+  )
 }
 
 fn computation_param_ref_node(identity: Symbol) -> Node {
@@ -62,8 +64,8 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
       outcome_accepted(
-        value: Node {
-          kind: arrow.kind,
+        value: node_rebuild(
+          n: arrow,
           children: list_snoc_item(
             xs: arrow.children,
             item: Edge {
@@ -71,7 +73,7 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
               target: body
             }
           )
-        }
+        )
       )
     _ =>
       outcome_rejected(
@@ -85,7 +87,7 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
 
 // MVP add body: Transform(+) with positional param references (body-scope resolve follows).
 fn produce_mvp1_add_binary_body() -> Node {
-  Node {
+  node_unanchored(
     kind: ComputationNode { behavior: Transform },
     children: [
       Edge {
@@ -101,11 +103,11 @@ fn produce_mvp1_add_binary_body() -> Node {
         target: computation_param_ref_node(identity: ^dag_binding_param_y)
       }
     ]
-  }
+  )
 }
 
 fn produce_mvp1_add_arrow_signature() -> Node {
-  Node {
+  node_unanchored(
     kind: TypeNode { connective: Arrow },
     children: [
       Edge {
@@ -121,7 +123,7 @@ fn produce_mvp1_add_arrow_signature() -> Node {
         target: type_atom_node(identity: ^dag_binding_type_int)
       }
     ]
-  }
+  )
 }
 
 fn produce_mvp1_add_arrow_with_body() -> Outcome<Node> {
@@ -150,7 +152,7 @@ fn produce_mvp1_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
     o: produce_mvp1_add_arrow_with_body(),
     f: fn(arrow_with_body) {
       outcome_accepted(
-        value: Node {
+        value: node_unanchored(
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
@@ -158,7 +160,7 @@ fn produce_mvp1_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
               target: arrow_with_body
             }
           ]
-        }
+        )
       )
     }
   )

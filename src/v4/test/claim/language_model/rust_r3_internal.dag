@@ -23,7 +23,7 @@ import v4.std.leaf_model_verification {
   TargetCompileVerdict
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verdict { verdict_fail }
 import v4.std.verification {
   EqualsClaim,
@@ -36,8 +36,12 @@ import v4.std.verification {
 }
 fn rust_r3_internal_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^rust_r3_internal_claim_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^rust_r3_internal_claim_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^rust_r3_internal_claim_bool_true } }, children: [],
+ span: Unanchored
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^rust_r3_internal_claim_bool_false } }, children: [],
+ span: Unanchored
+}
   }
 }
 

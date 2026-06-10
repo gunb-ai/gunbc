@@ -25,7 +25,7 @@ import v4.std.dependency {
   GeneratedFrom
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.witness { Holds, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
@@ -38,7 +38,8 @@ data unused_parameters_non_use_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^unused_parameters_non_use_root_symbol } },
   children: [
     Edge { label: Named { name: ^unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
-  ]
+  ],
+  span: Unanchored
 }
 
 data unused_parameters_contains_dependency: DependencyView = DependencyView {
