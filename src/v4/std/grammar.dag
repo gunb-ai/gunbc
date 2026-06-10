@@ -1111,72 +1111,60 @@ fn derive_grammar_relation_row_node(
 }
 
 
-// 🟡 gated — walker-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:grammar-expr-node-projection — bound task: src/v4/TASKS.md §T-7.1 (owner/lane: T-7 std grammar substrate follow-up) — dissolve-on-arrival: first PR landing substrate-derived GrammarExpr fold/projection to canonical Node edges deletes this recursive coproduct walker and routes grammar_to_node through that projection in the same commit train; forbidden: duplicating GrammarExpr arm re-encoders outside this std projection.
+fn grammar_expr_node(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: children,
+    span: Unanchored
+}
+}
+
+
+// 🟢 walker dissolution — feature:grammar-expr-node-projection — bind node://adhoc-b696538c-710 —
+// the hand-rolled per-variant GrammarExpr match is dissolved: grammar_expr_to_node is now a
+// fold_grammar_expr consumer (GrammarExprFold<Node>). Recursive positions (Sequence/Choice children,
+// Optional/Repeat element) arrive already projected to Node, so each handler only wraps the canonical
+// named edges. No second structural walker over GrammarExpr remains (INVARIANTS P5 / Practice 10).
 fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
-  match expr {
-    Terminal { token_class: token_class } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class) {
+        grammar_expr_node(children: [
           grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
-        ],
-        span: Unanchored
-}
-    Nonterminal { production: production } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
+        ])
+      },
+      nonterminal: fn(production) {
+        grammar_expr_node(children: [
           grammar_named_edge(name: ^grammar_nonterminal_production_node_projection, target: grammar_atom(identity: production))
-        ],
-        span: Unanchored
-}
-    Sequence { left: left, right: right } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: grammar_expr_to_node(expr: left)),
-          grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: grammar_expr_to_node(expr: right))
-        ],
-        span: Unanchored
-}
-    Choice { left: left, right: right } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: ^grammar_choice_left_node_projection, target: grammar_expr_to_node(expr: left)),
-          grammar_named_edge(name: ^grammar_choice_right_node_projection, target: grammar_expr_to_node(expr: right))
-        ],
-        span: Unanchored
-}
-    Optional { element: element } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: ^grammar_optional_element_node_projection, target: grammar_expr_to_node(expr: element))
-        ],
-        span: Unanchored
-}
-    Repeat { element: element } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: ^grammar_repeat_element_node_projection, target: grammar_expr_to_node(expr: element))
-        ],
-        span: Unanchored
-}
-  }
+        ])
+      },
+      sequence: fn(left_node, right_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: left_node),
+          grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: right_node)
+        ])
+      },
+      choice: fn(left_node, right_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_choice_left_node_projection, target: left_node),
+          grammar_named_edge(name: ^grammar_choice_right_node_projection, target: right_node)
+        ])
+      },
+      optional: fn(element_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_optional_element_node_projection, target: element_node)
+        ])
+      },
+      repeat: fn(element_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_repeat_element_node_projection, target: element_node)
+        ])
+      }
+    }
+  )
 }
 
 
