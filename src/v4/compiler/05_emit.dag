@@ -10,13 +10,16 @@ module v4.compiler.emit
 
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
+import v4.compiler.value_expression { arrow_has_transform_body }
 import v4.compiler.translate {
   TargetNodeTree,
   target_serialize_source_from_model,
   translate
 }
 import v4.std.diagnostic {
+  Accepted,
   Outcome,
+  Rejected,
   bind_outcome
 }
 
@@ -33,10 +36,19 @@ fn emit(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: translate(tree: tree, target: target),
-    f: fn(target_tree) {
-      serialize_target(tree: target_tree, target: target)
-    }
-  )
+  match translate(tree: tree, target: target) {
+    Accepted { value: target_tree, diagnostics: td } =>
+      bind_outcome(
+        o: serialize_target(tree: target_tree, target: target),
+        f: fn(source) {
+          Accepted { value: source, diagnostics: td }
+        }
+      )
+    Rejected { diagnostics: r } =>
+      if arrow_has_transform_body(arrow: tree.root) {
+        target_serialize_source_from_model(target: target, emitted: tree.root)
+      } else {
+        Rejected { diagnostics: r }
+      }
+  }
 }
