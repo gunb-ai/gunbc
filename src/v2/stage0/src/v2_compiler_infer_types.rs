@@ -201,7 +201,10 @@ pub fn is_leaf_type(n: Rc<Node>) -> bool {
 }
 
 pub fn is_unit_like(n: Rc<Node>) -> bool {
-    ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
+    (((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
+        || (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && (n.name.clone().as_str() == "Unit".to_string().as_str())))
 }
 
 pub fn is_fully_resolved(
@@ -1989,6 +1992,22 @@ pub fn node_type_compatible(
                                             && (right.binding_id.clone() != None))
                                             && (left.binding_id.clone()
                                                 == right.binding_id.clone()))
+                                        {
+                                            break true;
+                                        } else if ((authored_name_at(
+                                            source_indices.clone(),
+                                            left.clone(),
+                                        )
+                                        .as_str()
+                                            == authored_name_at(
+                                                source_indices.clone(),
+                                                right.clone(),
+                                            )
+                                            .as_str())
+                                            && is_kernel_type(authored_name_at(
+                                                source_indices.clone(),
+                                                left.clone(),
+                                            )))
                                         {
                                             break true;
                                         } else {

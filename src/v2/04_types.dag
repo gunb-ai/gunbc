@@ -145,7 +145,10 @@ fn structural_carrier_template_name(n: Node, source_indices: Map<String, Newline
 fn is_product_type(n: Node) -> Bool { n.connective == Conj }
 fn is_coproduct_type(n: Node) -> Bool { n.connective == Disj }
 fn is_leaf_type(n: Node) -> Bool { n.connective == NoConnective }
-fn is_unit_like(n: Node) -> Bool { n.connective == Conj && n.children |> count == 0 }
+fn is_unit_like(n: Node) -> Bool {
+  (n.connective == Conj && n.children |> count == 0)
+    || (n.connective == NoConnective && n.children |> count == 0 && n.name == "Unit")
+}
 
 fn is_fully_resolved(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let self_is_type_var = match n.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false }
@@ -803,6 +806,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
     }
     else if left_opt || right_opt { false }
     else if left.binding_id != none && right.binding_id != none && left.binding_id == right.binding_id { true }
+    else if authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right)
+      && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: left)) { true }
     else {
       match left.binding_id {
         Some { value: left_binding_id } =>
