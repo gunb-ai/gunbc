@@ -255,12 +255,22 @@ fn classify_alias(target: Node) -> AliasKind {
 }
 
 fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: Int) -> Node {
+  if depth > 100 {
+    return target
+  }
   match classify_alias(target: target) {
     AliasParameterized =>
       resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
     AliasLeaf =>
-      match lookup_type_by_name(env: env, name: authored_name_at(source_indices: env.source_indices, node: target)) {
-        Present { value: env_target } => env_target
+      match lookup_type_for(env: env, node: target) {
+        Present { value: env_target } =>
+          if env_target.connective == NoConnective && env_target.children |> count == 0 && env_target.inferred != none {
+            match env_target.inferred {
+              Present { value: Resolved { node: next_target } } =>
+                resolve_alias_target(target: next_target, env: env, module_name: module_name, depth: depth + 1)
+              _ => env_target
+            }
+          } else { env_target }
         Absent => target
       }
     AliasPassthrough => target

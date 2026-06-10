@@ -407,17 +407,36 @@ pub fn resolve_alias_target(
     module_name: String,
     depth: i64,
 ) -> Rc<Node> {
+    if (depth > 100) {
+        return target.clone();
+    }
     match classify_alias(target.clone()) {
         AliasKind::AliasParameterized => {
             resolve_node_bounded(target.clone(), env.clone(), module_name, (depth + 1))
                 .resolved
                 .clone()
         }
-        AliasKind::AliasLeaf => match lookup_type_by_name(
-            env.clone(),
-            authored_name_at(env.source_indices.clone(), target.clone()),
-        ) {
-            Some(env_target) => env_target.clone(),
+        AliasKind::AliasLeaf => match lookup_type_for(env.clone(), target.clone()) {
+            Some(env_target) => {
+                if (((env_target.connective.clone() == Connective::NoConnective)
+                    && ((env_target.children.clone().len() as i64) == 0))
+                    && (env_target.inferred.clone() != None))
+                {
+                    match env_target.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: next_target, .. }) => {
+                            resolve_alias_target(
+                                next_target.clone(),
+                                env.clone(),
+                                module_name,
+                                (depth + 1),
+                            )
+                        }
+                        _ => env_target.clone(),
+                    }
+                } else {
+                    env_target.clone()
+                }
+            }
             None => target.clone(),
         },
         AliasKind::AliasPassthrough => target.clone(),
