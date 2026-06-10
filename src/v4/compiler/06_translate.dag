@@ -4849,3 +4849,13 @@ fn translate(
 ) -> Outcome<TargetNodeTree> {
   translate_node(node: tree.root, tree: tree, target: target)
 }
+
+// Cross-module witness helper: translate Outcome carrier as Node (TargetNodeTree = Node in-module).
+fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<Node> {
+  bind_outcome(
+    o: translate(tree: tree, target: target),
+    f: fn(emitted) {
+      outcome_accepted(emitted)
+    }
+  )
+}

@@ -201,7 +201,8 @@ fn value_expr_coerced_ts_number_inhabitant_slot(slot: Node) -> Bool {
 
 fn value_expr_wave1_add_signature_slot_valid(slot: Node) -> Bool {
   match slot.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_binding_type_int
+    TypeNode { connective: Atom { identity: id } } =>
+      id == ^dag_binding_type_int || id == ^ts_inhabitant_number
     _ => value_expr_coerced_ts_number_inhabitant_slot(slot: slot)
   }
 }
