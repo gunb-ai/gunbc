@@ -20,7 +20,8 @@ import v4.std.algebra {
   list_snoc_item,
   length,
   list_append,
-  fold_list_right
+  fold_list_right,
+  ring_field_add
 }
 import v4.std.collection {
   Absent,
@@ -259,12 +260,12 @@ type TargetValueTemplate {
 }
 
 // T6 — closed canonical operation vocabulary (substrate-owned; arms land with producers).
-// Q-V1 (design-value-emit-schema.md §7): OpAdd is the ring add fact by construction (M9).
+// Q-V1 (design-value-emit-schema.md §7): each arm carries its algebra-field witness (M9).
 type CanonicalOperation
-  = OpAdd {}
+  = OpAdd { algebra_field: Symbol }
 
 fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd {}
+  OpAdd { algebra_field: ring_field_add }
 }
 
 // T6 — per-language operator spelling shape axis.
@@ -335,6 +336,7 @@ data target_value_expr_operand_wire_malformed: Symbol = target_value_expr_operan
 data target_operator_realization_field_operation: Symbol = target_operator_realization_field_operation
 data target_operator_realization_field_shape: Symbol = target_operator_realization_field_shape
 data target_operator_shape_field_token: Symbol = target_operator_shape_field_token
+data target_canonical_operation_field_algebra_field: Symbol = target_canonical_operation_field_algebra_field
 data target_canonical_operation_wire_malformed: Symbol = target_canonical_operation_wire_malformed
 data target_operator_shape_wire_malformed: Symbol = target_operator_shape_wire_malformed
 data target_operator_realization_wire_malformed: Symbol = target_operator_realization_wire_malformed
@@ -366,12 +368,46 @@ fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> Diagnosti
   }
 }
 
+fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optional<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_canonical_operation_field_algebra_field {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: field } => optional_present(value: field)
+    Absent => optional_absent()
+  }
+}
+
 fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
   match operation {
-    OpAdd {} =>
+    OpAdd { algebra_field: f } =>
       Node {
         kind: TypeNode { connective: Atom { identity: discriminant(v: OpAdd {}) } },
-        children: [],
+        children: [
+          target_model_named_edge(
+            name: target_canonical_operation_field_algebra_field,
+            target: target_model_type_atom_node(identity: f)
+          )
+        ],
         span: Unanchored
       }
   }
@@ -382,7 +418,10 @@ fn canonical_operation_equal(
   right: CanonicalOperation
 ) -> Bool {
   match left {
-    OpAdd {} => match right { OpAdd {} => true }
+    OpAdd { algebra_field: lf } =>
+      match right {
+        OpAdd { algebra_field: rf } => lf == rf
+      }
   }
 }
 
@@ -390,12 +429,13 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == discriminant(v: OpAdd {}) {
-        if is_empty(xs: wire.children) {
-          outcome_accepted(OpAdd {})
-        } else {
-          outcome_rejected(
-            target_canonical_operation_wire_malformed_diagnostic(wire: wire)
-          )
+        match target_model_canonical_operation_algebra_field_from_wire(wire: wire) {
+          Present { value: algebra_field } =>
+            outcome_accepted(OpAdd { algebra_field: algebra_field })
+          Absent =>
+            outcome_rejected(
+              target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+            )
         }
       } else {
         outcome_rejected(
