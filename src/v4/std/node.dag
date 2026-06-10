@@ -216,7 +216,7 @@ fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^arrow_body_edge)
 }
 
-// Wave-0: internal L1 Behavior sub-DAG only. E-9 external realization carrier validation lands with extdeps primitive wiring.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 / INVARIANTS P5) — feature: arrow-body-external-realization-target — owner: COMPREP wave-0 (#4616) — lane: std.node ArrowBodyEdges well_formed target-shape (E-9/DB-14) — dissolve-on-arrival: extend this predicate to admit the extdeps ExternalRealization carrier on Arrow.body when v4.extdeps primitive wiring lands (DB-14: declared Arrow.body + target bindings); wave-0 admits ComputationNode only because the body producer exercises internal Behavior sub-DAGs; forbidden: parallel Arrow.body target-shape predicates outside arrow_body_target_is_valid_realization.
 fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
   match target.kind {
     ComputationNode { behavior: _ } => true
