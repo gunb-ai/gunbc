@@ -98,6 +98,50 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn node_is_bare_type_ref(n: Rc<Node>) -> bool {
+    (((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) == 0))
+        && ((n.params.clone().len() as i64) == 0))
+}
+
+pub fn node_bare_alias_target_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    if node_is_bare_type_ref(n.clone()) {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => {
+                if node_is_bare_type_ref(target.clone()) {
+                    Some(authored_name_at(source_indices, target.clone()))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+pub fn nodes_are_transparent_bare_alias_pair(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let left_name = authored_name_at(source_indices.clone(), left.clone());
+        let right_name = authored_name_at(source_indices.clone(), right.clone());
+        match node_bare_alias_target_name(left.clone(), source_indices.clone()) {
+            Some(left_target) => (left_target.clone().as_str() == right_name.as_str()),
+            None => match node_bare_alias_target_name(right.clone(), source_indices.clone()) {
+                Some(right_target) => (right_target.clone().as_str() == left_name.as_str()),
+                None => false,
+            },
+        }
+    }
+}
+
 pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
     match n.children.clone().get(index as usize).cloned() {
         Some(ch) => Some(child_type_node(ch.clone())),
@@ -2012,46 +2056,53 @@ pub fn node_type_compatible(
                                             if (left_opt.clone() || right_opt.clone()) {
                                                 false
                                             } else {
-                                                if (((left.binding_id.clone() != None)
-                                                    && (right.binding_id.clone() != None))
-                                                    && (left.binding_id.clone()
-                                                        == right.binding_id.clone()))
-                                                {
+                                                if nodes_are_transparent_bare_alias_pair(
+                                                    left.clone(),
+                                                    right.clone(),
+                                                    source_indices.clone(),
+                                                ) {
                                                     true
                                                 } else {
-                                                    if ((authored_name_at(
-                                                        source_indices.clone(),
-                                                        left.clone(),
-                                                    )
-                                                    .as_str()
-                                                        == authored_name_at(
-                                                            source_indices.clone(),
-                                                            right.clone(),
-                                                        )
-                                                        .as_str())
-                                                        && is_kernel_type(authored_name_at(
-                                                            source_indices.clone(),
-                                                            left.clone(),
-                                                        )))
+                                                    if (((left.binding_id.clone() != None)
+                                                        && (right.binding_id.clone() != None))
+                                                        && (left.binding_id.clone()
+                                                            == right.binding_id.clone()))
                                                     {
                                                         true
                                                     } else {
-                                                        match left.binding_id.clone() {
-                                                            Some(left_binding_id) => {
-                                                                match right.binding_id.clone() {
-                                                                    Some(right_binding_id) => {
-                                                                        (left_binding_id.clone()
-                                                                            == right_binding_id
-                                                                                .clone())
+                                                        if ((authored_name_at(
+                                                            source_indices.clone(),
+                                                            left.clone(),
+                                                        )
+                                                        .as_str()
+                                                            == authored_name_at(
+                                                                source_indices.clone(),
+                                                                right.clone(),
+                                                            )
+                                                            .as_str())
+                                                            && is_kernel_type(authored_name_at(
+                                                                source_indices.clone(),
+                                                                left.clone(),
+                                                            )))
+                                                        {
+                                                            true
+                                                        } else {
+                                                            match left.binding_id.clone() {
+                                                                Some(left_binding_id) => {
+                                                                    match right.binding_id.clone() {
+                                                                        Some(right_binding_id) => {
+                                                                            (left_binding_id
+                                                                                .clone()
+                                                                                == right_binding_id
+                                                                                    .clone())
+                                                                        }
+                                                                        None => false,
                                                                     }
-                                                                    None => false,
                                                                 }
-                                                            }
-                                                            None => {
-                                                                match right.binding_id.clone() {
-                                                                    Some(_) => false,
-                                                                    None => {
-                                                                        (authored_name_at(
+                                                                None => {
+                                                                    match right.binding_id.clone() {
+                                                                        Some(_) => false,
+                                                                        None => (authored_name_at(
                                                                             source_indices.clone(),
                                                                             left.clone(),
                                                                         )
@@ -2061,7 +2112,7 @@ pub fn node_type_compatible(
                                                                                     .clone(),
                                                                                 right.clone(),
                                                                             )
-                                                                            .as_str())
+                                                                            .as_str()),
                                                                     }
                                                                 }
                                                             }

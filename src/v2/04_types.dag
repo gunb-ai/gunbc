@@ -66,6 +66,38 @@ fn child_type_node(ch: Node) -> Node {
   if ch.inferred != none { resolved_type(n: ch) } else { ch }
 }
 
+fn node_is_bare_type_ref(n: Node) -> Bool {
+  n.connective == NoConnective
+    && n.children |> count == 0
+    && n.params |> count == 0
+}
+
+fn node_bare_alias_target_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  if node_is_bare_type_ref(n: n) {
+    match n.inferred {
+      Present { value: Resolved { node: target } } =>
+        if node_is_bare_type_ref(n: target) {
+          Present { value: authored_name_at(source_indices: source_indices, node: target) }
+        } else { none }
+      _ => none
+    }
+  } else { none }
+}
+
+fn nodes_are_transparent_bare_alias_pair(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let left_name = authored_name_at(source_indices: source_indices, node: left)
+  let right_name = authored_name_at(source_indices: source_indices, node: right)
+  match node_bare_alias_target_name(n: left, source_indices: source_indices) {
+    Present { value: left_target } =>
+      left_target == right_name
+    Absent =>
+      match node_bare_alias_target_name(n: right, source_indices: source_indices) {
+        Present { value: right_target } => right_target == left_name
+        Absent => false
+      }
+  }
+}
+
 fn child_type_at(n: Node, index: Int) -> Node? {
   match n.children |> skip(index) |> first {
     Present { value: ch } => Present { value: child_type_node(ch: ch) }
@@ -813,6 +845,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       else { node_type_compatible(left: left_inner, right: right_inner, source_indices: source_indices) }
     }
     else if left_opt || right_opt { false }
+    else if nodes_are_transparent_bare_alias_pair(left: left, right: right, source_indices: source_indices) { true }
     else if left.binding_id != none && right.binding_id != none && left.binding_id == right.binding_id { true }
     else if authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right)
       && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: left)) { true }
