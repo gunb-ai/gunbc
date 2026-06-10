@@ -1250,10 +1250,16 @@ fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
 // Status: MODELING ONLY — names the find_witness selection discipline at the syntax layer.
 // Preservation rules wire into find_witness when G.3 forward interpreter lands (02_parse
 // de-anemic owned with Mgr-CONSOLIDATION). By-execution bidir witnesses gated on emit S1.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL — closed two-arm sum for the only two
+//    interpreters over a declared production row (§4.1 backward render / forward parse); no
+//    third direction and no arm payloads to decompress.
 type GrammarInterpretationDirection
   = GrammarInterpretBackward
   | GrammarInterpretForward
 
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL — closed four-arm sum is exactly the
+//    bidirectionality obligation carve (§4.3 obligations 1–4); exhaustive by design, not an
+//    open classifier awaiting further variants.
 type BidirectionalGrammarObligation
   = ObligationSlotBijection
   | ObligationForwardDeterminism
