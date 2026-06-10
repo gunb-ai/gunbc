@@ -143,6 +143,9 @@ pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
         || path.starts_with("src/v4/test/claim/")
         || path == "scripts/v4-testclaim-corpus-eval.sh"
         || path == "scripts/v4-testclaim-smoke-roster.sh"
+        || path == "scripts/v4-substrate-equivalence-gate.sh"
+        || path == "src/v4/test/claim/workflow/glob_discovery.dag"
+        || path == "src/v4/test/claim/workflow/unified_test_claim_substrate_equivalence.dag"
 }
 
 pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {

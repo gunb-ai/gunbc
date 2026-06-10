@@ -15,7 +15,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.algebra { Cons, Empty, fold_list_node }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName, qualified_name_eq }
 import v4.std.logic { Bool }
 import v4.std.verification {
@@ -28,13 +28,19 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn fmn_sym_node(sym: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+ span: Unanchored
+}
 }
 
 fn fmn_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^fmn_bool_true_sym } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^fmn_bool_false_sym } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^fmn_bool_true_sym } }, children: [],
+ span: Unanchored
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^fmn_bool_false_sym } }, children: [],
+ span: Unanchored
+}
   }
 }
 
@@ -63,11 +69,15 @@ data fmn_qn_node: Node = fold_list_node(
 data fmn_module_header_node: Node = emit_module_header_emitted_node(qualified_name: fmn_qn_node)
 
 // Node without dag_surface_module_header_qualified_name edge → Rejected.
-data fmn_bare_conj_node: Node = Node { kind: TypeNode { connective: Conj }, children: [] }
+data fmn_bare_conj_node: Node = Node { kind: TypeNode { connective: Conj }, children: [],
+ span: Unanchored
+}
 
 // Module header whose QN edge points at an empty fold_list_node (Conj with 0 children) → Rejected.
 // for_all is vacuously true for Empty; the empty-check must fire before the T-8 predicate.
-data fmn_qn_empty_node: Node = Node { kind: TypeNode { connective: Conj }, children: [] }
+data fmn_qn_empty_node: Node = Node { kind: TypeNode { connective: Conj }, children: [],
+ span: Unanchored
+}
 data fmn_module_header_empty_qn_node: Node = emit_module_header_emitted_node(qualified_name: fmn_qn_empty_node)
 
 // Module header whose QN fold_list_node contains dag_token_ident → Rejected by T-8 gate.

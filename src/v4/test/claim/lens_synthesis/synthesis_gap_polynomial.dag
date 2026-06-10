@@ -25,7 +25,8 @@ import v4.std.node {
   Positional,
   Symbol,
   Transform,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.report { SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
 import v4.std.verification {
@@ -39,21 +40,24 @@ import v4.std.verification {
 }
 data synthesis_gap_poly_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_poly_atom_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data synthesis_gap_poly_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge { label: Positional, target: synthesis_gap_poly_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 data synthesis_gap_poly_inner: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: synthesis_gap_poly_body }
-  ]
+  ],
+  span: Unanchored
 }
 
 // Nested Cardinality → polynomial (O(n^2)) complexity; strictly dominates Θ(n log n) lower bound.
@@ -61,12 +65,14 @@ data synthesis_gap_poly_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge { label: Positional, target: synthesis_gap_poly_inner }
-  ]
+  ],
+  span: Unanchored
 }
 
 data synthesis_gap_poly_sentinel: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_poly_sentinel_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 fn synthesis_gap_poly_lens_non_empty() -> Bool {

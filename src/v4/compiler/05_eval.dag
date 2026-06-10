@@ -84,7 +84,8 @@ import v4.std.node {
   byte_offset_cache_key,
   fold_node,
   is_positional,
-  well_formed
+  well_formed,
+  Unanchored
 }
 import v4.std.node_query { find_arrow_body_child }
 import v4.std.diagnostic {
@@ -181,8 +182,9 @@ fn inputs_root_only(root: Node) -> Inputs {
 fn symbol_atom_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn inputs_for_emit_host(
@@ -545,8 +547,9 @@ fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> 
 fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: tag } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {

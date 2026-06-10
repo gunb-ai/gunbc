@@ -72,7 +72,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.verification {
   DiagnosticClaim,
@@ -115,7 +116,8 @@ data mvp1_go_poisoned_authority_target_model: TargetModel = TargetModel {
 
 data mvp1_go_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data mvp1_go_missing_translation_rules_target: TargetModel = TargetModel {

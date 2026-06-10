@@ -16,7 +16,7 @@ import v4.lens.application {
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
+import v4.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Path, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -28,7 +28,8 @@ import v4.std.verification {
 }
 data projection_test_section: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^projection_section_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data projection_test_root: Node = Node {
@@ -38,7 +39,8 @@ data projection_test_root: Node = Node {
       label: Named { name: ^projection_section_step },
       target: projection_test_section
     }
-  ]
+  ],
+  span: Unanchored
 }
 
 fn projection_test_read(root: Node) -> Outcome<Symbol> {

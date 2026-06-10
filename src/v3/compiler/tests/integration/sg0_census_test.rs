@@ -1011,7 +1011,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // our own std structure — change-detectors with zero external-oracle coverage; correctness-by-
     // construction, not 2FA-for-code). The three v4_std_{grounding,model_core,target_realization}_dag
     // smoke files (44 parse-surface/source-grep receipts) are DELETED, not deferred. Their two
-    // behavioral receipts are migrated to mutation-proven .dag claim-run witnesses on v4_roster_pilot:
+    // behavioral receipts are migrated to mutation-proven .dag claim-run witnesses via glob_discovery:
     //   - src/v4/test/claim/std_model_core/bool_fact_lookup.dag (also retires the hand-Rust MIRROR
     //     helper bool_fact_axis_dispatch — a tautology that re-stated the fold in Rust); and
     //   - src/v4/test/claim/std_grounding/terminal_gate.dag.

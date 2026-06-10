@@ -11,8 +11,38 @@
 module v4.compiler.parse
 
 
-import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
-import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
+  Locus,
+  NonEmptyDiagnostics,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  UserInputBoundary,
+  diagnostics_merge,
+  diagnostics_singleton,
+  outcome_accepted,
+  port_locus,
+  rejected_with_pending
+}
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  NodeSpan,
+  Symbol,
+  TypeNode,
+  Unanchored,
+  well_formed
+}
+import v4.std.provenance { make_node_span_anchored, merge_node_spans }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v4.std.logic { Bool }
@@ -239,13 +269,46 @@ fn token_position_indices(tokens: List<Token>) -> List<Int> {
   }
 }
 
+fn parse_node_span_from_token(tok: Token) -> Outcome<NodeSpan> {
+  make_node_span_anchored(file: tok.file, start: tok.start, end: tok.end)
+}
+
+fn parse_merge_captured_spans(left: Node, right: Node) -> Outcome<NodeSpan> {
+  merge_node_spans(left: left.span, right: right.span)
+}
+
+fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnostic> {
+  list_append(left: [ned.head], right: ned.tail)
+}
+
+fn parse_fold_node_span_step(acc: Outcome<NodeSpan>, n: Node) -> Outcome<NodeSpan> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: current, diagnostics: pending } =>
+      match merge_node_spans(left: current, right: n.span) {
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: r) }
+        Accepted { value: merged, diagnostics: d } =>
+          Accepted {
+            value: merged,
+            diagnostics: diagnostics_merge(outer: pending, inner: d)
+          }
+      }
+  }
+}
+
+fn parse_fold_node_spans(nodes: List<Node>, acc: NodeSpan) -> Outcome<NodeSpan> {
+  fold_list(xs: nodes, empty: outcome_accepted(value: acc), cons: parse_fold_node_span_step)
+}
+
 fn parse_wrap_production_captured(production: GrammarProduction, captured: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
       grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
-    ]
+    ],
+    span: captured.span
   }
 }
 
@@ -561,7 +624,7 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
 
 // --- Parse walk helpers ---
 
-fn parse_repeat_captured_node(acc_nodes: List<Node>) -> Node {
+fn parse_repeat_captured_node(acc_nodes: List<Node>, span: NodeSpan) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
@@ -576,7 +639,8 @@ fn parse_repeat_captured_node(acc_nodes: List<Node>) -> Node {
           }
         )
       }
-    )
+    ),
+    span: span
   }
 }
 
@@ -628,17 +692,21 @@ fn parse_expr(
             true =>
               match list_tail(xs: tokens) {
                 TailFound { tail: remaining } =>
-                  // 🟡 gated T-8: terminal node carries tok.class only — tok.lexeme, tok.file, tok.start, tok.end
-                  // are staged for T-8 source-text anchoring. The node substrate has no String/Nat literal-value
-                  // edge kind; carrying those facts requires a substrate literal-carrier or String→Symbol projection.
-                  // Dissolve-on: T-8 source-text anchor feature or substrate literal-value edge support.
-                  ParseExprAccepted {
-                    remaining: remaining,
-                    captured: Node {
-                      kind: TypeNode { connective: Atom { identity: tok.class } },
-                      children: []
-                    },
-                    diagnostics: []
+                  match parse_node_span_from_token(tok: tok) {
+                    Rejected { diagnostics: r } =>
+                      ParseExprRejected {
+                        diagnostics: parse_non_empty_diagnostics_to_list(ned: r)
+                      }
+                    Accepted { value: span, diagnostics: _ } =>
+                      ParseExprAccepted {
+                        remaining: remaining,
+                        captured: Node {
+                          kind: TypeNode { connective: Atom { identity: tok.class } },
+                          children: [],
+                          span: span
+                        },
+                        diagnostics: []
+                      }
                   }
                 TailAbsent => ParseExprRejected { diagnostics: [] }
               }
@@ -662,16 +730,27 @@ fn parse_expr(
             ParseExprRejected { diagnostics: diags2 } =>
               ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
             ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
-              ParseExprAccepted {
-                remaining: rest2,
-                captured: Node {
-                  kind: TypeNode { connective: Conj },
-                  children: [
-                    grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
-                    grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
-                  ]
-                },
-                diagnostics: list_append(left: diags1, right: diags2)
+              match parse_merge_captured_spans(left: cap1, right: cap2) {
+                Rejected { diagnostics: r } =>
+                  ParseExprRejected {
+                    diagnostics: list_append(
+                      left: list_append(left: diags1, right: diags2),
+                      right: parse_non_empty_diagnostics_to_list(ned: r)
+                    )
+                  }
+                Accepted { value: span, diagnostics: _ } =>
+                  ParseExprAccepted {
+                    remaining: rest2,
+                    captured: Node {
+                      kind: TypeNode { connective: Conj },
+                      children: [
+                        grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
+                        grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
+                      ],
+                      span: span
+                    },
+                    diagnostics: list_append(left: diags1, right: diags2)
+                  }
               }
           }
       }
@@ -733,10 +812,20 @@ fn parse_expr(
           }
         }
       )
-      ParseExprAccepted {
-        remaining: result.remaining,
-        captured: parse_repeat_captured_node(acc_nodes: result.acc_nodes),
-        diagnostics: result.acc_diags
+      match parse_fold_node_spans(nodes: result.acc_nodes, acc: Unanchored) {
+        Rejected { diagnostics: r } =>
+          ParseExprRejected {
+            diagnostics: list_append(
+              left: result.acc_diags,
+              right: parse_non_empty_diagnostics_to_list(ned: r)
+            )
+          }
+        Accepted { value: span, diagnostics: _ } =>
+          ParseExprAccepted {
+            remaining: result.remaining,
+            captured: parse_repeat_captured_node(acc_nodes: result.acc_nodes, span: span),
+            diagnostics: result.acc_diags
+          }
       }
   }
 }

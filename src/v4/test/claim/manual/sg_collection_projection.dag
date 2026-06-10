@@ -14,7 +14,7 @@ import v4.extdeps.languages.rust {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, Unanchored }
 import v4.std.target_model {
   target_carrier_free_monoid_node,
   target_carrier_node_node
@@ -34,15 +34,17 @@ data sg_collection_expected_vec_rc_node: String = "Vec<Rc<Node>>"
 fn sg_collection_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_collection_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg_collection_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_collection_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg_collection_claim_input(ok: Bool) -> Node {
@@ -59,8 +61,9 @@ fn sg_collection_free_monoid_node_source_type() -> Node {
     children: [
       Edge { label: Positional, target: target_carrier_free_monoid_node() },
       Edge { label: Positional, target: target_carrier_node_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn sg_collection_free_monoid_vec_rc_projection_holds() -> Bool {

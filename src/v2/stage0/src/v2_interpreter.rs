@@ -284,6 +284,12 @@ pub enum Value {
 }
 
 impl Value {
+    /// Public name of this value's kind (e.g. "List", "Record", "Variant"),
+    /// for host diagnostics that walk interpreter values (see `claim_executor`).
+    pub fn type_label_public(&self) -> &'static str {
+        self.type_label()
+    }
+
     fn type_label(&self) -> &'static str {
         match self {
             Value::Null => "Null",

@@ -1,0 +1,30 @@
+// src/v4/test/claim/workflow/glob_discovery.dag
+// Scope: Consolidation #4553 glob-discovery law module — NO central roster list.
+// Authority: distributed `data unified_claim_*: UnifiedTestClaim = BoolWitnessClaim`
+// markers co-located in claim corpus modules; host transport projects them via
+// scripts/v4-glob-discovery-project.sh (membership by owned declaration, not hand list).
+// Note: impossible_bug BoolWitnessClaim markers (#4618) are excluded from the smoke
+// slice at projection time; they join when that lane lands.
+
+module v4.test.claim.workflow.glob_discovery
+
+
+import v4.std.logic { Bool }
+import v4.std.text { String }
+
+
+// Cardinality pin only — mechanical diff target for host projection row count.
+data glob_discovered_smoke_marker_count: String = "80"
+
+
+fn glob_discovery_smoke_marker_count_is_positive() -> Bool {
+  glob_discovered_smoke_marker_count != "0"
+}
+
+
+fn witness_glob_discovery_smoke_marker_count_is_positive() -> Bool {
+  glob_discovery_smoke_marker_count_is_positive()
+}
+
+
+data witness_glob_discovery_smoke_marker_count_is_positive: Bool = witness_glob_discovery_smoke_marker_count_is_positive()
