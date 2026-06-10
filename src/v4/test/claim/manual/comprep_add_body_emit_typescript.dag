@@ -6,6 +6,12 @@ module v4.test.claim.manual.comprep_add_body_emit_typescript
 
 import v4.compiler.emit { emit }
 import v4.compiler.translate { target_serialize_source_from_model, translate }
+import v4.compiler.value_expression {
+  arrow_has_transform_body,
+  project_arrow_body_to_value_expression,
+  value_expression_projection_from_target,
+  value_expression_to_concrete_tokens
+}
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.extdeps.languages.typescript {
@@ -228,9 +234,39 @@ fn anchor_comprep_ts_bodied_emit_accepts() -> Outcome<TargetSource> {
 
 data comprep_ts_bodied_emit_receipt: Outcome<TargetSource> = anchor_comprep_ts_bodied_emit_accepts()
 
+fn comprep_ts_debug_root_has_transform_body() -> Bool {
+  arrow_has_transform_body(arrow: comprep_ts_bodied_arrow_root)
+}
+
 fn comprep_ts_debug_translate_accepts() -> Bool {
   match translate(tree: comprep_ts_bodied_inferred_tree, target: ts_mvp1_target_model()) {
     Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_body_to_value_expr_accepts() -> Bool {
+  match project_arrow_body_to_value_expression(arrow: comprep_ts_bodied_arrow_root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_value_expr_to_tokens_accepts() -> Bool {
+  match value_expression_projection_from_target(target: ts_mvp1_target_model()) {
+    Accepted { value: projection, diagnostics: _ } =>
+      match project_arrow_body_to_value_expression(arrow: comprep_ts_bodied_arrow_root) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match value_expression_to_concrete_tokens(
+            expr: expr,
+            target: ts_mvp1_target_model(),
+            projection: projection
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
