@@ -43,7 +43,8 @@ pub use crate::v2_compiler_infer_service::{
 pub use crate::v2_compiler_infer_service::{OpEntry, UniqueAccum};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::{
-    child_type_node, emit_map_has, for_each_element_type_node, is_unit_like, node_is_collection,
+    child_type_node, emit_map_has, for_each_element_type_node,
+    is_declared_container_alias_spelling, is_unit_like, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, normalize_access_type_node,
     resolved_type,
 };
@@ -1583,7 +1584,8 @@ pub fn render_node_type(
             {
                 let bare_is_map = (is_container_type(tn.clone())
                     && (to_snake(tn.clone()).as_str() == "map".to_string().as_str()));
-                let bare_is_collection = (is_container_type(tn.clone()) && !bare_is_map.clone());
+                let bare_is_collection =
+                    (is_declared_container_alias_spelling(tn.clone()) && !bare_is_map.clone());
                 let has_container_template = match container_template_algebra(to_snake(tn.clone()))
                 {
                     Some(_) => true,

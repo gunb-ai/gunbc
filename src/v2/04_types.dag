@@ -83,7 +83,7 @@ fn child_type_at(n: Node, index: Int) -> Node? {
 // =========================================================================
 
 fn node_is_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  (n.children |> count) > 0 && n.connective == NoConnective && is_container_type(name: authored_name_at(source_indices: source_indices, node: n))
+  (n.children |> count) > 0 && n.connective == NoConnective && is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: n))
 }
 
 fn node_is_keyed_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {

@@ -109,7 +109,7 @@ pub fn node_is_collection(
 ) -> bool {
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
-        && is_container_type(authored_name_at(source_indices, n.clone())))
+        && is_declared_container_alias_spelling(authored_name_at(source_indices, n.clone())))
 }
 
 pub fn node_is_keyed_collection(
