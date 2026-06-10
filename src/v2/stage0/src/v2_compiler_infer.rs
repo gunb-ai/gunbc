@@ -10854,7 +10854,7 @@ pub fn collect_parent_bindings_filtered(
 }
 
 pub fn import_allows_binding_name(imp: Rc<ResolvedImport>, name: String) -> bool {
-    (imp.is_all.clone() || {
+    ((imp.is_all.clone() || ((imp.specific_names.clone().len() as i64) == 0)) || {
         let mut __found = false;
         for n in imp.specific_names.clone().iter().cloned() {
             if (n.clone().as_str() == name.clone().as_str()) {
