@@ -55,6 +55,8 @@ type DagSemanticIr {
 type DagSourceReadWitness {
   source: DagSource
   artifact: Artifact
+  // R3 gate #31: Symbol compilation-unit authority stamped into Node.span via tokenize.
+  compilation_unit: Symbol
 }
 
 type SourceAstEqual {
@@ -109,9 +111,13 @@ fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
 }
 
 
-fn parse_dag_source_ast_with_model(source: DagSource, lm: DagLanguageModel) -> Outcome<DagSourceAst> {
+fn parse_dag_source_ast_with_model(
+  source: DagSource,
+  compilation_unit: Symbol,
+  lm: DagLanguageModel
+) -> Outcome<DagSourceAst> {
   bind_outcome(
-    o: tokenize(text: source, file: source_authority_port, rules: lm.lex),
+    o: tokenize(text: source, file: compilation_unit, rules: lm.lex),
     f: fn(token_stream) {
       bind_outcome(
         o: parse(tokens: token_stream, grammar: lm.grammar),
@@ -125,7 +131,11 @@ fn parse_dag_source_ast_with_model(source: DagSource, lm: DagLanguageModel) -> O
 
 
 fn parse_dag_source_ast(source: DagSource) -> Outcome<DagSourceAst> {
-  parse_dag_source_ast_with_model(source: source, lm: dag_language_model_wave1_modeled())
+  parse_dag_source_ast_with_model(
+    source: source,
+    compilation_unit: source_authority_port,
+    lm: dag_language_model_wave1_modeled()
+  )
 }
 
 
@@ -154,9 +164,17 @@ fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: DagLanguageModel) -> O
 }
 
 
-fn semantic_ir_from_source_with_model(source: DagSource, lm: DagLanguageModel) -> Outcome<DagSemanticIr> {
+fn semantic_ir_from_source_with_model(
+  source: DagSource,
+  compilation_unit: Symbol,
+  lm: DagLanguageModel
+) -> Outcome<DagSemanticIr> {
   bind_outcome(
-    o: parse_dag_source_ast_with_model(source: source, lm: lm),
+    o: parse_dag_source_ast_with_model(
+      source: source,
+      compilation_unit: compilation_unit,
+      lm: lm
+    ),
     f: fn(ast) {
       semantic_ir_from_ast_with_model(ast: ast, lm: lm)
     }
@@ -165,7 +183,11 @@ fn semantic_ir_from_source_with_model(source: DagSource, lm: DagLanguageModel) -
 
 
 fn semantic_ir_from_source(source: DagSource) -> Outcome<DagSemanticIr> {
-  semantic_ir_from_source_with_model(source: source, lm: dag_language_model_wave1_modeled())
+  semantic_ir_from_source_with_model(
+    source: source,
+    compilation_unit: source_authority_port,
+    lm: dag_language_model_wave1_modeled()
+  )
 }
 
 
@@ -176,7 +198,11 @@ fn source_ir_node_artifact_provenance_from_model(
   match source_read.artifact.kind {
     SourceFile =>
       bind_outcome(
-        o: semantic_ir_from_source_with_model(source: source_read.source, lm: lm),
+        o: semantic_ir_from_source_with_model(
+          source: source_read.source,
+          compilation_unit: source_read.compilation_unit,
+          lm: lm
+        ),
         f: fn(ir) {
           outcome_accepted(
             value: NodeArtifactProvenance {
@@ -345,7 +371,11 @@ fn source_authority_round_trip_with_model(
   lm: DagLanguageModel
 ) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   bind_outcome(
-    o: parse_dag_source_ast_with_model(source: source, lm: lm),
+    o: parse_dag_source_ast_with_model(
+      source: source,
+      compilation_unit: source_authority_port,
+      lm: lm
+    ),
     f: fn(original_ast) {
       bind_outcome(
         o: semantic_ir_from_ast_with_model(ast: original_ast, lm: lm),
@@ -363,7 +393,11 @@ fn source_authority_round_trip_with_model(
                 ),
                 f: fn(canonical_source_again) {
                   bind_outcome(
-                    o: parse_dag_source_ast_with_model(source: canonical_source, lm: lm),
+                    o: parse_dag_source_ast_with_model(
+                      source: canonical_source,
+                      compilation_unit: source_authority_port,
+                      lm: lm
+                    ),
                     f: fn(reparsed_ast) {
                       bind_outcome(
                         o: semantic_ir_from_ast_with_model(ast: reparsed_ast, lm: lm),

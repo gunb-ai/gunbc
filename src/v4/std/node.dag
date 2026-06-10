@@ -170,6 +170,21 @@ fn node_span_same_file(left: NodeSpan, right: NodeSpan) -> Bool {
   )
 }
 
+// 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): compilation-unit file equality query.
+fn node_span_file_eq(span: NodeSpan, file: Symbol) -> Bool {
+  fold_node_span_coproduct(
+    span: span,
+    algebra: NodeSpanFold {
+      on_unanchored: fn() {
+        false
+      },
+      on_anchored: fn(s) {
+        s.file == file
+      }
+    }
+  )
+}
+
 // 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): canonical NodeSpan coproduct query surface.
 fn node_span_is_anchored(span: NodeSpan) -> Bool {
   fold_node_span_coproduct(

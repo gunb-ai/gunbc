@@ -23,7 +23,7 @@ import v4.std.artifact { Artifact, SourceFile }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty, count_equal, length }
-import v4.std.node { Anchored, Node, Symbol, Unanchored }
+import v4.std.node { Anchored, Node, Symbol, Unanchored, node_span_file_eq }
 import v4.std.provenance { node_has_anchored_span, node_span_byte_extent }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
@@ -46,6 +46,7 @@ import v4.std.verification {
 }
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.dag"
 data edit_locus_path_source_producer_fixture: RepoPath = "src/v4/test/claim/lens_affected_set/source_producer_fixture.dag"
+data edit_locus_source_producer_fixture_compilation_unit: Symbol = ^edit_locus_source_producer_fixture_compilation_unit
 data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
 data edit_locus_source_producer_fixture_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
@@ -59,12 +60,14 @@ data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
 
 data edit_locus_source_producer_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_fixture_source,
-  artifact: edit_locus_source_producer_fixture_artifact
+  artifact: edit_locus_source_producer_fixture_artifact,
+  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
 }
 
 data edit_locus_source_producer_malformed_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_malformed_source,
-  artifact: edit_locus_source_producer_fixture_artifact
+  artifact: edit_locus_source_producer_fixture_artifact,
+  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
 }
 
 data edit_locus_source_producer_git_diff: GitDiffNameOnly = GitDiffNameOnly {
@@ -152,6 +155,10 @@ fn edit_locus_source_provenance_producer_holds() -> Bool {
       (provenance.artifact.file_path == edit_locus_path_source_producer_fixture)
         && node_has_anchored_span(node: provenance.node)
         && node_span_byte_extent(span: provenance.node.span)
+        && node_span_file_eq(
+          span: provenance.node.span,
+          file: edit_locus_source_producer_fixture_compilation_unit
+        )
     Rejected { diagnostics: _ } => false
   }
 }
