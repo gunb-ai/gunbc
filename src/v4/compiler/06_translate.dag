@@ -73,6 +73,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
+  arrow_body_edge,
   fold_node,
   node_rebuild,
   well_formed,
@@ -271,10 +272,10 @@ type TargetBundleChildLookup
   | BundleChildFound { value: Node }
   | BundleChildDuplicate
   | BundleChildInvalidEdge
-type BodiedScaffoldRowLookup
-  = BodiedScaffoldRowLookupMissing
-  | BodiedScaffoldRowLookupFound { row: Node }
-  | BodiedScaffoldRowLookupAmbiguous
+type BodiedArrowGrammarRowLookup
+  = BodiedArrowGrammarRowLookupMissing
+  | BodiedArrowGrammarRowLookupFound { row: Node }
+  | BodiedArrowGrammarRowLookupAmbiguous
 data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
 data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
 data translate_sg_rc_bundle_partial: Symbol = translate_sg_rc_bundle_partial
@@ -585,50 +586,98 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
   }
 }
-fn grammar_relation_row_with_unique_bodied_scaffold(rules: Node) -> Outcome<Node> {
-  match rules.kind {
-    TypeNode { connective: Conj } =>
-      match fold(
-        rules.children,
-        init: BodiedScaffoldRowLookupMissing,
-        f: fn(acc, e) {
-          match acc {
-            BodiedScaffoldRowLookupAmbiguous => acc
-            BodiedScaffoldRowLookupMissing =>
-              match e.label {
-                Named { name: _ } =>
-                  match bodied_arrow_scaffold_from_grammar_relation_row(row: e.target) {
-                    Accepted { value: _, diagnostics: _ } =>
-                      BodiedScaffoldRowLookupFound { row: e.target }
-                    Rejected { diagnostics: _ } => acc
-                  }
-                Positional => acc
-              }
-            BodiedScaffoldRowLookupFound { row: _ } =>
-              match e.label {
-                Named { name: _ } =>
-                  match bodied_arrow_scaffold_from_grammar_relation_row(row: e.target) {
-                    Accepted { value: _, diagnostics: _ } =>
-                      BodiedScaffoldRowLookupAmbiguous
-                    Rejected { diagnostics: _ } => acc
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        BodiedScaffoldRowLookupFound { row: row } => outcome_accepted(row)
-        BodiedScaffoldRowLookupMissing =>
-          outcome_rejected(
-            translate_grammar_relation_row_not_found_diagnostic(emitted: rules)
+fn arrow_positional_signatures_equal(left: Node, right: Node) -> Bool {
+  match left.kind {
+    TypeNode { connective: Arrow } =>
+      match right.kind {
+        TypeNode { connective: Arrow } =>
+          zip_eq(
+            a: node_positional_child_targets(node: left),
+            b: node_positional_child_targets(node: right),
+            eq: fn(l, r) { l == r }
           )
-        BodiedScaffoldRowLookupAmbiguous =>
-          outcome_rejected(
-            translate_grammar_relation_bodied_scaffold_row_ambiguous_diagnostic(rules: rules)
-          )
+        _ => false
       }
-    _ =>
-      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
+    _ => false
+  }
+}
+fn bodied_grammar_relation_row_matches_emitted_signature(
+  row: Node,
+  emitted: Node
+) -> Bool {
+  match grammar_relation_row_emitted(row: row) {
+    Accepted { value: row_emitted, diagnostics: _ } =>
+      arrow_has_transform_body(arrow: row_emitted)
+      && arrow_has_transform_body(arrow: emitted)
+      && arrow_positional_signatures_equal(left: emitted, right: row_emitted)
+    Rejected { diagnostics: _ } => false
+  }
+}
+fn grammar_relation_row_for_bodied_arrow_signature_match(
+  rules: Node,
+  emitted: Node
+) -> Outcome<Node> {
+  if arrow_has_transform_body(arrow: emitted) {
+    match rules.kind {
+      TypeNode { connective: Conj } =>
+        match fold(
+          rules.children,
+          init: BodiedArrowGrammarRowLookupMissing,
+          f: fn(acc, e) {
+            match acc {
+              BodiedArrowGrammarRowLookupAmbiguous => acc
+              BodiedArrowGrammarRowLookupMissing =>
+                match e.label {
+                  Named { name: _ } =>
+                    match bodied_arrow_scaffold_from_grammar_relation_row(row: e.target) {
+                      Accepted { value: _, diagnostics: _ } =>
+                        if bodied_grammar_relation_row_matches_emitted_signature(
+                          row: e.target,
+                          emitted: emitted
+                        ) {
+                          BodiedArrowGrammarRowLookupFound { row: e.target }
+                        } else {
+                          acc
+                        }
+                      Rejected { diagnostics: _ } => acc
+                    }
+                  Positional => acc
+                }
+              BodiedArrowGrammarRowLookupFound { row: _ } =>
+                match e.label {
+                  Named { name: _ } =>
+                    match bodied_arrow_scaffold_from_grammar_relation_row(row: e.target) {
+                      Accepted { value: _, diagnostics: _ } =>
+                        if bodied_grammar_relation_row_matches_emitted_signature(
+                          row: e.target,
+                          emitted: emitted
+                        ) {
+                          BodiedArrowGrammarRowLookupAmbiguous
+                        } else {
+                          acc
+                        }
+                      Rejected { diagnostics: _ } => acc
+                    }
+                  Positional => acc
+                }
+            }
+          }
+        ) {
+          BodiedArrowGrammarRowLookupFound { row: row } => outcome_accepted(row)
+          BodiedArrowGrammarRowLookupMissing =>
+            outcome_rejected(
+              translate_grammar_relation_row_not_found_diagnostic(emitted: emitted)
+            )
+          BodiedArrowGrammarRowLookupAmbiguous =>
+            outcome_rejected(
+              translate_grammar_relation_bodied_scaffold_row_ambiguous_diagnostic(rules: rules)
+            )
+        }
+      _ =>
+        outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
+    }
+  } else {
+    outcome_rejected(translate_grammar_relation_row_not_found_diagnostic(emitted: emitted))
   }
 }
 fn grammar_relation_row_for_bodied_arrow_serialize(
@@ -644,7 +693,65 @@ fn grammar_relation_row_for_bodied_arrow_serialize(
         }
       )
     Rejected { diagnostics: _ } =>
-      grammar_relation_row_with_unique_bodied_scaffold(rules: rules)
+      grammar_relation_row_for_bodied_arrow_signature_match(rules: rules, emitted: emitted)
+  }
+}
+fn translate_bodied_arrow_coerce_signature_slots(
+  arrow: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      match fold(
+        arrow.children,
+        init: Accepted { value: Empty, diagnostics: None },
+        f: fn(acc, edge) {
+          match acc {
+            Rejected { diagnostics: r } => acc
+            Accepted { value: edges, diagnostics: d } =>
+              match edge.label {
+                Positional =>
+                  bind_outcome(
+                    o: translate_mvp1_coerce_from_grounding_or_evidence(
+                      node: edge.target,
+                      tree: tree,
+                      target: target
+                    ),
+                    f: fn(coerced_slot) {
+                      outcome_accepted(
+                        list_snoc_item(
+                          xs: edges,
+                          item: Edge {
+                            label: Positional,
+                            target: coerced_slot
+                          }
+                        )
+                      )
+                    }
+                  )
+                Named { name: n } =>
+                  if n == arrow_body_edge {
+                    outcome_accepted(
+                      list_snoc_item(xs: edges, item: edge)
+                    )
+                  } else {
+                    outcome_rejected(
+                      translate_grammar_relation_row_not_found_diagnostic(emitted: arrow)
+                    )
+                  }
+              }
+          }
+        }
+      ) {
+        Accepted { value: children, diagnostics: d } =>
+          outcome_accepted(
+            value: node_rebuild(n: arrow, children: children)
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      outcome_rejected(translate_grammar_relation_row_not_found_diagnostic(emitted: arrow))
   }
 }
 fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
@@ -4534,9 +4641,19 @@ fn translate_type_expression_tree(
     ),
     f: fn(n) {
       if arrow_has_transform_body(arrow: n) {
-        // Bodied Arrow: preserve folded raw Arrow (body edge intact) for value-expression
-        // serialize — SG-2 projection drops the body wire; grammar-row match is N/A here.
-        outcome_accepted(n)
+        // Bodied Arrow: coerce signature slots to target inhabitants; preserve body for
+        // value-expression serialize. Grammar-row match is by exact emitted node or by
+        // positional signature equality against a bodied scaffold row (fail-closed).
+        bind_outcome(
+          o: translate_bodied_arrow_coerce_signature_slots(
+            arrow: n,
+            tree: tree,
+            target: target
+          ),
+          f: fn(coerced_arrow) {
+            outcome_accepted(coerced_arrow)
+          }
+        )
       } else {
         // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
         // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
