@@ -100,8 +100,14 @@ flowchart LR
     d_docs_algebraic_type_spec_md["docs/algebraic-type-spec.md"]
     d_docs_architecture_md["docs/architecture.md"]
     d_docs_coercion_design_md["docs/coercion-design.md"]
+    d_docs_design_bidirectional_coercion_md["docs/design-bidirectional-coercion.md"]
+    d_docs_design_computation_representation_md["docs/design-computation-representation.md"]
+    d_docs_design_map_unification_md["docs/design-map-unification.md"]
+    d_docs_design_node_identity_channels_md["docs/design-node-identity-channels.md"]
+    d_docs_design_provenance_span_md["docs/design-provenance-span.md"]
     d_docs_design_pure_bootstrap_zero_md["docs/design-pure-bootstrap-zero.md"]
     d_docs_design_pure_bootstrap_md["docs/design-pure-bootstrap.md"]
+    d_docs_design_self_host_fixed_point_md["docs/design-self-host-fixed-point.md"]
     d_docs_error_examples_md["docs/error-examples.md"]
     d_docs_single_emitter_design_md["docs/single-emitter-design.md"]
     d_docs_v4_compiler_migration_md["docs/v4-compiler-migration.md"]
@@ -181,9 +187,14 @@ flowchart LR
   d_docs_coercion_design_md --> d_MODELING_md
   d_docs_coercion_design_md --> d_ROADMAP_md
   d_docs_coercion_design_md --> d_THESIS_md
+  d_docs_design_computation_representation_md --> d_docs_design_node_identity_channels_md
+  d_docs_design_map_unification_md --> d_docs_design_self_host_fixed_point_md
+  d_docs_design_provenance_span_md --> d_docs_design_node_identity_channels_md
   d_docs_design_pure_bootstrap_zero_md --> d_docs_design_pure_bootstrap_md
   d_docs_design_pure_bootstrap_zero_md --> d_docs_thesis_self_inspection_md
   d_docs_design_pure_bootstrap_md --> d_docs_design_pure_bootstrap_zero_md
+  d_docs_design_self_host_fixed_point_md --> d_docs_design_bidirectional_coercion_md
+  d_docs_design_self_host_fixed_point_md --> d_docs_design_pure_bootstrap_zero_md
   d_docs_error_examples_md --> d_ROADMAP_md
   d_docs_error_examples_md --> d_THESIS_md
   d_docs_perf_clone_elimination_md --> d_INVARIANTS_md

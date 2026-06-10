@@ -34,9 +34,18 @@ import v4.extdeps.languages.rust {
   rust_sg2_rc_foobar_xy_emitted,
   rust_sg2_type_expr_projection_probe_target_model,
   rust_sg2_type_expr_target_model,
-  rust_type_expression_projection
+  rust_type_expression_projection,
+  rust_type_expression_projection_bundle_node
 }
-import v4.std.target_model { target_type_expr_emitted_wire_decode }
+import v4.std.target_model {
+  TargetFunctionTypeShape,
+  TargetModel,
+  TargetTypeExpressionProjection,
+  target_type_expr_emitted_wire_decode,
+  type_expr_projection_bundle_shape_for_connective,
+  type_expr_projection_row_shape_witness_gate
+}
+import v4.std.node { Arrow }
 import v4.test.claim.manual.mvp1_rust_add_translate {
   mvp1_rust_inferred_tree,
   mvp1_rust_target_model
@@ -424,5 +433,53 @@ fn witness_sg2_projection_falsification_holds() -> Bool {
     && !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_arrow_one_positional_emitted())
     && !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_missing_surface_emitted())
     && !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_positional_emitted())
+}
+
+data sg2_wrong_arrow_token: Symbol = sg2_wrong_arrow_token
+
+fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
+  let row = rust_type_expression_projection()
+  TargetTypeExpressionProjection {
+    atom_form: row.atom_form,
+    conj_form: row.conj_form,
+    disj_form: row.disj_form,
+    arrow_form: TargetFunctionTypeShape {
+      surface: row.arrow_form.surface,
+      open: row.arrow_form.open,
+      close: row.arrow_form.close,
+      arrow: sg2_wrong_arrow_token,
+      param_ident_token: row.arrow_form.param_ident_token,
+      param_type_separator: row.arrow_form.param_type_separator,
+      param_list_separator: row.arrow_form.param_list_separator
+    },
+    cardinality_form: row.cardinality_form,
+    instantiation_form: row.instantiation_form
+  }
+}
+
+data claim_sg2_fold_row_delimiter_discriminates: TestClaim = CompilesClaim {
+  label: "manual/sg2: row witness gate rejects wrong arrow delimiter row (fold discrimination)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(ok: witness_sg2_fold_row_delimiter_discriminates_holds()),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
+  match type_expr_projection_bundle_shape_for_connective(
+    bundle: rust_type_expression_projection_bundle_node(),
+    connective: Arrow
+  ) {
+    Accepted { value: good_shape, diagnostics: _ } =>
+      match type_expr_projection_row_shape_witness_gate(
+        source_facts: good_shape,
+        projection: sg2_wrong_arrow_projection(),
+        connective: Arrow
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
