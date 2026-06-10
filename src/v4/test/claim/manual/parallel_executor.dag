@@ -18,7 +18,8 @@ import v4.workflow.executor {
   executor_batches_preserve_frontiers,
   executor_job_for_node,
   parallel_executor_plan_from_dependencies,
-  parallel_executor_plan_from_layers
+  parallel_executor_plan_from_layers,
+  parallel_executor_step_plan_from_dependencies
 }
 import v4.workflow.scheduler {
   SchedulerNoRunnableFrontier
@@ -106,6 +107,27 @@ fn parallel_executor_contains_edges_do_not_serialize() -> Bool {
   }
 }
 
+fn parallel_executor_step_plan_exposes_runnable_batch_once() -> Bool {
+  match parallel_executor_step_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: _, scheduled: _ } => false
+    ExecutorRunRunnable {
+      batch: batch,
+      batches: batches,
+      scheduled: scheduled,
+      remaining: remaining
+    } =>
+      batch == parallel_executor_expected_first_batch
+        && batches == [parallel_executor_expected_first_batch]
+        && scheduled == [scheduler_build_node, scheduler_test_node]
+        && remaining == [scheduler_emit_node]
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
 fn parallel_executor_blocks_on_missing_prerequisite() -> Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: [scheduler_build_node],
@@ -150,6 +172,8 @@ data parallel_executor_dependent_waits_for_prior_batch: Bool = parallel_executor
 
 data parallel_executor_contains_noise_non_blocking: Bool = parallel_executor_contains_edges_do_not_serialize()
 
+data parallel_executor_step_runnable_batch_once: Bool = parallel_executor_step_plan_exposes_runnable_batch_once()
+
 data parallel_executor_missing_prerequisite_blocks: Bool = parallel_executor_blocks_on_missing_prerequisite()
 
 data parallel_executor_layer_projection_reuses_frontiers: Bool = parallel_executor_layers_reuse_readiness_frontiers()
@@ -159,6 +183,7 @@ fn parallel_executor_claims_hold() -> Bool {
     && parallel_executor_scheduled_nodes_match_scheduler
     && parallel_executor_dependent_waits_for_prior_batch
     && parallel_executor_contains_noise_non_blocking
+    && parallel_executor_step_runnable_batch_once
     && parallel_executor_missing_prerequisite_blocks
     && parallel_executor_layer_projection_reuses_frontiers
 }

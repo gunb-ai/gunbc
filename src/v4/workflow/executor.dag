@@ -16,10 +16,12 @@ import v4.std.node { Node }
 import v4.workflow.scheduler {
   RunnableFrontier,
   SchedulerBlockedEvidence,
+  SchedulerPlan,
   SchedulerPlanBlocked,
   SchedulerPlanComplete,
   SchedulerPlanRunnable,
-  scheduler_plan_from_dependencies
+  scheduler_plan_from_dependencies,
+  scheduler_step_plan_from_dependencies
 }
 
 type ExecutorJob {
@@ -91,11 +93,30 @@ fn parallel_executor_plan_from_dependencies(
   dependencies: List<DependencyView>,
   scheduled: List<Node>
 ) -> ExecutorRunPlan {
-  let scheduler_plan = scheduler_plan_from_dependencies(
-    nodes: nodes,
-    dependencies: dependencies,
-    scheduled: scheduled
+  executor_plan_from_scheduler_plan(
+    scheduler_plan: scheduler_plan_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      scheduled: scheduled
+    )
   )
+}
+
+fn parallel_executor_step_plan_from_dependencies(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  scheduled: List<Node>
+) -> ExecutorRunPlan {
+  executor_plan_from_scheduler_plan(
+    scheduler_plan: scheduler_step_plan_from_dependencies(
+      nodes: nodes,
+      dependencies: dependencies,
+      scheduled: scheduled
+    )
+  )
+}
+
+fn executor_plan_from_scheduler_plan(scheduler_plan: SchedulerPlan) -> ExecutorRunPlan {
   match scheduler_plan {
     SchedulerPlanComplete { layers: layers, scheduled: scheduled_nodes } => ExecutorRunComplete {
       batches: executor_batches_for_layers(layers: layers),
@@ -103,10 +124,7 @@ fn parallel_executor_plan_from_dependencies(
     }
     SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: layers } => ExecutorRunRunnable {
       batch: executor_batch_for_frontier(frontier: frontier),
-      batches: executor_append_batch(
-        batches: executor_batches_for_layers(layers: layers),
-        batch: executor_batch_for_frontier(frontier: frontier)
-      ),
+      batches: executor_batches_for_layers(layers: layers),
       scheduled: scheduled_nodes,
       remaining: remaining
     }
@@ -118,7 +136,6 @@ fn parallel_executor_plan_from_dependencies(
     }
   }
 }
-
 fn parallel_executor_plan_from_layers(layers: List<ReadinessLayer>) -> ExecutorRunPlan {
   let batches = executor_batches_for_layers(layers: layers)
   ExecutorRunComplete {
