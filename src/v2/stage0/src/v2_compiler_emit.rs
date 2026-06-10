@@ -3829,10 +3829,10 @@ pub fn apply_bridge_method_overrides(
     overrides: Rc<HashMap<String, String>>,
 ) -> String {
     match v2_rt::lookup(&overrides, name.clone()) {
-        v2_rt::Witness::Holds {
+        Holds {
             value: replacement, ..
         } => replacement.clone(),
-        v2_rt::Witness::Violates { diagnostic: _, .. } => name.clone(),
+        Violates { diagnostic: _, .. } => name.clone(),
     }
 }
 

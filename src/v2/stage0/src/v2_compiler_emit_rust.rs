@@ -5773,12 +5773,15 @@ pub fn emit_prelude() -> String {
         let use_line = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
-                    "use std::collections::BTreeSet;\n".to_string(),
-                    "use std::collections::HashMap;\n".to_string(),
+                    v2_rt::concat(
+                        "use std::collections::BTreeSet;\n".to_string(),
+                        "use std::collections::HashMap;\n".to_string(),
+                    ),
+                    "use std::rc::Rc;\n".to_string(),
                 ),
-                "use std::rc::Rc;\n".to_string(),
+                "use crate::v2_rt;\n".to_string(),
             ),
-            "use crate::v2_rt;".to_string(),
+            "use crate::v2_rt::Witness::{Holds, Violates};".to_string(),
         );
         let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
         v2_rt::concat(v2_rt::concat(use_line, "\n".to_string()), wrapper_use)

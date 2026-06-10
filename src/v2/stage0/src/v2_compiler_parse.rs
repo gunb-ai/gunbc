@@ -1637,8 +1637,8 @@ pub fn expect_name(tokens: Rc<Vec<Rc<Token>>>) -> Rc<NameResult> {
 pub fn is_name_keyword(token: Rc<Token>) -> bool {
     if is_keyword_shape(token.shape.clone()) {
         match v2_rt::lookup(&dag_non_name_keywords(), token.text.clone()) {
-            v2_rt::Witness::Holds { value: _, .. } => false,
-            v2_rt::Witness::Violates { diagnostic: _, .. } => true,
+            Holds { value: _, .. } => false,
+            Violates { diagnostic: _, .. } => true,
         }
     } else {
         false
@@ -10808,7 +10808,7 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
                 let lit_val =
                     v2_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
                 match lit_val {
-                    v2_rt::Witness::Holds { value: lv, .. } => Rc::new(ExprResult {
+                    Holds { value: lv, .. } => Rc::new(ExprResult {
                         expr: make_expr_node(
                             Rc::new(ExprData::ExprLiteral { value: lv.clone() }),
                             Rc::new(vec![]),
@@ -10826,7 +10826,7 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
                         ctx: ctx.clone(),
                         err: None,
                     }),
-                    v2_rt::Witness::Violates { diagnostic: _, .. } => {
+                    Violates { diagnostic: _, .. } => {
                         if (kw_text.clone().as_str() == "match".to_string().as_str()) {
                             parse_match(tokens.clone(), ctx.clone())
                         } else {
@@ -12625,7 +12625,7 @@ pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Pa
                 let kw_text = tok.clone().unwrap().text.clone();
                 let lit_val = v2_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text);
                 match lit_val {
-                    v2_rt::Witness::Holds { value: lv, .. } => Rc::new(PatternResult {
+                    Holds { value: lv, .. } => Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::LitPattern { value: lv.clone() }),
                         tokens: Rc::new(
                             tokens
@@ -12638,7 +12638,7 @@ pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Pa
                         ctx: ctx.clone(),
                         err: None,
                     }),
-                    v2_rt::Witness::Violates { diagnostic: _, .. } => Rc::new(PatternResult {
+                    Violates { diagnostic: _, .. } => Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::Wildcard),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),

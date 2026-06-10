@@ -2459,7 +2459,8 @@ fn emit_prelude() -> String {
     "use std::collections::BTreeSet;\n",
     "use std::collections::HashMap;\n",
     "use std::rc::Rc;\n",
-    "use crate::v2_rt;")
+    "use crate::v2_rt;\n",
+    "use crate::v2_rt::Witness::\{Holds, Violates\};")
   let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
   concat(use_line, "\n", wrapper_use)
 }
