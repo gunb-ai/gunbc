@@ -774,9 +774,13 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
         Some { value: left_binding_id } =>
           match right.binding_id {
             Some { value: right_binding_id } => left_binding_id == right_binding_id
+            None => false
+          }
+        None =>
+          match right.binding_id {
+            Some { value: _ } => false
             None => authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right)
           }
-        None => authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right)
       }
     }
   }
