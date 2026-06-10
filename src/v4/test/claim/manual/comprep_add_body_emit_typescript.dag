@@ -67,6 +67,7 @@ import v4.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
+  bind_outcome,
   diagnostics_singleton,
   node_locus
 }
@@ -467,15 +468,12 @@ fn comprep_ts_producer_inferred_tree() -> Outcome<InferredTree> {
 }
 
 fn comprep_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<TargetSource> {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: d } =>
-      match emit(tree: tree, target: target) {
-        Accepted { value: source, diagnostics: ed } =>
-          Accepted { value: source, diagnostics: d }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+  bind_outcome(
+    o: comprep_ts_producer_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
 }
 
 data comprep_ts_swapped_bodied_inferred_tree: InferredTree = InferredTree {
@@ -485,20 +483,6 @@ data comprep_ts_swapped_bodied_inferred_tree: InferredTree = InferredTree {
 
 // E-10 emit-only green: producer-rooted bodied arrow renders the fidelity TS source string.
 // Not an execution consumer — no Node/tsc run; wrong emitted spelling fails this witness.
-fn comprep_ts_debug_emit_rejects() -> Bool {
-  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_source_eq() -> Bool {
-  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
-    Accepted { value: source, diagnostics: _ } => source == ts_mvp1_source_text
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn comprep_ts_bodied_emit_add_fn_accepts_holds() -> Bool {
   match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
     Accepted { value: source, diagnostics: d } =>

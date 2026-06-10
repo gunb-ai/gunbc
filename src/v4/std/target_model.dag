@@ -1369,41 +1369,90 @@ fn target_value_expr_operand_wire_binding(operand_wire: Node) -> Outcome<Symbol>
   )
 }
 
+fn target_value_expr_primitive_apply_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      if name_occurrences(
+        name: target_value_expr_field_operation,
+        children: wire.children
+      ) > 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        match fold(
+          wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == target_value_expr_field_operation
+                  || n == target_value_expr_field_operand
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(
+              target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
 fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
-  match fold(
-    wire.children,
-    init: Accepted { value: Empty, diagnostics: None },
-    f: fn(acc, edge) {
-      match acc {
-        Rejected { diagnostics: r } => acc
-        Accepted { value: bindings, diagnostics: d } =>
-          match edge.label {
-            Named { name: n } =>
-              if n == target_value_expr_field_operation {
-                acc
-              } else if n == target_value_expr_field_operand {
-                bind_outcome(
-                  o: target_value_expr_operand_wire_binding(operand_wire: edge.target),
-                  f: fn(binding) {
-                    outcome_accepted(
-                      list_snoc_item(xs: bindings, item: binding)
+  bind_outcome(
+    o: target_value_expr_primitive_apply_wire_schema_valid(wire: wire),
+    f: fn(_) {
+      match fold(
+        wire.children,
+        init: Accepted { value: Empty, diagnostics: None },
+        f: fn(acc, edge) {
+          match acc {
+            Rejected { diagnostics: r } => acc
+            Accepted { value: bindings, diagnostics: d } =>
+              match edge.label {
+                Named { name: n } =>
+                  if n == target_value_expr_field_operation {
+                    acc
+                  } else if n == target_value_expr_field_operand {
+                    bind_outcome(
+                      o: target_value_expr_operand_wire_binding(operand_wire: edge.target),
+                      f: fn(binding) {
+                        outcome_accepted(
+                          list_snoc_item(xs: bindings, item: binding)
+                        )
+                      }
+                    )
+                  } else {
+                    outcome_rejected(
+                      target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
                     )
                   }
-                )
-              } else {
-                outcome_rejected(
-                  target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
-                )
+                Positional =>
+                  outcome_rejected(
+                    target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                  )
               }
-            Positional => acc
           }
+        }
+      ) {
+        Accepted { value: bindings, diagnostics: d } =>
+          Accepted { value: bindings, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     }
-  ) {
-    Accepted { value: bindings, diagnostics: d } =>
-      Accepted { value: bindings, diagnostics: d }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+  )
 }
 
 fn target_value_expression_primitive_apply(
