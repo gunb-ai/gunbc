@@ -271,8 +271,8 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
           }
         }
       ),
-      span: Unanchored
-})
+      span: root.span
+    })
   } else {
     outcome_rejected(d: path_ambiguous_diagnostic(at: root))
   }
