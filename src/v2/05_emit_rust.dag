@@ -2784,7 +2784,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   if children |> count == 0 {
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
-    let field_lines = children |> map(child => emit_struct_field_from_child(child: child, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
+    let field_lines = children |> map(child => emit_struct_field_from_child(struct_name: name, child: child, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
     let fields_str = field_lines |> join(separator: "\n")
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
   }
@@ -2815,7 +2815,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, shared_types: Set<St
   }
 }
 
-fn emit_struct_field_from_child(child: Node, generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let rt_child = resolved_type(n: child)
   let authored_child_type = field_node_type_expr(n: child)
   let ty = if generic_param_names |> count > 0 {
@@ -2843,7 +2843,11 @@ fn emit_struct_field_from_child(child: Node, generic_param_names: List<String>, 
   } else {
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
   }
-  let generic_ty = rust_normalize_witness_type_text(rendered: ty)
+  let generic_ty = if struct_name == "PartialFunction" {
+    rust_normalize_witness_type_text(rendered: ty)
+  } else {
+    ty
+  }
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
   } else if rt_child.return_cardinality != CardOptional && set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: generic_ty) {

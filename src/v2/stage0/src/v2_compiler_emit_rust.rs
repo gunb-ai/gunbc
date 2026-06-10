@@ -6362,6 +6362,7 @@ pub fn emit_struct_from_children(
                     let mut __result = Vec::new();
                     for child in children.clone().iter().cloned() {
                         __result.push(emit_struct_field_from_child(
+                            name.clone(),
                             child.clone(),
                             generic_param_names.clone(),
                             recursive_types.clone(),
@@ -6477,6 +6478,7 @@ pub fn render_rust_field_type_with_applied_binding(
 }
 
 pub fn emit_struct_field_from_child(
+    struct_name: String,
     child: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
@@ -6596,7 +6598,11 @@ pub fn emit_struct_field_from_child(
                 }
             }
         };
-        let generic_ty = rust_normalize_witness_type_text(ty);
+        let generic_ty = if (struct_name.as_str() == "PartialFunction".to_string().as_str()) {
+            rust_normalize_witness_type_text(ty)
+        } else {
+            ty
+        };
         let final_ty = if needs_box_wrapping(
             rt_child.clone(),
             recursive_types,
