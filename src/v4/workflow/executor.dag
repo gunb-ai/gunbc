@@ -121,7 +121,7 @@ fn executor_plan_from_scheduler_plan(scheduler_plan: SchedulerPlan) -> ExecutorR
       batches: executor_batches_for_layers(layers: layers),
       scheduled: scheduled_nodes
     }
-    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: layers } => ExecutorRunRunnable {
+    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: _ } => ExecutorRunRunnable {
       batch: executor_batch_for_frontier(frontier: frontier),
       scheduled: scheduled_nodes,
       remaining: remaining
