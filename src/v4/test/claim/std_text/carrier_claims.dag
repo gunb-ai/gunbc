@@ -35,6 +35,12 @@ import v4.std.text {
 }
 
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 // Two distinct Char (= Nat) witnesses; small Peano values so the carriers stay shallow.
 data text_witness_char_a: Char = Succ { prev: Zero }
 data text_witness_char_b: Char = Succ { prev: Succ { prev: Zero } }
@@ -108,5 +114,41 @@ fn text_host_string_field_text_holds() -> Bool {
   ) {
     CharFound { value } => text_char_eq(a: value, b: text_witness_char_b)
     CharAbsent => false
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `text_string_freemonoid_carrier_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_std_text_freemonoid_carrier: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+    function: text_string_freemonoid_carrier_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `text_host_string_roundtrip_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_std_text_roundtrip: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+    function: text_host_string_roundtrip_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `text_host_string_empty_roundtrip_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_std_text_empty_roundtrip: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+    function: text_host_string_empty_roundtrip_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `text_host_string_field_text_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_std_text_field_text: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_text/carrier_claims.dag",
+    function: text_host_string_field_text_holds
   }
 }

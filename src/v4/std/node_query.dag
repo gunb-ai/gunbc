@@ -20,7 +20,21 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.algebra { Empty, list_snoc_item }
-import v4.std.node { Conj, Edge, Named, Node, Positional, Symbol, TypeNode, name_occurrences }
+import v4.std.node {
+  Ambiguous,
+  Arrow,
+  Conj,
+  Absent,
+  Edge,
+  Found,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  arrow_body_target_lookup,
+  name_occurrences
+}
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
 fn node_positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
@@ -84,6 +98,34 @@ fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
     _ =>
       outcome_rejected(d: Diagnostic {
         reason: ^named_child_missing,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+  }
+}
+
+// 🟢 grounded — Arrow.body single-named-edge lookup (E-9); wraps std.node arrow_body_target_lookup with Outcome diagnostics.
+fn find_arrow_body_child(root: Node) -> Outcome<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_body_target_lookup(children: root.children) {
+        Found { target: body } => outcome_accepted(value: body)
+        Absent =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^arrow_body_child_missing,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        Ambiguous =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^arrow_body_child_ambiguous,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+      }
+    _ =>
+      outcome_rejected(d: Diagnostic {
+        reason: ^arrow_body_child_not_arrow,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
       })

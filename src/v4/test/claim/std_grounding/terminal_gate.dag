@@ -35,6 +35,12 @@ import v4.std.grounding {
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
 
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 fn terminal_gate_empty_bytes() -> List<Byte> {
   []
 }
@@ -66,4 +72,13 @@ fn witness_grounding_terminal_gate_runtime_authoritative_discriminates() -> Bool
     && (host_verdict_surface_runtime_authoritative(
       receipt: terminal_gate_receipt(status: AuthoringTimeVerdictSurface)
     ) == false)
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_grounding_terminal_gate_runtime_authoritative_discriminates` so glob discovery finds the witness without the central roster.
+data unified_claim_grounding_terminal_gate: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/terminal_gate.dag",
+    function: witness_grounding_terminal_gate_runtime_authoritative_discriminates
+  }
 }
