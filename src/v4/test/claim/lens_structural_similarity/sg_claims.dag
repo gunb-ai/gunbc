@@ -14,6 +14,7 @@ import v4.lens.structural_similarity {
   structural_similarity_fact
 }
 import v4.std.logic { Bool }
+import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
 
 // 🟡 gated — predicate-dissolution interim — dissolve-on-arrival: replace with
@@ -31,4 +32,14 @@ fn lens_structural_similarity_unrealized_scaffold_holds() -> Bool {
   ss_verdict_is_unrealized(
     verdict: structural_similarity_fact().verdict
   )
+}
+
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_structural_similarity_unrealized_scaffold_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_structural_similarity_unrealized: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_structural_similarity/sg_claims.dag",
+    function: lens_structural_similarity_unrealized_scaffold_holds
+  }
 }

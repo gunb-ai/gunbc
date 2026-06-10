@@ -15,6 +15,12 @@ import v4.lens.identical_variant_payload {
 import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)
 
 
@@ -30,4 +36,13 @@ fn lens_identical_variant_payload_unrealized_scaffold_holds() -> Bool {
   ivp_verdict_is_unrealized(
     verdict: identical_variant_payload_fact_for_type(type_node: ivp_witness_type_node).verdict
   )
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_identical_variant_payload_unrealized_scaffold_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_identical_variant_unrealized: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_identical_variant_payload/sg_claims.dag",
+    function: lens_identical_variant_payload_unrealized_scaffold_holds
+  }
 }

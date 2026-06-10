@@ -58,7 +58,10 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier1,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 data sg_rc_fail_text: String = ""
 data sg_rc_expected_rc_diagnostics: String = "Rc<Diagnostics>"
@@ -518,4 +521,22 @@ data claim_sg_rc_ctor_spellings: TestClaim = EqualsClaim {
   lhs: sg_rc_claim_input(ok: sg_rc_ctor_spellings_in_binding_map()),
   rhs: sg_rc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `sg_rc_f6_round_trip_owned` so glob discovery finds the witness without the central roster.
+data unified_claim_sg_rc_f6_owned: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
+    function: sg_rc_f6_round_trip_owned
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `sg_rc_value_rc_wrap_tagged` so glob discovery finds the witness without the central roster.
+data unified_claim_sg_rc_value_rc_wrap_tagged: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/sg_rc_layering.dag",
+    function: sg_rc_value_rc_wrap_tagged
+  }
 }

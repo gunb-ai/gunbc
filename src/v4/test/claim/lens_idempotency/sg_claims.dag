@@ -12,6 +12,21 @@ import v4.test.claim.lens_idempotency.write_effect {
 }
 
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 fn lens_idempotency_write_effect_holds() -> Bool {
   idempotency_write_effect_claim_holds()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_idempotency_write_effect_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_idempotency_write_effect: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_idempotency/sg_claims.dag",
+    function: lens_idempotency_write_effect_holds
+  }
 }
