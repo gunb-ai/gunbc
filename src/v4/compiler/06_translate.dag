@@ -4377,7 +4377,13 @@ fn translate_mvp1_coerce_from_grounding_or_evidence(
             translate_type_fold_init(node: node)
           }
         Rejected { diagnostics: _ } =>
-          // E-9: no grounding witness — same explicit structural carrier (not silent coercion).
+          // 🟡 gated — feature:translate-mvp1-e9-structural-carry-no-grounding — consumer:
+          // translate_mvp1_coerce_from_grounding_or_evidence — bind: PR #4627 T6 bodied-arrow
+          // skeleton — owner: T6 value-expression skeleton — lane: compiler 06_translate —
+          // dissolve-on-arrival: body-scope operator/param refs ground via infer witness or
+          // bounded E-9 carrier with explicit dissolution trigger; forbidden: unconditional
+          // translate_type_fold_init when coerce_grounded_node and canonical_grounding_for_node
+          // both reject outside Arrow.body internal fold.
           translate_type_fold_init(node: node)
       }
   }
@@ -4450,12 +4456,9 @@ fn translate_type_expression_tree(
     ),
     f: fn(n) {
       if arrow_has_transform_body(arrow: n) {
-        // Bodied Arrow: grammar-row validation first; preserve folded raw Arrow (body edge
-        // intact) for value-expression serialize — SG-2 projection drops the body wire.
-        match translate_grammar_relation_row_match(target: target, emitted: n) {
-          Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
-          Rejected { diagnostics: _ } => outcome_accepted(n)
-        }
+        // Bodied Arrow: preserve folded raw Arrow (body edge intact) for value-expression
+        // serialize — SG-2 projection drops the body wire; grammar-row match is N/A here.
+        outcome_accepted(n)
       } else {
         // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
         // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
