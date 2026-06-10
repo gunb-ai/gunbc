@@ -1,0 +1,79 @@
+// src/v4/test/claim/provenance/occurrence_id_model.dag
+// Phase 0 model smoke — OccurrenceId allocator + SpanIndex id→OriginEvent substrate.
+// Anchor: design-provenance-span.md §4.5; design-node-identity-channels.md.
+
+module v4.test.claim.provenance.occurrence_id_model
+
+import v4.std.diagnostic { ByteRange, Textual, WholeFile }
+import v4.std.node { Symbol }
+import v4.std.occurrence_id {
+  alloc_occurrence_id,
+  occurrence_id_allocator_initial,
+  occurrence_id_eq
+}
+import v4.std.provenance {
+  FromSource,
+  origin_event_from_source,
+  span_index_empty,
+  span_index_lookup,
+  span_index_record
+}
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+import v4.std.witness { Holds, Violates }
+
+data occurrence_model_file: Symbol = ^occurrence_model_file
+
+fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
+  let alloc0 = occurrence_id_allocator_initial()
+  let (id0, alloc1) = alloc_occurrence_id(alloc: alloc0)
+  let (id1, alloc2) = alloc_occurrence_id(alloc: alloc1)
+  let (id2, _) = alloc_occurrence_id(alloc: alloc2)
+  !occurrence_id_eq(left: id0, right: id1)
+    && !occurrence_id_eq(left: id1, right: id2)
+    && !occurrence_id_eq(left: id0, right: id2)
+}
+
+fn span_index_from_source_round_trip_holds() -> Bool {
+  let alloc0 = occurrence_id_allocator_initial()
+  let (id, _) = alloc_occurrence_id(alloc: alloc0)
+  let locus = Textual {
+    file: occurrence_model_file,
+    extent: ByteRange { start: 0, end: 12 }
+  }
+  let event = origin_event_from_source(locus: locus)
+  let index = span_index_record(
+    index: span_index_empty(),
+    id: id,
+    event: event
+  )
+  match span_index_lookup(index: index, id: id) {
+    Holds { value: got } =>
+      match got {
+        FromSource { locus: got_locus } =>
+          (got_locus.file == occurrence_model_file)
+            && match got_locus.extent {
+              ByteRange { start: s, end: e } => (s == 0) && (e == 12)
+              WholeFile => false
+            }
+        DerivedBy { producer: _, from: _ } => false
+        GeneratedBy { generator: _, from: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn witness_occurrence_id_model_substrate_holds() -> Bool {
+  occurrence_id_allocator_mints_sequential_distinct_ids()
+    && span_index_from_source_round_trip_holds()
+}
+
+data unified_claim_occurrence_id_model: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/provenance/occurrence_id_model.dag",
+    function: witness_occurrence_id_model_substrate_holds
+  }
+}
