@@ -592,10 +592,7 @@ pub fn is_rust_value_type(
 ) -> bool {
     {
         let normed = normalize_access_type_node(n);
-        match is_copy(
-            RenderTarget::Rust,
-            authored_name_at(source_indices, normed),
-        ) {
+        match is_copy(RenderTarget::Rust, authored_name_at(source_indices, normed)) {
             Some(v) => v.clone(),
             None => false,
         }
@@ -608,10 +605,7 @@ pub fn is_rust_string_like(
 ) -> bool {
     {
         let normed = normalize_access_type_node(n);
-        is_string_like(
-            RenderTarget::Rust,
-            authored_name_at(source_indices, normed),
-        )
+        is_string_like(RenderTarget::Rust, authored_name_at(source_indices, normed))
     }
 }
 
@@ -9980,10 +9974,7 @@ pub fn rc_pattern_preludes(
                                                         ),
                                                         " = ".to_string(),
                                                     ),
-                                                    emit_ident(
-                                                        fb_name.clone(),
-                                                        RenderTarget::Rust,
-                                                    ),
+                                                    emit_ident(fb_name.clone(), RenderTarget::Rust),
                                                 ),
                                                 ".as_ref() else { unreachable!() };".to_string(),
                                             )])
@@ -10109,9 +10100,7 @@ pub fn apply_field_clone(expr: String, field: String) -> String {
 }
 
 pub fn clone_iterator_suffix() -> String {
-    sharing_for_target(RenderTarget::Rust)
-        .clone_suffix
-        .clone()
+    sharing_for_target(RenderTarget::Rust).clone_suffix.clone()
 }
 
 pub fn effective_variant_parent(
@@ -16226,10 +16215,7 @@ pub fn emit_tco_init_stmt(
             if is_param {
                 v2_rt::concat(
                     v2_rt::concat(
-                        v2_rt::concat(
-                            emit_ident(n.clone(), RenderTarget::Rust),
-                            " = ".to_string(),
-                        ),
+                        v2_rt::concat(emit_ident(n.clone(), RenderTarget::Rust), " = ".to_string()),
                         val_str,
                     ),
                     ";".to_string(),
@@ -16585,10 +16571,7 @@ pub fn emit_rust_tco_let(
             let let_line = if is_param {
                 v2_rt::concat(
                     v2_rt::concat(
-                        v2_rt::concat(
-                            emit_ident(n.clone(), RenderTarget::Rust),
-                            " = ".to_string(),
-                        ),
+                        v2_rt::concat(emit_ident(n.clone(), RenderTarget::Rust), " = ".to_string()),
                         val_str,
                     ),
                     ";".to_string(),
@@ -17783,11 +17766,8 @@ pub fn emit_rest_call(
             for h in headers.iter().cloned() {
                 __result.push({
                     let hval = field_init_node_value(h.clone());
-                    let val_str = emit_simple_expr(
-                        hval.clone(),
-                        RenderTarget::Rust,
-                        source_indices.clone(),
-                    );
+                    let val_str =
+                        emit_simple_expr(hval.clone(), RenderTarget::Rust, source_indices.clone());
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(

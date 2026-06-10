@@ -1516,7 +1516,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 	      let name = expr_var_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
 	      let span = texpr.span
 		      let collision = map_get(scope.variant_collisions, name)
-		      if collision != none && !expected_has_coproduct_variant(expected: expected, variant_name: name, source_indices: scope.type_env.source_indices) {
+		      if collision != none {
 		        variant_collision_result(name: name, span: span, collision: collision.value)
 		      } else {
 		          match map_get(scope.locals, name) {
@@ -2061,7 +2061,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 	            }
           } else {
             let collision = map_get(scope.variant_collisions, func_name)
-            if collision != none && !expected_has_coproduct_variant(expected: expected, variant_name: func_name, source_indices: scope.type_env.source_indices) {
+            if collision != none {
               variant_collision_result(name: func_name, span: span, collision: collision.value)
             } else {
               let ctor = infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope)
@@ -2910,7 +2910,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
   let fi_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
-		  if type_name != none && map_get(scope.variant_collisions, type_name.value) != none && !expected_has_coproduct_variant(expected: expected, variant_name: type_name.value, source_indices: scope.type_env.source_indices) {
+		  if type_name != none && map_get(scope.variant_collisions, type_name.value) != none {
 	    let collision = map_get(scope.variant_collisions, type_name.value).value
 	    let texpr = make_named_expr_node(
 	      name: type_name.value,

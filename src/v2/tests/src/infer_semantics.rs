@@ -167,6 +167,9 @@ fn unit_expr() -> Rc<Node> {
 fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::new()),
+        carrier_bindings: Rc::new(std::collections::HashMap::new()),
+        decl_registry: Rc::new(std::collections::HashMap::new()),
+        duplicate_decl_ids: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -182,6 +185,7 @@ fn empty_infer_scope() -> Rc<InferScope> {
             signatures: Rc::new(std::collections::HashMap::new()),
         }),
         locals: Rc::new(std::collections::HashMap::new()),
+        variant_collisions: Rc::new(std::collections::HashMap::new()),
         match_bound_names: Rc::new(std::collections::HashMap::new()),
         module_name: "test".to_string(),
         service_registry: Rc::new(std::collections::HashMap::new()),
@@ -195,6 +199,7 @@ fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc
     Rc::new(Node {
         name: name.to_string(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span(name.to_string(), sp),
         children: Rc::new(variants),
@@ -769,11 +774,13 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
     let inner_present = Rc::new(Node {
         name: "Present".to_string(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span("Present".to_string(), sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
             name: "inner".to_string(),
             ident: None,
+            binding_id: None,
             span: sp.clone(),
             ident_span: default_ident_span("inner".to_string(), sp.clone()),
             children: Rc::new(vec![]),
@@ -810,6 +817,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
     let optional_inner_sum = Rc::new(Node {
         name: "Inner".to_string(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span("Inner".to_string(), sp.clone()),
         children: Rc::new(vec![inner_present]),
@@ -975,6 +983,9 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
         Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+            carrier_bindings: Rc::new(std::collections::HashMap::new()),
+            decl_registry: Rc::new(std::collections::HashMap::new()),
+            duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),

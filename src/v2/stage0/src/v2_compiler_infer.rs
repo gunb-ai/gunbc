@@ -2840,13 +2840,7 @@ pub fn infer_expr(
                     expr_var_name_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
                 let span = texpr.span.clone();
                 let collision = v2_rt::map_get(&scope.variant_collisions.clone(), name.clone());
-                if ((collision.clone() != None)
-                    && !expected_has_coproduct_variant(
-                        expected.clone(),
-                        name.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ))
-                {
+                if collision.clone() != None {
                     variant_collision_result(name.clone(), span.clone(), collision.clone().unwrap())
                 } else {
                     match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
@@ -3874,17 +3868,7 @@ match bare_s {
                                                         &scope.variant_collisions.clone(),
                                                         func_name.clone(),
                                                     );
-                                                    if ((collision.clone() != None)
-                                                        && !expected_has_coproduct_variant(
-                                                            expected.clone(),
-                                                            func_name.clone(),
-                                                            scope
-                                                                .type_env
-                                                                .clone()
-                                                                .source_indices
-                                                                .clone(),
-                                                        ))
-                                                    {
+                                                    if collision.clone() != None {
                                                         variant_collision_result(
                                                             func_name.clone(),
                                                             span.clone(),
@@ -5620,16 +5604,11 @@ pub fn infer_record_lit(
             }
             __result
         });
-        if (((type_name.clone() != None)
+        if ((type_name.clone() != None)
             && (v2_rt::map_get(
                 &scope.variant_collisions.clone(),
                 type_name.clone().unwrap(),
             ) != None))
-            && !expected_has_coproduct_variant(
-                expected.clone(),
-                type_name.clone().unwrap(),
-                scope.type_env.clone().source_indices.clone(),
-            ))
         {
             {
                 let collision = v2_rt::map_get(
@@ -13493,21 +13472,15 @@ if ((((((curr_variant_imported.clone() && prev_variant_imported.clone()) && (is_
 }), module_name.clone())),
 })
                             } else {
-                                if (curr_parent_imported.clone()
-                                    && (prev_parent_imported.clone() == false))
-                                {
+                                if (curr_parent_imported.clone() && (prev_parent_imported.clone() == false)) {
                                     Rc::new(VariantFoldState {
-                                        locals: v2_rt::rc_map_insert(
-                                            vacc.locals.clone(),
-                                            child_name.clone(),
-                                            Rc::new(TypeBinding {
-                                                name: child_name.clone(),
-                                                resolved: binding.resolved.clone(),
-                                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                            }),
-                                        ),
-                                        collisions: vacc.collisions.clone(),
-                                    })
+    locals: v2_rt::rc_map_insert(vacc.locals.clone(), child_name.clone(), Rc::new(TypeBinding {
+    name: child_name.clone(),
+    resolved: binding.resolved.clone(),
+    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+})),
+    collisions: vacc.collisions.clone(),
+})
                                 } else {
                                     vacc.clone()
                                 }
