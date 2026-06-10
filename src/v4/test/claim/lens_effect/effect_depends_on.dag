@@ -30,7 +30,7 @@ import v4.std.dependency {
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, None, diagnostics_singleton }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, ComputationNode, Edge, Named, Node, Symbol, TypeNode, Value }
+import v4.std.node { Atom, ComputationNode, Edge, Named, Node, Symbol, TypeNode, Value, Unanchored }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -68,7 +68,8 @@ data effect_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^effect_root_symbol } },
   children: [
     Edge { label: Named { name: ^effect_edge_symbol }, target: effect_child }
-  ]
+  ],
+  span: Unanchored
 }
 
 data effect_dependency: DependencyView = DependencyView {
@@ -133,8 +134,9 @@ fn lens_effect_marker_node(marker: Symbol) -> Node {
         label: Named { name: marker },
         target: effect_root
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn effect_depends_on_claim_expected_node() -> Node {

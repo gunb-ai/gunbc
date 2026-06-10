@@ -67,7 +67,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.verification {
   DiagnosticClaim,
@@ -92,7 +93,8 @@ data mvp1_ts_emitted_root: Node = Node {
     Edge { label: Positional, target: mvp1_ts_number_inhabitant },
     Edge { label: Positional, target: mvp1_ts_number_inhabitant },
     Edge { label: Positional, target: mvp1_ts_number_inhabitant }
-  ]
+  ],
+  span: Unanchored
 }
 
 data mvp1_ts_number_facts_node: Node = ts_number_facts_node(facts: ts_facts_number)
@@ -112,7 +114,8 @@ data mvp1_ts_poisoned_authority_target_model: TargetModel = TargetModel {
 
 data mvp1_ts_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data mvp1_ts_missing_translation_rules_target: TargetModel = TargetModel {

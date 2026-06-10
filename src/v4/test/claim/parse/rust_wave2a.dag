@@ -8,7 +8,7 @@ import v4.compiler.tokenize { TokenStream, tokenize }
 import v4.compiler.parse { ParseTree, parse }
 import v4.extdeps.languages.rust { rust_wave2_lex, rust_wave2_grammar }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 import v4.std.verification {
@@ -28,8 +28,12 @@ data rust_wave2a_layout_tight_source: String = "fn choose(x: i32, y: i32) -> i32
 
 fn rust_wave2a_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^rust_wave2a_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^rust_wave2a_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^rust_wave2a_bool_true } }, children: [],
+ span: Unanchored
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^rust_wave2a_bool_false } }, children: [],
+ span: Unanchored
+}
   }
 }
 

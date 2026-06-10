@@ -7,7 +7,7 @@
 module v4.test.claim.algebra_laws.field_patch_monoid
 
 import v4.std.patch { FieldPatch, Override, Inherit, compose_field_patch, apply_field_patch, field_patch_monoid }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -18,10 +18,14 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn fp_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^fp_pass_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^fp_pass_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn fp_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^fp_fail_sym } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: ^fp_fail_sym } }, children: [],
+ span: Unanchored
+}
 }
 fn fp_ok(b: Bool) -> Node {
   if b { fp_pass_node() } else { fp_fail_node() }

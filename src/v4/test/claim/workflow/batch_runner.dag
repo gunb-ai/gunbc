@@ -1,0 +1,137 @@
+// src/v4/test/claim/workflow/batch_runner.dag
+// Scope: near-term CI dogfood — the v4.workflow.executor .dag is the batching
+// AUTHORITY for running the v4 claim suite in parallel batches. The host
+// transport (src/v2/stage0/src/bin/claim_executor.rs) consumes the batches this
+// module projects; it does NOT re-derive grouping/ordering. Adding a dependency
+// here (or a node) re-batches the suite with zero host change.
+//
+// Each suite node maps to one real (entry, function) claim witness. The executor
+// orders them by dependency frontier: `bre_core_node` gates the two derived
+// claims, so batch 1 = [core] runs before batch 2 = [a, b].
+
+module v4.test.claim.workflow.batch_runner
+
+import v4.std.algebra { list_snoc_item }
+import v4.std.collection { List }
+import v4.std.dependency { DataDependsOn, DependencyView }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.text { String }
+import v4.workflow.executor {
+  ExecutorBatch,
+  ExecutorRunBlocked,
+  ExecutorRunComplete,
+  ExecutorRunRunnable,
+  parallel_executor_plan_from_dependencies
+}
+
+// Host-readable leaf: a single claim witness the host transport runs.
+type ClaimRef {
+  entry: String
+  function: String
+}
+
+data bre_suite_entry: String = "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
+
+data bre_core_symbol: Symbol = bre_core_symbol
+data bre_a_symbol: Symbol = bre_a_symbol
+data bre_b_symbol: Symbol = bre_b_symbol
+
+data bre_core_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: bre_core_symbol } },
+  children: []
+}
+
+data bre_a_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: bre_a_symbol } },
+  children: []
+}
+
+data bre_b_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: bre_b_symbol } },
+  children: []
+}
+
+// The two derived claims data-depend on the core claim, so the executor places
+// them in a later readiness layer (a second batch).
+data bre_core_to_a_dependency: DependencyView = DependencyView {
+  source: bre_core_node,
+  dependent: bre_a_node,
+  kind: DataDependsOn,
+  usage_site: bre_a_node
+}
+
+data bre_core_to_b_dependency: DependencyView = DependencyView {
+  source: bre_core_node,
+  dependent: bre_b_node,
+  kind: DataDependsOn,
+  usage_site: bre_b_node
+}
+
+data bre_suite_nodes: List<Node> = [
+  bre_core_node,
+  bre_a_node,
+  bre_b_node
+]
+
+data bre_suite_dependencies: List<DependencyView> = [
+  bre_core_to_a_dependency,
+  bre_core_to_b_dependency
+]
+
+// node -> real (entry, function) witness. This is the only place the suite's
+// A ClaimRef with an empty `entry` is the unrunnable sentinel: it carries no
+// resolvable witness, so the host transport (claim_executor) rejects it and
+// fails closed. Used for any suite node without a binding and for non-complete
+// plan states — making "missing mapping" and "not complete" loud, never silent.
+data bre_unmapped_function: String = "__batch_runner_unmapped_or_incomplete__"
+
+fn bre_unrunnable_sentinel() -> ClaimRef {
+  ClaimRef { entry: "", function: bre_unmapped_function }
+}
+
+// Closed node->witness binding. The mapping is TOTAL over the suite's three
+// nodes; any other node is structurally unmapped and projects to the unrunnable
+// sentinel (host fails closed) rather than silently aliasing to a real claim.
+fn bre_claim_ref_for_node(node: Node) -> ClaimRef {
+  if node == bre_core_node {
+    ClaimRef { entry: bre_suite_entry, function: "ci_runner_narrow_selection_holds" }
+  } else {
+    if node == bre_a_node {
+      ClaimRef { entry: bre_suite_entry, function: "ci_runner_fail_closed_superset_holds" }
+    } else {
+      if node == bre_b_node {
+        ClaimRef { entry: bre_suite_entry, function: "ci_runner_shape_collision_holds" }
+      } else {
+        bre_unrunnable_sentinel()
+      }
+    }
+  }
+}
+
+fn bre_refs_for_batch(batch: ExecutorBatch) -> List<ClaimRef> {
+  fold(batch.jobs, init: [], f: fn(acc, job) {
+    list_snoc_item(xs: acc, item: bre_claim_ref_for_node(node: job.node))
+  })
+}
+
+// Top-level host entry: the executor-decided batches projected to runnable
+// (entry, function) refs. Outer list = batches in execution order; inner list =
+// claims runnable in parallel within that batch.
+fn bre_claim_batches() -> List<List<ClaimRef>> {
+  match parallel_executor_plan_from_dependencies(
+    nodes: bre_suite_nodes,
+    dependencies: bre_suite_dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: batches, scheduled: _ } =>
+      fold(batches, init: [], f: fn(acc, batch) {
+        list_snoc_item(xs: acc, item: bre_refs_for_batch(batch: batch))
+      })
+    // A non-complete plan is NOT an empty (vacuously-passing) run. Project a
+    // single unrunnable-sentinel batch so the host fails closed instead of
+    // exiting 0 on zero claims. The suite is statically satisfiable, so these
+    // arms are unreachable today — but they must never silently mean success.
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[bre_unrunnable_sentinel()]]
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[bre_unrunnable_sentinel()]]
+  }
+}

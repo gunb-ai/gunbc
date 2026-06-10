@@ -23,7 +23,8 @@ import v4.std.artifact { Artifact, SourceFile }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty, count_equal, length }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Anchored, Node, Symbol, Unanchored, node_span_file_eq }
+import v4.std.provenance { node_has_anchored_span, node_span_byte_extent }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.test.claim.lens_affected_set.node_precision {
@@ -45,6 +46,7 @@ import v4.std.verification {
 }
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.dag"
 data edit_locus_path_source_producer_fixture: RepoPath = "src/v4/test/claim/lens_affected_set/source_producer_fixture.dag"
+data edit_locus_source_producer_fixture_compilation_unit: Symbol = ^edit_locus_source_producer_fixture_compilation_unit
 data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
 data edit_locus_source_producer_fixture_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
@@ -58,12 +60,14 @@ data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
 
 data edit_locus_source_producer_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_fixture_source,
-  artifact: edit_locus_source_producer_fixture_artifact
+  artifact: edit_locus_source_producer_fixture_artifact,
+  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
 }
 
 data edit_locus_source_producer_malformed_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_malformed_source,
-  artifact: edit_locus_source_producer_fixture_artifact
+  artifact: edit_locus_source_producer_fixture_artifact,
+  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
 }
 
 data edit_locus_source_producer_git_diff: GitDiffNameOnly = GitDiffNameOnly {
@@ -148,7 +152,13 @@ fn edit_locus_source_provenance_producer_holds() -> Bool {
     source_read: edit_locus_source_producer_fixture_source_read
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
-      provenance.artifact.file_path == edit_locus_path_source_producer_fixture
+      (provenance.artifact.file_path == edit_locus_path_source_producer_fixture)
+        && node_has_anchored_span(node: provenance.node)
+        && node_span_byte_extent(span: provenance.node.span)
+        && node_span_file_eq(
+          span: provenance.node.span,
+          file: edit_locus_source_producer_fixture_compilation_unit
+        )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -189,6 +199,19 @@ fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
   }
 }
 
+fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
+  match source_ir_node_artifact_provenance(
+    source_read: edit_locus_source_producer_fixture_source_read
+  ) {
+    Accepted { value: provenance, diagnostics: _ } =>
+      match provenance.node.span {
+        Anchored { span: s } => (s.start == 0) && (s.end > s.start)
+        Unanchored => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
   match source_ir_node_artifact_provenance(
     source_read: edit_locus_source_producer_malformed_source_read
@@ -203,8 +226,12 @@ data edit_locus_fail_closed_claim_passes: Bool = edit_locus_fail_closed_holds()
 data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_wire_holds()
 data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
 data edit_locus_source_provenance_producer_claim_passes: Bool = edit_locus_source_provenance_producer_holds()
+data edit_locus_source_provenance_parse_root_span_claim_passes: Bool = edit_locus_source_provenance_parse_root_span_holds()
 data edit_locus_source_provenance_affected_set_wire_claim_passes: Bool = edit_locus_source_provenance_affected_set_wire_holds()
 data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes: Bool = edit_locus_source_provenance_producer_rejects_malformed_source_holds()
+
+// Transport Symbol pin — independent authority for substrate-equivalence field-preservation laws.
+data edit_locus_narrow_resolution_holds_symbol: Symbol = edit_locus_narrow_resolution_holds
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
 // Co-located with `edit_locus_narrow_resolution_holds` so glob discovery finds the witness without the central roster.

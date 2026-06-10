@@ -288,6 +288,21 @@ pub fn run_claim(
     }
 }
 
+/// Run a function against an already-resolved graph and return its raw
+/// interpreter `Value`, without imposing the `--claim-run` Bool contract. This
+/// is the host-transport read path: the batch executor evaluates a plan function
+/// that returns a structured value (the executor-decided batches) and walks the
+/// result, rather than collapsing it to a single Bool. Eager data-env is
+/// disabled to match the witness/plan-run convention (values pull lazily).
+pub fn run_value(
+    graph: &v2_compiler_compile::ResolvedGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    function: &str,
+) -> Result<v2_interpreter::Value, String> {
+    v2_interpreter::run_with_options(graph, source_indices, function, false, false)
+        .map_err(|e| format!("{}", e))
+}
+
 /// Entry point for `dag run`. Called from the generated main.rs.
 pub fn handle_run(
     source_roots: Vec<String>,

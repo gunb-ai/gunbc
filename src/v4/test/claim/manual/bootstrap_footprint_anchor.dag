@@ -14,7 +14,7 @@ import v4.extdeps.runtimes.v4_evaluator {
   v4_evaluator_value_representation_wave1
 }
 import v4.std.runtime { ResourceEffectBoundary }
-import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
+import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -40,15 +40,17 @@ import v4.workflow.bootstrap {
 fn bootstrap_footprint_anchor_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_fail_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn bootstrap_footprint_anchor_bad_snapshot_root_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_bad_snapshot_root } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn bootstrap_footprint_anchor_bad_projection_inputs() -> BootstrapProjectionInputs {

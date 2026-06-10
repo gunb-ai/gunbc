@@ -68,7 +68,8 @@ import v4.std.node {
   Named,
   Node,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 
 
@@ -348,8 +349,9 @@ data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 fn lean_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 
@@ -388,8 +390,9 @@ fn lean_scalar_node(scalar: LeanScalar) -> Node {
         ),
         lean_named_edge(name: ^lean_scalar_field_kind, target: lean_int_kind_node(kind: kind)),
         lean_named_edge(name: ^lean_scalar_field_width, target: lean_int_width_node(width: width))
-      ]
-    }
+      ],
+      span: Unanchored
+}
     BoolScalar => lean_inhabitant_atom(id: ^lean_tag_scalar_bool)
   }
 }
@@ -411,8 +414,9 @@ fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
         name: ^lean_facts_field_representation,
         target: lean_inhabitant_atom(id: facts.representation)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -425,8 +429,9 @@ fn lean_primitive_inhabitant_node(id: Symbol, facts: LeanPrimitiveFacts) -> Node
         name: ^lean_inhabitant_field_facts,
         target: lean_primitive_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 
@@ -727,8 +732,9 @@ fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKin
         name: ^lean_witness_field_width,
         target: lean_int_width_node(width: width)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn lean_bool_algebra_witness_node() -> Node {
@@ -743,8 +749,9 @@ fn lean_bool_algebra_witness_node() -> Node {
         name: ^lean_witness_field_representation,
         target: lean_inhabitant_atom(id: ^lean_repr_bool_inductive)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabitanceDecl {

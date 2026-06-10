@@ -7,7 +7,7 @@ module v4.test.claim.lens_affected_set.verified_by_in_frontier
 import v4.lens.affected_set { dependency_in_lens_frontier }
 import v4.std.dependency { DependencyView, VerifiedBy }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -20,8 +20,9 @@ import v4.std.verification {
 fn verified_by_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 data verified_by_root: Node = verified_by_node(s: ^verified_by_root_symbol)
@@ -43,8 +44,9 @@ fn verified_by_in_frontier_claim_rhs() -> Node {
   } else {
     Node {
       kind: TypeNode { connective: Conj },
-      children: []
-    }
+      children: [],
+      span: Unanchored
+}
   }
 }
 

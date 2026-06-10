@@ -79,7 +79,8 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Value
+  Value,
+  Unanchored
 }
 import v4.std.verification {
   EqualsClaim,
@@ -102,15 +103,17 @@ fn eval_mvp2_byte() -> Byte {
 fn eval_mvp2_i64_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^eval_mvp2_i64_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn eval_mvp2_algebra_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^eval_mvp2_algebra_symbol } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 // Well-formed Value leaves (node.dag: Value => count(children) == 0). Per-node
@@ -118,7 +121,8 @@ fn eval_mvp2_algebra_node() -> Node {
 // structural.evidence (algebra witness), not the subject node.
 data eval_mvp2_two_literal: Node = Node {
   kind: ComputationNode { behavior: Value },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 data eval_mvp2_add_subgraph_node: Node = Node {
@@ -126,7 +130,8 @@ data eval_mvp2_add_subgraph_node: Node = Node {
   children: [
     Edge { label: Positional, target: eval_mvp2_two_literal },
     Edge { label: Positional, target: eval_mvp2_two_literal }
-  ]
+  ],
+  span: Unanchored
 }
 
 fn eval_mvp2_add_subgraph() -> Node {

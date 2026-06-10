@@ -99,7 +99,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.logic { Bool }
 import v4.std.algebra {
@@ -223,8 +224,9 @@ data wasm_float_facts_catalog: List<WasmFloatPrimitiveFacts> = [
 fn wasm_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn wasm_int_width_node(width: WasmIntWidth) -> Node {
@@ -251,8 +253,9 @@ fn wasm_scalar_node(scalar: WasmScalar) -> Node {
           target: wasm_inhabitant_atom(id: ^wasm_tag_scalar_int)
         ),
         wasm_named_edge(name: ^wasm_scalar_field_width, target: wasm_int_width_node(width: width))
-      ]
-    }
+      ],
+      span: Unanchored
+}
     FloatScalar { width } => Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -261,8 +264,9 @@ fn wasm_scalar_node(scalar: WasmScalar) -> Node {
           target: wasm_inhabitant_atom(id: ^wasm_tag_scalar_float)
         ),
         wasm_named_edge(name: ^wasm_scalar_field_width, target: wasm_float_width_node(width: width))
-      ]
-    }
+      ],
+      span: Unanchored
+}
   }
 }
 
@@ -286,8 +290,9 @@ fn wasm_integer_facts_node(facts: WasmIntegerPrimitiveFacts) -> Node {
         name: ^wasm_facts_field_scalar_classifier,
         target: wasm_scalar_node(scalar: IntScalar { width: facts.width })
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
@@ -311,8 +316,9 @@ fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
         name: ^wasm_facts_field_scalar_classifier,
         target: wasm_scalar_node(scalar: FloatScalar { width: facts.width })
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) -> Node {
@@ -324,8 +330,9 @@ fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) ->
         name: ^wasm_inhabitant_field_facts,
         target: wasm_integer_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_float_inhabitant_node(id: Symbol, facts: WasmFloatPrimitiveFacts) -> Node {
@@ -337,8 +344,9 @@ fn wasm_float_inhabitant_node(id: Symbol, facts: WasmFloatPrimitiveFacts) -> Nod
         name: ^wasm_inhabitant_field_facts,
         target: wasm_float_facts_node(facts: facts)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_inhabitant_i32_node() -> Node {
@@ -404,8 +412,9 @@ fn wasm_int_numeric_immediate_node(
         name: ^wasm_numeric_immediate_field_validation,
         target: wasm_inhabitant_atom(id: validation)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_float_numeric_immediate_node(
@@ -429,8 +438,9 @@ fn wasm_float_numeric_immediate_node(
         name: ^wasm_numeric_immediate_field_validation,
         target: wasm_inhabitant_atom(id: validation)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_i32_numeric_literal_node() -> Node {
@@ -485,8 +495,9 @@ fn wasm_localidx_node(token_class: Symbol) -> Node {
         name: ^wasm_numeric_immediate_field_validation,
         target: wasm_inhabitant_atom(id: ^wasm_localidx_validation_u32_range)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_localidx_operand_node() -> Node {
@@ -501,8 +512,9 @@ fn wasm_declared_inhabitants_root() -> Node {
       wasm_named_edge(name: ^wasm_inhabitant_field_i64, target: wasm_inhabitant_i64_node()),
       wasm_named_edge(name: ^wasm_inhabitant_field_f32, target: wasm_inhabitant_f32_node()),
       wasm_named_edge(name: ^wasm_inhabitant_field_f64, target: wasm_inhabitant_f64_node()),
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_mvp1_selection_policy_node() -> Node {
@@ -516,8 +528,9 @@ fn wasm_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: wasm_inhabitant_i32_node() },
       Edge { label: Positional, target: wasm_inhabitant_i32_node() },
       Edge { label: Positional, target: wasm_inhabitant_i32_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_mvp1_source_text_authority() -> String {
@@ -566,8 +579,9 @@ fn wasm_mvp1_serialize_source_node() -> Node {
   let _authority = wasm_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: wasm_mvp1_serialize_source_children()
-  }
+    children: wasm_mvp1_serialize_source_children(),
+    span: Unanchored
+}
 }
 
 fn wasm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -654,8 +668,9 @@ fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
           token_to_node: wasm_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_mvp1_translation_rules_node() -> Node {
@@ -666,8 +681,9 @@ fn wasm_mvp1_translation_rules_node() -> Node {
         name: ^wasm_relation_rule_mvp1_fn_add,
         target: wasm_grammar_relation_row_node(row: wasm_mvp1_grammar_relation_row())
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_mvp1_target_model_node() -> Node {
@@ -690,8 +706,9 @@ fn wasm_mvp1_target_model_node() -> Node {
         name: target_model_edge_serialize_source,
         target: wasm_mvp1_serialize_source_node()
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_mvp1_binding_spellings() -> Map<Symbol, String> {
@@ -1779,8 +1796,9 @@ fn wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
         name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
         target: wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_float_algebra_witness_node(facts: WasmFloatPrimitiveFacts) -> Node {
@@ -1799,8 +1817,9 @@ fn wasm_float_algebra_witness_node(facts: WasmFloatPrimitiveFacts) -> Node {
         name: ^wasm_facts_field_std_projection,
         target: wasm_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_integer_algebra_inhabitance(facts: WasmIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -1858,8 +1877,9 @@ fn wasm_model_core_law_node(witness: Node, algebra: Node, key: WasmModelCoreLawK
         name: model_core_wave1_law_field_kind,
         target: wasm_inhabitant_atom(id: discriminant(v: key))
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn wasm_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {

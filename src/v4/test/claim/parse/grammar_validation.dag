@@ -33,7 +33,7 @@ import v4.compiler.parse {
 import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
 import v4.std.algebra { Cons, Empty }
 import v4.std.collection { List }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.logic { Bool }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -46,8 +46,12 @@ import v4.std.verification {
 }
 fn validation_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_true } }, children: [] }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_false } }, children: [] }
+    true => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_true } }, children: [],
+ span: Unanchored
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_false } }, children: [],
+ span: Unanchored
+}
   }
 }
 
@@ -69,8 +73,8 @@ fn validation_terminal_production(name: Symbol) -> GrammarProduction {
 }
 
 
-fn validation_token(class: Symbol) -> Token {
-  Token { class: class, lexeme: Empty, file: ^validation_file, start: 0, end: 0 }
+fn validation_token(class: Symbol, start: Int, end: Int) -> Token {
+  Token { class: class, lexeme: Empty, file: ^validation_file, start: start, end: end }
 }
 
 
@@ -149,12 +153,15 @@ data validation_right_recursive_root: GrammarRoot = GrammarRoot {
 
 
 // Non-empty token list for the sync-recovery claim.
-data validation_one_token_list: List<Token> = Cons { head: validation_token(class: ^validation_tok_class), tail: Empty }
+data validation_one_token_list: List<Token> = Cons {
+  head: validation_token(class: ^validation_tok_class, start: 0, end: 1),
+  tail: Empty
+}
 
 // Two matching tokens for parse-table receipt: A = "x" A? must memo-hit A at position 1 after the first terminal.
 data validation_two_token_list: List<Token> = Cons {
-  head: validation_token(class: ^validation_tok_class),
-  tail: Cons { head: validation_token(class: ^validation_tok_class), tail: Empty }
+  head: validation_token(class: ^validation_tok_class, start: 0, end: 1),
+  tail: Cons { head: validation_token(class: ^validation_tok_class, start: 1, end: 2), tail: Empty }
 }
 
 

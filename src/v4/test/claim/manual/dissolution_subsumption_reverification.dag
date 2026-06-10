@@ -49,7 +49,8 @@ import v4.std.node {
   Node,
   Symbol,
   TypeNode,
-  Value
+  Value,
+  Unanchored
 }
 import v4.std.runtime {
   BindInterpreter,
@@ -120,8 +121,9 @@ type OptionalDiffId
 fn subsumption_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn subsumption_template_leaf_node(row: DissolutionSubsumption) -> Node {
@@ -164,8 +166,9 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
             label: Named { name: ^subsumption_mechanical_claim_edge },
             target: subsumption_symbol_node(s: claim.id)
           }
-        ]
-      }
+        ],
+        span: Unanchored
+}
     ProducerStageDerivation { derivation_path: _ } =>
       subsumption_symbol_node(s: ^subsumption_runtime_rejected)
   }
@@ -191,8 +194,9 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
         label: Named { name: ^subsumption_mechanical_claim_edge },
         target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim)
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn completed_lens_ci_execution() -> MechanicalReverificationExecution {

@@ -28,7 +28,7 @@ import v4.std.grammar {
 
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
-import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, content_hash }
+import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, content_hash, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -43,15 +43,17 @@ import v4.test.fixture.task_manager_demo { Task, create_task }
 fn ts_grammar_relation_round_trip_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn ts_grammar_relation_round_trip_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn ts_mvp1_grammar_relation_tokens_root() -> Node {
@@ -86,8 +88,9 @@ fn ts_wave2a_task_type_alias_emitted_surplus_conj_slot() -> Node {
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
       Edge { label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn ts_wave2a_lhs_exact_arrow_emitted_rejects() -> Bool {

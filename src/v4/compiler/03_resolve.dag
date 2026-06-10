@@ -42,9 +42,11 @@ import v4.std.node {
   Edge,
   Node,
   NodeFold,
+  NodeSpan,
   Symbol,
   TypeNode,
   fold_node,
+  node_with_span,
   well_formed
 }
 
@@ -269,11 +271,12 @@ fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
 }
 
 
-fn canonical_atom(identity: Symbol) -> Node {
-  Node {
+fn canonical_atom(identity: Symbol, span: NodeSpan) -> Node {
+  node_with_span(
     kind: TypeNode { connective: Atom { identity: identity } },
-    children: []
-  }
+    children: [],
+    span: span
+  )
 }
 
 
@@ -282,7 +285,7 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
     Accepted { value: found, diagnostics: pending } => match found {
       Some { value: canonical } =>
         Accepted {
-          value: canonical_atom(identity: canonical),
+          value: canonical_atom(identity: canonical, span: n.span),
           diagnostics: pending
         }
       None =>
@@ -291,7 +294,7 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
           name: identity
         ) {
           Accepted {
-            value: canonical_atom(identity: identity),
+            value: canonical_atom(identity: identity, span: n.span),
             diagnostics: pending
           }
         } else {
@@ -323,10 +326,10 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: resolved_children, diagnostics: d } =>
-          Accepted { value: Node {
-              kind: n.kind,
-              children: resolved_children
-            }, diagnostics: d }
+          Accepted {
+            value: node_with_span(kind: n.kind, children: resolved_children, span: n.span),
+            diagnostics: d
+          }
       }
     ComputationNode { behavior: Bind } =>
       resolve_bind_node(n: n, scope: scope)
@@ -362,10 +365,10 @@ fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: resolved_children, diagnostics: d } =>
-      Accepted { value: Node {
-          kind: n.kind,
-          children: resolved_children
-        }, diagnostics: d }
+      Accepted {
+        value: node_with_span(kind: n.kind, children: resolved_children, span: n.span),
+        diagnostics: d
+      }
   }
 }
 
@@ -447,7 +450,7 @@ fn resolve_edges_first_outer_then_inner(
 fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      Accepted { value: canonical_atom(identity: id), diagnostics: None }
+      Accepted { value: canonical_atom(identity: id, span: t.span), diagnostics: None }
     _ =>
       Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)) }
   }
@@ -562,10 +565,10 @@ fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
     ) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: resolved_children, diagnostics: d } =>
-        Accepted { value: Node {
-            kind: n.kind,
-            children: resolved_children
-          }, diagnostics: d }
+        Accepted {
+          value: node_with_span(kind: n.kind, children: resolved_children, span: n.span),
+          diagnostics: d
+        }
     }
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)) }

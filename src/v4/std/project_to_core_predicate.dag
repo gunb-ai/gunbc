@@ -11,7 +11,7 @@ import v4.std.model_core {
   model_core_primitive_fact_axis_is_core,
   model_core_primitive_fact_axis_is_surface
 }
-import v4.std.node { Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, well_formed }
+import v4.std.node { Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_rebuild, well_formed }
 
 fn project_to_core_axis_is_core(name: Symbol) -> Bool {
   model_core_primitive_fact_axis_is_core(axis: name)
@@ -22,10 +22,7 @@ fn project_to_core_axis_is_surface(name: Symbol) -> Bool {
 }
 
 fn project_to_core_init(n: Node) -> Node {
-  Node {
-    kind: n.kind,
-    children: []
-  }
+  node_rebuild(n: n, children: [])
 }
 
 fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
@@ -35,16 +32,22 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
       if project_to_core_axis_is_surface(name: edge_name) {
         acc
       } else {
-        Node {
-          kind: acc.kind,
-          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: projected_target })
-        }
+        node_rebuild(
+          n: acc,
+          children: list_snoc_item(
+            xs: acc.children,
+            item: Edge { label: edge.label, target: projected_target }
+          )
+        )
       }
     Positional =>
-      Node {
-        kind: acc.kind,
-        children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: projected_target })
-      }
+      node_rebuild(
+        n: acc,
+        children: list_snoc_item(
+          xs: acc.children,
+          item: Edge { label: edge.label, target: projected_target }
+        )
+      )
   }
 }
 

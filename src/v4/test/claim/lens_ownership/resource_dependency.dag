@@ -19,7 +19,7 @@ import v4.std.dependency {
   ResourceDependsOn
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.witness { Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
@@ -32,7 +32,8 @@ data ownership_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ownership_root_symbol } },
   children: [
     Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
-  ]
+  ],
+  span: Unanchored
 }
 
 data ownership_dependency: DependencyView = DependencyView {
