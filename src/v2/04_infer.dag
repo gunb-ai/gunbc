@@ -52,7 +52,7 @@ import v2.std.core {
   make_transport_node, local_transport_node,
   Text, Interpolation,
   with_optional_cardinality, with_required_cardinality,
-  node_with_binding_id,
+  BindingId, node_with_binding_id,
   no_span, make_span, NewlineIndex,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
@@ -5166,7 +5166,7 @@ fn collect_parent_bindings_filtered(envs: List<TypeEnv>) -> Map<Int, TypeBinding
 
 type TypeDeclRegistrationAccum {
   bindings: Map<Int, TypeBinding>
-  decl_registry: Map<Int, TypeDeclBinding>
+  decl_registry: Map<BindingId, TypeDeclBinding>
   allocator: BindingIdAllocator
 }
 

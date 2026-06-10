@@ -6290,6 +6290,15 @@ pub fn emit_struct_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+        if (name.as_str() == "BindingId".to_string().as_str()) {
+            return v2_rt::concat(
+                v2_rt::concat(
+                    "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]\n".to_string(),
+                    rust_visibility_prefix(),
+                ),
+                "struct BindingId(i64);\n\nimpl BindingId {\n    pub(crate) fn mint(value: i64) -> Self { BindingId(value) }\n    pub(crate) fn raw_for_diagnostic(&self) -> i64 { self.0 }\n}".to_string(),
+            );
+        }
         let has_fn_fields = match v2_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
             Some(ts) => ts.has_fn_fields.clone(),
             None => false,
@@ -15272,6 +15281,39 @@ pub fn emit_typed_record_lit(
             }
             Some(tn) => {
                 let si = scope.type_env.clone().source_indices.clone();
+                if (tn.clone().as_str() == "BindingId".to_string().as_str()) {
+                    return match Rc::new({
+                        let mut __result = Vec::new();
+                        for f in fields.clone().iter().cloned() {
+                            if (field_init_node_name_at(f.clone(), si.clone()).as_str()
+                                == "value".to_string().as_str())
+                            {
+                                __result.push(f);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(f) => {
+                            let inner = emit_typed_expr(
+                                field_init_node_value(f.clone()),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                1024,
+                            );
+                            v2_rt::concat(
+                                v2_rt::concat("BindingId::mint(".to_string(), inner),
+                                ")".to_string(),
+                            )
+                        }
+                        None => "compile_error!(\"BindingId literal missing value\")".to_string(),
+                    };
+                }
                 let context_lookup = contextual_variant_parent(
                     tn.clone(),
                     parent_enum.clone(),

@@ -2755,6 +2755,16 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
 
 
 fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+  if name == "BindingId" {
+    return concat(
+      "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]\n",
+      rust_visibility_prefix(), rust_items().struct_keyword, " BindingId(i64);\n\n",
+      "impl BindingId {\n",
+      "    pub(crate) fn mint(value: i64) -> Self { BindingId(value) }\n",
+      "    pub(crate) fn raw_for_diagnostic(&self) -> i64 { self.0 }\n",
+      "}"
+    )
+  }
   let has_fn_fields = match map_get(emit_info.type_summaries, name) {
     Some { value: ts } => ts.has_fn_fields
     None => false
@@ -5669,6 +5679,14 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       }
     Some { value: tn } =>
       let si = scope.type_env.source_indices
+      if tn == "BindingId" {
+        match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "value") |> first {
+          Some { value: f } =>
+            let inner = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+            return concat("BindingId::mint(", inner, ")")
+          None => return "compile_error!(\"BindingId literal missing value\")"
+        }
+      }
       let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Some { value: context_parent } => Some { value: context_parent }

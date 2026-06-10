@@ -1028,25 +1028,6 @@ pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
     }
 }
 
-pub fn direct_call_arg_span_skips(span: Rc<SourceSpan>) -> bool {
-    {
-        let file = span.file.clone();
-        let is_src_v2 = ((v2_rt::string_length(&file) >= 7)
-            && (v2_rt::substring(&file, 0, 7).as_str() == "src/v2/".to_string().as_str()));
-        let is_src_v3 = ((v2_rt::string_length(&file) >= 7)
-            && (v2_rt::substring(&file, 0, 7).as_str() == "src/v3/".to_string().as_str()));
-        let is_src_v4 = ((v2_rt::string_length(&file) >= 7)
-            && (v2_rt::substring(&file, 0, 7).as_str() == "src/v4/".to_string().as_str()));
-        let is_dsl_std = ((v2_rt::string_length(&file) >= 8)
-            && (v2_rt::substring(&file, 0, 8).as_str() == "dsl/std/".to_string().as_str()));
-        let is_dsl_v4 = ((v2_rt::string_length(&file) >= 7)
-            && (v2_rt::substring(&file, 0, 7).as_str() == "dsl/v4/".to_string().as_str()));
-        let is_dsl_extdeps = ((v2_rt::string_length(&file) >= 12)
-            && (v2_rt::substring(&file, 0, 12).as_str() == "dsl/extdeps/".to_string().as_str()));
-        (((((is_src_v2 || is_src_v3) || is_src_v4) || is_dsl_std) || is_dsl_v4) || is_dsl_extdeps)
-    }
-}
-
 pub fn direct_call_arg_decl_identity(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     match n.binding_id.clone() {
         Some(_) => n.clone(),
@@ -1227,10 +1208,7 @@ pub fn direct_call_arg_mismatch_diags(
                                     module_name.clone(),
                                 );
                                 let arg_span = arg_value(ta.clone()).span.clone();
-                                if direct_call_arg_span_skips(arg_span.clone()) {
-                                    Rc::new(vec![])
-                                } else {
-                                    if (direct_call_decl_identity_mismatch(
+                                if (direct_call_decl_identity_mismatch(
                                         formal_identity.clone(),
                                         actual_identity.clone(),
                                         formal.clone(),
@@ -1243,15 +1221,14 @@ pub fn direct_call_arg_mismatch_diags(
                                         module_name.clone(),
                                         source_indices.clone(),
                                     )) {
-                                        Rc::new(vec![type_mismatch_error(
-                                            node_type_shape(formal.clone(), source_indices.clone()),
-                                            node_type_shape(actual.clone(), source_indices.clone()),
-                                            arg_span.clone(),
-                                            module_name.clone(),
-                                        )])
-                                    } else {
-                                        Rc::new(vec![])
-                                    }
+                                    Rc::new(vec![type_mismatch_error(
+                                        node_type_shape(formal.clone(), source_indices.clone()),
+                                        node_type_shape(actual.clone(), source_indices.clone()),
+                                        arg_span.clone(),
+                                        module_name.clone(),
+                                    )])
+                                } else {
+                                    Rc::new(vec![])
                                 }
                             }
                             None => Rc::new(vec![]),
