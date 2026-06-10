@@ -5551,8 +5551,10 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
   let f = field_access_field_at(texpr: texpr, source_indices: si)
   match texpr.expr_data {
     ExprLiteral { value: v } => match v { LitNull => true, _ => false }
-    ExprVar { binding_kind: _ } =>
-      if n == "none" || n == "None" || n == "Absent" {
+    ExprVar { binding_kind: binding_kind } =>
+      if (n == "Present" || n == "Absent") && variant_parent_from_binding_kind(binding_kind: binding_kind) == Present { value: "Optional" } {
+        true
+      } else if n == "none" || n == "None" {
         true
       } else {
         match texpr.inferred {
