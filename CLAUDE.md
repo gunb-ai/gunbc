@@ -13,7 +13,7 @@ Read these docs before working:
 
 ```bash
 cargo test --workspace                     # all workspace crates (hand-written + integration)
-cargo test -p v3-compiler                  # v3 compiler (library + integration binary)
+cargo test -p v3-compiler                  # v3 compiler — NOTE: most tests here are dormant in CI (CI runs only the single --exact parity integration test); new tests added to this crate are NOT automatically CI-gated
 cargo clippy --all-targets -- -D warnings  # lint
 cargo fmt --all --check                    # format check (also runs via pre-push hook)
 ```
