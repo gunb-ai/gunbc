@@ -48,12 +48,12 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
-// When peeling a one-level type alias to its structural target, keep the
-// declaration/reference ident_span so authored_name_at still reports the brand
-// name (UserId vs AccountId) instead of the shared carrier (Refined).
-fn with_authored_identity(identity: Node, structural: Node) -> Node {
+// When peeling a one-level type alias to its structural target, carry
+// declaration identity on binding_id while leaving ident_span as source span.
+fn with_preserved_binding_id(identity: Node, structural: Node) -> Node {
   Node {
-    name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
+    name: structural.name, ident: structural.ident, binding_id: identity.binding_id,
+    span: structural.span, ident_span: structural.ident_span,
     children: structural.children, connective: structural.connective, params: structural.params,
     inferred: structural.inferred, return_cardinality: structural.return_cardinality,
     uses: structural.uses, body: structural.body, transport: structural.transport,
@@ -70,9 +70,9 @@ fn preserve_nominal_brand_on_resolve(
   brand_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> Node {
-  if brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
+  if identity.binding_id != none && brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
     && !is_declared_container_alias_spelling(name: brand_name) {
-    with_authored_identity(identity: identity, structural: structural)
+    with_preserved_binding_id(identity: identity, structural: structural)
   } else { structural }
 }
 
@@ -92,14 +92,16 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       } else {
         resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0).resolved
       }
-      if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
+      if resolved.binding_id != none && brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
         && !is_declared_container_alias_spelling(name: brand) {
-        with_authored_identity(identity: n, structural: structural)
+        with_preserved_binding_id(identity: resolved, structural: structural)
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Some { value: Resolved { node: target } } =>
             let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
-            with_authored_identity(identity: n, structural: target_resolved)
+            if resolved.binding_id != none {
+              with_preserved_binding_id(identity: resolved, structural: target_resolved)
+            } else { target_resolved }
           _ => resolved
         }
       } else { resolved }
