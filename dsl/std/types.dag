@@ -69,8 +69,8 @@ data kernel_type_set: Map<String, Bool> = {
 
 fn is_kernel_type(name: String) -> Bool {
   match map_get(kernel_type_set, name) {
-    Some { value: _ } => true
-    None => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -82,8 +82,8 @@ data container_type_arity: Map<String, Int> = {
 
 fn is_container_type(name: String) -> Bool {
   match container_expected_arity(name: name) {
-    Some { value: _ } => true
-    None => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -98,8 +98,8 @@ fn container_param_names_for(kind_name: String) -> List<String> {
     ["T"]
   } else {
     match map_get(kernel_algebra_profile, kind_name) {
-      Some { value: p } => algebra_type_param_names(profile: p)
-      None => []
+      Present { value: p } => algebra_type_param_names(profile: p)
+      Absent => []
     }
   }
 }
@@ -107,8 +107,8 @@ fn container_param_names_for(kind_name: String) -> List<String> {
 fn container_param_name(kind_name: String, index: Int) -> String? {
   let names = container_param_names_for(kind_name: kind_name)
   match names |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
-    Some { value: name } => Some { value: name }
-    None => none
+    Present { value: name } => Present { value: name }
+    Absent => none
   }
 }
 

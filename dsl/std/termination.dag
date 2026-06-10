@@ -148,11 +148,11 @@ fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
 // optional_meet for DescentEvidence: None is identity (top).
 fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
   match a {
-    None => b
-    Some { value: va } =>
+    Absent => b
+    Present { value: va } =>
       match b {
-        None => a
-        Some { value: vb } => Some { value: descent_evidence_lattice_meet(a: va, b: vb) }
+        Absent => a
+        Present { value: vb } => Present { value: descent_evidence_lattice_meet(a: va, b: vb) }
       }
   }
 }
@@ -160,8 +160,8 @@ fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEv
 // map_merge_at for DescentEvidence: pointwise meet keyed by String.
 fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_val: DescentEvidence) -> Map<String, DescentEvidence> {
   match map_get(base, key) {
-    Some { value: existing } => map_insert(base, key, descent_evidence_lattice_meet(a: existing, b: new_val))
-    None => map_insert(base, key, new_val)
+    Present { value: existing } => map_insert(base, key, descent_evidence_lattice_meet(a: existing, b: new_val))
+    Absent => map_insert(base, key, new_val)
   }
 }
 
@@ -259,11 +259,11 @@ fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
   else {
     if k > peano_literal_materialization_cap() { none }
     else {
-      if k == 1 { Some { value: OneStep } }
+      if k == 1 { Present { value: OneStep } }
       else {
         match positive_descent_amount_from_positive_int(k: k - 1) {
-          Some { value: prev } => Some { value: AdditionalStep { previous: prev } }
-          None => none
+          Present { value: prev } => Present { value: AdditionalStep { previous: prev } }
+          Absent => none
         }
       }
     }
@@ -276,11 +276,11 @@ fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
   else {
     if k > peano_literal_materialization_cap() { none }
     else {
-      if k == 2 { Some { value: DivideByTwo } }
+      if k == 2 { Present { value: DivideByTwo } }
       else {
         match proportional_divisor_from_int_at_least_two(k: k - 1) {
-          Some { value: prev } => Some { value: StrictlyLarger { inner: prev } }
-          None => none
+          Present { value: prev } => Present { value: StrictlyLarger { inner: prev } }
+          Absent => none
         }
       }
     }

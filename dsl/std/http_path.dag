@@ -46,13 +46,13 @@ type PathTemplateParseResult
 
 fn parse_path_template(raw: String) -> PathTemplateParseResult {
   let path_only = match raw |> split(delimiter: "?") |> first {
-    Some { value: p } => p
-    None => raw
+    Present { value: p } => p
+    Absent => raw
   }
   let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
   match segments |> first {
-    None => ParsedPathTemplate { template: PathTemplate { tokens: [] } }
-    Some { value: first_seg } =>
+    Absent => ParsedPathTemplate { template: PathTemplate { tokens: [] } }
+    Present { value: first_seg } =>
       match parse_segment_tokens(seg: first_seg) {
         MalformedPathSegment { segment: s, reason: r } =>
           MalformedPathTemplate { raw: raw, segment: s, reason: r }
@@ -92,24 +92,24 @@ fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
     }
     // Split-count guards make these None arms unreachable; fail closed rather than fabricating empty text.
     let prefix = match before_and_rest |> first {
-      Some { value: p } => p
-      None => return MalformedPathSegment { segment: seg, reason: "internal: missing prefix after opening-brace split" }
+      Present { value: p } => p
+      Absent => return MalformedPathSegment { segment: seg, reason: "internal: missing prefix after opening-brace split" }
     }
     let after_open = match before_and_rest |> skip(1) |> first {
-      Some { value: r } => r
-      None => return MalformedPathSegment { segment: seg, reason: "internal: missing tail after opening-brace split" }
+      Present { value: r } => r
+      Absent => return MalformedPathSegment { segment: seg, reason: "internal: missing tail after opening-brace split" }
     }
     let name_and_suffix = after_open |> split(delimiter: "}")
     if prefix |> contains("}") || count(name_and_suffix) != 2 {
       return MalformedPathSegment { segment: seg, reason: "missing closing brace or extra closing brace" }
     }
     let param_name = match name_and_suffix |> first {
-      Some { value: p } => p
-      None => return MalformedPathSegment { segment: seg, reason: "internal: missing parameter name after closing-brace split" }
+      Present { value: p } => p
+      Absent => return MalformedPathSegment { segment: seg, reason: "internal: missing parameter name after closing-brace split" }
     }
     let suffix = match name_and_suffix |> skip(1) |> first {
-      Some { value: s } => s
-      None => return MalformedPathSegment { segment: seg, reason: "internal: missing suffix after closing-brace split" }
+      Present { value: s } => s
+      Absent => return MalformedPathSegment { segment: seg, reason: "internal: missing suffix after closing-brace split" }
     }
     let prefix_tokens = if prefix != "" {
       [LiteralToken { text: prefix }]
@@ -143,11 +143,11 @@ fn last_path_param(template: PathTemplate) -> String? {
       LiteralToken => false
     })
   match params |> last {
-    Some { value: tok } =>
+    Present { value: tok } =>
       match tok {
-        ParamToken { name: n } => Some { value: n }
+        ParamToken { name: n } => Present { value: n }
         LiteralToken => none
       }
-    None => none
+    Absent => none
   }
 }
