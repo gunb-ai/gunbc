@@ -11,7 +11,7 @@ import v4.std.diagnostic {
   Rejected,
   diagnostics_singleton
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -26,7 +26,8 @@ import v4.std.verification {
 }
 data rejects_until_substrate_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^rejects_until_substrate_subject_symbol } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 
 

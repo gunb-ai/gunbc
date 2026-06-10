@@ -21,7 +21,8 @@ import v4.std.node {
   TypeNode,
   content_hash,
   loop_bound_edge,
-  well_formed
+  well_formed,
+  Unanchored
 }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -34,7 +35,9 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn loop_linear_bound_leaf(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -46,7 +49,8 @@ data loop_linear_bound_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge { label: Positional, target: loop_linear_bound_body_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -55,7 +59,8 @@ data loop_linear_bound_subject: Node = Node {
   children: [
     Edge { label: Positional, target: loop_linear_bound_body },
     Edge { label: Named { name: loop_bound_edge }, target: loop_linear_bound_measure_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -103,7 +108,8 @@ data loop_linear_bound_subject_rebuilt: Node = Node {
   children: [
     Edge { label: Positional, target: loop_linear_bound_body },
     Edge { label: Named { name: loop_bound_edge }, target: loop_linear_bound_measure_leaf }
-  ]
+  ],
+  span: Unanchored
 }
 
 // Distinct node (bound edge removed) — sensitivity: a distinct input must yield a distinct hash.
@@ -111,7 +117,8 @@ data loop_linear_bound_subject_unbounded: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_linear_bound_body }
-  ]
+  ],
+  span: Unanchored
 }
 
 data witness_loop_linear_bound_content_hash_stable: Bool = (content_hash(n: loop_linear_bound_subject) == content_hash(n: loop_linear_bound_subject_rebuilt)) && (content_hash(n: loop_linear_bound_subject) != content_hash(n: loop_linear_bound_subject_unbounded))

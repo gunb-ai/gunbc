@@ -62,6 +62,7 @@ fn diagnostics_singleton(d: Diagnostic) -> NonEmptyDiagnostics {
 fn node_locus(node: Node) -> Locus {
   NodeLocus { anchor: LocusAnchor { at: node } }
 }
+
 fn port_locus(port: Symbol) -> Locus {
   PortLocus { anchor: LocusAnchor { at: port } }
 }

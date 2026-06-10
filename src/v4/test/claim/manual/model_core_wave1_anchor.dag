@@ -28,7 +28,7 @@ import v4.std.model_core {
   wave1_model_core,
   wave1_void
 }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -42,8 +42,9 @@ import v4.std.witness { Holds, Violates }
 fn model_core_wave1_payload_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^model_core_wave1_payload_fail_atom } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn wave1_model_core_bool_width_fact_holds() -> Bool {

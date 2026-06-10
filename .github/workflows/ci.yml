@@ -684,6 +684,7 @@ jobs:
         path: |
           target/release/gunbc
           target/release/claim_batch
+          target/release/claim_executor
         key: gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-
@@ -692,6 +693,13 @@ jobs:
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
     - name: affected-set node-frontier selection must-pass discriminating witnesses
       run: bash scripts/v4-affected-set-node-frontier-gate.sh --perturb-check
+    # Near-term CI dogfood: the v4.workflow.executor .dag is the batching
+    # AUTHORITY. claim_executor consumes its plan (batch_runner.dag) and runs the
+    # claim suite batch-by-batch, claims-in-parallel. --perturb-check proves the
+    # host CONSUMES the .dag (drop a dependency -> rebatch) and that the
+    # executor's ordering gates execution (false gating claim -> batch 2 skipped).
+    - name: v4 executor batch-runner dogfood (must-pass, discriminating)
+      run: bash scripts/v4-batch-executor-gate.sh --perturb-check
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
     needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, infra_isolation, doc_refs, layering_imports]

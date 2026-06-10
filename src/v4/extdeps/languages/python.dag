@@ -84,7 +84,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Unanchored
 }
 import v4.std.target_model {
   grammar_relation_field_emitted,
@@ -271,8 +272,9 @@ data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 fn python_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn python_named_edge(name: Symbol, target: Node) -> Edge {
@@ -295,8 +297,9 @@ fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
         name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
@@ -315,8 +318,9 @@ fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
         name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
@@ -335,8 +339,9 @@ fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
         name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
@@ -355,8 +360,9 @@ fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
         name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
@@ -375,8 +381,9 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
         name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: ModelCorePrimitiveFactAxis) -> PerLanguageFactBundleKey {
@@ -770,8 +777,9 @@ fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> No
         name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> Node {
@@ -790,8 +798,9 @@ fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> Node {
         name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> Node {
@@ -810,8 +819,9 @@ fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> Node {
         name: ^python_facts_field_std_projection,
         target: python_inhabitant_atom(id: facts.std_projection)
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_integer_algebra_inhabitance(facts: PythonIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -905,8 +915,9 @@ fn python_inhabitant_node(id: Symbol, facts: Node) -> Node {
     children: [
       python_named_edge(name: ^python_inhabitant_field_atom, target: python_inhabitant_atom(id: id)),
       python_named_edge(name: ^python_inhabitant_field_facts, target: facts)
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_int_inhabitant_node() -> Node {
@@ -929,8 +940,9 @@ fn python_declared_inhabitants_root() -> Node {
     children: [
       python_named_edge(name: ^python_inhabitant_field_int, target: python_int_inhabitant_node()),
       python_named_edge(name: ^python_inhabitant_field_float, target: python_float_inhabitant_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // Zip-fold support nodes derived from python_facts_int constructors — not parallel fixture data.
@@ -974,8 +986,9 @@ fn python_mvp1_coercion_candidate_edges() -> List<Edge> {
 fn python_mvp1_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: python_mvp1_coercion_candidate_edges()
-  }
+    children: python_mvp1_coercion_candidate_edges(),
+    span: Unanchored
+}
 }
 
 fn python_mvp1_selection_policy_node() -> Node {
@@ -989,8 +1002,9 @@ fn python_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: python_int_inhabitant_node() },
       Edge { label: Positional, target: python_int_inhabitant_node() },
       Edge { label: Positional, target: python_int_inhabitant_node() }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
@@ -1021,8 +1035,9 @@ fn python_mvp1_serialize_source_children() -> List<Edge> {
 fn python_mvp1_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: python_mvp1_serialize_source_children()
-  }
+    children: python_mvp1_serialize_source_children(),
+    span: Unanchored
+}
 }
 
 // --- FormalProduction authority (flat rhs) + GrammarExpr operational shim (parse.dag) ---
@@ -1207,8 +1222,9 @@ fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
           token_to_node: python_concrete_token_node
         )
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_mvp1_translation_rules_node() -> Node {
@@ -1219,8 +1235,9 @@ fn python_mvp1_translation_rules_node() -> Node {
         name: ^python_relation_rule_mvp1_fn_add,
         target: python_grammar_relation_row_node(row: python_mvp1_grammar_relation_row())
       )
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_mvp1_target_model_node() -> Node {
@@ -1231,8 +1248,9 @@ fn python_mvp1_target_model_node() -> Node {
       python_named_edge(name: target_model_edge_declared_inhabitants, target: python_mvp1_declared_inhabitants_root()),
       python_named_edge(name: target_model_edge_translation_rules, target: python_mvp1_translation_rules_node()),
       python_named_edge(name: target_model_edge_serialize_source, target: python_mvp1_serialize_source_node())
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn python_mvp1_binding_spellings() -> Map<Symbol, String> {

@@ -42,7 +42,9 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  name_occurrences
+  name_occurrences,
+  node_rebuild,
+  Unanchored
 }
 import v4.std.node_query {
   find_named_child
@@ -253,8 +255,8 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
   if name_occurrences(name: name, children: root.children) == 0 {
     outcome_rejected(d: path_unresolvable_diagnostic(at: root))
   } else if name_occurrences(name: name, children: root.children) == 1 {
-    outcome_accepted(value: Node {
-      kind: root.kind,
+    outcome_accepted(value: node_rebuild(
+      n: root,
       children: fold(
         root.children,
         init: Empty,
@@ -270,7 +272,7 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
           }
         }
       )
-    })
+    ))
   } else {
     outcome_rejected(d: path_ambiguous_diagnostic(at: root))
   }

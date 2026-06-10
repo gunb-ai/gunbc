@@ -35,7 +35,7 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
@@ -47,7 +47,9 @@ import v4.std.verification {
   manual_claim_anchor
 }
 fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ span: Unanchored
+}
 }
 
 
@@ -62,7 +64,8 @@ data arbitrary_english_prose_input: Node = Node {
       label: Named { name: ^english_payload_field },
       target: atom_node(s: ^english_arbitrary_prose_symbol)
     },
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -77,7 +80,8 @@ data english_shape_b_docs_input: Node = Node {
       label: Named { name: ^english_walker_field },
       target: atom_node(s: ^english_doc_walker_symbol)
     },
-  ]
+  ],
+  span: Unanchored
 }
 
 
@@ -92,7 +96,8 @@ data english_shape_b_docs_output: Node = Node {
       label: Named { name: ^english_output_field },
       target: atom_node(s: ^english_prose_output_symbol)
     },
-  ]
+  ],
+  span: Unanchored
 }
 
 

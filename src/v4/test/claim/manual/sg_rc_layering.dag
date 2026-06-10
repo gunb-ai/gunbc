@@ -48,7 +48,7 @@ import v4.std.target_model {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, content_hash }
+import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, content_hash, Unanchored }
 import v4.std.witness { Holds, Violates }
 import v4.std.text { String }
 import v4.std.verification {
@@ -75,15 +75,17 @@ data sg_rc_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 fn sg_rc_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_rc_pass_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg_rc_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_rc_fail_sym } },
-    children: []
-  }
+    children: [],
+    span: Unanchored
+}
 }
 
 fn sg_rc_claim_input(ok: Bool) -> Node {
@@ -142,18 +144,21 @@ fn sg_rc_outcome_node_source_type() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_outcome } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       },
       Edge {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_node } },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 fn sg_rc_outcome_node_projected_type() -> Node {

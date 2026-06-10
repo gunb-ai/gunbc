@@ -8,7 +8,7 @@ import v4.compiler.normalize { normalize }
 
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.verification {
   CompilesClaim,
   EqualsClaim,
@@ -21,7 +21,8 @@ import v4.std.verification {
 }
 data spine_normalize_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_normalize_module } },
-  children: []
+  children: [],
+  span: Unanchored
 }
 fn spine_normalize_service_parse_tree() -> Node {
   Node {
@@ -33,11 +34,13 @@ fn spine_normalize_service_parse_tree() -> Node {
         label: Named { name: ^spine_normalize_service_decl },
         target: Node {
           kind: TypeNode { connective: Conj },
-          children: []
-        }
+          children: [],
+          span: Unanchored
+}
       }
-    ]
-  }
+    ],
+    span: Unanchored
+}
 }
 
 // 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 / G.3.5 spine harness —
@@ -54,13 +57,15 @@ fn spine_normalize_bool_atom(b: Bool) -> Node {
     true =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_normalize_pass } },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
     false =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_normalize_fail } },
-        children: []
-      }
+        children: [],
+        span: Unanchored
+}
   }
 }
 
