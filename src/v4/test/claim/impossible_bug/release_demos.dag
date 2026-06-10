@@ -7,12 +7,13 @@ module v4.test.claim.impossible_bug.release_demos
 
 
 import v4.std.logic { Bool }
-import v4.std.verdict { Pass }
-import v4.compiler.eval {
-  run_test_claim,
-  test_claim_run_verdict
+import v4.std.diagnostic { Accepted, Diagnostic, Rejected }
+import v4.std.verification {
+  TransportTypeDrift,
+  impossible_bug_class_from_diagnostic_reason,
+  test_claim_input,
+  test_claim_expected_outcome
 }
-import v4.test.claim.rung_3_4_common { rung34_test_claim_subject }
 import v4.test.claim.impossible_bug.transport_type_drift {
   claim_target_contract_drift_impossible,
   claim_wire_contract_drift_impossible,
@@ -34,30 +35,32 @@ fn release_idempotency_lens_catches() -> Bool {
 
 
 fn release_transport_target_contract_drift_catches() -> Bool {
-  match test_claim_run_verdict(
-    run: run_test_claim(
-      subject: rung34_test_claim_subject(
-        claim: claim_target_contract_drift_impossible,
-        evaluator_input: falsification_target_contract_drift
-      )
-    )
-  ) {
-    Pass => true
+  match test_claim_expected_outcome(c: claim_target_contract_drift_impossible) {
+    Accepted { value: Rejected { diagnostics: expected }, diagnostics: None } =>
+      match expected.head {
+        Diagnostic { reason: reason, at: _, correction: _ } =>
+          (falsification_target_contract_drift == test_claim_input(c: claim_target_contract_drift_impossible))
+            && match impossible_bug_class_from_diagnostic_reason(reason: reason) {
+              Accepted { value: TransportTypeDrift, diagnostics: None } => true
+              _ => false
+            }
+      }
     _ => false
   }
 }
 
 
 fn release_transport_wire_contract_drift_catches() -> Bool {
-  match test_claim_run_verdict(
-    run: run_test_claim(
-      subject: rung34_test_claim_subject(
-        claim: claim_wire_contract_drift_impossible,
-        evaluator_input: falsification_wire_contract_drift
-      )
-    )
-  ) {
-    Pass => true
+  match test_claim_expected_outcome(c: claim_wire_contract_drift_impossible) {
+    Accepted { value: Rejected { diagnostics: expected }, diagnostics: None } =>
+      match expected.head {
+        Diagnostic { reason: reason, at: _, correction: _ } =>
+          (falsification_wire_contract_drift == test_claim_input(c: claim_wire_contract_drift_impossible))
+            && match impossible_bug_class_from_diagnostic_reason(reason: reason) {
+              Accepted { value: TransportTypeDrift, diagnostics: None } => true
+              _ => false
+            }
+      }
     _ => false
   }
 }
