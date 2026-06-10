@@ -57,7 +57,12 @@ runtime-value codec on the other — so one transport reads them backward (emit)
 type HostTransportDescriptor {
   workspace: List<WorkspaceFile>        // fixture layout: where emitted source lands,
                                         //   plus fixed manifests (Cargo.toml)
-  steps: List<TransportStep>            // ordered; every step but the last is a build
+  build: List<ProcessInvocation>        // ordered build steps; [] for run-direct targets
+  run: ProcessInvocation                // THE logical run — its stdout is the
+                                        //   runtime-value channel. Exactly-one-run is
+                                        //   true BY CONSTRUCTION (Q-T2 ratified shape):
+                                        //   zero runs, two runs, run-not-last are
+                                        //   unrepresentable — no well_formed rule needed
   runtime_value_codec: RuntimeValueCodec
 }
 
@@ -69,14 +74,6 @@ type WorkspaceContent
   = EmittedSource                       // the emit pipeline's output goes here
   | FixedText { text: String }          // manifest boilerplate (Cargo.toml)
 
-type TransportStep {
-  invocation: ProcessInvocation
-  role: StepRole
-}
-type StepRole = Build | LogicalRun      // exactly one LogicalRun, the last step;
-                                        //   its stdout is the runtime-value channel
-                                        //   (Q-T2 RESOLVED: enforced by well_formed —
-                                        //   ordered Build* then one LogicalRun)
 type ProcessInvocation {
   tool: HostTool                        // modeled identity (Q-T4 ruling), not a path string
   args: List<InvocationArg>
@@ -101,13 +98,13 @@ type RuntimeValueCodec
 
 Worked rows (each one descriptor in its language's `extdeps` module):
 
-- **rust**: workspace `[Cargo.toml fixed, src/main.rs emitted]`; steps
-  `[Build: cargo build --quiet --manifest-path …, LogicalRun: ProducedArtifact target/debug/fixture]`;
+- **rust**: workspace `[Cargo.toml fixed, src/main.rs emitted]`; build
+  `[cargo build --quiet --manifest-path …]`; run `ProducedArtifact target/debug/fixture`;
   codec `FixedWidthBytes 5`.
-- **python**: workspace `[fixture.py emitted]`; steps `[LogicalRun: python3 fixture.py]`.
-- **go**: workspace `[main.go emitted]`; steps `[LogicalRun: go run main.go]`.
+- **python**: workspace `[fixture.py emitted]`; build `[]`; run `python3 fixture.py`.
+- **go**: workspace `[main.go emitted]`; build `[]`; run `go run main.go`.
 - **typescript** (#4621, first new row — the dogfood): workspace `[fixture.ts emitted]`;
-  steps `[Build: tsc fixture.ts, LogicalRun: node ProducedArtifact fixture.js]`.
+  build `[tsc fixture.ts]`; run `node ProducedArtifact fixture.js`.
 
 TypeScript is the proof the schema generalizes: it is the first **two-step** non-cargo
 pipeline, and it lands as a row, not a function.
@@ -122,8 +119,8 @@ fn run_emit_host(target: TargetModel, source: TargetSource, fixture_inputs: Inpu
 becomes **one body**: `find_witness` selects the target's `HostTransportDescriptor` from
 the closed candidate set of language rows (no descriptor ⇒ typed `Rejected`, exactly
 today's `emit_host_run_unsupported_target_diagnostic` — C-8 fail-closed, never a default
-transport); then a fold over `steps` invokes the one primitive (§3.3), short-circuiting on
-the first non-`Holds` build exit; the `LogicalRun` step's bounded stdout flows into
+transport); then a fold over `build` invokes the one primitive (§3.3), short-circuiting on
+the first non-`Holds` build exit, followed by `run`; the run's bounded stdout flows into
 `emit_host_receipt_from_source` — **one** receipt assembly path, which dissolves the
 Python hand-reify asymmetry as a side effect. `runtime_value_parse` likewise becomes one
 fn folding the codec datum (`FixedWidthBytes w` ⇒ length check against `w`), deleting the
@@ -221,13 +218,16 @@ The descriptor is shared, not emit-private:
   key the value-emit projection rows use). If `TargetModel` turns out not to carry a
   stable language identity yet, that field is a prerequisite, not a reason to keep string
   pins.
-- **Q-T2 — step semantics: RESOLVED (finalized by this doc, ratified)** — strict ordering,
-  first non-`Holds` build exit short-circuits to a `Violates` receipt, **exactly one
-  `LogicalRun`, last**, enforced by `well_formed` at row validation, not at run time. No
-  concrete multi-run case exists; a hypothetical "test then run" is two transports, not
-  one descriptor. If the `StepRole` placement proves awkward, the structurally-stronger
-  `steps: List<BuildStep>` + `run: ProcessInvocation` shape (illegal descriptors
-  unrepresentable) is the sanctioned alternative — decide at build, cheap pre-consumer.
+- **Q-T2 — step semantics: RATIFIED with a refinement (2026-06-10)** — the split shape
+  `build: List<ProcessInvocation>` + `run: ProcessInvocation` is **primary** (§3.1), not a
+  fallback. Rationale: a flat step-list + `StepRole` + `well_formed` check would make
+  "exactly one run, last" a *validated* invariant (invalid states representable, then
+  rejected); the split makes those states **unrepresentable** — correctness by
+  construction over validate-then-reject, the house philosophy. The one-run `well_formed`
+  rule is dropped as vacuous. Semantics unchanged: strict build ordering, first
+  non-`Holds` build exit short-circuits to a `Violates` receipt, `run`'s stdout is the
+  runtime-value channel. No concrete multi-run case exists; a hypothetical "test then
+  run" is two transports, not one descriptor.
 - **Q-T3 — bounds ownership: RULED — bounds are a separate policy axis**, never descriptor
   fields. The descriptor says WHAT to run; bounds (timeouts/resource limits) are HOW MUCH —
   the compute-fabric policy seam (the `MultiplicityPolicy`/`TargetDeclaredPriority`
