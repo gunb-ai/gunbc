@@ -14,6 +14,12 @@ import v4.compiler.body_producer {
   produce_mvp1_add_arrow_with_body
 }
 import v4.compiler.emit { emit }
+import v4.compiler.translate {
+  grammar_inverse_bodied_arrow_validated,
+  project_arrow_body_to_value_expression,
+  target_serialize_source_from_model,
+  translate
+}
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.extdeps.languages.typescript {
@@ -23,6 +29,7 @@ import v4.extdeps.languages.typescript {
   ts_lex_rule,
   ts_mvp1_binding_spellings,
   ts_mvp1_declared_inhabitants_root,
+  ts_mvp1_emitted_add_fn_with_body_node,
   ts_mvp1_selection_policy_node,
   ts_mvp1_serialize_source_node,
   ts_mvp1_source_text,
@@ -479,6 +486,108 @@ fn comprep_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<TargetSour
 data comprep_ts_swapped_bodied_inferred_tree: InferredTree = InferredTree {
   root: comprep_ts_swapped_bodied_arrow_root,
   facts: Map { lookup: comprep_ts_facts_lookup }
+}
+
+fn comprep_ts_debug_producer_tree_accepts() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_producer_translate_accepts() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: ts_mvp1_target_model()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_producer_emitted_eq_grammar_row() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: ts_mvp1_target_model()) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          emitted == ts_mvp1_emitted_add_fn_with_body_node()
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_producer_grammar_inverse_accepts() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: ts_mvp1_target_model()) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          match grammar_inverse_bodied_arrow_validated(
+            target: ts_mvp1_target_model(),
+            emitted: emitted
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_producer_body_projection_accepts() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: ts_mvp1_target_model()) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          match project_arrow_body_to_value_expression(arrow: emitted) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_producer_serialize_accepts() -> Bool {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: ts_mvp1_target_model()) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          match target_serialize_source_from_model(
+            target: ts_mvp1_target_model(),
+            emitted: emitted
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_producer_emit_accepts() -> Bool {
+  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_producer_emit_source_eq() -> Bool {
+  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+    Accepted { value: source, diagnostics: _ } => source == ts_mvp1_source_text
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_producer_emit_diag_none() -> Bool {
+  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // E-10 emit-only green: producer-rooted bodied arrow renders the fidelity TS source string.

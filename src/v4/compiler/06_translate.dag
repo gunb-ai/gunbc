@@ -600,6 +600,30 @@ fn grammar_inverse_bodied_arrow_validated(
     }
   )
 }
+// E-9 bodied Arrow: signature slots coerce to raw target inhabitant carriers so
+// grammar_inverse exact emitted-node match succeeds; shell wrapping is for binding
+// projection sites, not grammar-row signature equality.
+fn translate_bodied_arrow_coerce_signature_slot_raw(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  match coerce_grounded_node(source: node, tree: tree, target: target) {
+    Accepted { value: coerced, diagnostics: d } =>
+      Accepted { value: coerced.target, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      match canonical_grounding_for_node(tree: tree, node: node) {
+        Accepted { value: grounding } =>
+          if algebra_ref_is_grounded(algebra: grounding.witness.structural.evidence) {
+            outcome_accepted(value: grounding.witness.structural.evidence)
+          } else {
+            Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: _ } => Rejected { diagnostics: r }
+      }
+  }
+}
+
 fn translate_bodied_arrow_coerce_signature_slots(
   arrow: Node,
   tree: InferredTree,
@@ -617,7 +641,7 @@ fn translate_bodied_arrow_coerce_signature_slots(
               match edge.label {
                 Positional =>
                   bind_outcome(
-                    o: translate_mvp1_coerce_from_grounding_or_evidence(
+                    o: translate_bodied_arrow_coerce_signature_slot_raw(
                       node: edge.target,
                       tree: tree,
                       target: target
@@ -4545,30 +4569,24 @@ fn translate_type_expression_tree(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  bind_outcome(
-    o: fold_node(
-      n: node,
-      algebra: NodeFold {
-        init: fn(n0) { translate_type_fold_init(node: n0) },
-        step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
-      }
-    ),
-    f: fn(n) {
-      if arrow_has_transform_body(arrow: n) {
-        // Bodied Arrow: coerce signature slots to target inhabitants; preserve body for
-        // value-expression serialize. Serialize fail-closes on exact grammar_relation_row
-        // match (grammar_relation_row_for_emitted) via grammar_inverse_bodied_arrow_validated.
-        bind_outcome(
-          o: translate_bodied_arrow_coerce_signature_slots(
-            arrow: n,
-            tree: tree,
-            target: target
-          ),
-          f: fn(coerced_arrow) {
-            outcome_accepted(coerced_arrow)
-          }
-        )
-      } else {
+  if arrow_has_transform_body(arrow: node) {
+    // E-9 bodied Arrow: skip structure-preserving fold (it rewrites body-scope atoms through
+    // binding projection shells). Coerce signature slots only; preserve producer body IR.
+    translate_bodied_arrow_coerce_signature_slots(
+      arrow: node,
+      tree: tree,
+      target: target
+    )
+  } else {
+    bind_outcome(
+      o: fold_node(
+        n: node,
+        algebra: NodeFold {
+          init: fn(n0) { translate_type_fold_init(node: n0) },
+          step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+        }
+      ),
+      f: fn(n) {
         // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
         // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
         // node grammar match -> pre-baked concrete tokens (the full source, e.g. the mvp1
@@ -4580,8 +4598,8 @@ fn translate_type_expression_tree(
             project_type_expression_node(node: n, target: target, projection: projection)
         }
       }
-    }
-  )
+    )
+  }
 }
 fn translate_node_with_projection(
   node: Node,
