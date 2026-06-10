@@ -229,8 +229,7 @@ fn source_ir_node_artifact_provenance(
 
 
 fn source_authority_node_equal(left: Node, right: Node) -> Bool {
-  canonicalize_node_strip_provenance(n: left)
-    == canonicalize_node_strip_provenance(n: right)
+  canonicalize_node_strip_provenance(n: left) == canonicalize_node_strip_provenance(n: right)
 }
 
 fn source_ast_equal_witness(
