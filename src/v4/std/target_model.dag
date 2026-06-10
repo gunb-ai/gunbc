@@ -1250,16 +1250,16 @@ fn target_value_expr_operand_wire_binding(operand_wire: Node) -> Optional<Symbol
 
 fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
   outcome_accepted(
-    fold_list_right(
-      xs: wire.children,
-      empty: Empty,
-      snoc: fn(acc, edge) {
+    fold(
+      wire.children,
+      init: Empty,
+      f: fn(acc, edge) {
         match edge.label {
           Named { name: n } =>
             if n == target_value_expr_field_operand {
               match target_value_expr_operand_wire_binding(operand_wire: edge.target) {
                 Present { value: binding } =>
-                  Cons { head: binding, tail: acc }
+                  list_snoc_item(xs: acc, item: binding)
                 Absent => acc
               }
             } else {
