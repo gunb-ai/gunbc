@@ -73,6 +73,12 @@ landing — one `Witness`/`Optional`/`Map`-lookup coherence fix — and the Map 
 (`map_get` honest body) and this memo's §3 collapse into one change. The lane should weigh that
 site explicitly before declaring the flavor.
 
+**Deletion ownership (explicit, 2026-06-10):** the `map_get` site and the runtime
+`match_pattern` bridge belong to the **Map landing** (`design-map-unification.md` §5) under
+either flavor. The surface sweep here covers every *other* `Some`/`None` arm and does not
+touch that site; deep flavor ⇒ one co-landed PR. This prevents the two lanes racing for the
+same deletion.
+
 ## 4. The clean sequence (unchanged by which flavor wins)
 
 1. Optional-surface fix lands (bounded sweep, or #9 if deep) →

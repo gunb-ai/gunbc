@@ -122,9 +122,10 @@ case is in the minimal slice (§6).
 ### 4.3 Decidability argument (the carve, stated honestly)
 
 - Descriptions are finite acyclic `Node` trees; the recursion descends structurally on the
-  pair (TreeSize on the container, lexicographically the contained) — checkable by the
-  termination lane (`docs/design-termination-checker.md` §4.2; this module is an early
-  client of that checker).
+  pair (TreeSize on the container, lexicographically the contained). This module is
+  structurally terminating on its own — it is **not gated on** the termination lane; when
+  that checker lands (`docs/design-termination-checker.md` §4.2) it *validates* this
+  recursion as an early worked example, but nothing here waits for it.
 - Each leaf rule is a finite comparison (integer endpoint compare; finite-list subset;
   field-name set equality). No quantifier instantiation, no predicate evaluation, no search.
 - The rule table is closed × closed: adding a kind forces writing its row against every kind

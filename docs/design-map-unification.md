@@ -161,6 +161,13 @@ fixed-point artifact comparisons ([`design-self-host-fixed-point.md`](design-sel
   the landing PR — they are the consumers whose receipts prove the change.
 - v2 interpreter chokepoint deletion rides the same change as the model swap (the runtime
   already prefers the native form; deleting the closure arm is removal, not addition).
+- **Deletion ownership (deconflicted with the Optional lane, 2026-06-10):** the `map_get`
+  site and the runtime `match_pattern` Witness→`Some` bridge are owned by **this landing**,
+  regardless of the Optional lane's flavor verdict. The Optional surface sweep
+  (`design-optional-surface.md`) normalizes match arms everywhere *else* and explicitly
+  excludes this site; if the Optional lane measures **deep**, the two land as one PR (#9
+  co-landing per that memo §3) with this design's §4.1 as the `map_get` authority. Two PRs
+  must not both reach for the same deletion.
 
 ## 6. Consumers and minimal slice (E-10 / seesaw)
 
@@ -185,11 +192,14 @@ fixed-point artifact comparisons ([`design-self-host-fixed-point.md`](design-sel
 
 ## 7. Open questions — escalate, don't improvise
 
-- **Q-M1 — entry order semantics.** Equality is order-independent; is *iteration* order
-  declared (insertion order? canonical key order?)? Deterministic emission (DB-8) and the
-  fixed-point gate need a declared answer. Recommended: canonical key order at the
-  comparison/serialization boundary, insertion order preserved in `entries` — but this is an
-  operator call because it touches DB-8.
+- **Q-M1 — entry order semantics. RESOLVED (operator 2026-06-09; reconciled 2026-06-10):**
+  canonical key order **is the representation** (§4.1) — entries are maintained sorted, there
+  is no insertion-order concept, iteration and serialization inherit the one order, and
+  whole-map `==` is plain structural equality. (An earlier draft of this question floated
+  "insertion order preserved in `entries`" — withdrawn: it would reopen the order-dependence
+  §4.1 dissolves.) One requirement this introduces, stated honestly: keys need a canonical
+  **total order** (not just decidable equality) — the same fail-closed key-validity site
+  enforces it, and the runtime's `CanonKey` handling is the existing precedent.
 - **Q-M2 — uniqueness as witness vs by-construction.** Wave 1: `map_insert`
   replace-or-append keeps uniqueness by construction and the witness is a structural check;
   a richer `UniqueKeys` witness carrier (shared with `FiniteSet`) can follow when a consumer

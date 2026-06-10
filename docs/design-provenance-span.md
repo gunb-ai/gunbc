@@ -62,11 +62,13 @@ Copy the brand-channel playbook for the provenance axis:
   boundary stamps ids and records `tok.file/start/end` into the index instead of dropping
   them; interior nodes record the hull of their children's extents.
 - **One equality rule, stated once:** occurrence ids do not participate in structural
-  equality or content hashing — declared at the single equality authority (the same place
-  `Value::eq` semantics live), not per consumer. This is the entire equality cost of the
-  design, and it is one line of authority instead of N consumer exceptions. (Contrast
-  `binding_id`, which *does* participate in type identity — brand is semantics, provenance
-  is bookkeeping; opposite treatments, both stated at the authority.)
+  equality or content hashing — declared in the Node-field policy table at
+  [`design-node-identity-channels.md`](design-node-identity-channels.md) (the single owner
+  for Node-carried fields and equality participation), implemented only at the two equality
+  authorities that doc names. This is the entire equality cost of the design, and it is one
+  table row instead of N consumer exceptions. (Contrast `binding_id`, which *does*
+  participate in type identity — brand is semantics, provenance is bookkeeping; opposite
+  treatments, both stated in the same table.)
 
 This sidesteps the literal-carrier substrate gap entirely (span facts are index entries, not
 Node children), keeps `Node` pure for every structural consumer, and gives AFF/WRITE/SYN the
@@ -130,9 +132,12 @@ precisely WRITE's "show the correct code at the right place" and SYN's
   per-compile consumers) vs stable-across-compiles (a correlation problem that
   content+path heuristics should *not* quietly solve — if cross-compile identity becomes a
   real need, it gets its own design).
-- **Q-P2 — where the one equality-exclusion rule lives** (the `Value::eq` authority site +
-  the `.dag`-side structural-equality predicate) — name the two files in the build PR; both
-  cite this doc.
+- **Q-P2 — RESOLVED by the channel authority:** the equality-exclusion rule lives in the
+  policy table at [`design-node-identity-channels.md`](design-node-identity-channels.md);
+  the two implementing sites (the `Value::eq` authority + the `.dag` zip-fold predicate)
+  cite that table, and the build PR cites both. The field-landing moment is also sequenced
+  there (occurrence id lands third, only at PROV GO, copying #4581's allocator pattern with
+  a distinct id space).
 - **Q-P3 — interior-node extents.** Hull-of-children (recommended) vs head-token-only;
   affects narrowest-enclosing tie-breaks. Cheap to change pre-consumer, decide at build.
 - **Q-P4 — `ByteRange` Int → branded `ByteOffset`** (A4): ride-along upgrade or separate

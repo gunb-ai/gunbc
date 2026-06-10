@@ -48,8 +48,10 @@ already routes (one write, one seam; a `FunctionRef` record would be a second id
 vocabulary). Body attachment: an **`Arrow.body` edge** — INVARIANTS already names
 `Arrow.body` as the single authority for external realization (E-9/DB-14); internal
 realization (a Behavior sub-DAG) is the same edge with a body target, which keeps one
-authority for "what realizes this declaration." Coordinate the Node-field moment with PROV's
-occurrence-id field (`design-provenance-span.md` §4.1) — if both land, stamp once.
+authority for "what realizes this declaration." The Node-field moment, equality
+participation, and landing order are owned by
+[`design-node-identity-channels.md`](design-node-identity-channels.md) — this wave lands
+through that table (#4581 → T-9 rider → COMPREP refs ride the channel), not independently.
 
 **Wave 1 — the keystone body, source-ingested (1–2 weeks; the designable slice).** Parse
 `add`'s *body* from real source: grammar productions for the minimal expression subset
