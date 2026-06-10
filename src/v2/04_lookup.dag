@@ -276,31 +276,50 @@ type StructuralMethodLookup {
   kernel_diagnostics: List<ErrorNode>
 }
 
+fn product_field_result_type(field: Node) -> Node? {
+  match field.inferred {
+    Some { value: Resolved { node: rt } } =>
+      if rt.params |> count > 0 {
+        match rt.inferred {
+          Some { value: Resolved { node: return_type } } => Some { value: return_type }
+          _ => Some { value: rt }
+        }
+      } else {
+        Some { value: rt }
+      }
+    _ => none
+  }
+}
+
+fn map_lookup_result_type(product: Node, field: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  if authored_name_at(source_indices: source_indices, node: product) == "Map" {
+    match product_field_result_type(field: field) {
+      Some { value: raw } =>
+        if authored_name_at(source_indices: source_indices, node: raw) == "Witness" {
+          Some { value: raw }
+        } else {
+          Some { value: make_container_type(kind_name: "Witness", element: raw).ty }
+        }
+      None => none
+    }
+  } else {
+    none
+  }
+}
+
 fn lookup_field_in_product(product: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> MethodFieldResult? {
   let matching = product.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == method_name)
   match matching |> first {
     Some { value: field } =>
-      if node_is_keyed_collection(n: product, source_indices: source_indices) && method_name == "lookup" {
-        let value_child = match product.children |> skip(1) |> first {
-          Some { value: child } => child_type_node(ch: child)
-          None => nominal_type_ref(name: "V")
-        }
-        let witness_value = make_container_type(kind_name: "Witness", element: value_child)
-        Some { value: MethodFieldResult { field_node: field, result_type: witness_value.ty, size_effect: none, cost_shape: none, algebra_template: none } }
-      } else {
-      match field.inferred {
-        Some { value: Resolved { node: rt } } =>
-          if rt.params |> count > 0 {
-            match rt.inferred {
-              Some { value: Resolved { node: return_type } } => Some { value: MethodFieldResult { field_node: field, result_type: return_type, size_effect: none, cost_shape: none, algebra_template: none } }
-              _ => Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
-            }
-          } else {
-            Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
+      match if method_name == "lookup" { map_lookup_result_type(product: product, field: field, source_indices: source_indices) } else { none } {
+        Some { value: lookup_rt } =>
+          Some { value: MethodFieldResult { field_node: field, result_type: lookup_rt, size_effect: none, cost_shape: none, algebra_template: none } }
+        None =>
+          match product_field_result_type(field: field) {
+            Some { value: rt } => Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
+            None => none
           }
-        _ => none
-      }
-      }
+        }
     None => none
   }
 }

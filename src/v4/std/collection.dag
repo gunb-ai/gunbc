@@ -108,7 +108,7 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // dissolve-on: bootstrap Witness<V> dispatch at Map.lookup (substrate Witness above); forbidden:
 // ad hoc map_get outside v4.std.collection.
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
-  match m.lookup(key) {
+  match lookup(m, key) {
     Holds { value: v } => outcome_accepted(value: Present { value: v })
     Violates { diagnostic: _ } => outcome_accepted(value: Absent)
   }
