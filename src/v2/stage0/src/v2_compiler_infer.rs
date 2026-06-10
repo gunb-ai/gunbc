@@ -1072,7 +1072,13 @@ pub fn direct_call_arg_decl_identity(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> 
     match n.binding_id.clone() {
         Some(_) => n.clone(),
         None => match lookup_type_for(env, n.clone()) {
-            Some(resolved) => resolved.clone(),
+            Some(resolved) => {
+                if n.return_cardinality.clone() == Cardinality::CardOptional {
+                    with_optional_cardinality(resolved.clone())
+                } else {
+                    resolved.clone()
+                }
+            }
             None => n.clone(),
         },
     }
