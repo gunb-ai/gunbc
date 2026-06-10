@@ -16,13 +16,36 @@ import v4.extdeps.languages.typescript {
   ts_facts_number,
   ts_inhabitant_atom,
   ts_inhabitant_number_node,
+  ts_mvp1_binding_spellings,
+  ts_mvp1_bodied_arrow_statement_scaffold,
+  ts_mvp1_declared_inhabitants_root,
+  ts_mvp1_selection_policy_node,
+  ts_mvp1_serialize_source_node,
   ts_mvp1_source_text,
+  ts_mvp1_source_text_authority,
   ts_mvp1_target_model,
-  ts_mvp1_target_model_minus_catalog,
-  ts_mvp1_target_model_missing_operator_catalog,
+  ts_mvp1_translation_rules_node,
   ts_number_arithmetic_semantics_node,
   ts_number_bitwise_semantics_node,
-  ts_number_facts_node
+  ts_number_facts_node,
+  ts_value_expression_projection,
+  ts_wave1_lex
+}
+import v4.std.target_model {
+  InfixToken,
+  TargetModel,
+  bodied_arrow_statement_scaffold_bundle_node,
+  canonical_operation_op_add,
+  target_model_edge_bodied_arrow_statement_scaffold,
+  target_model_edge_declared_inhabitants,
+  target_model_edge_operator_realizations,
+  target_model_edge_selection_policy,
+  target_model_edge_serialize_source,
+  target_model_edge_translation_rules,
+  target_model_edge_value_expression_projection,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  value_expr_projection_bundle_node
 }
 import v4.compiler.target_carriers { TargetSource }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }

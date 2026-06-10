@@ -19,7 +19,8 @@ import v4.std.algebra {
   is_empty,
   list_snoc_item,
   length,
-  list_append
+  list_append,
+  ring_field_add
 }
 import v4.std.collection {
   Absent,
@@ -255,8 +256,14 @@ type TargetValueTemplate {
 }
 
 // T6 — closed canonical operation vocabulary (substrate-owned; arms land with producers).
+// 🟡 gated — Q-V1 interim (design-value-emit-schema.md §7) — feature:t6-canonical-op-algebra-grounding —
+// bind: PR #4627 — owner: T6 value-expression skeleton — lane: std/target_model + std/algebra —
+// dissolve-on: OpAdd discriminant grounds via ring_field_add witness; delete bare OpAdd arm name.
 type CanonicalOperation
   = OpAdd {}
+
+// Q-V1 interim algebra witness — OpAdd maps to ordered-ring addition until producer-grounded arms land.
+data canonical_operation_op_add_algebra_field: Symbol = ring_field_add
 
 fn canonical_operation_op_add() -> CanonicalOperation {
   OpAdd {}
@@ -666,7 +673,7 @@ fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxTo
     o: projection_bundle_child(bundle: token, name: concrete_syntax_token_field_kind),
     f: fn(kind_node) {
       bind_outcome(
-        o: projection_bundle_symbol_field(bundle: token, name: concrete_syntax_token_field_class),
+        o: projection_bundle_symbol_field(bundle: token, field: concrete_syntax_token_field_class),
         f: fn(token_class) {
           match kind_node.kind {
             TypeNode { connective: Atom { identity: kind } } =>

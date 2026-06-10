@@ -4351,6 +4351,22 @@ fn translate_mvp1_fold_init(
   target: TargetModel
 ) -> Outcome<Node> {
   match node.kind {
+    TypeNode { connective: Arrow } =>
+      // Bodied Arrow: fold signature children through coercion; body folds structurally (E-9).
+      if arrow_has_transform_body(arrow: node) {
+        translate_type_fold_init(node: node)
+      } else {
+        match coerce_grounded_node(source: node, tree: tree, target: target) {
+          Accepted { value: coerced, diagnostics: d } =>
+            translate_coerced_with_atom_realization(
+              source: node,
+              coerced: coerced.target,
+              target: target,
+              pending: d
+            )
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      }
     TypeNode { connective: _ } =>
       match coerce_grounded_node(source: node, tree: tree, target: target) {
         Accepted { value: coerced, diagnostics: d } =>
@@ -4381,20 +4397,23 @@ fn translate_type_expression_tree(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  // T6 bodied-arrow: skip SG-2 fold/projection entirely; serialize derives body tokens via
-  // value-expression fold (design-value-emit-schema.md §4.5).
-  if arrow_has_transform_body(arrow: node) {
-    outcome_accepted(node)
-  } else {
-    bind_outcome(
-      o: fold_node(
-        n: node,
-        algebra: NodeFold {
-          init: fn(n0) { translate_type_fold_init(node: n0) },
-          step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+  bind_outcome(
+    o: fold_node(
+      n: node,
+      algebra: NodeFold {
+        init: fn(n0) { translate_type_fold_init(node: n0) },
+        step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+      }
+    ),
+    f: fn(n) {
+      if arrow_has_transform_body(arrow: n) {
+        // Bodied Arrow: grammar-row validation first; preserve folded raw Arrow (body edge
+        // intact) for value-expression serialize — SG-2 projection drops the body wire.
+        match translate_grammar_relation_row_match(target: target, emitted: n) {
+          Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
+          Rejected { diagnostics: _ } => outcome_accepted(n)
         }
-      ),
-      f: fn(n) {
+      } else {
         // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
         // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
         // node grammar match -> pre-baked concrete tokens (the full source, e.g. the mvp1
@@ -4406,8 +4425,8 @@ fn translate_type_expression_tree(
             project_type_expression_node(node: n, target: target, projection: projection)
         }
       }
-    )
-  }
+    }
+  )
 }
 fn translate_node_with_projection(
   node: Node,
@@ -4566,18 +4585,13 @@ fn translate_node(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<Node> {
-  // Consumer of arrow_has_transform_body (see 06_value_expression.dag disposition receipt).
-  if arrow_has_transform_body(arrow: node) {
-    outcome_accepted(node)
-  } else {
-    match target_bundle_child_optional_type_expr_projection(target: target) {
-      Accepted { value: ProjectionPresent, diagnostics: _ } =>
-        translate_node_with_projection(node: node, tree: tree, target: target)
-      Accepted { value: ProjectionAbsent, diagnostics: _ } =>
-        translate_node_mvp1(node: node, tree: tree, target: target)
-      Rejected { diagnostics: r } =>
-        Rejected { diagnostics: r }
-    }
+  match target_bundle_child_optional_type_expr_projection(target: target) {
+    Accepted { value: ProjectionPresent, diagnostics: _ } =>
+      translate_node_with_projection(node: node, tree: tree, target: target)
+    Accepted { value: ProjectionAbsent, diagnostics: _ } =>
+      translate_node_mvp1(node: node, tree: tree, target: target)
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
   }
 }
 // 🟡 gated — coproduct-dissolution interim (docs/modeling-discipline.md Practice 4/9) — feature:sg-2-mvp1-projection-absent-shim — consumer:translate_node — bind PR #3962 / docs/planning/v4-sg2-type-expression-projection-worksheet-2026-05-30.md — owner:Target Realization (SG-2) — lane:extdeps TargetModel row rollout — dissolve-on-arrival: every v4.extdeps.languages.* TargetModel bundle carries target_model_edge_type_expression_projection; delete ProjectionAbsent arm, translate_node_mvp1, and TypeExprProjectionPresence from translate_node — forbidden: steady-state dual translate paths or new ProjectionAbsent match arms outside this gate.

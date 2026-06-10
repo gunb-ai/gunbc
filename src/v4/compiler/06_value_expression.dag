@@ -222,35 +222,16 @@ fn project_computation_to_value_expression(node: Node) -> Outcome<TargetValueExp
 fn target_bundle_named_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
-      match fold(
-        target.bundle.children,
-        init: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: value_expr_diagnostic(
+      match find_named_child(root: target.bundle, name: edge_name) {
+        Accepted { value: child, diagnostics: d } =>
+          Accepted { value: child, diagnostics: d }
+        Rejected { diagnostics: _ } =>
+          outcome_rejected(
+            value_expr_diagnostic(
               reason: value_expr_reason_projection_bundle_missing,
               node: target.bundle
             )
           )
-        },
-        f: fn(acc, e) {
-          match acc {
-            Accepted { value: _, diagnostics: _ } => acc
-            Rejected { diagnostics: _ } =>
-              match e.label {
-                Named { name: n } =>
-                  if n == edge_name {
-                    Accepted { value: e.target, diagnostics: None }
-                  } else {
-                    acc
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        Accepted { value: child, diagnostics: d } =>
-          Accepted { value: child, diagnostics: d }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     _ =>
       outcome_rejected(
@@ -698,8 +679,14 @@ fn value_expression_to_concrete_tokens(
   )
 }
 
-// 🟡 gated — feature:t6-value-expr-bodied-arrow-serialize — dissolve-on: route bodied-arrow
-// serialize through relation-row / connective dispatch instead of this predicate sidecar.
+// 🟡 gated — predicate-dissolution interim (INVARIANTS.md P3 / modeling-discipline Practice 10) —
+// feature:t6-value-expr-bodied-arrow-serialize — consumer:06_translate bodied-arrow translate/serialize
+// dispatch — bind: PR #4627 / docs/design-value-emit-schema.md §4.5 (#4623 vetting consumer) —
+// owner: T6 value-expression skeleton (lively-badger-242) — lane: compiler 06_value_expression +
+// 06_translate — dissolve-on-arrival: bodied Arrow serialize routes through grammar relation-row /
+// connective dispatch (TargetBodiedArrowStatementScaffold absorbed into translation_rules); delete
+// arrow_has_transform_body, translate_node bodied bypass, and serialize bodied branches — forbidden:
+// steady-state Bool predicates over ComputationNode behavior Transform for emit dispatch.
 fn arrow_has_transform_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
