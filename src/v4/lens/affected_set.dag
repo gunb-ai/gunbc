@@ -42,9 +42,6 @@ import v4.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frame
 
 
 // RULING-1: 🟢 pretty-much-done — node alias.
-type Dag = Node
-
-
 // RULING-1: 🟢 pretty-much-done — dimension identity.
 type AffectedDimension = Symbol
 
@@ -150,14 +147,14 @@ type FrontierReceipt
 
 // RULING-1: 🟡 needs-more-work — frontier read.
 type AffectedFrontierRead {
-  proven_transitive_dependency_frontier: fn(Dag, EditDimension) -> FrontierReceipt
+  proven_transitive_dependency_frontier: fn(Node, EditDimension) -> FrontierReceipt
 }
 
 
 // RULING-1: 🟡 needs-more-work — boundary read.
 type AffectedBoundaryRead {
-  boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt,
-  changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
+  boundary_hash_receipt: fn(Node, Path, Node) -> HashReceipt,
+  changed_dimension_receipt: fn(Node, Edit) -> ChangedDimensionReceipt
 }
 
 
@@ -165,7 +162,7 @@ type AffectedBoundaryRead {
 type AffectedSetRead {
   boundary: AffectedBoundaryRead
   frontier: AffectedFrontierRead,
-  propagation_receipt: fn(Dag, EditDimension, DependencyView) -> PropagationReceipt
+  propagation_receipt: fn(Node, EditDimension, DependencyView) -> PropagationReceipt
 }
 
 
@@ -177,7 +174,7 @@ type AffectedPostEditDagRead {
 
 // RULING-1: 🟢 pretty-much-done — fold state.
 type AffectedFoldAcc {
-  dag: Dag
+  dag: Node
   frontier: ReExecFrontier
   pending: Diagnostics
 }
@@ -186,7 +183,7 @@ type AffectedFoldAcc {
 // 🟢 coproduct dissolution — Wave-2-A affected-set fold state.
 type AffectedSetFoldAcc
   = AffectedSetActive {
-      dag: Dag,
+      dag: Node,
       changes: ChangeSet,
       affected: List<AffectedDependency>,
       exclusions: List<AffectedExclusion>
@@ -228,7 +225,7 @@ fn empty_frontier() -> ReExecFrontier {
 }
 
 
-fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
+fn empty_affected_fold_acc(dag: Node) -> AffectedFoldAcc {
   AffectedFoldAcc {
     dag: dag,
     frontier: empty_frontier(),
@@ -237,7 +234,7 @@ fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
 }
 
 
-fn empty_affected_set_fold_acc(dag: Dag) -> AffectedSetFoldAcc {
+fn empty_affected_set_fold_acc(dag: Node) -> AffectedSetFoldAcc {
   AffectedSetActive {
     dag: dag,
     changes: ChangeSet { changes: [] },
@@ -670,7 +667,7 @@ fn mark_whole_dag_diagnostic(diagnostic: Diagnostic) -> ReExecFrontier {
 }
 
 
-fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
+fn boundary_receipt(read_model: AffectedSetRead, dag: Node, path: Path, replacement: Node) -> BoundaryReceipt {
   match read_model.boundary.boundary_hash_receipt(dag, path, replacement) {
     HashUnchangedPure { content_hash: h } =>
       BoundaryPruned {
@@ -686,7 +683,7 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
 
 fn frontier_receipt(
   read_model: AffectedSetRead,
-  dag: Dag,
+  dag: Node,
   edit: Edit,
   dimension: AffectedDimension
 ) -> FrontierReceipt {
@@ -699,7 +696,7 @@ fn frontier_receipt(
 
 fn propagation_receipt(
   read_model: AffectedSetRead,
-  dag: Dag,
+  dag: Node,
   edit: Edit,
   dimension: AffectedDimension,
   dependency: DependencyView
@@ -714,7 +711,7 @@ fn propagation_receipt(
 
 fn expand_dimension(
   read_model: AffectedSetRead,
-  dag: Dag,
+  dag: Node,
   frontier: ReExecFrontier,
   edit: Edit,
   dimension: AffectedDimension
@@ -755,7 +752,7 @@ fn expand_dimension(
 
 fn seed_edit_fold_acc_live(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
+  post_edit_dag: fn(Node, Edit) -> AffectedPostEditDagRead,
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
@@ -813,8 +810,8 @@ fn seed_edit_fold_acc_live(
 
 fn expand_changed_dimensions(
   read_model: AffectedSetRead,
-  boundary_dag: Dag,
-  frontier_dag: Dag,
+  boundary_dag: Node,
+  frontier_dag: Node,
   frontier: ReExecFrontier,
   edit: Edit
 ) -> ReExecFrontier {
@@ -843,7 +840,7 @@ fn expand_changed_dimensions(
 
 fn seed_edit_fold_acc(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
+  post_edit_dag: fn(Node, Edit) -> AffectedPostEditDagRead,
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
@@ -862,7 +859,7 @@ fn seed_edit_fold_acc(
 
 fn expand_affected_dimension(
   read_model: AffectedSetRead,
-  dag: Dag,
+  dag: Node,
   acc: AffectedSetFoldAcc,
   edit: Edit,
   dimension: AffectedDimension
@@ -908,8 +905,8 @@ fn expand_affected_dimension(
 
 fn expand_affected_dimensions(
   read_model: AffectedSetRead,
-  boundary_dag: Dag,
-  frontier_dag: Dag,
+  boundary_dag: Node,
+  frontier_dag: Node,
   acc: AffectedSetFoldAcc,
   edit: Edit
 ) -> AffectedSetFoldAcc {
@@ -938,7 +935,7 @@ fn expand_affected_dimensions(
 
 fn seed_affected_set_fold_acc_live(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
+  post_edit_dag: fn(Node, Edit) -> AffectedPostEditDagRead,
   acc: AffectedSetFoldAcc,
   edit: Edit
 ) -> AffectedSetFoldAcc {
@@ -1021,8 +1018,8 @@ fn seed_affected_set_fold_acc_live(
 
 fn affected_set_from_diff(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
-  dag: Dag,
+  post_edit_dag: fn(Node, Edit) -> AffectedPostEditDagRead,
+  dag: Node,
   diff: Diff
 ) -> Witness<AffectedSet> {
   Holds {
@@ -1043,8 +1040,8 @@ fn affected_set_from_diff(
 // IRT-1 canonical entry: pure fold over diff.edits — O(changed-region), fail-closed on unknown receipts.
 fn re_exec_frontier_from_diff(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
-  dag: Dag,
+  post_edit_dag: fn(Node, Edit) -> AffectedPostEditDagRead,
+  dag: Node,
   diff: Diff
 ) -> Witness<ReExecFrontier> {
   Holds {
@@ -1080,7 +1077,7 @@ fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt 
 }
 
 
-fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
+fn canonical_boundary_hash_receipt(dag: Node, path: Path, replacement: Node) -> HashReceipt {
   match subterm_at(root: dag, p: path) {
     Accepted { value: current, diagnostics: _ } =>
       if content_hash(n: current) == content_hash(n: replacement) {
@@ -1102,7 +1099,7 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
 
 
 // 🟡 canonical-read scaffold — feature:affected-set-dimension-delta-receipt-carrier — bind T-21/T-24 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions.
-fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
+fn canonical_changed_dimension_receipt(dag: Node, edit: Edit) -> ChangedDimensionReceipt {
   ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
 }
 
@@ -1181,7 +1178,7 @@ fn canonical_ancestor_dependencies(frames: List<AncestorFrame>) -> FrontierRecei
 }
 
 
-fn canonical_region_dependencies(dag: Dag, walk: AncestorWalk) -> FrontierReceipt {
+fn canonical_region_dependencies(dag: Node, walk: AncestorWalk) -> FrontierReceipt {
   match canonical_ancestor_dependencies(frames: walk.frames) {
     FrontierProduced { dependencies: _ } =>
       let closure = affected_set_closure(dependencies: dependency_lens(root: dag), edit_locus: walk.current)
@@ -1196,7 +1193,7 @@ fn canonical_region_dependencies(dag: Dag, walk: AncestorWalk) -> FrontierReceip
 }
 
 
-fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
+fn canonical_transitive_frontier(dag: Node, edit_dimension: EditDimension) -> FrontierReceipt {
   match collect_ancestor_frames(root: dag, steps: edit_dimension.edit.at.steps) {
     Accepted { value: walk, diagnostics: _ } =>
       canonical_region_dependencies(dag: dag, walk: walk)
@@ -1207,7 +1204,7 @@ fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> Fro
 
 
 fn canonical_propagation_receipt(
-  dag: Dag,
+  dag: Node,
   edit_dimension: EditDimension,
   dependency: DependencyView
 ) -> PropagationReceipt {
@@ -1247,14 +1244,14 @@ fn canonical_affected_set_read() -> AffectedSetRead {
 }
 
 
-fn canonical_post_edit_dag(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
+fn canonical_post_edit_dag(dag: Node, edit: Edit) -> AffectedPostEditDagRead {
   AffectedPostEditDagRead {
     outcome: substitute_at(root: dag, path: edit.at, replacement: edit.replacement)
   }
 }
 
 
-fn affected_set(dag: Dag, diff: Diff) -> Witness<ReExecFrontier> {
+fn affected_set(dag: Node, diff: Diff) -> Witness<ReExecFrontier> {
   re_exec_frontier_from_diff(
     read_model: canonical_affected_set_read(),
     post_edit_dag: canonical_post_edit_dag,

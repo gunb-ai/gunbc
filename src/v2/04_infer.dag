@@ -738,6 +738,21 @@ fn node_contains_type_variable(n: Node) -> Bool {
     || (n.params |> any(p => node_contains_type_variable(n: p)))
 }
 
+fn node_contains_generic_name(n: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let n_name = authored_name_at(source_indices: source_indices, node: n)
+  let is_generic_leaf = n.connective == NoConnective
+    && n.children |> count == 0
+    && n.params |> count == 0
+    && (generic_names |> any(g => g == n_name))
+  is_generic_leaf
+    || (n.children |> any(ch => node_contains_generic_name(n: ch, generic_names: generic_names, source_indices: source_indices)))
+    || (n.params |> any(p => node_contains_generic_name(n: p, generic_names: generic_names, source_indices: source_indices)))
+    || match n.inferred {
+      Present { value: Resolved { node: rt } } => node_contains_generic_name(n: rt, generic_names: generic_names, source_indices: source_indices)
+      _ => false
+    }
+}
+
 fn direct_call_arg_decl_identity(n: Node, env: TypeEnv) -> Node {
   match n.binding_id {
     Present { value: _ } => n
@@ -905,6 +920,7 @@ fn direct_call_arg_mismatch_diags(
   value_params: List<Node>,
   typed_args: List<Node>,
   call_subst: Map<String, Node>,
+  generic_names: List<String>,
   type_env: TypeEnv,
   module_name: String
 ) -> List<ErrorNode> {
@@ -930,7 +946,9 @@ fn direct_call_arg_mismatch_diags(
             actual_expr: actual_expr,
             actual_type: actual_raw,
             source_indices: source_indices
-          ) || node_contains_type_variable(n: formal_subst) || node_contains_type_variable(n: actual_raw) {
+          ) || node_contains_type_variable(n: formal_subst) || node_contains_type_variable(n: actual_raw)
+            || node_contains_generic_name(n: formal_subst, generic_names: generic_names, source_indices: source_indices)
+            || node_contains_generic_name(n: actual_raw, generic_names: generic_names, source_indices: source_indices) {
             []
           } else if direct_call_decl_identity_mismatch(
             formal_identity: formal_identity,
@@ -1713,6 +1731,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Present { value: s } => s.params
         Absent => []
       }
+      let generic_names = sig_params
+        |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
+        |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: param_node_type_expr(n: p)))
       let has_lambda = call_args |> any(a => is_lambda_expr(e: arg_value(n: a)))
       let call_method_args = call_args |> skip(1)
       let call_method_name = Present { value: func_name }
@@ -1748,9 +1769,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         // f: fn(T) -> ... so the lambda param binds to the concrete success
         // type. A single left-to-right fold infers each arg exactly once.
         let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-        let generic_names = sig_params
-          |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-          |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: param_node_type_expr(n: p)))
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
           let formal_lookup = value_params |> skip(pair.first) |> first
@@ -1794,6 +1812,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             value_params: value_params_for_check,
             typed_args: typed_args,
             call_subst: call_subst,
+            generic_names: generic_names,
             type_env: scope.type_env,
             module_name: scope.module_name
           )
