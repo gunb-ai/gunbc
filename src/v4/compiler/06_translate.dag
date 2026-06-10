@@ -591,7 +591,21 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
         },
         f: fn(acc, e) {
           match acc {
-            Accepted { value: _, diagnostics: _ } => acc
+            Accepted { value: _, diagnostics: _ } =>
+              match e.label {
+                Named { name: _ } =>
+                  match find_named_child(
+                    root: e.target,
+                    name: grammar_relation_field_bodied_scaffold
+                  ) {
+                    Accepted { value: _, diagnostics: _ } =>
+                      outcome_rejected(
+                        translate_grammar_inverse_not_realized_diagnostic(emitted: rules)
+                      )
+                    Rejected { diagnostics: _ } => acc
+                  }
+                Positional => acc
+              }
             Rejected { diagnostics: _ } =>
               match e.label {
                 Named { name: _ } =>

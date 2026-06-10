@@ -550,6 +550,36 @@ fn target_operator_shape_wire_schema_valid(wire: Node) -> Outcome<Bool> {
   }
 }
 
+fn target_operator_shape_token_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_operator_shape_field_token {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: token } } =>
+                    optional_present(value: token)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: token } => outcome_accepted(token)
+    Absent =>
+      outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+  }
+}
+
 fn target_operator_shape_from_wire_node(wire: Node) -> Outcome<TargetOperatorShape> {
   bind_outcome(
     o: target_operator_shape_wire_schema_valid(wire: wire),
@@ -557,27 +587,20 @@ fn target_operator_shape_from_wire_node(wire: Node) -> Outcome<TargetOperatorSha
       match wire.kind {
         TypeNode { connective: Atom { identity: id } } =>
           bind_outcome(
-            o: find_named_child(root: wire, name: target_operator_shape_field_token),
-            f: fn(token_node) {
-              match token_node.kind {
-                TypeNode { connective: Atom { identity: token } } =>
-                  if id == discriminant(v: InfixToken {}) {
-                    outcome_accepted(InfixToken { token: token })
-                  } else if id == discriminant(v: PrefixToken {}) {
-                    outcome_accepted(PrefixToken { token: token })
-                  } else if id == discriminant(v: CallIdent {}) {
-                    outcome_accepted(CallIdent { ident: token })
-                  } else if id == discriminant(v: MethodIdent {}) {
-                    outcome_accepted(MethodIdent { ident: token })
-                  } else {
-                    outcome_rejected(
-                      target_operator_shape_wire_malformed_diagnostic(wire: wire)
-                    )
-                  }
-                _ =>
-                  outcome_rejected(
-                    target_operator_shape_wire_malformed_diagnostic(wire: wire)
-                  )
+            o: target_operator_shape_token_from_wire(wire: wire),
+            f: fn(token) {
+              if id == discriminant(v: InfixToken {}) {
+                outcome_accepted(InfixToken { token: token })
+              } else if id == discriminant(v: PrefixToken {}) {
+                outcome_accepted(PrefixToken { token: token })
+              } else if id == discriminant(v: CallIdent {}) {
+                outcome_accepted(CallIdent { ident: token })
+              } else if id == discriminant(v: MethodIdent {}) {
+                outcome_accepted(MethodIdent { ident: token })
+              } else {
+                outcome_rejected(
+                  target_operator_shape_wire_malformed_diagnostic(wire: wire)
+                )
               }
             }
           )
@@ -1634,23 +1657,43 @@ fn target_value_expr_binding_ref_wire_schema_valid(wire: Node) -> Outcome<Bool> 
   }
 }
 
+fn target_value_expr_binding_ref_binding_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_binding {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: binding } => outcome_accepted(binding)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
 fn target_value_expr_operand_wire_binding(operand_wire: Node) -> Outcome<Symbol> {
   bind_outcome(
     o: target_value_expr_binding_ref_wire_schema_valid(wire: operand_wire),
     f: fn(_) {
-      bind_outcome(
-        o: find_named_child(root: operand_wire, name: target_value_expr_field_binding),
-        f: fn(binding_node) {
-          match binding_node.kind {
-            TypeNode { connective: Atom { identity: id } } =>
-              outcome_accepted(id)
-            _ =>
-              outcome_rejected(
-                target_value_expr_operand_wire_malformed_diagnostic(wire: operand_wire)
-              )
-          }
-        }
-      )
+      target_value_expr_binding_ref_binding_from_wire(wire: operand_wire)
     }
   )
 }
