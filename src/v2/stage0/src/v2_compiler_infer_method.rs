@@ -60,6 +60,12 @@ pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
     make_container_type("List".to_string(), element).ty.clone()
 }
 
+pub fn witness_of_element(element: Rc<Node>) -> Rc<Node> {
+    make_container_type("Witness".to_string(), element)
+        .ty
+        .clone()
+}
+
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
     v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, Rc<Node>>(), key, value)
 }
@@ -135,7 +141,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v2_rt::rc_map_insert(
             m.clone(),
             "lookup".to_string(),
-            with_optional_cardinality(type_variable_node("map_value".to_string())),
+            witness_of_element(type_variable_node("map_value".to_string())),
         );
         let m = v2_rt::rc_map_insert(
             m.clone(),

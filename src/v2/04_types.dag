@@ -358,6 +358,10 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
     OptionalOf { inner: inner } =>
       let ib = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
       KernelTypeBuild { ty: with_optional_cardinality(n: ib.ty), diagnostics: ib.diagnostics }
+    WitnessOf { inner: inner } =>
+      let ib = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
+      let built = make_container_type(kind_name: "Witness", element: ib.ty)
+      KernelTypeBuild { ty: built.ty, diagnostics: concat(ib.diagnostics, built.diagnostics) }
     TupleOf { first: first, second: second } =>
       let fb = instantiate_algebra_type(template: first, base: base, source_indices: source_indices)
       let sb = instantiate_algebra_type(template: second, base: base, source_indices: source_indices)
@@ -577,6 +581,10 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
     OptionalOf { inner: inner } =>
       let ib = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
       KernelTypeBuild { ty: with_optional_cardinality(n: ib.ty), diagnostics: ib.diagnostics }
+    WitnessOf { inner: inner } =>
+      let ib = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
+      let built = make_container_type(kind_name: "Witness", element: ib.ty)
+      KernelTypeBuild { ty: built.ty, diagnostics: concat(ib.diagnostics, built.diagnostics) }
     TupleOf { first: ft, second: st } =>
       let fb = apply_type_substitution(template: ft, subst: subst, receiver: receiver, source_indices: source_indices)
       let sb = apply_type_substitution(template: st, subst: subst, receiver: receiver, source_indices: source_indices)
@@ -606,6 +614,7 @@ fn has_type_variable(t: AlgebraTypeTemplate) -> Bool {
     AlgebraTypeVariable { id: _ } => true
     ContainerOf { source: _, element: inner } => has_type_variable(t: inner)
     OptionalOf { inner: inner } => has_type_variable(t: inner)
+    WitnessOf { inner: inner } => has_type_variable(t: inner)
     TupleOf { first: f, second: s } => has_type_variable(t: f) || has_type_variable(t: s)
     CallableOf { params: _, return_type: r } => has_type_variable(t: r)
     _ => false
@@ -1128,4 +1137,3 @@ fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
     None => false
   }
 }
-

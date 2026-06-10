@@ -58,6 +58,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             __m.insert("List".to_string(), 1);
             __m.insert("Set".to_string(), 1);
             __m.insert("Map".to_string(), 2);
+            __m.insert("Witness".to_string(), 1);
             Rc::new(__m)
         };
     }
@@ -76,9 +77,13 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
 }
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
-    match v2_rt::map_get(&kernel_algebra_profile(), kind_name) {
-        Some(p) => algebra_type_param_names(p.clone()),
-        None => Rc::new(vec![]),
+    if kind_name.as_str() == "Witness" {
+        Rc::new(vec!["T".to_string()])
+    } else {
+        match v2_rt::map_get(&kernel_algebra_profile(), kind_name) {
+            Some(p) => algebra_type_param_names(p.clone()),
+            None => Rc::new(vec![]),
+        }
     }
 }
 

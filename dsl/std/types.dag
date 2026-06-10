@@ -77,7 +77,7 @@ fn is_kernel_type(name: String) -> Bool {
 // Container types: parameterized types that stay unexpanded at resolve time.
 // Value is the expected type-parameter arity (element collections: 1, keyed: 2).
 data container_type_arity: Map<String, Int> = {
-  "List": 1, "Set": 1, "Map": 2
+  "List": 1, "Set": 1, "Map": 2, "Witness": 1
 }
 
 fn is_container_type(name: String) -> Bool {
@@ -94,9 +94,13 @@ fn container_expected_arity(name: String) -> Int? {
 // Container type parameter names: derived from algebra profile templates.
 // Element collections (FreeMonoid) → ["T"], keyed collections (PartialFunction) → ["K", "V"].
 fn container_param_names_for(kind_name: String) -> List<String> {
-  match map_get(kernel_algebra_profile, kind_name) {
-    Some { value: p } => algebra_type_param_names(profile: p)
-    None => []
+  if kind_name == "Witness" {
+    ["T"]
+  } else {
+    match map_get(kernel_algebra_profile, kind_name) {
+      Some { value: p } => algebra_type_param_names(profile: p)
+      None => []
+    }
   }
 }
 

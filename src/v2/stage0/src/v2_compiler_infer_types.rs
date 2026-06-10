@@ -8,7 +8,7 @@ use crate::std_algebra::AlgebraProfile::{
 };
 use crate::std_algebra::AlgebraTypeTemplate::{
     AlgebraTypeVariable, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey,
-    ReceiverSelf, ReceiverValue, TupleOf,
+    ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
@@ -848,6 +848,15 @@ pub fn instantiate_algebra_type(
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
+            AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => {
+                let ib =
+                    instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
+                let built = make_container_type("Witness".to_string(), ib.ty.clone());
+                Rc::new(KernelTypeBuild {
+                    ty: built.ty.clone(),
+                    diagnostics: v2_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
+                })
+            }
             AlgebraTypeTemplate::TupleOf { first, second, .. } => {
                 let fb =
                     instantiate_algebra_type(first.clone(), base.clone(), source_indices.clone());
@@ -1454,6 +1463,19 @@ pub fn apply_type_substitution(
                 diagnostics: ib.diagnostics.clone(),
             })
         }
+        AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => {
+            let ib = apply_type_substitution(
+                inner.clone(),
+                subst.clone(),
+                receiver.clone(),
+                source_indices.clone(),
+            );
+            let built = make_container_type("Witness".to_string(), ib.ty.clone());
+            Rc::new(KernelTypeBuild {
+                ty: built.ty.clone(),
+                diagnostics: v2_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
+            })
+        }
         AlgebraTypeTemplate::TupleOf {
             first: ft,
             second: st,
@@ -1549,6 +1571,7 @@ pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
         AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => true,
         AlgebraTypeTemplate::ContainerOf { element: inner, .. } => has_type_variable(inner.clone()),
         AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => has_type_variable(inner.clone()),
+        AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => has_type_variable(inner.clone()),
         AlgebraTypeTemplate::TupleOf {
             first: f,
             second: s,
