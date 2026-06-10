@@ -8642,15 +8642,43 @@ pub fn pattern_parent_enum(
 ) -> Option<String> {
     {
         let scrut_is_known_enum = ((scrut_type.clone().as_str() != "".to_string().as_str())
-            && is_enum_type_name(scrut_type.clone(), type_summaries));
+            && is_enum_type_name(scrut_type.clone(), type_summaries.clone()));
         if (parent_enum.clone() != None) {
             parent_enum.clone()
         } else {
             if scrut_is_known_enum {
                 Some(scrut_type.clone())
             } else {
-                None
+                unique_variant_parent(type_summaries.clone(), name)
             }
+        }
+    }
+}
+
+pub fn unique_variant_parent(
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_name: String,
+) -> Option<String> {
+    {
+        let parent_matches = Rc::new({
+            let mut __result = Vec::new();
+            for type_name in Rc::new(v2_rt::map_keys(&type_summaries)).iter().cloned() {
+                if (is_enum_type_name(type_name.clone(), type_summaries.clone())
+                    && variant_belongs_to_enum(
+                        type_summaries.clone(),
+                        variant_name.clone(),
+                        type_name.clone(),
+                    ))
+                {
+                    __result.push(type_name);
+                }
+            }
+            __result
+        });
+        if ((parent_matches.clone().len() as i64) == 1) {
+            parent_matches.clone().first().cloned()
+        } else {
+            None
         }
     }
 }

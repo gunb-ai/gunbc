@@ -3488,6 +3488,19 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, t
   } else if scrut_is_known_enum {
     Present { value: scrut_type }
   } else {
+    unique_variant_parent(type_summaries: type_summaries, variant_name: name)
+  }
+}
+
+fn unique_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: String) -> String? {
+  let parent_matches = map_keys(type_summaries)
+    |> filter(type_name =>
+      is_enum_type_name(type_name: type_name, type_summaries: type_summaries) &&
+      variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: type_name)
+    )
+  if parent_matches |> count == 1 {
+    parent_matches |> first
+  } else {
     none
   }
 }
