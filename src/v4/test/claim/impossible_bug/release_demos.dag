@@ -1,25 +1,23 @@
 // src/v4/test/claim/impossible_bug/release_demos.dag
 // Scope: release impossible-bug demos over executable v4 lens/probe surfaces.
-// The witnesses below do not inspect authored DiagnosticClaim metadata. Each
-// class is backed by the v4 program that the named lens/probe actually reads.
+// The witnesses below execute the canonical impossible-bug claims through the
+// shared test-claim runner; no coverage metadata is used as the authority.
 
 module v4.test.claim.impossible_bug.release_demos
 
 
-import v4.lens.coverage {
-  ImpossibleBugCoverageKey,
-  collect_impossible_bug_coverage_keys,
-  impossible_bug_coverage_key_eq
-}
-import v4.std.algebra { contains }
-import v4.std.diagnostic { Accepted }
 import v4.std.logic { Bool }
-import v4.std.verification {
-  TransportTypeDrift
+import v4.std.verdict { Pass }
+import v4.compiler.eval {
+  run_test_claim,
+  test_claim_run_verdict
 }
+import v4.test.claim.rung_3_4_common { rung34_test_claim_subject }
 import v4.test.claim.impossible_bug.transport_type_drift {
   claim_target_contract_drift_impossible,
-  claim_wire_contract_drift_impossible
+  claim_wire_contract_drift_impossible,
+  falsification_target_contract_drift,
+  falsification_wire_contract_drift
 }
 import v4.test.claim.lens_idempotency.write_effect { idempotency_write_effect_claim_holds }
 import v4.test.claim.lens_synthesis.synthesis_gap_polynomial { synthesis_gap_poly_lens_non_empty }
@@ -35,21 +33,39 @@ fn release_idempotency_lens_catches() -> Bool {
 }
 
 
-fn release_transport_drift_probe_catches() -> Bool {
-  match collect_impossible_bug_coverage_keys(
-    corpus: [
-      claim_target_contract_drift_impossible,
-      claim_wire_contract_drift_impossible,
-    ]
-  ) {
-    Accepted { value: keys, diagnostics: None } =>
-      contains(
-        xs: keys,
-        item: ImpossibleBugCoverageKey { bug_class: TransportTypeDrift },
-        eq: impossible_bug_coverage_key_eq
+fn release_transport_target_contract_drift_catches() -> Bool {
+  match test_claim_run_verdict(
+    run: run_test_claim(
+      subject: rung34_test_claim_subject(
+        claim: claim_target_contract_drift_impossible,
+        evaluator_input: falsification_target_contract_drift
       )
+    )
+  ) {
+    Pass => true
     _ => false
   }
+}
+
+
+fn release_transport_wire_contract_drift_catches() -> Bool {
+  match test_claim_run_verdict(
+    run: run_test_claim(
+      subject: rung34_test_claim_subject(
+        claim: claim_wire_contract_drift_impossible,
+        evaluator_input: falsification_wire_contract_drift
+      )
+    )
+  ) {
+    Pass => true
+    _ => false
+  }
+}
+
+
+fn release_transport_drift_probe_catches() -> Bool {
+  release_transport_target_contract_drift_catches() &&
+    release_transport_wire_contract_drift_catches()
 }
 
 

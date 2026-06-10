@@ -914,11 +914,7 @@ fn v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds() -> Bool {
 
 
 // Host transport projection: shell reads this count and list member names only (not free awk scan).
-<<<<<<< HEAD
-data v4_roster_pilot_claim_run_row_count: String = "50"
-=======
 data v4_roster_pilot_claim_run_row_count: String = "79"
->>>>>>> origin/main
 
 
 fn v4_roster_pilot_row_matches(
@@ -1026,14 +1022,9 @@ fn v4_roster_pilot_claim_run_list_composition_holds() -> Bool {
 
 
 fn witness_v4_roster_pilot_declares_claim_run_rows() -> Bool {
-<<<<<<< HEAD
-  (length(xs: v4_roster_pilot_claim_run_rows) == 50)
-    && (v4_roster_pilot_claim_run_row_count == "50")
-=======
   (length(xs: v4_roster_pilot_claim_run_rows) == 79)
     && (v4_roster_pilot_claim_run_row_count == "79")
     && v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds()
->>>>>>> origin/main
     && v4_roster_pilot_claim_run_list_composition_holds()
     && v4_roster_pilot_row_matches(
       row: v4_roster_pilot_row_edit_locus_narrow,
