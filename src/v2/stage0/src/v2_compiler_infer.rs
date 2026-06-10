@@ -4221,14 +4221,18 @@ match bare_s {
                         let else_diags = else_result.diagnostics.clone();
                         let then_rt = resolved_type(then_typed.clone());
                         let else_rt = resolved_type(else_typed.clone());
+                        let then_compare =
+                            direct_call_arg_decl_identity(then_rt.clone(), scope.type_env.clone());
+                        let else_compare =
+                            direct_call_arg_decl_identity(else_rt.clone(), scope.type_env.clone());
                         let unified = prefer_specific_type(
                             then_rt.clone(),
                             else_rt.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         );
                         let branch_diags = if node_type_compatible(
-                            then_rt.clone(),
-                            else_rt.clone(),
+                            then_compare,
+                            else_compare,
                             scope.type_env.clone().source_indices.clone(),
                         ) {
                             Rc::new(vec![])

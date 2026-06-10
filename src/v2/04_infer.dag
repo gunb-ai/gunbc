@@ -2172,10 +2172,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let else_diags = else_result.diagnostics
           let then_rt = resolved_type(n: then_typed)
           let else_rt = resolved_type(n: else_typed)
+          let then_compare = direct_call_arg_decl_identity(n: then_rt, env: scope.type_env)
+          let else_compare = direct_call_arg_decl_identity(n: else_rt, env: scope.type_env)
           let unified = prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
           let branch_diags = if node_type_compatible(
-            left: then_rt,
-            right: else_rt,
+            left: then_compare,
+            right: else_compare,
             source_indices: scope.type_env.source_indices
           ) {
             []
