@@ -48,10 +48,15 @@ import v4.std.integer_value_set {
   integer_value_set_strictly_contains,
   integer_value_set_field_extra,
   integer_value_set_field_kind,
+  integer_value_set_kind_interval,
   integer_value_set_kind_unbounded
 }
 import v4.std.model_core { ModelCoreFactAxisEncoding, ModelCoreFactAxisSurfaceSpelling }
 import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.refinement_widening_predicate {
+  refinement_widening_predicate_algebra_for_value_sets,
+  refinement_widening_preservation_holds
+}
 import v4.std.diagnostic { Accepted, Rejected }
 
 
@@ -298,6 +303,25 @@ fn i32_value_set() -> Node {
   integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int32_interval_spec()))
 }
 
+fn i32_value_set_interval_first() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: integer_value_set_field_interval },
+        target: integer_interval_spec_node(spec: int32_interval_spec())
+      },
+      Edge {
+        label: Named { name: integer_value_set_field_kind },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: integer_value_set_kind_interval } },
+          children: []
+        }
+      }
+    ]
+  }
+}
+
 fn i16_value_set() -> Node {
   integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int16_interval_spec()))
 }
@@ -374,6 +398,17 @@ fn integer_value_set_reverse_is_strict_coarsening_control() -> Bool {
 data witness_integer_value_set_reverse_is_strict_coarsening: Bool = integer_value_set_reverse_is_strict_coarsening_control()
 
 data witness_integer_value_set_refuses_incompatible_unknown: Bool = !integer_value_set_contains(container: task_id_api_inhabitant_node(), contained: i32_value_set())
+
+data witness_refinement_widening_refuses_semantically_equal_value_sets: Bool = !refinement_widening_preservation_holds(
+  source_facts: task_id_api_inhabitant_node(),
+  candidate: task_id_wire_inhabitant_node(),
+  algebra: refinement_widening_predicate_algebra_for_value_sets(
+    source: task_id_api_inhabitant_node(),
+    candidate: task_id_wire_inhabitant_node(),
+    source_value_set: i32_value_set(),
+    candidate_value_set: i32_value_set_interval_first()
+  )
+)
 
 data integer_interval_bound_compare_orders_pointer_width_bounds: Symbol = integer_interval_bound_compare_orders_pointer_width_bounds
 
@@ -534,6 +569,15 @@ data unified_claim_integer_value_set_refuses_incompatible: UnifiedTestClaim = Bo
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_refuses_incompatible_unknown
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_refinement_widening_refuses_semantically_equal_value_sets` so glob discovery finds the witness without the central roster.
+data unified_claim_refinement_widening_refuses_semantically_equal_value_sets: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/find_witness_project_to_core_controls.dag",
+    function: witness_refinement_widening_refuses_semantically_equal_value_sets
   }
 }
 
