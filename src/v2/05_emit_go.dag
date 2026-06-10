@@ -178,8 +178,8 @@ fn emit_go_v2rt_module() -> TextFile {
 
 fn emit_go_mod(module_name: String) -> TextFile {
   let manifest_path = match scaffold_for_target(target: Go).manifest_file {
-    Some { value: path } => path
-    None => "go.mod"
+    Present { value: path } => path
+    Absent => "go.mod"
   }
   let content = concat("module ", module_name, "\n\ngo 1.21\n")
   TextFile { path: manifest_path, content: content }
@@ -287,8 +287,8 @@ fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
 fn go_package_name(module_name: String) -> String {
   let parts = module_name |> split(delimiter: ".")
   match parts |> last {
-    Some { value: last_part } => last_part |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
-    None => "main"
+    Present { value: last_part } => last_part |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
+    Absent => "main"
   }
 }
 
@@ -474,8 +474,8 @@ fn emit_go_func_def(
   scope: InferScope
 ) -> String {
   let service_names = match lookup_item(registry: registry, name: name) {
-    Some { value: info } => info.service_names
-    None => []
+    Present { value: info } => info.service_names
+    Absent => []
   }
   let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names, source_indices: scope.type_env.source_indices)
   let ret_type = emit_node_type(n: inferred, target: Go, source_indices: scope.type_env.source_indices)
@@ -546,8 +546,8 @@ fn emit_go_rest_call(op_name: String, transport: Node, depth: Int, source_indice
     "if err != nil {\n\treturn nil, fmt.Errorf(\"creating request: %w\", err)\n}")
   let auth_line = if transport_has_auth(t: transport, source_indices: source_indices) {
     let header_name = match transport_auth_header_name(t: transport, source_indices: source_indices) {
-      Some { value: h } => h
-      None => "Authorization"
+      Present { value: h } => h
+      Absent => "Authorization"
     }
     concat(prefix, "req.Header.Set(\"", header_name, "\", c.AuthToken)")
   } else { "" }

@@ -105,6 +105,8 @@ data target_model_edge_selection_policy: Symbol = target_model_edge_selection_po
 data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
 data target_model_edge_translation_rules: Symbol = target_model_edge_translation_rules
 data target_model_edge_serialize_source: Symbol = target_model_edge_serialize_source
+// #g-bidir Q-G2 — per-target C5 quotient: Conj of per-feature FidelityDisposition inhabitants.
+data target_model_edge_fidelity_quotient: Symbol = target_model_edge_fidelity_quotient
 data grammar_relation_field_production: Symbol = grammar_relation_field_production
 data grammar_relation_field_emitted: Symbol = grammar_relation_field_emitted
 data grammar_relation_field_tokens: Symbol = grammar_relation_field_tokens

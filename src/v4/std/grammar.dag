@@ -76,7 +76,7 @@ type FormalProduction {
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: v4.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: v4.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
 // 🟡 gated — feature:grammar-well-formed-witness — FormalGrammar carries five representable invalid states: (1) start ∉ nonterminals, (2) FormalProduction.lhs not in N, (3) FormalProduction.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (FormalTerminal and FormalNonterminal both carry identity: Symbol), (5) N or Σ infinite (Set<T> is a predicate fn(T)->Bool; finiteness not enforced by the type). Dissolve-on: consumers require WellFormedFormalGrammar (below) not bare FormalGrammar; bare FormalGrammar becomes internal construction only.
 // "What is a formal grammar?"
 // Ref: https://en.wikipedia.org/wiki/Formal_grammar
@@ -135,7 +135,7 @@ fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFor
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
   = Terminal { token_class: Symbol }
   | Nonterminal { production: Symbol }
@@ -210,13 +210,13 @@ type ValidatedGrammarRoot {
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: ParseGrammar converges with FormalGrammar/LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: ParseGrammar converges with FormalGrammar/LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type ParseGrammar
   = VoidGrammar
   | ModeledGrammar { root: GrammarRoot }
 
 
-// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — bind TASKS.md T-6/T-7 — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
+// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
 type GrammarSchema {
   lex: LexRules
   grammar: ParseGrammar
@@ -269,6 +269,8 @@ data grammar_relation_emitted_conj_slot_missing: Symbol = ^grammar_relation_emit
 data grammar_relation_emitted_conj_slot_surplus: Symbol = ^grammar_relation_emitted_conj_slot_surplus
 data grammar_relation_emitted_not_conj: Symbol = ^grammar_relation_emitted_not_conj
 data grammar_relation_row_tokens_not_conj: Symbol = ^grammar_relation_row_tokens_not_conj
+data grammar_relation_row_backward_selection_mismatch: Symbol = ^grammar_relation_row_backward_selection_mismatch
+data grammar_relation_row_backward_selection_ambiguous: Symbol = ^grammar_relation_row_backward_selection_ambiguous
 data grammar_root_start_production_node_projection: Symbol = ^grammar_root_start_production_node_projection
 data grammar_root_productions_node_projection: Symbol = ^grammar_root_productions_node_projection
 data grammar_root_sync_tokens_node_projection: Symbol = ^grammar_root_sync_tokens_node_projection
@@ -657,8 +659,8 @@ fn formal_production_rhs_singleton_terminal_identity(production: FormalProductio
     empty: RhsSingletonTerminalNotSeen,
     cons: formal_production_rhs_singleton_terminal_identity_step
   ) {
-    RhsSingletonTerminalFound { identity: id } => Some { value: id }
-    _ => None
+    RhsSingletonTerminalFound { identity: id } => Present { value: id }
+    _ => Absent
   }
 }
 
@@ -696,16 +698,16 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symb
     empty: RhsSingletonBindingNotSeen,
     cons: formal_production_rhs_singleton_binding_step
   ) {
-    RhsSingletonBindingFound { binding: b } => Some { value: b }
-    _ => None
+    RhsSingletonBindingFound { binding: b } => Present { value: b }
+    _ => Absent
   }
 }
 
 
 fn node_atom_identity_optional(node: Node) -> Symbol? {
   match node.kind {
-    TypeNode { connective: Atom { identity: id } } => Some { value: id }
-    _ => None
+    TypeNode { connective: Atom { identity: id } } => Present { value: id }
+    _ => Absent
   }
 }
 
@@ -741,13 +743,13 @@ fn formal_production_rhs_matches_emitted_conj_step(
               ) {
                 Holds { value: slot_child } =>
                   match node_atom_identity_optional(node: slot_child) {
-                    Some { value: atom_id } =>
+                    Present { value: atom_id } =>
                       if atom_id == binding_symbol {
                         EmittedRhsMatchOk { children: children, index: index + 1 }
                       } else {
                         EmittedRhsMatchFail
                       }
-                    None => EmittedRhsMatchFail
+                    Absent => EmittedRhsMatchFail
                   }
                 Violates { diagnostic: _ } => EmittedRhsMatchFail
               }
@@ -833,11 +835,11 @@ fn formal_production_matches_emitted_child(
   match child.kind {
     TypeNode { connective: Atom { identity: atom_id } } =>
       match formal_production_rhs_singleton_terminal_identity(production: production) {
-        Some { value: terminal_id } => atom_id == terminal_id
-        None =>
+        Present { value: terminal_id } => atom_id == terminal_id
+        Absent =>
           match formal_production_rhs_singleton_binding(production: production) {
-            Some { value: binding } => atom_id == binding
-            None => false
+            Present { value: binding } => atom_id == binding
+            Absent => false
           }
       }
     TypeNode { connective: Conj } =>
@@ -1273,4 +1275,163 @@ fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
 
 fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
   grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
+}
+
+
+// #g-bidir G.2 — bidirectional interpretation modeling (design-bidirectional-coercion.md §4).
+// Status: MODELING ONLY — names the find_witness selection discipline at the syntax layer.
+// Preservation rules wire into find_witness when G.3 forward interpreter lands (02_parse
+// de-anemic owned with Mgr-CONSOLIDATION). By-execution bidir witnesses gated on emit S1.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL — closed two-arm sum for the only two
+//    interpreters over a declared production row (§4.1 backward render / forward parse); no
+//    third direction and no arm payloads to decompress.
+type GrammarInterpretationDirection
+  = GrammarInterpretBackward
+  | GrammarInterpretForward
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL — closed four-arm sum is exactly the
+//    bidirectionality obligation carve (§4.3 obligations 1–4); exhaustive by design, not an
+//    open classifier awaiting further variants.
+type BidirectionalGrammarObligation
+  = ObligationSlotBijection
+  | ObligationForwardDeterminism
+  | ObligationBackwardDeterminism
+  | ObligationQuotientDeclaration
+
+data grammar_selection_predicate_backward_lhs_shape: Symbol = grammar_selection_predicate_backward_lhs_shape
+data grammar_selection_predicate_forward_rhs_frontier: Symbol = grammar_selection_predicate_forward_rhs_frontier
+
+fn grammar_production_selection_predicate(direction: GrammarInterpretationDirection) -> Symbol {
+  match direction {
+    GrammarInterpretBackward => grammar_selection_predicate_backward_lhs_shape
+    GrammarInterpretForward => grammar_selection_predicate_forward_rhs_frontier
+  }
+}
+
+// 🟢 coproduct dissolution — ephemeral fold state for fail-closed unique lhs-exact match
+// (find_witness multiplicity discipline at the syntax layer).
+type LhsExactProductionMatchFold
+  = LhsExactProductionMatchNone
+  | LhsExactProductionMatchOne { production: FormalProduction }
+  | LhsExactProductionMatchMany
+
+fn formal_production_matches_lhs_exact_child(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node,
+  candidate: FormalProduction
+) -> Bool {
+  if emitted_shape_supported_for_lhs_exact(child: child) {
+    let emitted_slot_count = emitted_node_slot_count(emitted: child)
+    formal_production_matches_lhs_and_slot_count(
+      production: candidate,
+      lhs: lhs,
+      emitted_slot_count: emitted_slot_count
+    ) &&
+      formal_production_matches_emitted_child(
+        production: candidate,
+        productions: productions,
+        child: child
+      )
+  } else {
+    false
+  }
+}
+
+fn lhs_exact_production_match_fold_step(
+  acc: LhsExactProductionMatchFold,
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node,
+  candidate: FormalProduction
+) -> LhsExactProductionMatchFold {
+  if formal_production_matches_lhs_exact_child(
+    productions: productions,
+    lhs: lhs,
+    child: child,
+    candidate: candidate
+  ) {
+    match acc {
+      LhsExactProductionMatchNone =>
+        LhsExactProductionMatchOne { production: candidate }
+      LhsExactProductionMatchOne { production: _ } => LhsExactProductionMatchMany
+      LhsExactProductionMatchMany => LhsExactProductionMatchMany
+    }
+  } else {
+    acc
+  }
+}
+
+fn formal_production_unique_lhs_exact_match(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node
+) -> Witness<FormalProduction> {
+  if emitted_shape_supported_for_lhs_exact(child: child) {
+    match fold_list(
+      xs: productions,
+      empty: LhsExactProductionMatchNone,
+      cons: fn(acc, candidate) {
+        lhs_exact_production_match_fold_step(
+          acc: acc,
+          productions: productions,
+          lhs: lhs,
+          child: child,
+          candidate: candidate
+        )
+      }
+    ) {
+      LhsExactProductionMatchNone =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_production_not_found,
+            at: node_locus(node: child),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchMany =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: grammar_relation_row_backward_selection_ambiguous,
+            at: node_locus(node: child),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchOne { production: production } =>
+        Holds { value: production }
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^grammar_relation_emitted_not_conj,
+        at: node_locus(node: child),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+fn grammar_relation_row_backward_selection(
+  row: GrammarRelationRow,
+  productions: List<FormalProduction>
+) -> Witness<FormalProduction> {
+  match formal_production_unique_lhs_exact_match(
+    productions: productions,
+    lhs: row.production.lhs.identity,
+    child: row.emitted
+  ) {
+    Holds { value: selected } =>
+      if selected == row.production {
+        Holds { value: selected }
+      } else {
+        Violates {
+          diagnostic: Diagnostic {
+            reason: grammar_relation_row_backward_selection_mismatch,
+            at: node_locus(node: row.emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
 }

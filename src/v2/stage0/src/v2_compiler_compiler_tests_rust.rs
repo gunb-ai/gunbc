@@ -9,6 +9,8 @@ use crate::v2_compiler_coercion::CoercionAssertion::{
 };
 pub use crate::v2_compiler_coercion::{CoercionAssertion, CoercionTestEntry};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

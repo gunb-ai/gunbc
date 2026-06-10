@@ -11,10 +11,10 @@ fn compute_in_graph_deps(
 ) -> Map<String, List<String>> {
   let result = fold(all_names, init: empty_map(), f: (acc, name) =>
     match map_get(deps_map, name) {
-      Some { value: deps } =>
+      Present { value: deps } =>
         let local = filter(deps, d => d != name && set_contains(name_set, d))
         map_insert(acc, name, local)
-      None => map_insert(acc, name, [])
+      Absent => map_insert(acc, name, [])
     }
   )
   result
@@ -26,12 +26,12 @@ fn build_reverse_adj(
 ) -> Map<String, List<String>> {
   fold(all_names, init: empty_map(), f: (acc, name) =>
     match map_get(local_deps, name) {
-      Some { value: deps } =>
+      Present { value: deps } =>
         fold(deps, init: acc, f: (inner_acc, dep) =>
-          let existing = match map_get(inner_acc, dep) { Some { value: v } => v  None => [] }
+          let existing = match map_get(inner_acc, dep) { Present { value: v } => v  Absent => [] }
           map_insert(inner_acc, dep, list_push(existing, name))
         )
-      None => acc
+      Absent => acc
     }
   )
 }
@@ -41,7 +41,7 @@ fn build_in_degree(
     local_deps: Map<String, List<String>>
 ) -> Map<String, Int> {
   fold(all_names, init: empty_map(), f: (acc, name) =>
-    let deg = match map_get(local_deps, name) { Some { value: deps } => deps |> count  None => 0 }
+    let deg = match map_get(local_deps, name) { Present { value: deps } => deps |> count  Absent => 0 }
     map_insert(acc, name, deg)
   )
 }
@@ -53,14 +53,14 @@ fn kahn_remove_loop(
   let reverse_adj = build_reverse_adj(all_names: remaining, local_deps: local_deps)
   let in_degree = build_in_degree(all_names: remaining, local_deps: local_deps)
   let initial_queue = filter(remaining, n =>
-    match map_get(in_degree, n) { Some { value: d } => d == 0  None => true }
+    match map_get(in_degree, n) { Present { value: d } => d == 0  Absent => true }
   )
   let final_state = kahn_cycle_drain(queue: initial_queue, in_degree: in_degree, reverse_adj: reverse_adj, removed_count: 0, fuel: remaining |> count)
   if final_state.removed_count == (remaining |> count) {
     []
   } else {
     filter(remaining, n =>
-      match map_get(final_state.in_degree, n) { Some { value: d } => d > 0  None => false }
+      match map_get(final_state.in_degree, n) { Present { value: d } => d > 0  Absent => false }
     )
   }
 }
@@ -81,17 +81,17 @@ fn kahn_cycle_drain(
     return KahnState { in_degree: in_degree, removed_count: removed_count }
   }
   let result = fold(queue, init: KahnState { in_degree: in_degree, removed_count: removed_count }, f: (state, node) =>
-    let dependents = match map_get(reverse_adj, node) { Some { value: v } => v  None => [] }
+    let dependents = match map_get(reverse_adj, node) { Present { value: v } => v  Absent => [] }
     let new_deg = fold(dependents, init: state.in_degree, f: (deg_acc, dep) =>
-      let old = match map_get(deg_acc, dep) { Some { value: d } => d  None => 0 }
+      let old = match map_get(deg_acc, dep) { Present { value: d } => d  Absent => 0 }
       map_insert(deg_acc, dep, old - 1)
     )
     KahnState { in_degree: new_deg, removed_count: state.removed_count + 1 }
   )
   let next_queue = fold(queue, init: [], f: (acc, node) =>
-    let dependents = match map_get(reverse_adj, node) { Some { value: v } => v  None => [] }
+    let dependents = match map_get(reverse_adj, node) { Present { value: v } => v  Absent => [] }
     fold(dependents, init: acc, f: (inner_acc, dep) =>
-      let deg = match map_get(result.in_degree, dep) { Some { value: d } => d  None => 0 }
+      let deg = match map_get(result.in_degree, dep) { Present { value: d } => d  Absent => 0 }
       if deg == 0 { list_push(inner_acc, dep) } else { inner_acc }
     )
   )
@@ -107,8 +107,8 @@ fn detect_type_cycles_kahn(
   let local_deps = compute_in_graph_deps(all_names: all_names, deps_map: deps_map, name_set: name_set)
   let self_refs = filter(all_names, name =>
     match map_get(deps_map, name) {
-      Some { value: deps } => any(deps, d => d == name)
-      None => false
+      Present { value: deps } => any(deps, d => d == name)
+      Absent => false
     }
   )
   let cycle_members = kahn_remove_loop(remaining: all_names, local_deps: local_deps)

@@ -26,8 +26,8 @@ import extdeps.languages.dag.syntax { dag_keyword_set }
 
 fn is_keyword_text(text: String) -> Bool {
   match lookup(dag_keyword_set, key: text) {
-    Some { value: _ } => true
-    None => false
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
   }
 }
 
@@ -224,8 +224,8 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
 
   let ch_text = source_char(source: source, pos: pos.pos)
   match lookup(single_punct, key: ch_text) {
-    Some { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
-    None => emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)
+    Holds { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
+    Violates { diagnostic: _ } => emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)
   }
 }
 
@@ -258,8 +258,8 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
   let text = source_substring(source: source, start: pos.pos, end: int_end)
   let parsed = parse_int(s: text)
   let shape = match parsed {
-    Some { value: _ } => ShLitInt
-    None => ShUnknown
+    Present { value: _ } => ShLitInt
+    Absent => ShUnknown
   }
   let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: int_end), shape: shape)
   ScanResult { pos: int_end, token: token, interp_depth: pos.interp_depth }
