@@ -119,6 +119,7 @@ import v4.std.target_model {
   target_model_edge_translation_rules,
   target_model_edge_serialize_source,
   target_model_edge_type_expression_projection,
+  type_expr_projection_step_algebra,
   target_model_edge_collection_realization,
   target_model_edge_use_site_ownership_realizations,
   target_model_edge_reference_layer_tokens,
@@ -3476,87 +3477,7 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
 }
 
 fn rust_type_expression_projection_bundle_node() -> Node {
-  let row = rust_type_expression_projection()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_atom, target: rust_type_expr_atom_shape_node(form: row.atom_form)),
-      rust_named_edge(name: target_type_expr_field_conj, target: rust_type_expr_generic_apply_shape_node(form: row.conj_form)),
-      rust_named_edge(name: target_type_expr_field_disj, target: rust_type_expr_sum_shape_node(form: row.disj_form)),
-      rust_named_edge(name: target_type_expr_field_arrow, target: rust_type_expr_arrow_shape_node(form: row.arrow_form)),
-      rust_named_edge(name: target_type_expr_field_cardinality, target: rust_type_expr_generic_apply_shape_node(form: row.cardinality_form)),
-      rust_named_edge(name: target_type_expr_field_instantiation, target: rust_type_expr_generic_apply_shape_node(form: row.instantiation_form))
-    ]
-  }
-}
-
-fn rust_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-      rust_named_edge(name: target_type_expr_field_ident_token, target: rust_inhabitant_atom(id: form.ident_token))
-    ]
-  }
-}
-
-fn rust_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: match form.field_label_separator {
-      Present { value: s } =>
-        list_snoc_item(
-          xs: [
-            rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-            rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
-            rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
-            rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
-          ],
-          item: rust_named_edge(name: target_type_expr_field_field_label_separator, target: rust_inhabitant_atom(id: s))
-        )
-      Absent =>
-        [
-          rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-          rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
-          rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
-          rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
-        ]
-    }
-  }
-}
-
-fn rust_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-      rust_named_edge(name: target_type_expr_field_variant_separator, target: rust_inhabitant_atom(id: form.variant_separator))
-    ]
-  }
-}
-
-fn rust_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
-      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close)),
-      rust_named_edge(name: target_type_expr_field_arrow, target: rust_inhabitant_atom(id: form.arrow)),
-      rust_named_edge(
-        name: target_type_expr_field_param_ident_token,
-        target: rust_inhabitant_atom(id: form.param_ident_token)
-      ),
-      rust_named_edge(
-        name: target_type_expr_field_param_type_separator,
-        target: rust_inhabitant_atom(id: form.param_type_separator)
-      ),
-      rust_named_edge(
-        name: target_type_expr_field_param_list_separator,
-        target: rust_inhabitant_atom(id: form.param_list_separator)
-      )
-    ]
-  }
+  type_expr_projection_step_algebra(projection: rust_type_expression_projection())
 }
 
 fn rust_sg2_serialize_source_node() -> Node {

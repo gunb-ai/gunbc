@@ -144,6 +144,7 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_atom_realizations,
   target_model_edge_type_expression_projection,
+  type_expr_projection_step_algebra,
   target_value_template_for_kind,
   target_type_expr_field_arrow,
   target_type_expr_field_atom,
@@ -1309,90 +1310,9 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
   }
 }
 
-fn ts_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
-      ts_named_edge(name: target_type_expr_field_ident_token, target: ts_inhabitant_atom(id: form.ident_token))
-    ]
-  }
-}
-
-fn ts_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: match form.field_label_separator {
-        Present { value: s } =>
-          list_snoc_item(
-            xs: [
-              ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
-              ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
-              ts_named_edge(name: target_type_expr_field_separator, target: ts_inhabitant_atom(id: form.separator)),
-              ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close))
-            ],
-            item: ts_named_edge(name: target_type_expr_field_field_label_separator, target: ts_inhabitant_atom(id: s))
-          )
-        Absent =>
-          [
-            ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
-            ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
-            ts_named_edge(name: target_type_expr_field_separator, target: ts_inhabitant_atom(id: form.separator)),
-            ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close))
-          ]
-      }
-  }
-}
-
-fn ts_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
-      ts_named_edge(name: target_type_expr_field_variant_separator, target: ts_inhabitant_atom(id: form.variant_separator))
-    ]
-  }
-}
-
-fn ts_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
-      ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
-      ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close)),
-      ts_named_edge(name: target_type_expr_field_arrow, target: ts_inhabitant_atom(id: form.arrow)),
-      ts_named_edge(
-        name: target_type_expr_field_param_ident_token,
-        target: ts_inhabitant_atom(id: form.param_ident_token)
-      ),
-      ts_named_edge(
-        name: target_type_expr_field_param_type_separator,
-        target: ts_inhabitant_atom(id: form.param_type_separator)
-      ),
-      ts_named_edge(
-        name: target_type_expr_field_param_list_separator,
-        target: ts_inhabitant_atom(id: form.param_list_separator)
-      )
-    ]
-  }
-}
-
-// TargetTypeExpressionProjection bundle node — one named edge per connective form, mirroring
-// rust_type_expression_projection_bundle_node(). Decoded by std target_type_expr_* readers.
+// TargetTypeExpressionProjection bundle node — P2 std row-shape authority (child-slot discipline envelope).
 fn ts_type_expression_projection_bundle_node() -> Node {
-  let row = ts_type_expression_projection()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(name: target_type_expr_field_atom, target: ts_type_expr_atom_shape_node(form: row.atom_form)),
-      ts_named_edge(name: target_type_expr_field_conj, target: ts_type_expr_generic_apply_shape_node(form: row.conj_form)),
-      ts_named_edge(name: target_type_expr_field_disj, target: ts_type_expr_sum_shape_node(form: row.disj_form)),
-      ts_named_edge(name: target_type_expr_field_arrow, target: ts_type_expr_arrow_shape_node(form: row.arrow_form)),
-      ts_named_edge(name: target_type_expr_field_cardinality, target: ts_type_expr_generic_apply_shape_node(form: row.cardinality_form)),
-      ts_named_edge(name: target_type_expr_field_instantiation, target: ts_type_expr_generic_apply_shape_node(form: row.instantiation_form))
-    ]
-  }
+  type_expr_projection_step_algebra(projection: ts_type_expression_projection())
 }
 
 fn ts_target_atom_realization_target_model_staging() -> TargetModel {
