@@ -5494,7 +5494,13 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       None => acc
     }
   )
-  let import_carrier_bindings = collect_parent_carrier_bindings(envs: parent_envs)
+  let std_import_carrier_bindings = collect_parent_carrier_bindings(envs: std_types_parent_env)
+  let import_carrier_bindings = fold(module.resolved_imports, init: std_import_carrier_bindings, f: (acc, imp) =>
+    match map_get(parent_index, imp.module_path) {
+      Some { value: typed_parent } => collect_import_carrier_bindings_for_import(acc: acc, imp: imp, env: typed_parent.type_env)
+      None => acc
+    }
+  )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_decl_state = fold(parent_envs, init: TypeEnv { bindings: empty_map(), carrier_bindings: empty_map(), decl_registry: empty_map(), duplicate_decl_ids: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }, f: (acc, env) =>
     merge_envs(envs: [acc, TypeEnv { bindings: empty_map(), carrier_bindings: empty_map(), decl_registry: env.decl_registry, duplicate_decl_ids: env.duplicate_decl_ids, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }])
@@ -5643,7 +5649,13 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       None => acc
     }
   )
-  let import_carrier_bindings = collect_parent_carrier_bindings(envs: parent_envs)
+  let std_import_carrier_bindings = collect_parent_carrier_bindings(envs: std_types_parent_env)
+  let import_carrier_bindings = fold(module.resolved_imports, init: std_import_carrier_bindings, f: (acc, imp) =>
+    match map_get(parent_index, imp.module_path) {
+      Some { value: typed_parent } => collect_import_carrier_bindings_for_import(acc: acc, imp: imp, env: typed_parent.type_env)
+      None => acc
+    }
+  )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_decl_state = fold(parent_envs, init: TypeEnv { bindings: empty_map(), carrier_bindings: empty_map(), decl_registry: empty_map(), duplicate_decl_ids: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }, f: (acc, env) =>
     merge_envs(envs: [acc, TypeEnv { bindings: empty_map(), carrier_bindings: empty_map(), decl_registry: env.decl_registry, duplicate_decl_ids: env.duplicate_decl_ids, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }])

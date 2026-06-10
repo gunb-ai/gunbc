@@ -144,10 +144,11 @@ pub use crate::v2_std_core::{
     make_field_binding_node, make_field_init_node, make_interp_part_node, make_named_expr_node,
     make_param_node, make_span, make_text_part_node, make_transport_node, map_children,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, module_node, no_span, node_name_span, node_with_binding_id, none_type,
-    param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
+    module_items, module_node, no_span, node_name_span, node_with_binding_id,
+    node_with_preserved_binding_id, none_type, param_node_name_at, param_node_type_expr,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
+    slice_end, slice_start, string_type, unaryop_operand, unit_type, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     BindingId, CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv,
@@ -10885,6 +10886,221 @@ pub fn collect_parent_carrier_bindings(
     )
 }
 
+pub fn lookup_type_binding_by_name_in_env(
+    env: Rc<TypeEnv>,
+    name: String,
+) -> Option<Rc<TypeBinding>> {
+    match Rc::new(v2_rt::map_values(&env.bindings.clone()))
+        .iter()
+        .cloned()
+        .filter(|binding| binding.name.clone().as_str() == name.clone().as_str())
+        .next()
+    {
+        Some(binding) => Some(binding),
+        None => match Rc::new(v2_rt::map_values(&env.carrier_bindings.clone()))
+            .iter()
+            .cloned()
+            .filter(|binding| binding.name.clone().as_str() == name.clone().as_str())
+            .next()
+        {
+            Some(binding) => Some(binding),
+            None => None,
+        },
+    }
+}
+
+pub fn stamp_hidden_dependency_refs(
+    n: Rc<Node>,
+    dep_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    let stamped_children = Rc::new({
+        let mut __result = Vec::new();
+        for child in n.children.clone().iter().cloned() {
+            __result.push(stamp_hidden_dependency_refs(
+                child.clone(),
+                dep_env.clone(),
+                source_indices.clone(),
+            ));
+        }
+        __result
+    });
+    let stamped_params = Rc::new({
+        let mut __result = Vec::new();
+        for param in n.params.clone().iter().cloned() {
+            __result.push(stamp_hidden_dependency_refs(
+                param.clone(),
+                dep_env.clone(),
+                source_indices.clone(),
+            ));
+        }
+        __result
+    });
+    let stamped_inferred = match n.inferred.clone() {
+        Some(inferred) => match &*inferred {
+            InferredNode::Resolved { node: rt } => Some(Rc::new(InferredNode::Resolved {
+                node: stamp_hidden_dependency_refs(
+                    rt.clone(),
+                    dep_env.clone(),
+                    source_indices.clone(),
+                ),
+            })),
+            _ => n.inferred.clone(),
+        },
+        None => n.inferred.clone(),
+    };
+    let rebuilt = Rc::new(Node {
+        name: n.name.clone(),
+        ident: n.ident.clone(),
+        binding_id: n.binding_id.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: stamped_children,
+        connective: n.connective.clone(),
+        params: stamped_params,
+        inferred: stamped_inferred,
+        return_cardinality: n.return_cardinality.clone(),
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        expr_data: n.expr_data.clone(),
+    });
+    let name = authored_name_at(source_indices.clone(), rebuilt.clone());
+    let bare_unbranded_ref = (((((rebuilt.binding_id.clone() == None)
+        && (rebuilt.connective.clone() == Connective::NoConnective))
+        && ((rebuilt.children.clone().len() as i64) == 0))
+        && ((rebuilt.params.clone().len() as i64) == 0))
+        && (name.clone().as_str() != "".to_string().as_str()));
+    if bare_unbranded_ref {
+        match lookup_type_binding_by_name_in_env(dep_env.clone(), name.clone()) {
+            Some(binding) => {
+                if binding.resolved.binding_id.clone() != None {
+                    node_with_preserved_binding_id(binding.resolved.clone(), rebuilt.clone())
+                } else {
+                    rebuilt
+                }
+            }
+            None => rebuilt,
+        }
+    } else {
+        rebuilt
+    }
+}
+
+pub fn stamp_type_binding_dependency_refs(
+    binding: Rc<TypeBinding>,
+    dep_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeBinding> {
+    Rc::new(TypeBinding {
+        name: binding.name.clone(),
+        resolved: stamp_hidden_dependency_refs(
+            binding.resolved.clone(),
+            dep_env.clone(),
+            source_indices.clone(),
+        ),
+        provenance: binding.provenance.clone(),
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CarrierClosureState {
+    pub carrier_bindings: Rc<HashMap<BindingId, Rc<TypeBinding>>>,
+    pub seen_names: Rc<HashMap<String, bool>>,
+}
+
+pub fn add_type_binding_dependency_closure(
+    state: Rc<CarrierClosureState>,
+    binding: Rc<TypeBinding>,
+    dep_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CarrierClosureState> {
+    if v2_rt::map_contains_key(&state.seen_names, binding.name.clone()) {
+        state
+    } else {
+        let stamped = stamp_type_binding_dependency_refs(
+            binding.clone(),
+            dep_env.clone(),
+            source_indices.clone(),
+        );
+        let with_binding = match stamped.resolved.binding_id.clone() {
+            Some(binding_id) => Rc::new(CarrierClosureState {
+                carrier_bindings: v2_rt::rc_map_insert(
+                    state.carrier_bindings.clone(),
+                    binding_id,
+                    stamped.clone(),
+                ),
+                seen_names: v2_rt::rc_map_insert(
+                    state.seen_names.clone(),
+                    stamped.name.clone(),
+                    true,
+                ),
+            }),
+            None => Rc::new(CarrierClosureState {
+                carrier_bindings: state.carrier_bindings.clone(),
+                seen_names: v2_rt::rc_map_insert(
+                    state.seen_names.clone(),
+                    stamped.name.clone(),
+                    true,
+                ),
+            }),
+        };
+        let deps = node_type_deps(stamped.resolved.clone(), source_indices.clone());
+        deps.iter().cloned().fold(
+            with_binding,
+            |acc: Rc<CarrierClosureState>, dep_name: String| {
+                match lookup_type_binding_by_name_in_env(dep_env.clone(), dep_name.clone()) {
+                    Some(dep_binding) => add_type_binding_dependency_closure(
+                        acc.clone(),
+                        dep_binding.clone(),
+                        dep_env.clone(),
+                        source_indices.clone(),
+                    ),
+                    None => acc.clone(),
+                }
+            },
+        )
+    }
+}
+
+pub fn collect_import_carrier_bindings_for_import(
+    acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>,
+    imp: Rc<ResolvedImport>,
+    env: Rc<TypeEnv>,
+) -> Rc<HashMap<BindingId, Rc<TypeBinding>>> {
+    let closure_state = Rc::new(v2_rt::map_values(&env.bindings.clone()))
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(CarrierClosureState {
+                carrier_bindings: acc,
+                seen_names: v2_rt::rc_empty_map::<String, bool>(),
+            }),
+            |state: Rc<CarrierClosureState>, binding: Rc<TypeBinding>| {
+                if ((imp.module_path.clone().as_str() == "std.types".to_string().as_str())
+                    && is_type_variable_name(binding.name.clone()))
+                {
+                    state
+                } else if import_allows_type_binding(imp.clone(), binding.clone(), env.clone()) {
+                    add_type_binding_dependency_closure(
+                        state.clone(),
+                        binding.clone(),
+                        env.clone(),
+                        env.source_indices.clone(),
+                    )
+                } else {
+                    state
+                }
+            },
+        );
+    closure_state.carrier_bindings.clone()
+}
+
 pub fn import_allows_binding_name(imp: Rc<ResolvedImport>, name: String) -> bool {
     ((imp.is_all.clone() || ((imp.specific_names.clone().len() as i64) == 0)) || {
         let mut __found = false;
@@ -10952,7 +11168,15 @@ pub fn collect_import_bindings_for_import(
                         } else {
                             if import_allows_type_binding(imp.clone(), binding.clone(), env.clone())
                             {
-                                v2_rt::rc_map_insert(bacc.clone(), ident.clone(), binding.clone())
+                                v2_rt::rc_map_insert(
+                                    bacc.clone(),
+                                    ident.clone(),
+                                    stamp_type_binding_dependency_refs(
+                                        binding.clone(),
+                                        env.clone(),
+                                        env.source_indices.clone(),
+                                    ),
+                                )
                             } else {
                                 bacc.clone()
                             }
@@ -11336,7 +11560,21 @@ pub fn build_type_env(
                 None => acc.clone(),
             },
         );
-        let import_carrier_bindings = collect_parent_carrier_bindings(parent_envs.clone());
+        let std_import_carrier_bindings =
+            collect_parent_carrier_bindings(std_types_parent_env.clone());
+        let import_carrier_bindings = module.resolved_imports.clone().iter().cloned().fold(
+            std_import_carrier_bindings,
+            |acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| {
+                match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    Some(typed_parent) => collect_import_carrier_bindings_for_import(
+                        acc.clone(),
+                        imp.clone(),
+                        typed_parent.type_env.clone(),
+                    ),
+                    None => acc.clone(),
+                }
+            },
+        );
         let import_recursive = parent_envs
             .clone()
             .iter()
@@ -11976,7 +12214,21 @@ pub fn build_type_env_unresolved(
                 None => acc.clone(),
             },
         );
-        let import_carrier_bindings = collect_parent_carrier_bindings(parent_envs.clone());
+        let std_import_carrier_bindings =
+            collect_parent_carrier_bindings(std_types_parent_env.clone());
+        let import_carrier_bindings = module.resolved_imports.clone().iter().cloned().fold(
+            std_import_carrier_bindings,
+            |acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| {
+                match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    Some(typed_parent) => collect_import_carrier_bindings_for_import(
+                        acc.clone(),
+                        imp.clone(),
+                        typed_parent.type_env.clone(),
+                    ),
+                    None => acc.clone(),
+                }
+            },
+        );
         let import_recursive = parent_envs
             .clone()
             .iter()
