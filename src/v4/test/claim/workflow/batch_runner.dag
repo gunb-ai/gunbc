@@ -79,7 +79,19 @@ data bre_suite_dependencies: List<DependencyView> = [
 ]
 
 // node -> real (entry, function) witness. This is the only place the suite's
-// node identities bind to runnable witnesses; the executor owns the grouping.
+// A ClaimRef with an empty `entry` is the unrunnable sentinel: it carries no
+// resolvable witness, so the host transport (claim_executor) rejects it and
+// fails closed. Used for any suite node without a binding and for non-complete
+// plan states — making "missing mapping" and "not complete" loud, never silent.
+data bre_unmapped_function: String = "__batch_runner_unmapped_or_incomplete__"
+
+fn bre_unrunnable_sentinel() -> ClaimRef {
+  ClaimRef { entry: "", function: bre_unmapped_function }
+}
+
+// Closed node->witness binding. The mapping is TOTAL over the suite's three
+// nodes; any other node is structurally unmapped and projects to the unrunnable
+// sentinel (host fails closed) rather than silently aliasing to a real claim.
 fn bre_claim_ref_for_node(node: Node) -> ClaimRef {
   if node == bre_core_node {
     ClaimRef { entry: bre_suite_entry, function: "ci_runner_narrow_selection_holds" }
@@ -87,7 +99,11 @@ fn bre_claim_ref_for_node(node: Node) -> ClaimRef {
     if node == bre_a_node {
       ClaimRef { entry: bre_suite_entry, function: "ci_runner_fail_closed_superset_holds" }
     } else {
-      ClaimRef { entry: bre_suite_entry, function: "ci_runner_shape_collision_holds" }
+      if node == bre_b_node {
+        ClaimRef { entry: bre_suite_entry, function: "ci_runner_shape_collision_holds" }
+      } else {
+        bre_unrunnable_sentinel()
+      }
     }
   }
 }
@@ -111,7 +127,11 @@ fn bre_claim_batches() -> List<List<ClaimRef>> {
       fold(batches, init: [], f: fn(acc, batch) {
         list_snoc_item(xs: acc, item: bre_refs_for_batch(batch: batch))
       })
-    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => []
-    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => []
+    // A non-complete plan is NOT an empty (vacuously-passing) run. Project a
+    // single unrunnable-sentinel batch so the host fails closed instead of
+    // exiting 0 on zero claims. The suite is statically satisfiable, so these
+    // arms are unreachable today — but they must never silently mean success.
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[bre_unrunnable_sentinel()]]
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[bre_unrunnable_sentinel()]]
   }
 }
