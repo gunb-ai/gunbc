@@ -10,10 +10,13 @@
 
 set -euo pipefail
 
-v4_glob_discovery_default_claims_root() {
-  local root="${1:-}"
-  if [[ -n "$root" ]]; then
-    printf '%s/test/claim' "$root"
+# Args: optional explicit claims_root directory. When omitted, default to repo
+# src/v4/test/claim. Callers must not pass a source root — pass the claim tree
+# root directly (e.g. .../test/claim/impossible_bug for perturb scans).
+v4_glob_discovery_resolve_claims_root() {
+  local claims_root="${1:-}"
+  if [[ -n "$claims_root" ]]; then
+    printf '%s' "$claims_root"
     return
   fi
   local repo
@@ -56,7 +59,7 @@ project_marker_file() {
 # Exits 2 when projection is empty (fail-closed).
 v4_glob_discovery_project_distributed_markers() {
   local claims_root
-  claims_root="$(v4_glob_discovery_default_claims_root "${1:-}")"
+  claims_root="$(v4_glob_discovery_resolve_claims_root "${1:-}")"
   V4_GLOB_DISCOVERY_ROWS=""
   V4_GLOB_DISCOVERY_ROW_COUNT=0
 
