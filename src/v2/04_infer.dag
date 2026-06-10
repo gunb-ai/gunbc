@@ -312,7 +312,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
         Some { value: typed_parent } =>
           let next_func_sigs = fold(typed_parent.func_env.signatures |> map_values, init: func_sigs, f: (acc, rsig) =>
             let sig_key = rsig.name
-            if import_allows_binding_name(imp: imp, name: sig_key) == false && map_get(acc, sig_key) != none {
+            if import_allows_binding_name(imp: imp, name: sig_key) == false {
               acc
             } else {
               let sig_params = rsig.params
