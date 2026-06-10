@@ -14,15 +14,6 @@ import v4.compiler.body_producer {
   produce_mvp1_add_arrow_with_body
 }
 import v4.compiler.emit { emit }
-import v4.compiler.value_expression { arrow_has_transform_body }
-import v4.compiler.translate {
-  grammar_inverse_bodied_arrow_validated,
-  project_arrow_body_to_value_expression,
-  target_serialize_source_from_model,
-  translate,
-  translate_bodied_arrow_coerce_signature_slot_raw,
-  translate_bodied_arrow_coerce_signature_slots
-}
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.extdeps.languages.typescript {
@@ -32,8 +23,6 @@ import v4.extdeps.languages.typescript {
   ts_lex_rule,
   ts_mvp1_binding_spellings,
   ts_mvp1_declared_inhabitants_root,
-  ts_mvp1_add_binary_body_node,
-  ts_mvp1_emitted_add_fn_with_body_node,
   ts_mvp1_selection_policy_node,
   ts_mvp1_serialize_source_node,
   ts_mvp1_source_text,
@@ -65,8 +54,7 @@ import v4.std.target_model {
 }
 import v4.compiler.target_carriers { TargetSource }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v4.std.collection { Map, empty_map, list_at_optional }
-import v4.std.node_query { find_arrow_body_child, node_positional_child_targets }
+import v4.std.collection { Map, empty_map }
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -491,199 +479,6 @@ fn comprep_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<TargetSour
 data comprep_ts_swapped_bodied_inferred_tree: InferredTree = InferredTree {
   root: comprep_ts_swapped_bodied_arrow_root,
   facts: Map { lookup: comprep_ts_facts_lookup }
-}
-
-fn comprep_ts_debug_producer_tree_accepts() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_translate_accepts() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match translate(tree: tree, target: ts_mvp1_target_model()) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_bodied_coerce_slots_slot0_eq() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match produce_mvp1_add_arrow_with_body() {
-        Accepted { value: root, diagnostics: _ } =>
-          match translate_bodied_arrow_coerce_signature_slots(
-            arrow: root,
-            tree: tree,
-            target: ts_mvp1_target_model()
-          ) {
-            Accepted { value: coerced, diagnostics: _ } =>
-              match list_at_optional(
-                xs: node_positional_child_targets(node: coerced),
-                index: 0
-              ) {
-                Present { value: slot } => slot == comprep_ts_number_inhabitant
-                Absent => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_root_has_transform_body() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
-    Accepted { value: root, diagnostics: _ } => arrow_has_transform_body(arrow: root)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_coerce_int_slot_raw() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match list_at_optional(
-        xs: node_positional_child_targets(node: mvp1_add_arrow_with_body_node),
-        index: 0
-      ) {
-        Present { value: slot } =>
-          match translate_bodied_arrow_coerce_signature_slot_raw(
-            node: slot,
-            tree: tree,
-            target: ts_mvp1_target_model()
-          ) {
-            Accepted { value: coerced, diagnostics: _ } =>
-              coerced == comprep_ts_number_inhabitant
-            Rejected { diagnostics: _ } => false
-          }
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_fixture_inhabitant_eq() -> Bool {
-  comprep_ts_number_inhabitant == ts_inhabitant_number_node()
-}
-
-fn comprep_ts_debug_producer_emitted_slot0_eq() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match translate(tree: tree, target: ts_mvp1_target_model()) {
-        Accepted { value: emitted, diagnostics: _ } =>
-          match list_at_optional(xs: node_positional_child_targets(node: emitted), index: 0) {
-            Present { value: slot } => slot == comprep_ts_number_inhabitant
-            Absent => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_emitted_body_eq() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match translate(tree: tree, target: ts_mvp1_target_model()) {
-        Accepted { value: emitted, diagnostics: _ } =>
-          match find_arrow_body_child(root: emitted) {
-            Accepted { value: body, diagnostics: _ } =>
-              body == ts_mvp1_add_binary_body_node()
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_emitted_eq_grammar_row() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match translate(tree: tree, target: ts_mvp1_target_model()) {
-        Accepted { value: emitted, diagnostics: _ } =>
-          emitted == ts_mvp1_emitted_add_fn_with_body_node()
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_grammar_inverse_accepts() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match translate(tree: tree, target: ts_mvp1_target_model()) {
-        Accepted { value: emitted, diagnostics: _ } =>
-          match grammar_inverse_bodied_arrow_validated(
-            target: ts_mvp1_target_model(),
-            emitted: emitted
-          ) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_body_projection_accepts() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match translate(tree: tree, target: ts_mvp1_target_model()) {
-        Accepted { value: emitted, diagnostics: _ } =>
-          match project_arrow_body_to_value_expression(arrow: emitted) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_serialize_accepts() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match translate(tree: tree, target: ts_mvp1_target_model()) {
-        Accepted { value: emitted, diagnostics: _ } =>
-          match target_serialize_source_from_model(
-            target: ts_mvp1_target_model(),
-            emitted: emitted
-          ) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_emit_accepts() -> Bool {
-  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_emit_source_eq() -> Bool {
-  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
-    Accepted { value: source, diagnostics: _ } => source == ts_mvp1_source_text
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn comprep_ts_debug_producer_emit_diag_none() -> Bool {
-  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
-    Accepted { value: _, diagnostics: d } => d == None
-    Rejected { diagnostics: _ } => false
-  }
 }
 
 // E-10 emit-only green: producer-rooted bodied arrow renders the fidelity TS source string.

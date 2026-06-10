@@ -338,6 +338,9 @@ data target_operator_shape_field_token: Symbol = target_operator_shape_field_tok
 data target_canonical_operation_wire_malformed: Symbol = target_canonical_operation_wire_malformed
 data target_operator_shape_wire_malformed: Symbol = target_operator_shape_wire_malformed
 data target_operator_realization_wire_malformed: Symbol = target_operator_realization_wire_malformed
+data target_operator_realizations_catalog_wire_malformed: Symbol = target_operator_realizations_catalog_wire_malformed
+data target_operator_realization_catalog_miss: Symbol = target_operator_realization_catalog_miss
+data target_operator_realization_catalog_ambiguous: Symbol = target_operator_realization_catalog_ambiguous
 
 fn target_model_type_atom_node(identity: Symbol) -> Node {
   Node {

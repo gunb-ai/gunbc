@@ -20,6 +20,7 @@ import v4.compiler.value_expression {
 }
 import v4.compiler.target_carriers { TargetSource }
 import v4.std.target_model {
+  TargetBodiedArrowStatementScaffold,
   TargetModel,
   bodied_arrow_scaffold_from_grammar_relation_row,
   target_bodied_arrow_compose_statement_tokens,
@@ -575,16 +576,11 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
 fn grammar_relation_row_for_bodied_arrow_serialize(
   rules: Node,
   emitted: Node
-) -> Outcome<Node> {
+) -> Outcome<TargetBodiedArrowStatementScaffold> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
     f: fn(row) {
-      bind_outcome(
-        o: bodied_arrow_scaffold_from_grammar_relation_row(row: row),
-        f: fn(scaffold) {
-          outcome_accepted(value: row)
-        }
-      )
+      bodied_arrow_scaffold_from_grammar_relation_row(row: row)
     }
   )
 }
@@ -596,7 +592,12 @@ fn grammar_inverse_bodied_arrow_validated(
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
     f: fn(rules) {
-      grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted)
+      bind_outcome(
+        o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
+        f: fn(_) {
+          outcome_accepted(emitted)
+        }
+      )
     }
   )
 }
@@ -1081,31 +1082,26 @@ fn target_serialize_bodied_arrow_from_model(
     f: fn(rules) {
       bind_outcome(
         o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
-        f: fn(row) {
+        f: fn(scaffold) {
           bind_outcome(
-            o: bodied_arrow_scaffold_from_grammar_relation_row(row: row),
-            f: fn(scaffold) {
+            o: value_expression_projection_from_target(target: target),
+            f: fn(projection) {
               bind_outcome(
-                o: value_expression_projection_from_target(target: target),
-                f: fn(projection) {
+                o: project_arrow_body_to_value_expression(arrow: emitted),
+                f: fn(expr) {
                   bind_outcome(
-                    o: project_arrow_body_to_value_expression(arrow: emitted),
-                    f: fn(expr) {
-                      bind_outcome(
-                        o: value_expression_to_concrete_tokens(
-                          expr: expr,
-                          target: target,
-                          projection: projection
-                        ),
-                        f: fn(body_tokens) {
-                          serialize_concrete_syntax_tokens_to_source(
-                            target: target,
-                            tokens: target_bodied_arrow_compose_statement_tokens(
-                              scaffold: scaffold,
-                              body: body_tokens
-                            )
-                          )
-                        }
+                    o: value_expression_to_concrete_tokens(
+                      expr: expr,
+                      target: target,
+                      projection: projection
+                    ),
+                    f: fn(body_tokens) {
+                      serialize_concrete_syntax_tokens_to_source(
+                        target: target,
+                        tokens: target_bodied_arrow_compose_statement_tokens(
+                          scaffold: scaffold,
+                          body: body_tokens
+                        )
                       )
                     }
                   )
