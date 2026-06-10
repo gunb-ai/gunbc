@@ -1198,6 +1198,57 @@ fn char_value(c: char) -> Value {
     Value::Int(c as i64)
 }
 
+fn native_map_absent_diagnostic_value() -> Value {
+    let mut anchor_fields = HashMap::new();
+    anchor_fields.insert("at".to_string(), Value::Str("map_lookup_port".to_string()));
+
+    let mut locus_fields = HashMap::new();
+    locus_fields.insert(
+        "anchor".to_string(),
+        Value::Record {
+            type_name: "LocusAnchor".to_string(),
+            fields: Rc::new(anchor_fields),
+        },
+    );
+
+    let mut correction_fields = HashMap::new();
+    correction_fields.insert(
+        "reason".to_string(),
+        Value::Variant {
+            type_name: "NoCorrectionReason".to_string(),
+            variant_name: "ExternalContractUnknown".to_string(),
+            fields: Rc::new(HashMap::new()),
+        },
+    );
+
+    let mut diagnostic_fields = HashMap::new();
+    diagnostic_fields.insert(
+        "reason".to_string(),
+        Value::Str("map_key_absent".to_string()),
+    );
+    diagnostic_fields.insert(
+        "at".to_string(),
+        Value::Variant {
+            type_name: "Locus".to_string(),
+            variant_name: "PortLocus".to_string(),
+            fields: Rc::new(locus_fields),
+        },
+    );
+    diagnostic_fields.insert(
+        "correction".to_string(),
+        Value::Variant {
+            type_name: "Correction".to_string(),
+            variant_name: "Unavailable".to_string(),
+            fields: Rc::new(correction_fields),
+        },
+    );
+
+    Value::Record {
+        type_name: "Diagnostic".to_string(),
+        fields: Rc::new(diagnostic_fields),
+    }
+}
+
 fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
@@ -1240,7 +1291,11 @@ fn match_pattern(
                     // present coproduct value must satisfy the `Holds` arm. Same absent-arm
                     // exclusions (`Violates`/`Absent`/`none` stay absent -> the `Violates` arm);
                     // a genuine `Holds` is handled by nominal matching below.
-                    if name == "Holds" && variant_name != "Holds" && variant_name != "Violates" {
+                    if name == "Holds"
+                        && parent_enum.as_deref() == Some("Witness")
+                        && variant_name != "Holds"
+                        && variant_name != "Violates"
+                    {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
                             let fb_pat = field_binding_pattern(fb.clone());
@@ -1249,7 +1304,11 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    if name == "Present" && variant_name != "Present" && variant_name != "Absent" {
+                    if name == "Present"
+                        && parent_enum.as_deref() == Some("Optional")
+                        && variant_name != "Present"
+                        && variant_name != "Absent"
+                    {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
                             let fb_pat = field_binding_pattern(fb.clone());
@@ -1413,16 +1472,14 @@ fn match_pattern(
                 // `Violates` (absent) arm rather than falling through a Holds/Violates match
                 // non-exhaustively. `Holds` requires a present value and so never matches Null
                 // (it falls to the `_ => None` arm below).
-                Value::Null if name == "Violates" => {
+                Value::Null if name == "Violates" && parent_enum.as_deref() == Some("Witness") => {
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
                         let field_name =
                             field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                         let fb_pat = field_binding_pattern(fb.clone());
-                        // Violates carries a `diagnostic`; a native-map miss has no structured
-                        // diagnostic to offer, so the absent sentinel binds through as Null.
                         let field_val = match field_name.as_str() {
-                            "diagnostic" => Value::Null,
+                            "diagnostic" => native_map_absent_diagnostic_value(),
                             _ => return None,
                         };
                         let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -1436,8 +1493,10 @@ fn match_pattern(
                     Some(HashMap::new())
                 }
                 // Match cardinality Optional through the canonical std surface.
-                Value::Null if name == "Absent" => Some(HashMap::new()),
-                _ if name == "Present" => {
+                Value::Null if name == "Absent" && parent_enum.as_deref() == Some("Optional") => {
+                    Some(HashMap::new())
+                }
+                _ if name == "Present" && parent_enum.as_deref() == Some("Optional") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -1453,7 +1512,7 @@ fn match_pattern(
                 // non-Variant value (e.g. a native-map `Int` lookup hit) bridges to
                 // `v2_rt::Witness::Holds { value: <self> }`. `Null` (a miss) does not match `Holds` — it
                 // falls through to the `Null -> Violates` projection above.
-                _ if name == "Holds" => {
+                _ if name == "Holds" && parent_enum.as_deref() == Some("Witness") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }

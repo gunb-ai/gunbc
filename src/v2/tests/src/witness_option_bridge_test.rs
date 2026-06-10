@@ -178,6 +178,49 @@ fn missing() -> Bool {
 }
 
 #[test]
+fn map_get_rejects_non_absent_lookup_failure() {
+    let src = r#"module test.witness_map_get_rejects
+import v4.std.collection { Map, Absent, Present, map_get }
+import v4.std.diagnostic { Accepted, Rejected, Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
+import v4.std.witness { Violates }
+
+fn custom_lookup_failure() -> Diagnostic {
+  Diagnostic {
+    reason: ^custom_lookup_failure,
+    at: port_locus(port: ^custom_map_lookup_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn malformed_map() -> Map<String, Int> {
+  Map {
+    lookup: fn(_) {
+      Violates { diagnostic: custom_lookup_failure() }
+    }
+  }
+}
+
+fn rejects_custom_lookup_failure() -> Bool {
+  match map_get(malformed_map(), "k") {
+    Accepted { value: Present { value: _ }, diagnostics: _ } => false
+    Accepted { value: Absent, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+"#;
+    match run_v4_module(
+        "test/witness_map_get_rejects.dag",
+        src,
+        "rejects_custom_lookup_failure",
+    ) {
+        Value::Bool(true) => {}
+        other => {
+            panic!("expected Bool(true) from non-absent lookup failure rejection, got {other:?}")
+        }
+    }
+}
+
+#[test]
 fn mark_excluded_no_longer_pattern_match_fails() {
     let entry = "src/v4/test/claim/lens_affected_set/excluded_propagation_proof.dag";
     let content = std::fs::read_to_string(workspace_root().join(entry))

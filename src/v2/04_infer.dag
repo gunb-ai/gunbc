@@ -968,13 +968,17 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let inferred_parent = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
-          let optional_cardinality_subject = resolved_scrut_node.return_cardinality == CardOptional && authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node) != "Optional"
+          let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
+          let optional_cardinality_subject = resolved_scrut_node.return_cardinality == CardOptional && scrutinee_name != "Optional"
+          let witness_container_subject = scrutinee_name == "Witness" && (variant_name == "Holds" || variant_name == "Violates")
           if optional_cardinality_subject && (variant_name == "Present" || variant_name == "Absent") {
             Present { value: "Optional" }
+          } else if witness_container_subject {
+            Present { value: "Witness" }
           } else {
             let is_coproduct = resolved_scrut_node.connective == Disj
             if is_coproduct {
-              Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node) }
+              Present { value: scrutinee_name }
             } else { none }
           }
         PatternDynamic { span: _ } => none
