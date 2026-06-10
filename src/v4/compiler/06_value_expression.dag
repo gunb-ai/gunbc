@@ -20,6 +20,7 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   Outcome,
   Rejected,
   Unavailable,

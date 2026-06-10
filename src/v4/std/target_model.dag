@@ -337,86 +337,81 @@ data target_operator_realization_field_operation: Symbol = target_operator_reali
 data target_operator_realization_field_shape: Symbol = target_operator_realization_field_shape
 data target_operator_shape_field_token: Symbol = target_operator_shape_field_token
 
+fn target_model_type_atom_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    span: Unanchored
+  }
+}
+
+fn target_model_type_conj_node(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    span: Unanchored
+  }
+}
+
 fn target_operator_realization_node(
   operation: CanonicalOperation,
   shape: TargetOperatorShape
 ) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+  target_model_type_conj_node(
     children: [
       target_model_named_edge(
         name: target_operator_realization_field_operation,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: discriminant(v: operation) } },
-          children: []
-        }
+        target: target_model_type_atom_node(identity: discriminant(v: operation))
       ),
       target_model_named_edge(
         name: target_operator_realization_field_shape,
         target: match shape {
           InfixToken { token: t } =>
-            Node {
-              kind: TypeNode { connective: Atom { identity: discriminant(v: InfixToken {}) } },
+            target_model_type_conj_node(
               children: [
                 target_model_named_edge(
                   name: target_operator_shape_field_token,
-                  target: Node {
-                    kind: TypeNode { connective: Atom { identity: t } },
-                    children: []
-                  }
+                  target: target_model_type_atom_node(identity: t)
                 )
               ]
-            }
+            )
           PrefixToken { token: t } =>
-            Node {
-              kind: TypeNode { connective: Atom { identity: discriminant(v: PrefixToken {}) } },
+            target_model_type_conj_node(
               children: [
                 target_model_named_edge(
                   name: target_operator_shape_field_token,
-                  target: Node {
-                    kind: TypeNode { connective: Atom { identity: t } },
-                    children: []
-                  }
+                  target: target_model_type_atom_node(identity: t)
                 )
               ]
-            }
+            )
           CallIdent { ident: i } =>
-            Node {
-              kind: TypeNode { connective: Atom { identity: discriminant(v: CallIdent {}) } },
+            target_model_type_conj_node(
               children: [
                 target_model_named_edge(
                   name: target_operator_shape_field_token,
-                  target: Node {
-                    kind: TypeNode { connective: Atom { identity: i } },
-                    children: []
-                  }
+                  target: target_model_type_atom_node(identity: i)
                 )
               ]
-            }
+            )
           MethodIdent { ident: i } =>
-            Node {
-              kind: TypeNode { connective: Atom { identity: discriminant(v: MethodIdent {}) } },
+            target_model_type_conj_node(
               children: [
                 target_model_named_edge(
                   name: target_operator_shape_field_token,
-                  target: Node {
-                    kind: TypeNode { connective: Atom { identity: i } },
-                    children: []
-                  }
+                  target: target_model_type_atom_node(identity: i)
                 )
               ]
-            }
+            )
         }
       )
     ]
-  }
+  )
 }
 
 data target_operator_realization_row_edge: Symbol = target_operator_realization_row_edge
 
 fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+  target_model_type_conj_node(
     children: fold_list(
       xs: rows,
       empty: Empty,
@@ -430,7 +425,7 @@ fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
         }
       }
     )
-  }
+  )
 }
 
 fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol) -> Diagnostic {
@@ -607,8 +602,7 @@ fn concrete_syntax_token_list_to_node(tokens: List<ConcreteSyntaxToken>) -> Node
 fn bodied_arrow_statement_scaffold_bundle_node(
   scaffold: TargetBodiedArrowStatementScaffold
 ) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+  target_model_type_conj_node(
     children: [
       target_model_named_edge(
         name: target_bodied_arrow_scaffold_field_prefix,
@@ -619,7 +613,7 @@ fn bodied_arrow_statement_scaffold_bundle_node(
         target: concrete_syntax_token_list_to_node(tokens: scaffold.suffix)
       )
     ]
-  }
+  )
 }
 
 fn target_bodied_arrow_compose_statement_tokens(
