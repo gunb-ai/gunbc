@@ -2,6 +2,7 @@
 // Source module: std.iteration
 
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

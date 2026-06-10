@@ -5,6 +5,7 @@ use self::EdgeKind::*;
 use self::OwnershipDecision::*;
 pub use crate::v2_compiler_emit::to_string;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::ExprData::{

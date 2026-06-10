@@ -42,6 +42,7 @@ pub use crate::v2_compiler_resolve::resolve_modules;
 pub use crate::v2_compiler_resolve::ModuleGraph;
 pub use crate::v2_compiler_tokenize::tokenize;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::*;

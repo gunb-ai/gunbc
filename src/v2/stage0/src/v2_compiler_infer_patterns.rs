@@ -12,6 +12,7 @@ pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::{FieldNotFound, NonExhaustiveMatch, VariantNotFound};

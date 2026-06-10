@@ -7,6 +7,7 @@ use crate::v2_compiler_infer_items::ItemKind::FuncItem;
 pub use crate::v2_compiler_infer_items::{ItemInfo, ItemKind, TypedModule};
 pub use crate::v2_compiler_infer_types::{emit_map_has, nominal_type_ref};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::Connective::{Conj, NoConnective};

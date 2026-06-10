@@ -13,6 +13,7 @@ pub use crate::std_http_path::{PathTemplate, PathTemplateParseResult};
 pub use crate::std_types::HttpMethod;
 use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

@@ -80,6 +80,7 @@ pub use crate::v2_compiler_ownership::{
 pub use crate::v2_compiler_resolve::get_exported_names;
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::*;
@@ -5804,12 +5805,15 @@ pub fn emit_prelude() -> String {
             v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(
-                        "use std::collections::BTreeSet;\n".to_string(),
-                        "use std::collections::HashMap;\n".to_string(),
+                        v2_rt::concat(
+                            "use std::collections::BTreeSet;\n".to_string(),
+                            "use std::collections::HashMap;\n".to_string(),
+                        ),
+                        "use std::rc::Rc;\n".to_string(),
                     ),
-                    "use std::rc::Rc;\n".to_string(),
+                    "use crate::v2_rt;\n".to_string(),
                 ),
-                "use crate::v2_rt;\n".to_string(),
+                "use crate::v2_rt::Witness;\n".to_string(),
             ),
             "use crate::v2_rt::Witness::{Holds, Violates};".to_string(),
         );

@@ -6,6 +6,7 @@ use crate::std_induction::RecursionShape::{
 };
 pub use crate::std_induction::{InductiveField, RecursionShape};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

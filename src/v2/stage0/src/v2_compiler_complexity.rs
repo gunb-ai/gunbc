@@ -68,6 +68,7 @@ pub use crate::v2_compiler_parse::{
 };
 pub use crate::v2_compiler_parse::{ParserCallIdentity, ParserResultWitness};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda,
