@@ -1,7 +1,6 @@
 // src/v4/test/claim/impossible_bug/release_demos.dag
 // Scope: release impossible-bug demos over executable v4 lens/probe surfaces.
-// The witnesses below do not inspect authored DiagnosticClaim metadata. Each
-// class is backed by the v4 program that the named lens/probe actually reads.
+// Each class is backed by the v4 lens witness the release row actually consumes.
 
 module v4.test.claim.impossible_bug.release_demos
 
@@ -10,12 +9,14 @@ import v4.std.logic { Bool }
 import v4.test.claim.impossible_bug.transport_type_drift {
   transport_type_drift_impossible_bug_claims_hold
 }
+import v4.test.claim.lens_application.sg_claims {
+  lens_application_synthesis_gap_enforce_rejection_holds
+}
 import v4.test.claim.lens_idempotency.write_effect { idempotency_write_effect_claim_holds }
-import v4.test.claim.lens_synthesis.synthesis_gap_polynomial { synthesis_gap_poly_lens_non_empty }
 
 
 fn release_complexity_lens_catches() -> Bool {
-  synthesis_gap_poly_lens_non_empty()
+  lens_application_synthesis_gap_enforce_rejection_holds()
 }
 
 
@@ -29,23 +30,8 @@ fn release_transport_drift_probe_catches() -> Bool {
 }
 
 
-fn release_complexity_claims_are_lens_rejections() -> Bool {
-  release_complexity_lens_catches()
-}
-
-
-fn release_idempotency_claims_are_lens_rejections() -> Bool {
-  release_idempotency_lens_catches()
-}
-
-
-fn release_transport_claims_are_lens_rejections() -> Bool {
-  release_transport_drift_probe_catches()
-}
-
-
 fn witness_impossible_bug_release_demos_are_v4_lens_caught() -> Bool {
-  release_complexity_claims_are_lens_rejections() &&
-    release_idempotency_claims_are_lens_rejections() &&
-    release_transport_claims_are_lens_rejections()
+  release_complexity_lens_catches()
+    && release_idempotency_lens_catches()
+    && release_transport_drift_probe_catches()
 }

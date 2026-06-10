@@ -1,0 +1,67 @@
+// src/v4/lens/wire_contract_alignment.dag
+//
+// Scope: wire-contract parallel-authority alignment lens — structural read over
+// Conj wire-contract nodes. Gate #29 wire-serde-alignment interim: client/server
+// (or client/target) named fields must share the same Atom identity authority.
+//
+// Status: T-14 release-demo consumer for transport/type-drift impossible-bug class.
+
+module v4.lens.wire_contract_alignment
+
+
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Node, Symbol, TypeNode, Atom }
+import v4.std.node_query { find_named_child }
+
+
+fn wire_contract_field_atom_symbol(contract: Node, field: Symbol) -> Bool {
+  match find_named_child(root: contract, name: field) {
+    Accepted { value: field_node, diagnostics: _ } =>
+      match field_node.kind {
+        TypeNode { connective: Atom { identity: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+
+fn wire_contract_parallel_field_symbols_aligned(
+  contract: Node,
+  left_field: Symbol,
+  right_field: Symbol
+) -> Bool {
+  match find_named_child(root: contract, name: left_field) {
+    Accepted { value: left_node, diagnostics: _ } =>
+      match find_named_child(root: contract, name: right_field) {
+        Accepted { value: right_node, diagnostics: _ } =>
+          match left_node.kind {
+            TypeNode { connective: Atom { identity: left_sym } } =>
+              match right_node.kind {
+                TypeNode { connective: Atom { identity: right_sym } } =>
+                  left_sym == right_sym
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+
+fn wire_contract_parallel_authority_drift_detected(
+  contract: Node,
+  left_field: Symbol,
+  right_field: Symbol
+) -> Bool {
+  wire_contract_field_atom_symbol(contract: contract, field: left_field)
+    && wire_contract_field_atom_symbol(contract: contract, field: right_field)
+    && wire_contract_parallel_field_symbols_aligned(
+      contract: contract,
+      left_field: left_field,
+      right_field: right_field
+    ) == false
+}
