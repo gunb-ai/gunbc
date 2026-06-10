@@ -5272,11 +5272,7 @@ fn collect_parent_carrier_bindings(envs: List<TypeEnv>) -> Map<BindingId, TypeBi
 fn lookup_type_binding_by_name_in_env(env: TypeEnv, name: String) -> TypeBinding? {
   match env.bindings |> map_values |> filter(binding => binding.name == name) |> first {
     Some { value: binding } => Some { value: binding }
-    None =>
-      match env.carrier_bindings |> map_values |> filter(binding => binding.name == name) |> first {
-        Some { value: binding } => Some { value: binding }
-        None => none
-      }
+    None => none
   }
 }
 

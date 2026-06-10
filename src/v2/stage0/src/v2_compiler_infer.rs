@@ -4236,12 +4236,38 @@ match bare_s {
                             scope.type_env.clone().source_indices.clone(),
                         );
                         let branch_diags = if node_type_compatible(
-                            then_compare,
-                            else_compare,
+                            then_compare.clone(),
+                            else_compare.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         ) {
                             Rc::new(vec![])
                         } else {
+                            eprintln!(
+                                "BINDDBG if module={} span={}:{} then_shape={} else_shape={} then_name={} else_name={} then_bid={:?} else_bid={:?} then_cmp_bid={:?} else_cmp_bid={:?}",
+                                scope.module_name.clone(),
+                                span.file.clone(),
+                                span.start.clone(),
+                                node_type_shape(
+                                    then_rt.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                node_type_shape(
+                                    else_rt.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    then_rt.clone(),
+                                ),
+                                authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    else_rt.clone(),
+                                ),
+                                then_rt.binding_id.clone(),
+                                else_rt.binding_id.clone(),
+                                then_compare.binding_id.clone(),
+                                else_compare.binding_id.clone(),
+                            );
                             Rc::new(vec![inference_error(
                                 v2_rt::concat(
                                     v2_rt::concat(
@@ -10897,15 +10923,7 @@ pub fn lookup_type_binding_by_name_in_env(
         .next()
     {
         Some(binding) => Some(binding),
-        None => match Rc::new(v2_rt::map_values(&env.carrier_bindings.clone()))
-            .iter()
-            .cloned()
-            .filter(|binding| binding.name.clone().as_str() == name.clone().as_str())
-            .next()
-        {
-            Some(binding) => Some(binding),
-            None => None,
-        },
+        None => None,
     }
 }
 
