@@ -33,16 +33,13 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  None,
   Outcome,
   Rejected,
   Unavailable,
-  bind_outcome,
   diagnostics_merge,
   node_locus,
   outcome_accepted,
-  outcome_rejected,
-  port_locus
+  outcome_rejected
 }
 import v4.std.lexing { LexRules, VoidLexRules }
 import v4.std.find_witness {
