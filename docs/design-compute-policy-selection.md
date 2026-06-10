@@ -40,7 +40,15 @@ compute_select(request, providers: CandidateSet, policy) -> Outcome<SelectionRes
 
 1. **Satisfaction predicate** (the preservation predicate for this domain), decomposed
    field-by-field over A's shape — every clause decidable, every failure located:
-   - capacity: provider interval **contains** the requested interval, per dimension;
+   - capacity: provider available capacity **meets the hard minimum** of the requested
+     range, per dimension — `provider.available ≥ request.min`. The range's upper end is
+     **max-useful, an allocation preference, never an eligibility bar** (review
+     r3385120097: requiring containment of the whole interval would refuse a provider that
+     satisfies the requirement — a P1 modal-force error). The **granted allocation**
+     `min(provider.available, request.max_useful)` is computed here and carried in
+     `SelectionResult` per dimension — the dispatcher (D) needs the grant anyway, and
+     "can grant more of the useful range" is available to policies as an *objective*
+     (§3.2), cleanly separated from satisfaction;
    - capabilities: required ⊆ offered, with a per-kind rule for parameterized entries
      (gpu class compatibility is a declared fact table, not string matching);
    - constraints: platform/residency facts compatible (equality/membership over declared

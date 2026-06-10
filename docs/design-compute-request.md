@@ -35,9 +35,14 @@ refusal downstream — never a silent fallback (C-8).
 
 `ComputeRequest` = a `Conj` fact-bundle with named edges, all typed:
 
-- **resources** — per-dimension asks as intervals over dimensioned quantities: cpu cores,
-  memory, gpu count/class, storage. An exact need is a degenerate interval; "as much as
-  available up to N" is an honest range.
+- **resources** — per-dimension asks as **min-required / max-useful pairs** of dimensioned
+  quantities: cpu cores, memory, gpu count/class, storage. The two ends carry **different
+  modal force, stated at the type** (review r3385120097): the minimum is a hard
+  requirement (a provider below it fails satisfaction); the maximum is an allocation
+  preference (how much of the surplus is worth granting — **never** an eligibility bar).
+  An exact need is min = max; "as much as available up to N" is min = floor, max = N. The
+  selection (C) tests providers against the minimum and carries the granted quantity in
+  `SelectionResult`.
 - **duration** — expected runtime bound + (optional) deadline, as datetime/duration facts.
   **The wait-bound is structurally required at the dispatch boundary** (review
   r3384872272): an ask without a finite duration/timeout fact is representable for
