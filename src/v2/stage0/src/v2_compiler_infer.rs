@@ -1336,10 +1336,14 @@ pub fn direct_call_arg_mismatch_diags(
                         );
                         let formal_identity =
                             direct_call_arg_decl_identity(formal_subst.clone(), type_env.clone());
-                        let formal = peel_nominal_alias_identity(
-                            formal_subst.clone(),
+                        let formal = stamp_hidden_dependency_refs(
+                            peel_nominal_alias_identity(
+                                formal_subst.clone(),
+                                type_env.clone(),
+                                module_name.clone(),
+                            ),
                             type_env.clone(),
-                            module_name.clone(),
+                            source_indices.clone(),
                         );
                         match typed_args.clone().get(pair.0.clone() as usize).cloned() {
                             Some(ta) => {
@@ -1349,10 +1353,14 @@ pub fn direct_call_arg_mismatch_diags(
                                     actual_raw.clone(),
                                     type_env.clone(),
                                 );
-                                let actual = peel_nominal_alias_identity(
-                                    actual_raw.clone(),
+                                let actual = stamp_hidden_dependency_refs(
+                                    peel_nominal_alias_identity(
+                                        actual_raw.clone(),
+                                        type_env.clone(),
+                                        module_name.clone(),
+                                    ),
                                     type_env.clone(),
-                                    module_name.clone(),
+                                    source_indices.clone(),
                                 );
                                 let arg_span = arg_value(ta.clone()).span.clone();
                                 if direct_call_arg_is_typed_deferral(
@@ -4242,32 +4250,6 @@ match bare_s {
                         ) {
                             Rc::new(vec![])
                         } else {
-                            eprintln!(
-                                "BINDDBG if module={} span={}:{} then_shape={} else_shape={} then_name={} else_name={} then_bid={:?} else_bid={:?} then_cmp_bid={:?} else_cmp_bid={:?}",
-                                scope.module_name.clone(),
-                                span.file.clone(),
-                                span.start.clone(),
-                                node_type_shape(
-                                    then_rt.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ),
-                                node_type_shape(
-                                    else_rt.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ),
-                                authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    then_rt.clone(),
-                                ),
-                                authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    else_rt.clone(),
-                                ),
-                                then_rt.binding_id.clone(),
-                                else_rt.binding_id.clone(),
-                                then_compare.binding_id.clone(),
-                                else_compare.binding_id.clone(),
-                            );
                             Rc::new(vec![inference_error(
                                 v2_rt::concat(
                                     v2_rt::concat(

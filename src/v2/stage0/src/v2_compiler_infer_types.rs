@@ -1797,6 +1797,12 @@ pub fn node_type_compatible(
                     if (left_is_unit && right_opt.clone()) {
                         break true;
                     } else {
+                        if (((left.binding_id.clone() != None)
+                            && (right.binding_id.clone() != None))
+                            && (left.binding_id.clone() == right.binding_id.clone()))
+                        {
+                            break true;
+                        }
                         let left_is_container =
                             node_is_element_collection(left.clone(), source_indices.clone());
                         let right_is_container =
