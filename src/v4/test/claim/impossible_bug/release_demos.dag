@@ -6,20 +6,9 @@
 module v4.test.claim.impossible_bug.release_demos
 
 
-import v4.lens.coverage {
-  ImpossibleBugCoverageKey,
-  collect_impossible_bug_coverage_keys,
-  impossible_bug_coverage_key_eq
-}
-import v4.std.algebra { contains }
-import v4.std.diagnostic { Accepted }
 import v4.std.logic { Bool }
-import v4.std.verification {
-  TransportTypeDrift
-}
 import v4.test.claim.impossible_bug.transport_type_drift {
-  claim_target_contract_drift_impossible,
-  claim_wire_contract_drift_impossible
+  transport_type_drift_impossible_bug_claims_hold
 }
 import v4.test.claim.lens_idempotency.write_effect { idempotency_write_effect_claim_holds }
 import v4.test.claim.lens_synthesis.synthesis_gap_polynomial { synthesis_gap_poly_lens_non_empty }
@@ -36,20 +25,7 @@ fn release_idempotency_lens_catches() -> Bool {
 
 
 fn release_transport_drift_probe_catches() -> Bool {
-  match collect_impossible_bug_coverage_keys(
-    corpus: [
-      claim_target_contract_drift_impossible,
-      claim_wire_contract_drift_impossible,
-    ]
-  ) {
-    Accepted { value: keys, diagnostics: None } =>
-      contains(
-        xs: keys,
-        item: ImpossibleBugCoverageKey { bug_class: TransportTypeDrift },
-        eq: impossible_bug_coverage_key_eq
-      )
-    _ => false
-  }
+  transport_type_drift_impossible_bug_claims_hold()
 }
 
 

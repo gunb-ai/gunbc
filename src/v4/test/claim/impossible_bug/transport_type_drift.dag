@@ -10,6 +10,7 @@
 module v4.test.claim.impossible_bug.transport_type_drift
 
 
+import v4.compiler.eval { run_test_claim_assert }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -20,7 +21,10 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
+import v4.std.logic { Bool }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.node_query { find_named_child }
+import v4.std.verdict { Deferred, Fail, Pass }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -103,4 +107,102 @@ data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
       }
     ),
   classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+
+fn transport_wire_contract_field_symbols_match(
+  contract: Node,
+  left_field: Symbol,
+  right_field: Symbol
+) -> Bool {
+  match find_named_child(root: contract, name: left_field) {
+    Accepted { value: left_node, diagnostics: _ } =>
+      match find_named_child(root: contract, name: right_field) {
+        Accepted { value: right_node, diagnostics: _ } =>
+          match left_node.kind {
+            TypeNode { connective: Atom { identity: left_sym } } =>
+              match right_node.kind {
+                TypeNode { connective: Atom { identity: right_sym } } =>
+                  left_sym == right_sym
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+
+fn transport_wire_contract_drift_probe(input: Node) -> Outcome<Node> {
+  if transport_wire_contract_field_symbols_match(
+    contract: input,
+    left_field: ^client_field,
+    right_field: ^server_field
+  ) {
+    Accepted { value: input, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: impossible_bug_reason_transport_drift,
+          at: node_locus(node: input),
+          correction: Suggested { node: shared_wire_contract_input }
+        }
+      )
+    }
+  }
+}
+
+
+fn transport_target_contract_drift_probe(input: Node) -> Outcome<Node> {
+  if transport_wire_contract_field_symbols_match(
+    contract: input,
+    left_field: ^client_field,
+    right_field: ^target_field
+  ) {
+    Accepted { value: input, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: impossible_bug_reason_target_transport_drift,
+          at: node_locus(node: input),
+          correction: Suggested { node: shared_wire_contract_input }
+        }
+      )
+    }
+  }
+}
+
+
+fn transport_wire_contract_drift_claim_holds() -> Bool {
+  match run_test_claim_assert(
+    claim: claim_wire_contract_drift_impossible,
+    actual: transport_wire_contract_drift_probe(input: falsification_wire_contract_drift),
+    at: falsification_wire_contract_drift
+  ) {
+    Pass => true
+    Fail { actual: _, falsification: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+
+fn transport_target_contract_drift_claim_holds() -> Bool {
+  match run_test_claim_assert(
+    claim: claim_target_contract_drift_impossible,
+    actual: transport_target_contract_drift_probe(input: falsification_target_contract_drift),
+    at: falsification_target_contract_drift
+  ) {
+    Pass => true
+    Fail { actual: _, falsification: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+
+fn transport_type_drift_impossible_bug_claims_hold() -> Bool {
+  transport_wire_contract_drift_claim_holds() && transport_target_contract_drift_claim_holds()
 }
