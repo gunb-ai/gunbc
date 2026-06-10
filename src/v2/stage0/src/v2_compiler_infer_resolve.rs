@@ -423,14 +423,14 @@ pub fn resolve_alias_target(
                     && (env_target.inferred.clone() != None))
                 {
                     match env_target.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: next_target, .. }) => {
-                            resolve_alias_target(
-                                next_target.clone(),
-                                env.clone(),
-                                module_name,
-                                (depth + 1),
-                            )
-                        }
+                        Some(InferredNode::Resolved {
+                            node: next_target, ..
+                        }) => resolve_alias_target(
+                            next_target.clone(),
+                            env.clone(),
+                            module_name,
+                            (depth + 1),
+                        ),
                         _ => env_target.clone(),
                     }
                 } else {
