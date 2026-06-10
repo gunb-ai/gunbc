@@ -80,7 +80,7 @@ import v4.std.node {
   well_formed,
   Unanchored
 }
-import v4.std.node_query { node_positional_child_targets }
+import v4.std.node_query { find_named_child, node_positional_child_targets }
 import v4.std.lexing {
   LexRules,
   LexRule,
@@ -118,6 +118,7 @@ import v4.std.target_model {
   concrete_syntax_token_field_kind,
   concrete_syntax_token_kind_bound,
   concrete_syntax_token_kind_fixed,
+  grammar_relation_field_bodied_scaffold,
   grammar_relation_field_emitted,
   grammar_relation_field_tokens,
   target_model_edge_declared_inhabitants,
@@ -573,12 +574,55 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
   }
 }
+// Bodied-arrow serialize: resolve scaffold from the translation-rules row that carries
+// grammar_relation_field_bodied_scaffold — NOT grammar_inverse exact emitted-node match
+// (producer-coerced signature slots differ from the fixture row's emitted field).
+fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        rules.children,
+        init: Rejected {
+          diagnostics: diagnostics_singleton(
+            d: translate_grammar_relation_row_not_found_diagnostic(
+              emitted: rules
+            )
+          )
+        },
+        f: fn(acc, e) {
+          match acc {
+            Accepted { value: _, diagnostics: _ } => acc
+            Rejected { diagnostics: _ } =>
+              match e.label {
+                Named { name: _ } =>
+                  match find_named_child(
+                    root: e.target,
+                    name: grammar_relation_field_bodied_scaffold
+                  ) {
+                    Accepted { value: _, diagnostics: d } =>
+                      Accepted { value: e.target, diagnostics: d }
+                    Rejected { diagnostics: _ } => acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Accepted { value: row, diagnostics: d } =>
+          Accepted { value: row, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
+  }
+}
+
 fn grammar_relation_row_for_bodied_arrow_serialize(
   rules: Node,
   emitted: Node
 ) -> Outcome<TargetBodiedArrowStatementScaffold> {
   bind_outcome(
-    o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+    o: grammar_relation_row_with_bodied_scaffold(rules: rules),
     f: fn(row) {
       bodied_arrow_scaffold_from_grammar_relation_row(row: row)
     }
@@ -1125,12 +1169,7 @@ fn target_serialize_relation_row_from_model_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if arrow_has_transform_body(arrow: emitted) {
-    bind_outcome(
-      o: grammar_inverse_bodied_arrow_validated(target: target, emitted: emitted),
-      f: fn(_) {
-        target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
-      }
-    )
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     bind_outcome(
       o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
@@ -1394,12 +1433,7 @@ fn target_serialize_source_from_model_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if arrow_has_transform_body(arrow: emitted) {
-    bind_outcome(
-      o: grammar_inverse_bodied_arrow_validated(target: target, emitted: emitted),
-      f: fn(_) {
-        target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
-      }
-    )
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     match target_type_expr_emitted_kind(node: emitted) {
       TypeExprKindAuthority { value: _ } =>
