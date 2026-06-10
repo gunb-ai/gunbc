@@ -9,14 +9,12 @@ import v4.std.diagnostic {
   Accepted,
   ByteRange,
   Diagnostic,
-  Locus,
   Outcome,
   Rejected,
   Textual,
   UserInputBoundary,
   Unavailable,
   diagnostics_merge,
-  node_locus,
   outcome_accepted,
   outcome_rejected,
   rejected_with_pending
@@ -79,17 +77,6 @@ fn make_node_span_anchored(file: Symbol, start: Int, end: Int) -> Outcome<NodeSp
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: span, diagnostics: d } =>
       Accepted { value: Anchored { span: span }, diagnostics: d }
-  }
-}
-
-fn locus_from_node_span(node: Node) -> Locus {
-  match node.span {
-    Unanchored => node_locus(node: node)
-    Anchored { span: s } =>
-      Textual {
-        file: s.file,
-        extent: ByteRange { start: s.start, end: s.end }
-      }
   }
 }
 

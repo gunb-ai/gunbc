@@ -63,6 +63,7 @@ fn node_locus(node: Node) -> Locus {
   NodeLocus { anchor: LocusAnchor { at: node } }
 }
 
+// Canonical Node.span → Locus projection (T-8 provenance); provenance substrate defers here.
 fn textual_locus_from_node_span(node: Node) -> Locus {
   match node.span {
     Unanchored => node_locus(node: node)
