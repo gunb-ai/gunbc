@@ -53,15 +53,11 @@ import v4.std.integer_value_set {
   integer_value_set_kind_unbounded
 }
 import v4.std.model_core { ModelCoreFactAxisEncoding, ModelCoreFactAxisSurfaceSpelling }
-<<<<<<< HEAD
-import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
 import v4.std.refinement_widening_predicate {
   refinement_widening_predicate_algebra_for_value_sets,
   refinement_widening_preservation_holds
 }
-=======
-import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
->>>>>>> 431340c6a0 (WIP: PROVENANCE PRODUCER build (operator GO 2026-06-09): build the real sourc)
 import v4.std.diagnostic { Accepted, Rejected }
 
 
@@ -153,7 +149,7 @@ fn surface_only_node(surface: Symbol) -> Node {
     children: [
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], span: Unanchored }
+        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [] }
       }
     ],
     span: Unanchored
@@ -181,14 +177,13 @@ fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
           children: [
             Edge {
               label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [], span: Unanchored }
+              target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [] }
             },
             Edge {
               label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], span: Unanchored }
+              target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [] }
             }
-          ],
-          span: Unanchored
+          ]
         }
       }
     ],
@@ -220,14 +215,13 @@ fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> N
           children: [
             Edge {
               label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [], span: Unanchored }
+              target: Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [] }
             },
             Edge {
               label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [], span: Unanchored }
+              target: Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [] }
             }
-          ],
-          span: Unanchored
+          ]
         }
       }
     ],
@@ -268,7 +262,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
     children: [
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], span: Unanchored }
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
       }
     ],
     span: Unanchored
@@ -280,7 +274,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
         children: [
           Edge {
             label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], span: Unanchored }
+            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
           }
         ],
         span: Unanchored
@@ -291,7 +285,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
       children: [
         Edge {
           label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], span: Unanchored }
+          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
         }
       ],
       span: Unanchored
@@ -302,7 +296,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
     children: [
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], span: Unanchored }
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
       }
     ],
     span: Unanchored
@@ -372,16 +366,14 @@ fn unbounded_value_set_with_extra_field() -> Node {
         label: Named { name: ^integer_value_set_field_kind },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_unbounded } },
-          children: [],
-          span: Unanchored
+          children: []
         }
       },
       Edge {
         label: Named { name: ^integer_value_set_field_extra },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_field_extra } },
-          children: [],
-          span: Unanchored
+          children: []
         }
       }
     ],
