@@ -6507,116 +6507,128 @@ pub fn emit_struct_field_from_child(
     {
         let rt_child = resolved_type(child.clone());
         let authored_child_type = field_node_type_expr(child.clone());
-        let ty = if ((generic_param_names.len() as i64) > 0) {
-            render_node_type(
-                rt_child.clone(),
-                RenderTarget::Rust,
+        let ty = if (struct_name.clone().as_str() == "PartialFunction".to_string().as_str()) {
+            render_rust_type(
+                authored_child_type.clone(),
                 shared_types.clone(),
                 env.source_indices.clone(),
             )
         } else {
-            if (find_property(
-                child.properties.clone(),
-                "__applied_type_args".to_string(),
-                env.source_indices.clone(),
-            ) != None)
-            {
-                render_rust_type_with_applied_binding(
-                    child.clone(),
+            if ((generic_param_names.len() as i64) > 0) {
+                render_node_type(
+                    rt_child.clone(),
+                    RenderTarget::Rust,
                     shared_types.clone(),
                     env.source_indices.clone(),
                 )
             } else {
                 if (find_property(
-                    authored_child_type.properties.clone(),
+                    child.properties.clone(),
                     "__applied_type_args".to_string(),
                     env.source_indices.clone(),
                 ) != None)
                 {
                     render_rust_type_with_applied_binding(
-                        authored_child_type.clone(),
+                        child.clone(),
                         shared_types.clone(),
                         env.source_indices.clone(),
                     )
                 } else {
                     if (find_property(
-                        rt_child.properties.clone(),
+                        authored_child_type.properties.clone(),
                         "__applied_type_args".to_string(),
                         env.source_indices.clone(),
                     ) != None)
                     {
                         render_rust_type_with_applied_binding(
-                            rt_child.clone(),
+                            authored_child_type.clone(),
                             shared_types.clone(),
                             env.source_indices.clone(),
                         )
                     } else {
-                        if ((is_product_type(rt_child.clone())
-                            && (rt_child.ident_span.clone() != None))
-                            && ((rt_child.children.clone().len() as i64) > 2))
+                        if (find_property(
+                            rt_child.properties.clone(),
+                            "__applied_type_args".to_string(),
+                            env.source_indices.clone(),
+                        ) != None)
                         {
-                            {
-                                let rt_child_name =
-                                    authored_name_at(env.source_indices.clone(), rt_child.clone());
-                                match lookup_type_by_name(env.clone(), rt_child_name.clone()) {
-                                    Some(resolved) => {
-                                        if ((resolved.params.clone().len() as i64) > 0) {
-                                            {
-                                                let base = coerce_primitive_type(
-                                                    RenderTarget::Rust,
-                                                    rt_child_name.clone(),
-                                                );
-                                                let param_names = Rc::new({
-                                                    let mut __result = Vec::new();
-                                                    for p in resolved.params.clone().iter().cloned()
-                                                    {
-                                                        __result.push(generic_param_name_at(
-                                                            p.clone(),
-                                                            env.source_indices.clone(),
-                                                        ));
-                                                    }
-                                                    __result
-                                                });
-                                                let with_params = v2_rt::concat(
-                                                    v2_rt::concat(
-                                                        v2_rt::concat(base, "<".to_string()),
-                                                        param_names.join(&", ".to_string()),
-                                                    ),
-                                                    ">".to_string(),
-                                                );
-                                                render_rust_shared_type_if_needed(
-                                                    rt_child_name.clone(),
-                                                    with_params,
-                                                    shared_types.clone(),
-                                                )
-                                            }
-                                        } else {
-                                            render_rust_type(
-                                                rt_child.clone(),
-                                                shared_types.clone(),
-                                                env.source_indices.clone(),
-                                            )
-                                        }
-                                    }
-                                    None => render_rust_type(
-                                        rt_child.clone(),
-                                        shared_types.clone(),
-                                        env.source_indices.clone(),
-                                    ),
-                                }
-                            }
-                        } else {
-                            render_rust_type(
+                            render_rust_type_with_applied_binding(
                                 rt_child.clone(),
                                 shared_types.clone(),
                                 env.source_indices.clone(),
                             )
+                        } else {
+                            if ((is_product_type(rt_child.clone())
+                                && (rt_child.ident_span.clone() != None))
+                                && ((rt_child.children.clone().len() as i64) > 2))
+                            {
+                                {
+                                    let rt_child_name = authored_name_at(
+                                        env.source_indices.clone(),
+                                        rt_child.clone(),
+                                    );
+                                    match lookup_type_by_name(env.clone(), rt_child_name.clone()) {
+                                        Some(resolved) => {
+                                            if ((resolved.params.clone().len() as i64) > 0) {
+                                                {
+                                                    let base = coerce_primitive_type(
+                                                        RenderTarget::Rust,
+                                                        rt_child_name.clone(),
+                                                    );
+                                                    let param_names = Rc::new({
+                                                        let mut __result = Vec::new();
+                                                        for p in
+                                                            resolved.params.clone().iter().cloned()
+                                                        {
+                                                            __result.push(generic_param_name_at(
+                                                                p.clone(),
+                                                                env.source_indices.clone(),
+                                                            ));
+                                                        }
+                                                        __result
+                                                    });
+                                                    let with_params = v2_rt::concat(
+                                                        v2_rt::concat(
+                                                            v2_rt::concat(base, "<".to_string()),
+                                                            param_names.join(&", ".to_string()),
+                                                        ),
+                                                        ">".to_string(),
+                                                    );
+                                                    render_rust_shared_type_if_needed(
+                                                        rt_child_name.clone(),
+                                                        with_params,
+                                                        shared_types.clone(),
+                                                    )
+                                                }
+                                            } else {
+                                                render_rust_type(
+                                                    rt_child.clone(),
+                                                    shared_types.clone(),
+                                                    env.source_indices.clone(),
+                                                )
+                                            }
+                                        }
+                                        None => render_rust_type(
+                                            rt_child.clone(),
+                                            shared_types.clone(),
+                                            env.source_indices.clone(),
+                                        ),
+                                    }
+                                }
+                            } else {
+                                render_rust_type(
+                                    rt_child.clone(),
+                                    shared_types.clone(),
+                                    env.source_indices.clone(),
+                                )
+                            }
                         }
                     }
                 }
             }
         };
-        let generic_ty = if (struct_name.as_str() == "PartialFunction".to_string().as_str()) {
+        let generic_ty = if (struct_name.clone().as_str() == "PartialFunction".to_string().as_str())
+        {
             rust_normalize_witness_type_text(ty)
         } else {
             ty

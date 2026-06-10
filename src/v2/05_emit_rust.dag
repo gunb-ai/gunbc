@@ -212,6 +212,16 @@ fn rust_normalize_witness_type_text(rendered: String) -> String {
   replace(rendered, "witness<", "v2_rt::Witness<")
 }
 
+fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
+  replace(
+    replace(
+      replace(rendered, "HashMap<K, V>", "PartialFunction<K, V>"),
+      "Vec<K>", "FreeMonoid<K>"
+    ),
+    "Vec<V>", "FreeMonoid<V>"
+  )
+}
+
 fn rust_witness_pattern_qualifier(scrut_type: String) -> String {
   let prefix = "v2_rt::Witness"
   if string_length(s: scrut_type) >= string_length(s: prefix) && substring(s: scrut_type, start: 0, end: string_length(s: prefix)) == prefix {
@@ -2854,7 +2864,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
   }
   let generic_ty = if struct_name == "PartialFunction" {
-    rust_normalize_witness_type_text(rendered: ty)
+    rust_normalize_partial_function_field_type_text(rendered: rust_normalize_witness_type_text(rendered: ty))
   } else {
     ty
   }

@@ -23,7 +23,8 @@ use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{
-    container_expected_arity, container_param_name, container_template_algebra, is_container_type,
+    container_expected_arity, container_param_name, container_template_algebra,
+    container_template_alias_algebra, is_container_type,
 };
 use crate::v2_rt;
 use crate::v2_rt::Witness;
@@ -149,7 +150,7 @@ pub fn canonical_template_name(
 }
 
 pub fn is_declared_container_alias_spelling(name: String) -> bool {
-    match container_template_algebra(name) {
+    match container_template_alias_algebra(name) {
         Some(_) => true,
         None => false,
     }
