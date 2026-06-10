@@ -1414,6 +1414,28 @@ fn sg8_variant_import_does_not_import_record_with_same_named_field() {
 }
 
 #[test]
+fn sg8_variant_import_same_variant_from_two_parents_collides() {
+    let files = &[
+        ("left.dag", "module sg8_left_enum\ntype LeftE = Shared | LeftOnly\n"),
+        ("right.dag", "module sg8_right_enum\ntype RightE = Shared | RightOnly\n"),
+        (
+            "use_mod.dag",
+            "module sg8_variant_collision_use\nimport sg8_left_enum { Shared }\nimport sg8_right_enum { Shared }\nfn f() -> LeftE { Shared }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter().any(|m| {
+            m.contains("variant 'Shared' appears in both")
+                && m.contains("LeftE")
+                && m.contains("RightE")
+        }),
+        "variant-only imports with the same child name must fail closed, got: {msgs:?}"
+    );
+}
+
+#[test]
 fn sg8_variant_import_not_suppressed_by_type_homonym_in_other_module() {
     let files = &[
         ("enum_mod.dag", "module sg8_enum\ntype E = A | SharedName\n"),
