@@ -59,7 +59,7 @@ fn parallel_executor_groups_independent_jobs() -> Bool {
     scheduled: []
   ) {
     ExecutorRunComplete { batches: batches, scheduled: _ } => batches == parallel_executor_expected_batches
-    ExecutorRunRunnable { batch: _, prior_batches: _, scheduled: _, remaining: _ } => false
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
@@ -76,7 +76,7 @@ fn parallel_executor_projects_scheduler_scheduled_nodes() -> Bool {
         scheduler_test_node,
         scheduler_emit_node
       ]
-    ExecutorRunRunnable { batch: _, prior_batches: _, scheduled: _, remaining: _ } => false
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
@@ -90,7 +90,7 @@ fn parallel_executor_keeps_dependent_job_out_of_first_batch() -> Bool {
     ExecutorRunComplete { batches: batches, scheduled: _ } =>
       executor_batch_contains_node(batch: parallel_executor_expected_first_batch, node: scheduler_emit_node) == false
         && batches == parallel_executor_expected_batches
-    ExecutorRunRunnable { batch: _, prior_batches: _, scheduled: _, remaining: _ } => false
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
@@ -102,7 +102,7 @@ fn parallel_executor_contains_edges_do_not_serialize() -> Bool {
     scheduled: []
   ) {
     ExecutorRunComplete { batches: batches, scheduled: _ } => batches == parallel_executor_expected_batches
-    ExecutorRunRunnable { batch: _, prior_batches: _, scheduled: _, remaining: _ } => false
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
@@ -116,12 +116,10 @@ fn parallel_executor_step_plan_exposes_runnable_batch_once() -> Bool {
     ExecutorRunComplete { batches: _, scheduled: _ } => false
     ExecutorRunRunnable {
       batch: batch,
-      prior_batches: prior_batches,
       scheduled: scheduled,
       remaining: remaining
     } =>
       batch == parallel_executor_expected_first_batch
-        && prior_batches == []
         && scheduled == [scheduler_build_node, scheduler_test_node]
         && remaining == [scheduler_emit_node]
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
@@ -135,7 +133,7 @@ fn parallel_executor_blocks_on_missing_prerequisite() -> Bool {
     scheduled: []
   ) {
     ExecutorRunComplete { batches: _, scheduled: _ } => false
-    ExecutorRunRunnable { batch: _, prior_batches: _, scheduled: _, remaining: _ } => false
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
     ExecutorRunBlocked {
       evidence: ExecutorSchedulerBlocked { evidence: SchedulerNoRunnableFrontier {} },
       batches: batches,
@@ -159,7 +157,7 @@ fn parallel_executor_layers_reuse_readiness_frontiers() -> Bool {
           scheduler_test_node,
           scheduler_emit_node
         ]
-    ExecutorRunRunnable { batch: _, prior_batches: _, scheduled: _, remaining: _ } => false
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
