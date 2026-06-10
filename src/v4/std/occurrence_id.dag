@@ -1,0 +1,28 @@
+// src/v4/std/occurrence_id.dag
+// Scope: per-compile occurrence identity allocator (PROV A-pivot wave-1).
+// Anchor: design-provenance-span.md §4.1; design-node-identity-channels.md (distinct id space from binding_id).
+// Status: Phase 0 model — sole mint path for OccurrenceId; Node field stamping lands Phase 1+2.
+
+module v4.std.occurrence_id
+
+import v4.std.node { OccurrenceId }
+
+type OccurrenceIdAllocator {
+  next_id: Int
+}
+
+fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
+  OccurrenceIdAllocator { next_id: 0 }
+}
+
+// SOLE MINT — OccurrenceId { value: ... } constructed only here (#4615 BindingId parity).
+fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> (OccurrenceId, OccurrenceIdAllocator) {
+  (
+    OccurrenceId { value: alloc.next_id },
+    OccurrenceIdAllocator { next_id: alloc.next_id + 1 }
+  )
+}
+
+fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
+  left.value == right.value
+}
