@@ -1271,7 +1271,14 @@ pub fn render_named_type_base(
 ) -> String {
     {
         let tn = authored_name_at(source_indices.clone(), n.clone());
-        let base = coerce_primitive_type(target.clone(), tn);
+        let base = if ((target.clone() == RenderTarget::Rust)
+            && ((tn.clone().as_str() == "Witness".to_string().as_str())
+                || (tn.clone().as_str() == "witness".to_string().as_str())))
+        {
+            "v2_rt::Witness".to_string()
+        } else {
+            coerce_primitive_type(target.clone(), tn.clone())
+        };
         let explicit_params = Rc::new({
             let mut __result = Vec::new();
             for p in n.params.clone().iter().cloned() {
@@ -1691,16 +1698,26 @@ pub fn render_node_type(
                 let base = if is_container {
                     emit_container(to_snake(tn.clone()), child_str, target.clone())
                 } else {
+                    if ((target.clone() == RenderTarget::Rust)
+                        && ((tn.clone().as_str() == "Witness".to_string().as_str())
+                            || (tn.clone().as_str() == "witness".to_string().as_str())))
                     {
-                        let type_base = coerce_primitive_type(target.clone(), tn.clone());
-                        let spec = language_spec(target.clone());
                         v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(type_base.clone(), spec.type_arg_open.clone()),
-                                child_str,
-                            ),
-                            spec.type_arg_close.clone(),
+                            v2_rt::concat("v2_rt::Witness<".to_string(), child_str),
+                            ">".to_string(),
                         )
+                    } else {
+                        {
+                            let type_base = coerce_primitive_type(target.clone(), tn.clone());
+                            let spec = language_spec(target.clone());
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat(type_base.clone(), spec.type_arg_open.clone()),
+                                    child_str,
+                                ),
+                                spec.type_arg_close.clone(),
+                            )
+                        }
                     }
                 };
                 let single_str = if shared.clone() {

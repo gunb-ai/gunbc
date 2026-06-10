@@ -158,7 +158,7 @@ pub struct FreeMonoid<T> {
 
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> witness<V>>,
+    pub lookup: Rc<dyn Fn(K) -> v2_rt::Witness<V>>,
     pub empty: Rc<PartialFunction<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
     pub insert: Rc<dyn Fn(K, V) -> Rc<PartialFunction<K, V>>>,
