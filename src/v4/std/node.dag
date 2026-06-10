@@ -188,22 +188,17 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
     }
   })
 }
-fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
-  let body_edges = name_occurrences(name: ^arrow_body_edge, children: children)
-  (body_edges <= 1)
-  && arrow_signature_edges_conform(children: children)
-  && (positional_child_count(children: children) >= 1)
-}
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-bound-measure-target — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop loop_bound_edge target projection shared by cardinality witness; forbidden: parallel ad-hoc loop_bound_edge extraction outside well_formed/cardinality.
-type LoopMeasureTargetLookup
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-named-edge-target-lookup — bind COMPREP wave-0 / node-behavior-loop-bound-measure-target — dissolve-on-arrival: substrate canonical single Named-edge target projection shared by well_formed validation, cardinality witness, and node_query diagnostics; forbidden: parallel ad-hoc single-named-edge extraction outside std.node/std.node_query.
+type NamedEdgeTargetLookup
   = Found { target: Node }
   | Ambiguous
   | Absent
-fn loop_bound_measure_target(children: List<Edge>) -> LoopMeasureTargetLookup {
+
+fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTargetLookup {
   fold(children, init: Absent, f: fn(acc, e) {
     match e.label {
       Named { name: sym } =>
-        if sym == ^loop_bound_edge {
+        if sym == name {
           match acc {
             Absent => Found { target: e.target }
             Found { target: _ } => Ambiguous
@@ -215,6 +210,37 @@ fn loop_bound_measure_target(children: List<Edge>) -> LoopMeasureTargetLookup {
       Positional => acc
     }
   })
+}
+
+fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^arrow_body_edge)
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 / INVARIANTS P5) — feature: arrow-body-external-realization-target — owner: COMPREP wave-0 (#4616) — lane: std.node ArrowBodyEdges well_formed target-shape (E-9/DB-14) — dissolve-on-arrival: extend this predicate to admit the extdeps ExternalRealization carrier on Arrow.body when v4.extdeps primitive wiring lands (DB-14: declared Arrow.body + target bindings); wave-0 admits ComputationNode only because the body producer exercises internal Behavior sub-DAGs; forbidden: parallel Arrow.body target-shape predicates outside arrow_body_target_is_valid_realization.
+fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
+  match target.kind {
+    ComputationNode { behavior: _ } => true
+    _ => false
+  }
+}
+
+fn arrow_body_target_conforms(children: List<Edge>) -> Bool {
+  match arrow_body_target_lookup(children: children) {
+    Absent => true
+    Found { target: t } => arrow_body_target_is_valid_realization(target: t)
+    Ambiguous => false
+  }
+}
+
+fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
+  let body_edges = name_occurrences(name: ^arrow_body_edge, children: children)
+  (body_edges <= 1)
+  && arrow_signature_edges_conform(children: children)
+  && (positional_child_count(children: children) >= 1)
+  && arrow_body_target_conforms(children: children)
+}
+fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_bound_edge)
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query scoped to Loop parents; forbidden: edge-label-only loop_bound_edge skip outside Loop.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
