@@ -357,7 +357,7 @@ fn node_name_span(n: Node) -> SourceSpan {
 
 fn node_with_binding_id(n: Node, binding_id: BindingId) -> Node {
   Node {
-    name: n.name, ident: n.ident, binding_id: Some { value: binding_id },
+    name: n.name, ident: n.ident, binding_id: Present { value: binding_id },
     span: n.span, ident_span: n.ident_span, children: n.children,
     connective: n.connective, params: n.params, inferred: n.inferred,
     return_cardinality: n.return_cardinality, uses: n.uses,

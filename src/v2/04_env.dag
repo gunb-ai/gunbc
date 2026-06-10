@@ -68,9 +68,9 @@ type DeclRegistryMergeState {
 fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<BindingId, TypeDeclBinding>) -> DeclRegistryMergeState {
   fold(map_keys(incoming), init: state, f: (acc, binding_id) =>
     match map_get(incoming, binding_id) {
-      Some { value: binding } =>
+      Present { value: binding } =>
         match map_get(acc.decl_registry, binding_id) {
-          Some { value: existing } =>
+          Present { value: existing } =>
             if existing.authority == binding.authority {
               acc
             } else {
@@ -79,13 +79,13 @@ fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<Bindin
                 duplicate_decl_ids: list_push(acc.duplicate_decl_ids, binding_id)
               }
             }
-          None =>
+          Absent =>
             DeclRegistryMergeState {
               decl_registry: map_insert(acc.decl_registry, binding_id, binding),
               duplicate_decl_ids: acc.duplicate_decl_ids
             }
         }
-      None => acc
+      Absent => acc
     }
   )
 }
@@ -124,39 +124,39 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
 
 fn lookup_carrier_type_for(env: TypeEnv, node: Node) -> Node? {
   match node.binding_id {
-    Some { value: binding_id } =>
+    Present { value: binding_id } =>
       match map_get(env.carrier_bindings, binding_id) {
-        Some { value: binding } => Some { value: binding.resolved }
-        None => none
+        Present { value: binding } => Present { value: binding.resolved }
+        Absent => none
       }
-    None => none
+    Absent => none
   }
 }
 
 fn node_has_binding_id(n: Node, binding_id: BindingId) -> Bool {
   match n.binding_id {
-    Some { value: actual } => actual == binding_id
-    None => false
+    Present { value: actual } => actual == binding_id
+    Absent => false
   }
 }
 
 fn lookup_binding_id_type_for(env: TypeEnv, node: Node) -> Node? {
   match node.binding_id {
-    Some { value: binding_id } =>
+    Present { value: binding_id } =>
       match map_get(env.decl_registry, binding_id) {
-        Some { value: decl } =>
+        Present { value: decl } =>
           match lookup_type(env: env, ident: decl.binding_key) {
-            Some { value: resolved } =>
+            Present { value: resolved } =>
               if node_has_binding_id(n: resolved, binding_id: binding_id) {
-                Some { value: resolved }
+                Present { value: resolved }
               } else {
                 lookup_carrier_type_for(env: env, node: node)
               }
-            None => lookup_carrier_type_for(env: env, node: node)
+            Absent => lookup_carrier_type_for(env: env, node: node)
           }
-        None => lookup_carrier_type_for(env: env, node: node)
+        Absent => lookup_carrier_type_for(env: env, node: node)
       }
-    None => none
+    Absent => none
   }
 }
 

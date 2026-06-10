@@ -753,13 +753,13 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       else if (left.children |> count) != 2 || (right.children |> count) != 2 { false }
       else {
         match left.children |> first {
-          Some { value: left_key_ch } =>
+          Present { value: left_key_ch } =>
             match right.children |> first {
-              Some { value: right_key_ch } =>
+              Present { value: right_key_ch } =>
                 match left.children |> skip(1) |> first {
-                  Some { value: left_val_ch } =>
+                  Present { value: left_val_ch } =>
                     match right.children |> skip(1) |> first {
-                      Some { value: right_val_ch } =>
+                      Present { value: right_val_ch } =>
                         node_type_compatible(
                           left: child_type_node(ch: left_key_ch),
                           right: child_type_node(ch: right_key_ch),
@@ -770,13 +770,13 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
                           right: child_type_node(ch: right_val_ch),
                           source_indices: source_indices
                         )
-                      None => false
+                      Absent => false
                     }
-                  None => false
+                  Absent => false
                 }
-              None => false
+              Absent => false
             }
-          None => false
+          Absent => false
         }
       }
     }
@@ -818,15 +818,15 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: left)) { true }
     else {
       match left.binding_id {
-        Some { value: left_binding_id } =>
+        Present { value: left_binding_id } =>
           match right.binding_id {
-            Some { value: right_binding_id } => left_binding_id == right_binding_id
-            None => false
+            Present { value: right_binding_id } => left_binding_id == right_binding_id
+            Absent => false
           }
-        None =>
+        Absent =>
           match right.binding_id {
-            Some { value: _ } => false
-            None => authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right)
+            Present { value: _ } => false
+            Absent => authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right)
           }
       }
     }

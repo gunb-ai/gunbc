@@ -5762,10 +5762,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       let si = scope.type_env.source_indices
       if tn == "BindingId" {
         match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "value") |> first {
-          Some { value: f } =>
+          Present { value: f } =>
             let inner = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
             return concat("BindingId::mint(", inner, ")")
-          None => return "compile_error!(\"BindingId literal missing value\")"
+          Absent => return "compile_error!(\"BindingId literal missing value\")"
         }
       }
       let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
@@ -7956,7 +7956,7 @@ fn emit_compile_target_helpers(crate_name: String, pipeline_mod: String, artifac
     "        }\n",
     "        match render_target_from_name(trimmed) {\n",
     "            Some(render_target) => targets.push((trimmed.to_string(), render_target)),\n",
-    "            None => {\n",
+    "            Absent => {\n",
     "                eprintln!(\"unknown target: {}. supported: rust, python, go, dag, rust+dag\", target);\n",
     "                std::process::exit(1);\n",
     "            }\n",
