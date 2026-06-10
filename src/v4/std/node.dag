@@ -208,18 +208,9 @@ fn node_span_well_formed(span: NodeSpan) -> Bool {
   )
 }
 
+// Derived from receipted canonical queries — Anchored ∧ well_formed; Unanchored has no byte extent.
 fn node_span_has_byte_extent(span: NodeSpan) -> Bool {
-  fold_node_span_coproduct(
-    span: span,
-    algebra: NodeSpanFold {
-      on_unanchored: fn() {
-        false
-      },
-      on_anchored: fn(s) {
-        source_span_well_formed(span: s)
-      }
-    }
-  )
+  node_span_is_anchored(span: span) && node_span_well_formed(span: span)
 }
 
 fn node_span_from_node(n: Node) -> NodeSpan {
