@@ -381,8 +381,22 @@ pub fn merge_scope_from_imports(
                                 acc.clone()
                             } else {
                                 {
-                                    let sig_params = rsig.params.clone();
-                                    let sig_rt = rsig.inferred.clone();
+                                    let sig_params = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for p in rsig.params.clone().iter().cloned() {
+                                            __result.push(stamp_hidden_dependency_refs(
+                                                p.clone(),
+                                                typed_parent.type_env.clone(),
+                                                typed_parent.type_env.source_indices.clone(),
+                                            ));
+                                        }
+                                        __result
+                                    });
+                                    let sig_rt = stamp_hidden_dependency_refs(
+                                        rsig.inferred.clone(),
+                                        typed_parent.type_env.clone(),
+                                        typed_parent.type_env.source_indices.clone(),
+                                    );
                                     let sig_async = rsig.is_async.clone();
                                     v2_rt::rc_map_insert(
                                         acc.clone(),
