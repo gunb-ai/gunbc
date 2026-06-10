@@ -26,25 +26,25 @@ type CoreNode = Node
 
 
 type SourceModels {
-  model_corpus: List<CoreNode>
+  model_corpus: List<Node>
 }
 
 
 type StructurallyEqual {
-  left: CoreNode
-  right: CoreNode
+  left: Node
+  right: Node
 }
 
 
 type BootstrapRoundtripEqual {
-  produced_stage: CoreNode
-  expected_stage: CoreNode
+  produced_stage: Node
+  expected_stage: Node
 }
 
 
 type FixedPointEqual {
-  emitted_stage: CoreNode
-  reference_stage: CoreNode
+  emitted_stage: Node
+  reference_stage: Node
 }
 
 
@@ -83,8 +83,8 @@ fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
 // 🟡 scaffold shape — all sub-checks return Violates; not yet called from self_host_fixed_point_validate
 // (the main entry point returns fail-closed directly until execution substrate lands).
 fn candidate_promotion_witness(
-  stage1_candidate: CoreNode,
-  reference_stage1: CoreNode
+  stage1_candidate: Node,
+  reference_stage1: Node
 ) -> PromotionWitness {
   PromotionWitness {
     candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_scaffold(
@@ -100,8 +100,8 @@ fn candidate_promotion_witness(
 
 
 fn bootstrap_roundtrip_scaffold(
-  produced_stage: CoreNode,
-  expected_stage: CoreNode
+  produced_stage: Node,
+  expected_stage: Node
 ) -> BootstrapRoundtripCheck {
   Violates {
     diagnostic: Diagnostic {
@@ -114,8 +114,8 @@ fn bootstrap_roundtrip_scaffold(
 
 
 fn fixed_point_scaffold(
-  emitted_stage: CoreNode,
-  reference_stage: CoreNode
+  emitted_stage: Node,
+  reference_stage: Node
 ) -> FixedPointCheck {
   Violates {
     diagnostic: Diagnostic {
@@ -128,8 +128,8 @@ fn fixed_point_scaffold(
 
 
 fn stage_emission_equality_scaffold(
-  emitted_candidate: CoreNode,
-  reference_stage1: CoreNode
+  emitted_candidate: Node,
+  reference_stage1: Node
 ) -> StageEmissionEquality {
   Violates {
     diagnostic: Diagnostic {
@@ -142,9 +142,9 @@ fn stage_emission_equality_scaffold(
 
 
 fn self_host_fixed_point_validate(
-  stage1_candidate: CoreNode,
+  stage1_candidate: Node,
   source_models: SourceModels,
-  reference_stage1: CoreNode
+  reference_stage1: Node
 ) -> Outcome<PromotionWitness> {
   Rejected {
     diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())

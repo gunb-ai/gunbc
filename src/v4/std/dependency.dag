@@ -4,7 +4,7 @@
 
 module v4.std.dependency
 
-import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v4.std.algebra { list_append }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node {
@@ -155,12 +155,12 @@ fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
   }
 }
 
-fn append_dependency_views(left: FreeMonoid<DependencyView>, right: FreeMonoid<DependencyView>) -> FreeMonoid<DependencyView> {
-  match right {
-    Empty => left
-    Cons { head: item, tail: rest } =>
-      append_dependency_views(left: list_snoc_item(xs: left, item: item), right: rest)
-  }
+fn append_dependency_views(left: List<DependencyView>, right: List<DependencyView>) -> List<DependencyView> {
+  list_append(left: left, right: right)
+}
+
+fn dependency_view_singleton(view: DependencyView) -> List<DependencyView> {
+  [view]
 }
 
 fn dependency_fold_init(n: Node) -> DependencyFoldState {
@@ -174,7 +174,10 @@ fn dependency_fold_step(acc: DependencyFoldState, edge: Edge, child_state: Depen
   DependencyFoldState {
     current: acc.current,
     dependencies: append_dependency_views(
-      left: list_snoc_item(xs: acc.dependencies, item: dependency_view_for_edge(parent: acc.current, edge: edge)),
+      left: append_dependency_views(
+        left: acc.dependencies,
+        right: dependency_view_singleton(view: dependency_view_for_edge(parent: acc.current, edge: edge))
+      ),
       right: child_state.dependencies
     )
   }
@@ -246,12 +249,8 @@ fn ready_set(graph_node: Node) -> List<Node> {
   )
 }
 
-fn append_nodes(left: FreeMonoid<Node>, right: FreeMonoid<Node>) -> FreeMonoid<Node> {
-  match right {
-    Empty => left
-    Cons { head: item, tail: rest } =>
-      append_nodes(left: list_snoc_item(xs: left, item: item), right: rest)
-  }
+fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
+  list_append(left: left, right: right)
 }
 
 fn topological_layers_fold_init(n: Node) -> ReadinessFoldState {
@@ -295,10 +294,6 @@ fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
   )
 }
 
-fn append_readiness_layers(left: FreeMonoid<ReadinessLayer>, right: FreeMonoid<ReadinessLayer>) -> FreeMonoid<ReadinessLayer> {
-  match right {
-    Empty => left
-    Cons { head: item, tail: rest } =>
-      append_readiness_layers(left: list_snoc_item(xs: left, item: item), right: rest)
-  }
+fn append_readiness_layers(left: List<ReadinessLayer>, right: List<ReadinessLayer>) -> List<ReadinessLayer> {
+  list_append(left: left, right: right)
 }

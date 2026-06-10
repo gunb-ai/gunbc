@@ -53,7 +53,7 @@ type DagSemanticIr {
 }
 
 type DagSourceReadWitness {
-  source: DagSource
+  source: String
   artifact: Artifact
   // R3 gate #31: Symbol compilation-unit authority stamped into Node.span via tokenize.
   compilation_unit: Symbol
@@ -81,13 +81,13 @@ type NormalizedDagSourceParsePrintLaw {
 }
 
 type CanonicalDagSourceEmissionLaw {
-  canonical_source: DagSource
+  canonical_source: String
   serializer_law: DeterministicDagSourceSerializerLaw
   parse_print_law: NormalizedDagSourceParsePrintLaw
 }
 
 type SourceAuthorityRoundTripLaw {
-  canonical_source: DagSource
+  canonical_source: String
   source_law: SourceAstEqual
   semantic_law: SemanticIrEqual
   canonical_source_law: CanonicalDagSourceEmissionLaw
@@ -112,7 +112,7 @@ fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
 
 
 fn parse_dag_source_ast_with_model(
-  source: DagSource,
+  source: String,
   compilation_unit: Symbol,
   lm: DagLanguageModel
 ) -> Outcome<DagSourceAst> {
@@ -130,7 +130,7 @@ fn parse_dag_source_ast_with_model(
 }
 
 
-fn parse_dag_source_ast(source: DagSource) -> Outcome<DagSourceAst> {
+fn parse_dag_source_ast(source: String) -> Outcome<DagSourceAst> {
   parse_dag_source_ast_with_model(
     source: source,
     compilation_unit: source_authority_port,
@@ -165,7 +165,7 @@ fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: DagLanguageModel) -> O
 
 
 fn semantic_ir_from_source_with_model(
-  source: DagSource,
+  source: String,
   compilation_unit: Symbol,
   lm: DagLanguageModel
 ) -> Outcome<DagSemanticIr> {
@@ -182,7 +182,7 @@ fn semantic_ir_from_source_with_model(
 }
 
 
-fn semantic_ir_from_source(source: DagSource) -> Outcome<DagSemanticIr> {
+fn semantic_ir_from_source(source: String) -> Outcome<DagSemanticIr> {
   semantic_ir_from_source_with_model(
     source: source,
     compilation_unit: source_authority_port,
@@ -275,8 +275,8 @@ fn semantic_ir_equal_witness(
 
 
 fn deterministic_dag_source_serializer_witness(
-  first: DagSource,
-  second: DagSource
+  first: String,
+  second: String
 ) -> Witness<DeterministicDagSourceSerializerLaw> {
   if first == second {
     Holds { value: DeterministicDagSourceSerializerLaw {} }
@@ -290,8 +290,8 @@ fn deterministic_dag_source_serializer_witness(
 
 fn canonical_dag_source_emission_law_from_parts(
   original_ast: DagSourceAst,
-  canonical_source_first: DagSource,
-  canonical_source_second: DagSource,
+  canonical_source_first: String,
+  canonical_source_second: String,
   reparsed_ast: DagSourceAst
 ) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
   bind_outcome(
@@ -338,7 +338,7 @@ fn canonical_dag_source_emission_law_from_parts(
 
 fn source_authority_law_from_parts(
   original_ast: DagSourceAst,
-  canonical_source: DagSource,
+  canonical_source: String,
   reparsed_ast: DagSourceAst,
   original_ir: DagSemanticIr,
   reparsed_ir: DagSemanticIr,
@@ -370,7 +370,7 @@ fn source_authority_law_from_parts(
 
 
 fn source_authority_round_trip_with_model(
-  source: DagSource,
+  source: String,
   canonical_source_target: TargetModel,
   lm: DagLanguageModel
 ) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
@@ -445,7 +445,7 @@ fn source_authority_round_trip_with_model(
 
 
 fn canonical_dag_source_parse_print_law(
-  source: DagSource,
+  source: String,
   canonical_source_target: TargetModel
 ) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
   bind_outcome(
@@ -492,7 +492,7 @@ fn canonical_dag_source_parse_print_law(
 
 
 fn source_authority_round_trip(
-  source: DagSource,
+  source: String,
   canonical_source_target: TargetModel
 ) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   source_authority_round_trip_with_model(

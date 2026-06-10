@@ -197,6 +197,13 @@ fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
   []
 }
 
+fn append_lens_gate_witnesses(
+  left: List<LensGateWitness>,
+  right: List<LensGateWitness>
+) -> List<LensGateWitness> {
+  list_append(left: left, right: right)
+}
+
 
 fn run_required_lens_gates(
   inferred: InferredTree,
@@ -247,7 +254,7 @@ fn run_required_lens_gates_on_subtree(
           bind_outcome(
             o: child,
             f: fn(child_ws) {
-              outcome_accepted(value: list_append(left: ws, right: child_ws))
+              outcome_accepted(value: append_lens_gate_witnesses(left: ws, right: child_ws))
             }
           )
         })
@@ -337,7 +344,7 @@ fn validate_then_compile(
                   outcome_accepted(
                     value: validated_from_compile_output(
                       output: compile_out,
-                      lens_witnesses: list_append(
+                      lens_witnesses: append_lens_gate_witnesses(
                         left: required_lens_witnesses,
                         right: caller_lens_witnesses
                       )

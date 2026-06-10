@@ -757,16 +757,28 @@ fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
   }
 }
 
+fn bootstrap_seed_consumes() -> List<Symbol> {
+  [^v4_dag_source]
+}
+
+fn bootstrap_self0_consumes() -> List<Symbol> {
+  [^v4_dag_source, ^v4_stage0_binary]
+}
+
+fn bootstrap_self1_consumes() -> List<Symbol> {
+  [^v4_dag_source, ^v4_stage1_binary]
+}
+
 fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
   match bootstrap_fixpt_witness(f: p.fixpt) {
     Holds { value: _ } =>
-      if bs_list_eq(a: p.seed.consumes, b: [^v4_dag_source])
+      if bs_list_eq(a: p.seed.consumes, b: bootstrap_seed_consumes())
            && (p.seed.produces == ^v4_stage0_binary)
            && (p.seed.compiled_by == ^v2_pipeline)
-           && bs_list_eq(a: p.self0.consumes, b: [^v4_dag_source, ^v4_stage0_binary])
+           && bs_list_eq(a: p.self0.consumes, b: bootstrap_self0_consumes())
            && (p.self0.produces == ^v4_stage1_binary)
            && (p.self0.compiled_by == ^v4_stage0_binary)
-           && bs_list_eq(a: p.self1.consumes, b: [^v4_dag_source, ^v4_stage1_binary])
+           && bs_list_eq(a: p.self1.consumes, b: bootstrap_self1_consumes())
            && (p.self1.produces == ^v4_stage2_binary)
            && (p.self1.compiled_by == ^v4_stage1_binary)
            && (p.seed.produces_hash.pin == ^v4_stage0_hash_pin)

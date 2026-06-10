@@ -8,7 +8,7 @@ module v4.std.find_witness
 
 
 import v4.std.collection { List }
-import v4.std.algebra { Cons, Empty, FreeMonoid }
+import v4.std.algebra { contains }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -67,14 +67,11 @@ type MultiplicityPolicy
   = UniqueOnly
   | TargetSelection { policy: TargetSelectionPolicy }
 fn preservation_rule_is_realized(rule: Symbol) -> Bool {
-  symbol_list_contains(xs: realized_preservation_rules(), item: rule)
-}
-fn symbol_list_contains(xs: FreeMonoid<Symbol>, item: Symbol) -> Bool {
-  match xs {
-    Empty => false
-    Cons { head: current, tail: rest } =>
-      current == item || symbol_list_contains(xs: rest, item: item)
-  }
+  contains(
+    xs: realized_preservation_rules(),
+    item: rule,
+    eq: fn(left, right) { left == right }
+  )
 }
 fn realized_preservation_rules() -> List<Symbol> {
   [

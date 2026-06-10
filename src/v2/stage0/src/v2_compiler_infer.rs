@@ -198,9 +198,10 @@ pub struct VariantFoldState {
 }
 
 pub fn is_bootstrap_duplicate_variant_name(name: String) -> bool {
-    (((name.clone().as_str() == "Rust".to_string().as_str())
+    ((((name.clone().as_str() == "Rust".to_string().as_str())
         || (name.clone().as_str() == "Go".to_string().as_str()))
         || (name.clone().as_str() == "TreeSize".to_string().as_str()))
+        || (name.clone().as_str() == "Bits32".to_string().as_str()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
