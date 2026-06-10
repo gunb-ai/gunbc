@@ -80,6 +80,8 @@ fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
 }
 
 
+// 🟡 scaffold shape — all sub-checks return Violates; not yet called from self_host_fixed_point_validate
+// (the main entry point returns fail-closed directly until execution substrate lands).
 fn candidate_promotion_witness(
   stage1_candidate: CoreNode,
   reference_stage1: CoreNode
