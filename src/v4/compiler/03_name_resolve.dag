@@ -333,13 +333,13 @@ fn module_root_for_name_fold(
 
 fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
   match try_edge_declared_binding(e: e) {
-    Some { value: b } =>
+    Present { value: b } =>
       if dag_surface_module_header_metadata_edge(name: b.name) {
-        None
+        Absent
       } else {
-        Some { value: b }
+        Present { value: b }
       }
-    None => None
+    Absent => Absent
   }
 }
 
@@ -350,9 +350,9 @@ fn admit_named_export_edge(
   state: AdmissionState
 ) -> AdmissionState {
   match try_admitted_export_binding(e: edge) {
-    Some { value: b } =>
+    Present { value: b } =>
       admit_export_symbol(sym: b.name, origin: origin, state: state)
-    None => state
+    Absent => state
   }
 }
 

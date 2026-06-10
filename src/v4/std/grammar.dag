@@ -605,8 +605,8 @@ fn formal_production_rhs_singleton_terminal_identity(production: FormalProductio
     empty: RhsSingletonTerminalNotSeen,
     cons: formal_production_rhs_singleton_terminal_identity_step
   ) {
-    RhsSingletonTerminalFound { identity: id } => Some { value: id }
-    _ => None
+    RhsSingletonTerminalFound { identity: id } => Present { value: id }
+    _ => Absent
   }
 }
 
@@ -644,16 +644,16 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symb
     empty: RhsSingletonBindingNotSeen,
     cons: formal_production_rhs_singleton_binding_step
   ) {
-    RhsSingletonBindingFound { binding: b } => Some { value: b }
-    _ => None
+    RhsSingletonBindingFound { binding: b } => Present { value: b }
+    _ => Absent
   }
 }
 
 
 fn node_atom_identity_optional(node: Node) -> Symbol? {
   match node.kind {
-    TypeNode { connective: Atom { identity: id } } => Some { value: id }
-    _ => None
+    TypeNode { connective: Atom { identity: id } } => Present { value: id }
+    _ => Absent
   }
 }
 
@@ -689,13 +689,13 @@ fn formal_production_rhs_matches_emitted_conj_step(
               ) {
                 Holds { value: slot_child } =>
                   match node_atom_identity_optional(node: slot_child) {
-                    Some { value: atom_id } =>
+                    Present { value: atom_id } =>
                       if atom_id == binding_symbol {
                         EmittedRhsMatchOk { children: children, index: index + 1 }
                       } else {
                         EmittedRhsMatchFail
                       }
-                    None => EmittedRhsMatchFail
+                    Absent => EmittedRhsMatchFail
                   }
                 Violates { diagnostic: _ } => EmittedRhsMatchFail
               }
@@ -781,11 +781,11 @@ fn formal_production_matches_emitted_child(
   match child.kind {
     TypeNode { connective: Atom { identity: atom_id } } =>
       match formal_production_rhs_singleton_terminal_identity(production: production) {
-        Some { value: terminal_id } => atom_id == terminal_id
-        None =>
+        Present { value: terminal_id } => atom_id == terminal_id
+        Absent =>
           match formal_production_rhs_singleton_binding(production: production) {
-            Some { value: binding } => atom_id == binding
-            None => false
+            Present { value: binding } => atom_id == binding
+            Absent => false
           }
       }
     TypeNode { connective: Conj } =>

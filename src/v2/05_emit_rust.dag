@@ -3410,7 +3410,7 @@ fn collect_field_binding_string_guards(field_bindings: List<Node>, path_prefix: 
 fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
-      if n == "Some" && fbs |> count == 1 {
+      if n == "Present" && fbs |> count == 1 {
         match fbs |> first {
           Some { value: fb } =>
             let fb_pat = field_binding_pattern(n: fb)
@@ -3421,7 +3421,7 @@ fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String
                 _ => ""
               }
             } else {
-              collect_pattern_string_guards(pattern: fb_pat, path_prefix: list_push(path_prefix, n), source_indices: source_indices)
+              collect_pattern_string_guards(pattern: fb_pat, path_prefix: list_push(path_prefix, "Some"), source_indices: source_indices)
             }
           None => ""
         }
@@ -3483,7 +3483,7 @@ fn emit_pattern(pattern: MatchPattern, path_prefix: List<String>, shared_types: 
 
 fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
   let scrut_is_known_enum = scrut_type != "" && is_enum_type_name(type_name: scrut_type, type_summaries: type_summaries)
-  if name == "Some" || name == "None" {
+  if name == "Present" || name == "Absent" {
     none
   } else if scrut_is_known_enum {
     Some { value: scrut_type }
@@ -3518,20 +3518,21 @@ fn positional_payload_scrut_type(parent_enum: String?, variant_name: String, fie
 }
 
 fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let resolved_parent = if name == "Some" || name == "None" { none }
+  let resolved_parent = if name == "Present" || name == "Absent" { none }
     else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
+  let rust_name = if name == "Present" { "Some" } else if name == "Absent" { "None" } else { name }
   let qualified = match resolved_parent {
-    Some { value: parent } => concat(parent, "::", name)
-    None => name
+    Some { value: parent } => concat(parent, "::", rust_name)
+    None => rust_name
   }
-  if name == "Some" && field_bindings |> count == 1 {
+  if name == "Present" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: list_push(path_prefix, name), shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: list_push(path_prefix, rust_name), shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
@@ -3658,14 +3659,14 @@ fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Boo
 fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcPatternAnalysis {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      if n == "Some" || n == "None" {
+      if n == "Present" || n == "Absent" {
         if fbs |> count == 1 {
           match fbs |> first {
             Some { value: fb } =>
               let inner = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
               RcPatternAnalysis {
                 matches_rc_variant: false,
-                matches_option_rc_variant: n == "Some" && inner.matches_rc_variant,
+                matches_option_rc_variant: n == "Present" && inner.matches_rc_variant,
                 needs_rc_pattern: inner.needs_rc_pattern,
                 ref_bound_fields: []
               }
@@ -3736,13 +3737,14 @@ fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_an
 }
 
 fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let resolved_parent = if name == "Some" || name == "None" { none }
+  let resolved_parent = if name == "Present" || name == "Absent" { none }
     else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
+  let rust_name = if name == "Present" { "Some" } else if name == "Absent" { "None" } else { name }
   let qualified = match resolved_parent {
-    Some { value: parent } => concat(parent, "::", name)
-    None => name
+    Some { value: parent } => concat(parent, "::", rust_name)
+    None => rust_name
   }
-  if name == "Some" && field_bindings |> count == 1 {
+  if name == "Present" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
         let fb_pat = field_binding_pattern(n: fb)
@@ -3750,7 +3752,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           "Some(ref __some_val)"
         } else {
           let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(path_prefix, name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(path_prefix, rust_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
@@ -3852,7 +3854,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
 fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      if n == "Some" || n == "None" {
+      if n == "Present" || n == "Absent" {
         if fbs |> count == 1 {
           match fbs |> first {
             Some { value: fb } =>
@@ -5489,7 +5491,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
       }
     ExprRecordLit { parent_enum: _ } =>
       match tn {
-        Some { value: name } => name == "Some" || name == "None"
+        Some { value: name } => name == "Present" || name == "Absent"
         None => false
       }
     ExprFieldAccess { summary: fa_summary } =>
@@ -5681,14 +5683,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             parent_enum
           }
       }
-      let display_tn = if tn == "Some" || tn == "None" { tn }
+      let rust_tn = if tn == "Present" { "Some" } else if tn == "Absent" { "None" } else { tn }
+      let display_tn = if tn == "Present" || tn == "Absent" { rust_tn }
         else {
           match effective_parent {
-            Some { value: resolved_parent_enum } => concat(resolved_parent_enum, "::", tn)
-            None => tn
+            Some { value: resolved_parent_enum } => concat(resolved_parent_enum, "::", rust_tn)
+            None => rust_tn
           }
         }
-      if tn == "Some" && fields |> count == 1 {
+      if tn == "Present" && fields |> count == 1 {
         match fields |> first {
           Some { value: f } =>
             let inner = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)

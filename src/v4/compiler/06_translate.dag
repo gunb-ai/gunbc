@@ -436,9 +436,9 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
         }
       ) {
         BundleChildFound { value: child } =>
-          Accepted { value: Some { value: child }, diagnostics: None }
+          Accepted { value: Present { value: child }, diagnostics: None }
         BundleChildMissing =>
-          Accepted { value: None, diagnostics: None }
+          Accepted { value: Absent, diagnostics: None }
         BundleChildDuplicate =>
           outcome_rejected(
             Diagnostic {
@@ -601,9 +601,9 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
         }
       ) {
         BundleChildFound { value: child } =>
-          Accepted { value: Some { value: child }, diagnostics: None }
+          Accepted { value: Present { value: child }, diagnostics: None }
         BundleChildMissing =>
-          Accepted { value: None, diagnostics: None }
+          Accepted { value: Absent, diagnostics: None }
         BundleChildDuplicate =>
           outcome_rejected(
             Diagnostic {
@@ -616,7 +616,7 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
           outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
       }
     _ =>
-      Accepted { value: None, diagnostics: None }
+      Accepted { value: Absent, diagnostics: None }
   }
 }
 fn concrete_token_class_child(parent: Node) -> Outcome<Node?> {
@@ -658,11 +658,11 @@ fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> 
                     f: fn(binding_node) {
                       if kind == concrete_syntax_token_kind_fixed {
                         match binding_node {
-                          Some { value: _ } =>
+                          Present { value: _ } =>
                             outcome_rejected(
                               translate_concrete_token_kind_invalid_diagnostic(token: token)
                             )
-                          None =>
+                          Absent =>
                             Accepted {
                               value: FixedToken { token_class: token_class },
                               diagnostics: None
@@ -671,7 +671,7 @@ fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> 
                       } else {
                         if kind == concrete_syntax_token_kind_bound {
                           match binding_node {
-                            Some { value: binding_node } =>
+                            Present { value: binding_node } =>
                               bind_outcome(
                                 o: node_atom_identity(node: binding_node),
                                 f: fn(binding) {
@@ -684,7 +684,7 @@ fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> 
                                   }
                                 }
                               )
-                            None =>
+                            Absent =>
                               outcome_rejected(
                                 translate_concrete_token_kind_invalid_diagnostic(token: token)
                               )
@@ -714,9 +714,9 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
         o: concrete_token_kind_child(parent: item),
         f: fn(kind_node) {
           match class_node {
-            Some { value: _ } =>
+            Present { value: _ } =>
               match kind_node {
-                Some { value: _ } =>
+                Present { value: _ } =>
                   // Class + kind both present: this is a concrete token iff it decodes into a
                   // FixedToken/BoundToken variant. Structural decode replaces the former
                   // Symbol-equality kind check (and additionally rejects malformed payloads).
@@ -726,18 +726,18 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
                       Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
                     }
                   )
-                None =>
+                Absent =>
                   outcome_rejected(
                     translate_concrete_token_kind_invalid_diagnostic(token: item)
                   )
               }
-            None =>
+            Absent =>
               match kind_node {
-                Some { value: _ } =>
+                Present { value: _ } =>
                   outcome_rejected(
                     translate_concrete_token_class_missing_diagnostic(token: item)
                   )
-                None =>
+                Absent =>
                   Accepted { value: TokenSequenceNonterminal, diagnostics: None }
               }
           }
@@ -823,12 +823,12 @@ fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
     ),
     f: fn(maybe_head) {
       match maybe_head {
-        Some { value: _ } =>
+        Present { value: _ } =>
           serialize_source_fold_list_targets(
             remaining: node_subtree_count(n: tokens_node),
             node: tokens_node
           )
-        None =>
+        Absent =>
           conj_positional_targets(parent: tokens_node)
       }
     }
@@ -1238,9 +1238,9 @@ fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outco
         }
       ) {
         BundleChildFound { value: child } =>
-          Accepted { value: Some { value: child }, diagnostics: None }
+          Accepted { value: Present { value: child }, diagnostics: None }
         BundleChildMissing =>
-          Accepted { value: None, diagnostics: None }
+          Accepted { value: Absent, diagnostics: None }
         BundleChildDuplicate =>
           outcome_rejected(
             translate_target_bundle_duplicate_edge_diagnostic(
@@ -1333,12 +1333,12 @@ fn type_expr_optional_shape_symbol(parent: Node, field: Symbol) -> Outcome<Optio
     o: conj_optional_named_child(parent: parent, edge_name: field),
     f: fn(child) {
       match child {
-        Some { value: n } =>
+        Present { value: n } =>
           bind_outcome(
             o: node_atom_identity(node: n),
             f: fn(sym) { outcome_accepted(optional_present(value: sym)) }
           )
-        None => outcome_accepted(optional_absent())
+        Absent => outcome_accepted(optional_absent())
       }
     }
   )
@@ -3413,8 +3413,8 @@ fn translate_sg_rc_bundle_edge_present(target: TargetModel, edge_name: Symbol) -
   match target_bundle_optional_child(target: target, edge_name: edge_name) {
     Accepted { value: optional_child, diagnostics: d } =>
       match optional_child {
-        None => outcome_accepted(false)
-        Some { value: _ } => outcome_accepted(true)
+        Absent => outcome_accepted(false)
+        Present { value: _ } => outcome_accepted(true)
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -3471,11 +3471,11 @@ fn translate_use_site_ownership_catalog_from_model(
   ) {
     Accepted { value: optional_catalog, diagnostics: d } =>
       match optional_catalog {
-        None =>
+        Absent =>
           outcome_rejected(
             target_use_site_ownership_lookup_miss_diagnostic(source_carrier: source_carrier)
           )
-        Some { value: catalog } => Accepted { value: catalog, diagnostics: d }
+        Present { value: catalog } => Accepted { value: catalog, diagnostics: d }
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -3492,8 +3492,8 @@ fn translate_value_semantics_carriers_from_model(target: TargetModel) -> Outcome
   ) {
     Accepted { value: optional_node, diagnostics: d } =>
       match optional_node {
-        None => Accepted { value: Empty, diagnostics: d }
-        Some { value: node } =>
+        Absent => Accepted { value: Empty, diagnostics: d }
+        Present { value: node } =>
           Accepted { value: target_value_semantics_carriers_from_node(node: node), diagnostics: d }
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -3769,8 +3769,8 @@ fn translate_target_function_signature_realization_for_boundary(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: optional_catalog, diagnostics: _ } =>
       match optional_catalog {
-        None => outcome_accepted(optional_absent())
-        Some { value: catalog } =>
+        Absent => outcome_accepted(optional_absent())
+        Present { value: catalog } =>
           bind_outcome(
             o: type_expr_atom_binding(node: emitted),
             f: fn(binding) {
@@ -3989,11 +3989,11 @@ fn target_atom_realizations_catalog_from_model(
   ) {
     Accepted { value: optional_catalog, diagnostics: d } =>
       match optional_catalog {
-        None =>
+        Absent =>
           outcome_rejected(
             target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier)
           )
-        Some { value: catalog } =>
+        Present { value: catalog } =>
           Accepted { value: catalog, diagnostics: d }
       }
     Rejected { diagnostics: r } =>
@@ -4478,9 +4478,9 @@ fn target_bundle_child_optional_type_expr_projection(
     target: target,
     edge_name: target_model_edge_type_expression_projection
   ) {
-    Accepted { value: Some { value: _ }, diagnostics: d } =>
+    Accepted { value: Present { value: _ }, diagnostics: d } =>
       Accepted { value: ProjectionPresent, diagnostics: d }
-    Accepted { value: None, diagnostics: d } =>
+    Accepted { value: Absent, diagnostics: d } =>
       Accepted { value: ProjectionAbsent, diagnostics: d }
     Rejected { diagnostics: r } =>
       Rejected { diagnostics: r }

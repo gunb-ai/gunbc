@@ -105,8 +105,8 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 
 fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   match e.label {
-    Named { name: sym } => Some { value: DeclaredBinding { name: sym } }
-    Positional => None
+    Named { name: sym } => Present { value: DeclaredBinding { name: sym } }
+    Positional => Absent
   }
 }
 
@@ -132,8 +132,8 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
     TypeNode { connective: Conj } =>
       fold(root.children, init: acc, f: fn(a, e) {
         match try_edge_declared_binding(e: e) {
-          Some { value: b } => map_insert(a, b.name, b.name)
-          None => a
+          Present { value: b } => map_insert(a, b.name, b.name)
+          Absent => a
         }
       })
     _ => acc
@@ -159,9 +159,9 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
     TypeNode { connective: Arrow } =>
       if count(n.children) >= 1 {
         match first(n.children) {
-          Some { value: e0 } =>
+          Present { value: e0 } =>
             harvest_conj_named_bindings(root: e0.target, acc: acc)
-          None => acc
+          Absent => acc
         }
       } else {
         acc
@@ -176,9 +176,9 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
     ComputationNode { behavior: Bind } =>
       if count(n.children) == 3 {
         match first(n.children) {
-          Some { value: e0 } =>
+          Present { value: e0 } =>
             harvest_direct_atom_binding(root: e0.target, acc: acc)
-          None => acc
+          Absent => acc
         }
       } else {
         acc
@@ -218,7 +218,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
       match map_get(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
-            Accepted { value: Some { value: v }, diagnostics: d_here }
+            Accepted { value: Present { value: v }, diagnostics: d_here }
           Absent =>
             match lookup_chain(s: o, name: name) {
               Accepted { value: found, diagnostics: d_outer } =>
@@ -237,8 +237,8 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
     ScopeRoot { module: mod } =>
       match map_get(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
-          Present { value: v } => Accepted { value: Some { value: v }, diagnostics: d }
-          Absent => Accepted { value: None, diagnostics: d }
+          Present { value: v } => Accepted { value: Present { value: v }, diagnostics: d }
+          Absent => Accepted { value: Absent, diagnostics: d }
         }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
@@ -280,12 +280,12 @@ fn canonical_atom(identity: Symbol) -> Node {
 fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
   match lookup_chain(s: scope, name: identity) {
     Accepted { value: found, diagnostics: pending } => match found {
-      Some { value: canonical } =>
+      Present { value: canonical } =>
         Accepted {
           value: canonical_atom(identity: canonical),
           diagnostics: pending
         }
-      None =>
+      Absent =>
         if namespace_has_canonical_symbol(
           namespace: scope_root_module(s: scope),
           name: identity

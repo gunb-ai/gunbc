@@ -558,7 +558,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
 }
 
 #[test]
-fn optional_pattern_lookup_still_resolves_some_variant() {
+fn optional_pattern_lookup_rejects_some_variant() {
     let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
         leaf_node("String".to_string()),
     ));
@@ -570,14 +570,11 @@ fn optional_pattern_lookup_still_resolves_some_variant() {
         0,
     );
 
-    match lookup.status.as_ref() {
-        NodeLookupStatus::LookupResolved { node, .. } => {
-            assert_eq!(node.name, "Some");
-            assert_eq!(node.children.len(), 1);
-            assert_eq!(node.children[0].name, "value");
-        }
-        status => panic!("expected Some lookup to resolve, got {:?}", status),
-    }
+    assert!(matches!(
+        lookup.status.as_ref(),
+        NodeLookupStatus::LookupFailed
+    ));
+    assert_eq!(lookup.diagnostics.len(), 1);
 }
 
 #[test]
@@ -595,7 +592,7 @@ fn optional_pattern_lookup_resolves_present_variant() {
 
     match lookup.status.as_ref() {
         NodeLookupStatus::LookupResolved { node, .. } => {
-            assert_eq!(node.name, "Some");
+            assert_eq!(node.name, "Present");
             assert_eq!(node.children.len(), 1);
             assert_eq!(node.children[0].name, "value");
         }
@@ -678,18 +675,18 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
 
     match lookup.status.as_ref() {
         NodeLookupStatus::LookupResolved { node, .. } => {
-            assert_eq!(node.name, "Some");
+            assert_eq!(node.name, "Present");
             assert_eq!(node.children[0].name, "value");
         }
         status => panic!(
-            "expected Optional Present lookup to resolve as Some, got {:?}",
+            "expected Optional Present lookup to resolve as Present, got {:?}",
             status
         ),
     }
 }
 
 #[test]
-fn optional_present_absent_patterns_annotate_to_v2_internal_names() {
+fn optional_present_absent_patterns_keep_canonical_names() {
     let scope = empty_infer_scope();
     let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
         leaf_node("String".to_string()),
@@ -717,12 +714,12 @@ fn optional_present_absent_patterns_annotate_to_v2_internal_names() {
     assert!(matches!(
         present.as_ref(),
         MatchPattern::VariantPattern { name, parent_enum: Some(parent), .. }
-          if name == "Some" && parent == "Optional"
+          if name == "Present" && parent == "Optional"
     ));
     assert!(matches!(
         absent.as_ref(),
         MatchPattern::VariantPattern { name, parent_enum: Some(parent), .. }
-          if name == "None" && parent == "Optional"
+          if name == "Absent" && parent == "Optional"
     ));
 }
 
@@ -757,10 +754,10 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
 }
 
 #[test]
-fn optional_match_exhaustiveness_reports_missing_none() {
+fn optional_match_exhaustiveness_reports_missing_absent() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
-        Rc::new(vec![variant_arm("Some")]),
+        Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
             recursive_types: Rc::new(vec![]),
@@ -780,7 +777,7 @@ fn optional_match_exhaustiveness_reports_missing_none() {
 }
 
 #[test]
-fn optional_match_exhaustiveness_accepts_some_and_none() {
+fn optional_match_exhaustiveness_rejects_some_and_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
@@ -796,11 +793,10 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
         "test".to_string(),
     );
 
-    assert!(
-        diags.is_empty(),
-        "Some/None arms should exhaust Optional matches, got {:?}",
-        diags
-    );
+    assert_eq!(diags.len(), 1);
+    let diag0_msg = v2_compiler::v2_std_core::diagnostic_to_message(diags[0].diagnostic.clone());
+    assert!(diag0_msg.contains("Present"));
+    assert!(diag0_msg.contains("Absent"));
 }
 
 #[test]

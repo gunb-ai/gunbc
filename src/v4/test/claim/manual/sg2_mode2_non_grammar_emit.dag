@@ -39,7 +39,7 @@ import v4.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v4.std.witness { Violates, Witness }
+import v4.std.witness { Holds, Violates, Witness }
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
@@ -243,8 +243,8 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
 
 fn sg2_mode2_lex_only_absent_from_binding_spellings() -> Bool {
   match rust_sg2_binding_spellings().lookup(^rust_binding_sg2_lex_only_atom) {
-    None => true
-    Some { value: _ } => false
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } => false
   }
 }
 

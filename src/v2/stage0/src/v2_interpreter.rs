@@ -1227,47 +1227,6 @@ fn match_pattern(
                     fields,
                     ..
                 } => {
-                    // Bridge Witness (v4.std.witness) to legacy Option-style Some/None patterns.
-                    // Map.lookup returns Witness<V>; bootstrap map_get (collection.dag
-                    // B-LOOKUP-1) still matches Some/None before projecting Present/Absent.
-                    if variant_name == "Holds" && name == "Some" {
-                        let inner = fields.get("value").cloned().unwrap_or(Value::Null);
-                        let mut bindings = HashMap::new();
-                        for fb in field_bindings.iter() {
-                            let fb_pat = field_binding_pattern(fb.clone());
-                            let sub_bindings = match_pattern(&fb_pat, &inner, ctx)?;
-                            bindings.extend(sub_bindings);
-                        }
-                        return Some(bindings);
-                    }
-                    if variant_name == "Violates" && (name == "None" || name == "none") {
-                        return Some(HashMap::new());
-                    }
-                    // A *present* coproduct value bridges to `Some { value: <self> }`,
-                    // symmetric with the `_ if name == "Some"` bridge below for present
-                    // non-Variant values. A native `Value::Map` lookup returns the raw
-                    // stored value (not Holds-wrapped), so a present lookup of a coproduct
-                    // value (e.g. `Excluded`) must still satisfy a std `map_get`-style
-                    // `Some { value: v }` arm. Absent-witness/option arms are EXCLUDED so
-                    // this never fabricates presence (P3 fail-closed): `Violates` and a
-                    // nominal `None`/`none` must fall through to the `None` arm (handled by
-                    // the Violates→None bridge above and nominal None matching), not match
-                    // `Some`. `Holds` is already unwrapped to `Some` above. Genuine `Some`
-                    // variants are handled by nominal matching (variant_name == name) below.
-                    if name == "Some"
-                        && variant_name != "Some"
-                        && variant_name != "Violates"
-                        && variant_name != "None"
-                        && variant_name != "none"
-                    {
-                        let mut bindings = HashMap::new();
-                        for fb in field_bindings.iter() {
-                            let fb_pat = field_binding_pattern(fb.clone());
-                            let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
-                            bindings.extend(sub_bindings);
-                        }
-                        return Some(bindings);
-                    }
                     // Symmetric Witness projection: a *present* coproduct value bridges to
                     // `Holds { value: <self> }`. A native `Value::Map` lookup returns the raw
                     // stored value, and a `-> Witness`-annotated `.lookup` consumer (e.g.
@@ -1275,12 +1234,7 @@ fn match_pattern(
                     // present coproduct value must satisfy the `Holds` arm. Same absent-arm
                     // exclusions (`Violates`/`None`/`none` stay absent → the `Violates` arm);
                     // a genuine `Holds` is handled by nominal matching below.
-                    if name == "Holds"
-                        && variant_name != "Holds"
-                        && variant_name != "Violates"
-                        && variant_name != "None"
-                        && variant_name != "none"
-                    {
+                    if name == "Holds" && variant_name != "Holds" && variant_name != "Violates" {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
                             let fb_pat = field_binding_pattern(fb.clone());
@@ -1461,9 +1415,9 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                // Match on Option: Some { value: x } pattern
-                Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
-                _ if name == "Some" => {
+                // Match cardinality Optional through the canonical std surface.
+                Value::Null if name == "Absent" => Some(HashMap::new()),
+                _ if name == "Present" => {
                     if matches!(value, Value::Null) {
                         return None;
                     }

@@ -1,9 +1,8 @@
-//! SB-c — Witness→Option pattern bridge for bootstrap map_get (B-LOOKUP-1).
+//! Optional surface dissolution for bootstrap map_get (B-LOOKUP-1).
 //!
 //! `Map.lookup` returns `Witness<V>` (`Holds`/`Violates`), while bootstrap
-//! `map_get` (v4.std.collection) still matches legacy `Some`/`None` before
-//! wrapping as `Present`/`Absent`. Without the bridge, affected-set
-//! `mark_excluded` crashes with PatternMatchFailure on `Holds { value: ... }`.
+//! `map_get` (v4.std.collection) now matches that Witness surface directly
+//! before wrapping as canonical `Present`/`Absent`.
 
 use std::rc::Rc;
 
@@ -44,26 +43,26 @@ fn run_v4_module(entry: &str, content: &str, witness_fn: &str) -> Value {
         .unwrap_or_else(|e| panic!("run {witness_fn}: {e:?}"))
 }
 
-/// Detection: red if Witness Holds/Violates bridging is removed from match_pattern.
+/// Detection: red if the deleted Witness→Some/None spelling bridge returns.
 #[test]
-fn match_pattern_bridges_witness_holds_to_some() {
+fn match_pattern_does_not_bridge_witness_to_some_none() {
     let source = include_str!("../../stage0/src/v2_interpreter.rs");
     let match_pattern_start = source
         .find("fn match_pattern(")
         .expect("match_pattern should exist in v2_interpreter.rs");
     let match_pattern_body = &source[match_pattern_start..];
     assert!(
-        match_pattern_body.contains(r#"variant_name == "Holds" && name == "Some""#),
-        "map_get bootstrap must bridge Witness Holds to Some pattern (B-LOOKUP-1)."
+        !match_pattern_body.contains(r#"variant_name == "Holds" && name == "Some""#),
+        "Witness Holds must not be accepted as legacy Some."
     );
     assert!(
-        match_pattern_body.contains(r#"variant_name == "Violates""#),
-        "map_get bootstrap must bridge Witness Violates to None pattern (B-LOOKUP-1)."
+        !match_pattern_body.contains(r#"variant_name == "Violates" && (name == "None""#),
+        "Witness Violates must not be accepted as legacy None."
     );
 }
 
 #[test]
-fn map_get_bridges_witness_lookup_to_present_absent() {
+fn map_get_matches_witness_lookup_to_present_absent() {
     let src = r#"module test.witness_map_get
 import v4.std.collection { empty_map, map_get, map_insert }
 import v4.std.diagnostic { Accepted, Rejected }

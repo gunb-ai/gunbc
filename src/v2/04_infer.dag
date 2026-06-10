@@ -3691,7 +3691,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
               match scrut_inducing_field {
                 Some { value: ind_field } =>
-                  if vname == "Some" {
+                  if vname == "Present" {
                     bindings |> fold(init: ctx, f: (c, fb) =>
                       match field_binding_pattern(n: fb) {
                         Bind { name: bname } =>
