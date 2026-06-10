@@ -7,6 +7,7 @@
 module v4.compiler.normalize
 
 import v4.std.algebra { list_snoc_item }
+import v4.std.collection { Absent, Present, optional_absent, optional_present }
 import v4.std.grammar { ParseTree }
 
 import v4.std.diagnostic {
@@ -47,11 +48,11 @@ type SurfaceSugarKind
   | OperationSugar
 
 fn some_surface_sugar_kind(kind: SurfaceSugarKind) -> SurfaceSugarKind? {
-  Some { value: kind }
+  optional_present(value: kind)
 }
 
 fn no_surface_sugar_kind() -> SurfaceSugarKind? {
-  None
+  optional_absent()
 }
 
 // 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind TASKS.md T-8 — dissolve-on: classify_sugar reads modeled LanguageModel sugar facts; forbidden: Atom identity string/symbol comparison as permanent authority.
@@ -161,13 +162,13 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
     TypeSugar =>
       if exactly_one_child(children: children) {
         match children |> first {
-          Some { value: e0 } =>
+          Present { value: e0 } =>
             if is_positional(e: e0) {
               Accepted { value: e0.target, diagnostics: None }
             } else {
               Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
             }
-          None =>
+          Absent =>
             Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
         }
       } else {
@@ -187,7 +188,7 @@ fn normalize_node(n: Node) -> Outcome<Node> {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized_children, diagnostics: cd } =>
       match classify_sugar(n: n) {
-        Some { value: kind } =>
+        Present { value: kind } =>
           match normalize_sugar(kind: kind, n: n, children: normalized_children) {
             Rejected { diagnostics: r } =>
               Rejected {
@@ -199,7 +200,7 @@ fn normalize_node(n: Node) -> Outcome<Node> {
                 diagnostics: diagnostics_merge(outer: cd, inner: d)
               }
           }
-        None =>
+        Absent =>
           Accepted {
             value: node_with_span(kind: n.kind, children: normalized_children, span: n.span),
             diagnostics: cd

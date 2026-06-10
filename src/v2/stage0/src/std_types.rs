@@ -20,6 +20,8 @@ use self::Vendor::*;
 pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
 pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -58,6 +60,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             __m.insert("List".to_string(), 1);
             __m.insert("Set".to_string(), 1);
             __m.insert("Map".to_string(), 2);
+            __m.insert("Witness".to_string(), 1);
             Rc::new(__m)
         };
     }
@@ -76,9 +79,13 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
 }
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
-    match v2_rt::map_get(&kernel_algebra_profile(), kind_name) {
-        Some(p) => algebra_type_param_names(p.clone()),
-        None => Rc::new(vec![]),
+    if (kind_name.clone().as_str() == "Witness".to_string().as_str()) {
+        Rc::new(vec!["T".to_string()])
+    } else {
+        match v2_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
+            Some(p) => algebra_type_param_names(p.clone()),
+            None => Rc::new(vec![]),
+        }
     }
 }
 
@@ -159,8 +166,28 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
+pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, String>> = {
+            let mut __m = HashMap::new();
+            __m.insert("List".to_string(), "FreeMonoid".to_string());
+            __m.insert("list".to_string(), "FreeMonoid".to_string());
+            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("Map".to_string(), "PartialFunction".to_string());
+            __m.insert("map".to_string(), "PartialFunction".to_string());
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+}
+
 pub fn container_template_algebra(name: String) -> Option<String> {
     v2_rt::map_get(&container_template_algebra_rows(), name)
+}
+
+pub fn container_template_alias_algebra(name: String) -> Option<String> {
+    v2_rt::map_get(&container_template_alias_rows(), name)
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {
@@ -171,6 +198,7 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
         "Map".to_string(),
         "PartialFunction".to_string(),
         "Set".to_string(),
+        "Witness".to_string(),
     ])
 }
 

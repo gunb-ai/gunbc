@@ -25,7 +25,7 @@ type LexCharClass
   | BlockCommentTextChar
 
 
-// 🟡 coproduct dissolution — feature:CP-1b-bidirectional-grammar-carrier — consumer:v4.compiler.tokenize.lex_match_pattern/v4.compiler.translate.lex_rules_literal_for_class — bind TASKS.md T-6/T-7/T-10 — dissolve-on-arrival: LexPattern projects from ConcreteSyntaxSchema alongside grammar projection; forbidden: treating LexPattern as a second concrete-syntax authority or adding parallel lexical and grammar production algebras without explicit structural justification.
+// 🟡 coproduct dissolution — feature:CP-1b-bidirectional-grammar-carrier — consumer:v4.compiler.tokenize.lex_match_pattern/v4.compiler.translate.lex_rules_literal_for_class — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v4-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on-arrival: LexPattern projects from ConcreteSyntaxSchema alongside grammar projection; forbidden: treating LexPattern as a second concrete-syntax authority or adding parallel lexical and grammar production algebras without explicit structural justification.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }

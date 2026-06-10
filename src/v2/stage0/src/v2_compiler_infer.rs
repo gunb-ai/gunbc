@@ -69,6 +69,7 @@ pub use crate::v2_compiler_infer_lookup::{
 };
 pub use crate::v2_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
+    witness_of_element,
 };
 use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_patterns::{
@@ -104,6 +105,8 @@ pub use crate::v2_compiler_infer_types::{
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, TypeMismatch, VariantCollision};
@@ -161,6 +164,11 @@ use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemContribution {
@@ -1528,7 +1536,13 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         ..
                     }) => {
                         match map_value_type_in_env(receiver_type.clone(), scope.type_env.clone()) {
-                            Some(value_type) => with_optional_cardinality(value_type.clone()),
+                            Some(value_type) => {
+                                if (func_name.clone().as_str() == "lookup".to_string().as_str()) {
+                                    witness_of_element(value_type.clone())
+                                } else {
+                                    with_optional_cardinality(value_type.clone())
+                                }
+                            }
                             None => resolve_builtin_call_type(func_name.clone()),
                         }
                     }
@@ -2023,23 +2037,39 @@ pub fn annotate_pattern_parent_enums(
                         node: resolved_scrut_node,
                         ..
                     } => {
-                        if ((resolved_scrut_node.return_cardinality.clone()
-                            == Cardinality::CardOptional)
-                            && ((variant_name.clone().as_str() == "Some".to_string().as_str())
-                                || (variant_name.clone().as_str() == "None".to_string().as_str())))
+                        let scrutinee_name = authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            resolved_scrut_node.clone(),
+                        );
+                        let optional_cardinality_subject =
+                            ((resolved_scrut_node.return_cardinality.clone()
+                                == Cardinality::CardOptional)
+                                && (scrutinee_name.clone().as_str()
+                                    != "Optional".to_string().as_str()));
+                        let witness_container_subject =
+                            (is_witness_type_name(scrutinee_name.clone())
+                                && ((variant_name.clone().as_str()
+                                    == "Holds".to_string().as_str())
+                                    || (variant_name.clone().as_str()
+                                        == "Violates".to_string().as_str())));
+                        if (optional_cardinality_subject
+                            && ((variant_name.clone().as_str() == "Present".to_string().as_str())
+                                || (variant_name.clone().as_str()
+                                    == "Absent".to_string().as_str())))
                         {
                             Some("Optional".to_string())
                         } else {
-                            {
-                                let is_coproduct =
-                                    (resolved_scrut_node.connective.clone() == Connective::Disj);
-                                if is_coproduct {
-                                    Some(authored_name_at(
-                                        scope.type_env.clone().source_indices.clone(),
-                                        resolved_scrut_node.clone(),
-                                    ))
-                                } else {
-                                    None
+                            if witness_container_subject {
+                                Some("Witness".to_string())
+                            } else {
+                                {
+                                    let is_coproduct = (resolved_scrut_node.connective.clone()
+                                        == Connective::Disj);
+                                    if is_coproduct {
+                                        Some(scrutinee_name.clone())
+                                    } else {
+                                        None
+                                    }
                                 }
                             }
                         }
@@ -2047,6 +2077,7 @@ pub fn annotate_pattern_parent_enums(
                     PatternSubject::PatternDynamic { span: _, .. } => None,
                     PatternSubject::PatternLookupBlocked => None,
                 };
+                let annotated_variant_name = variant_name.clone();
                 let variant_lookup = lookup_variant_in_type(
                     resolved_scrut.clone(),
                     variant_name.clone(),
@@ -2088,7 +2119,7 @@ pub fn annotate_pattern_parent_enums(
                 });
                 match inferred_parent {
                     Some(parent_name) => Rc::new(MatchPattern::VariantPattern {
-                        name: variant_name.clone(),
+                        name: annotated_variant_name,
                         parent_enum: Some(parent_name.clone()),
                         field_bindings: annotated_bindings,
                     }),
@@ -5696,11 +5727,11 @@ pub fn infer_record_lit(
                     None => error_type(),
                 };
                 let expected_optional_parent = Some("Optional".to_string());
-                let is_some_ctor = ((type_name.clone().unwrap().as_str()
-                    == "Some".to_string().as_str())
+                let is_present_ctor = ((type_name.clone().unwrap().as_str()
+                    == "Present".to_string().as_str())
                     && (effective_variant_parent.clone().as_deref()
                         == expected_optional_parent.as_deref()));
-                let resolved_node = if is_some_ctor {
+                let resolved_node = if is_present_ctor {
                     {
                         let val_field = Rc::new({
                             let mut __result = Vec::new();
@@ -8053,7 +8084,7 @@ let arm_ctx = match variant_arm_ctx.clone() {
     None => if scrut_has_inductive.clone() {
                     match (*arm_pattern(arm_node.clone())).clone() {
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => match scrut_inducing_field.clone() {
-    Some(ind_field) => if (vname.clone().as_str() == "Some".to_string().as_str()) {
+    Some(ind_field) => if (vname.clone().as_str() == "Present".to_string().as_str()) {
                         bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| match (*field_binding_pattern(fb.clone())).clone() {
     MatchPattern::Bind { name: bname, .. } => Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),
@@ -11768,8 +11799,8 @@ pub fn build_type_env(
             );
         let source_indices = Rc::new(vec![
             "Optional".to_string(),
-            "Some".to_string(),
-            "None".to_string(),
+            "Present".to_string(),
+            "Absent".to_string(),
             "value".to_string(),
             "none".to_string(),
         ])
@@ -11802,8 +11833,8 @@ pub fn build_type_env(
             });
         let intern_table = Rc::new(vec![
             "Optional".to_string(),
-            "Some".to_string(),
-            "None".to_string(),
+            "Present".to_string(),
+            "Absent".to_string(),
             "value".to_string(),
             "none".to_string(),
         ])
@@ -11885,7 +11916,7 @@ pub fn build_type_env(
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
-        let some_value_field = Rc::new(Node {
+        let present_value_field = Rc::new(Node {
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
@@ -11893,7 +11924,7 @@ pub fn build_type_env(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "some_value".to_string(),
+                id: "present_value".to_string(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -11908,11 +11939,31 @@ pub fn build_type_env(
             binding_id: None,
             ident: None,
         });
-        let some_variant = Rc::new(Node {
-            name: "Some".to_string(),
-            span: kernel_span("Some".to_string()),
-            ident_span: Some(kernel_span("Some".to_string())),
-            children: Rc::new(vec![some_value_field]),
+        let present_variant = Rc::new(Node {
+            name: "Present".to_string(),
+            span: kernel_span("Present".to_string()),
+            ident_span: Some(kernel_span("Present".to_string())),
+            children: Rc::new(vec![present_value_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let absent_variant = Rc::new(Node {
+            name: "Absent".to_string(),
+            span: kernel_span("Absent".to_string()),
+            ident_span: Some(kernel_span("Absent".to_string())),
+            children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
@@ -11933,7 +11984,7 @@ pub fn build_type_env(
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
             ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![some_variant, none_type()]),
+            children: Rc::new(vec![present_variant, absent_variant]),
             connective: Connective::Disj,
             params: Rc::new(vec![]),
             inferred: None,
@@ -12567,7 +12618,7 @@ pub fn build_type_env_unresolved(
                     )
                 },
             );
-        let some_value_field = Rc::new(Node {
+        let present_value_field = Rc::new(Node {
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
@@ -12575,7 +12626,7 @@ pub fn build_type_env_unresolved(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "some_value".to_string(),
+                id: "present_value".to_string(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -12590,11 +12641,31 @@ pub fn build_type_env_unresolved(
             binding_id: None,
             ident: None,
         });
-        let some_variant = Rc::new(Node {
-            name: "Some".to_string(),
-            span: kernel_span("Some".to_string()),
-            ident_span: Some(kernel_span("Some".to_string())),
-            children: Rc::new(vec![some_value_field]),
+        let present_variant = Rc::new(Node {
+            name: "Present".to_string(),
+            span: kernel_span("Present".to_string()),
+            ident_span: Some(kernel_span("Present".to_string())),
+            children: Rc::new(vec![present_value_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let absent_variant = Rc::new(Node {
+            name: "Absent".to_string(),
+            span: kernel_span("Absent".to_string()),
+            ident_span: Some(kernel_span("Absent".to_string())),
+            children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
@@ -12615,7 +12686,7 @@ pub fn build_type_env_unresolved(
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
             ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![some_variant, none_type()]),
+            children: Rc::new(vec![present_variant, absent_variant]),
             connective: Connective::Disj,
             params: Rc::new(vec![]),
             inferred: None,

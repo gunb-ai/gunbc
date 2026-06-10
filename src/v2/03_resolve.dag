@@ -45,8 +45,8 @@ type ResolveAccum {
 
 fn map_has(m: Map<String, Bool>, key: String) -> Bool {
   match map_get(m, key) {
-    Some { value: _ } => true
-    None => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -87,8 +87,8 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
   // Phase 3: topological sort
   let topo_result = topological_sort(modules: modules, source_indices: source_indices)
   let topo_diags = match topo_result.cycle_error {
-    Some { value: diag } => [diag]
-    None => []
+    Present { value: diag } => [diag]
+    Absent => []
   }
 
   // Phase 4: assign dep_order from the sorted order.
@@ -101,17 +101,17 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
   )
   let acyclic_resolved = modules |> flat_map(m =>
     match map_get(sorted_order_map, authored_name_at(source_indices: source_indices, node: m)) {
-      Some { value: order } =>
+      Present { value: order } =>
         match map_get(imports_by_name, authored_name_at(source_indices: source_indices, node: m)) {
-          Some { value: imps } =>
+          Present { value: imps } =>
             [ResolvedModule {
               module: m,
               resolved_imports: imps,
               dep_order: order
             }]
-          None => []
+          Absent => []
         }
-      None => []
+      Absent => []
     }
   )
 
@@ -169,22 +169,22 @@ fn resolve_import(
   let import_path = authored_name_at(source_indices: source_indices, node: import)
   let target = find_module(module_index: module_index, path: import_path)
   match target {
-    None => {
+    Absent => {
       let diag = make_error_node(diagnostic: UnresolvedImport { module_path: import_path, importing_module: importing_module, span: import.span }, module_name: importing_module)
       ImportResolveResult {
         resolved: ResolvedImport {
           module_path: import_path,
           is_all: import_is_all(n: import),
           specific_names: import_specific_names_at(n: import, source_indices: source_indices),
-          target_module: None
+          target_module: Absent
         },
         diagnostics: [diag]
       }
     }
-    Some { value: target_mod } => {
+    Present { value: target_mod } => {
       let exported_set = match map_get(export_sets, import_path) {
-        Some { value: set } => set
-        None => empty_map()
+        Present { value: set } => set
+        Absent => empty_map()
       }
       let name_diags = if import_is_all(n: import) { [] } else {
         import.children
@@ -198,7 +198,7 @@ fn resolve_import(
           module_path: import_path,
           is_all: import_is_all(n: import),
           specific_names: import_specific_names_at(n: import, source_indices: source_indices),
-          target_module: Some { value: target_mod }
+          target_module: Present { value: target_mod }
         },
         diagnostics: name_diags
       }
@@ -271,8 +271,8 @@ type TopoResult {
 
 fn adjacency_add_edge(adjacency: Map<String, List<String>>, from_module: String, to_module: String) -> Map<String, List<String>> {
   let existing = match map_get(adjacency, from_module) {
-    Some { value: lst } => lst
-    None => []
+    Present { value: lst } => lst
+    Absent => []
   }
   map_insert(adjacency, from_module, list_push(existing, to_module))
 }
@@ -320,7 +320,7 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
 
   let initial_queue = module_names
     |> filter(name => match map_get(in_degree_map, name) {
-      Some { value: 0 } => true
+      Present { value: 0 } => true
       _ => false
     })
     |> sort_by(name => topo_sort_key(name: name))
@@ -335,7 +335,7 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
   )
 
   if result.sorted |> count == module_count {
-    TopoResult { sorted: result.sorted, cycle_error: None }
+    TopoResult { sorted: result.sorted, cycle_error: Absent }
   } else {
     let sorted_set = result.sorted |> fold(init: empty_map(), f: (acc, name) =>
       map_insert(acc, name, true)
@@ -345,7 +345,7 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
     let cycle_desc = cycle_members |> join(separator: " -> ")
     TopoResult {
       sorted: result.sorted,
-      cycle_error: Some { value: make_error_node(diagnostic: CircularDependency { modules: cycle_members, span: no_span() }, module_name: "") }
+      cycle_error: Present { value: make_error_node(diagnostic: CircularDependency { modules: cycle_members, span: no_span() }, module_name: "") }
     }
   }
 }
@@ -363,13 +363,13 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<Stri
   let batch_result = queue |> fold(init: KahnDrainState { sorted: sorted, in_degree_map: in_degree_map }, f: fn(state, node) {
     let new_sorted = list_push(state.sorted, node)
     let neighbors = match map_get(adjacency, node) {
-      Some { value: ns } => ns
-      None => []
+      Present { value: ns } => ns
+      Absent => []
     }
     let new_degrees = neighbors |> fold(init: state.in_degree_map, f: fn(deg_map, neighbor) {
       let current = match map_get(deg_map, neighbor) {
-        Some { value: d } => d
-        None => 0
+        Present { value: d } => d
+        Absent => 0
       }
       map_insert(deg_map, neighbor, current - 1)
     })
@@ -378,12 +378,12 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<Stri
 
   let new_zero_set = queue |> flat_map(node =>
     match map_get(adjacency, node) {
-      Some { value: ns } => ns
-      None => []
+      Present { value: ns } => ns
+      Absent => []
     }
   ) |> filter(neighbor =>
     match map_get(batch_result.in_degree_map, neighbor) {
-      Some { value: 0 } => true
+      Present { value: 0 } => true
       _ => false
     }
   ) |> fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))

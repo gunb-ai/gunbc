@@ -2244,21 +2244,34 @@ fn non_string_slice_is_rejected_before_emit() {
 }
 
 #[test]
-fn optional_match_requires_none_arm() {
-    let source = "module test\nfn unwrap(x: String?) -> String {\n  match x {\n    Some { value: value } => value\n  }\n}\n";
+fn optional_match_requires_absent_arm() {
+    let source = "module test\nfn unwrap(x: String?) -> String {\n  match x {\n    Present { value: value } => value\n  }\n}\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
         msgs.iter()
-            .any(|msg| msg.contains("non-exhaustive") && msg.contains("None")),
-        "missing None arm should produce a non-exhaustive Optional match diagnostic, got {:?}",
+            .any(|msg| msg.contains("non-exhaustive") && msg.contains("Absent")),
+        "missing Absent arm should produce a non-exhaustive Optional match diagnostic, got {:?}",
         msgs
     );
 }
 
 #[test]
-fn optional_match_with_some_and_none_typechecks() {
+fn optional_match_with_some_and_none_is_rejected() {
     let source = "module test\nfn unwrap(x: String?) -> String {\n  match x {\n    Some { value: value } => value,\n    None => \"\"\n  }\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter()
+            .any(|msg| msg.contains("variant 'Some'") || msg.contains("Present")),
+        "legacy Some/None Optional arms should be rejected, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn optional_match_with_present_and_absent_typechecks() {
+    let source = "module test\nfn unwrap(x: String?) -> String {\n  match x {\n    Present { value: value } => value,\n    Absent => \"\"\n  }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
@@ -2890,7 +2903,7 @@ fn compile_sources_returns_ownership_proofs() {
 /// incorrectly move them, causing rustc E0308 (expected Rc<T>, found &Rc<T>).
 #[test]
 fn match_bound_variable_always_cloned() {
-    let source = "module match_own\n\nfn extract(x: String?) -> String {\n  match x {\n    Some { value: v } => v\n    None => \"default\"\n  }\n}\n";
+    let source = "module match_own\n\nfn extract(x: String?) -> String {\n  match x {\n    Present { value: v } => v\n    Absent => \"default\"\n  }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/match_own.rs");
@@ -3874,7 +3887,7 @@ fn division_descent_is_allowed() {
 #[test]
 fn cx_bound_child_descent_is_tree_size() {
     // Recursion on structural children → bounded by TreeSize.
-    let source = "module cx_child\n\ntype Tree { left: Tree?  right: Tree?  value: Int }\nfn sum_tree(t: Tree) -> Int {\n  let l = match t.left { Some { value: lt } => sum_tree(t: lt), None => 0 }\n  let r = match t.right { Some { value: rt } => sum_tree(t: rt), None => 0 }\n  l + r + t.value\n}\n";
+    let source = "module cx_child\n\ntype Tree { left: Tree?  right: Tree?  value: Int }\nfn sum_tree(t: Tree) -> Int {\n  let l = match t.left { Present { value: lt } => sum_tree(t: lt), Absent => 0 }\n  let r = match t.right { Present { value: rt } => sum_tree(t: rt), Absent => 0 }\n  l + r + t.value\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
@@ -3884,7 +3897,7 @@ fn cx_bound_nested_variant_optional_descent() {
     // Nested variant match: Optional field wraps an enum whose variant
     // contains the recursive type. The chain is:
     //   o.detail → Inner? (OptionalRecursion)
-    //     Some { value: Resolved { node: x } } → nested destructure
+    //     Present { value: Resolved { node: x } } → nested destructure
     //       x is a structural sub-value of o
     // This tests that annotate_descent composes through both levels.
     let source = r#"module cx_nested_variant
@@ -3900,7 +3913,7 @@ type Outer {
 
 fn walk(o: Outer) -> Int {
   let from_detail = match o.detail {
-    Some { value: Resolved { node: x } } => walk(o: x)
+    Present { value: Resolved { node: x } } => walk(o: x)
     _ => 0
   }
   from_detail + (o.children |> map(c => walk(o: c)) |> fold(init: 0, f: (a, x) => a + x))
@@ -3937,7 +3950,7 @@ fn walk_type(n: Node) -> String {
 #[test]
 fn cx_bound_list_shrink_is_collection_size() {
     // Recursion via skip(1) on a list → bounded by CollectionSize.
-    let source = "module cx_list\n\nfn sum_list(items: List<Int>) -> Int {\n  match items |> first {\n    None => 0\n    Some { value: head } => head + sum_list(items: items |> skip(1))\n  }\n}\n";
+    let source = "module cx_list\n\nfn sum_list(items: List<Int>) -> Int {\n  match items |> first {\n    Absent => 0\n    Present { value: head } => head + sum_list(items: items |> skip(1))\n  }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
@@ -3962,7 +3975,7 @@ fn cx_bound_mutual_descent_is_bounded() {
 fn cx_bound_metadata_field_is_not_descent_witness() {
     // Matching on a non-recursive field (metadata) must NOT create descent evidence.
     // name, span, etc. are not structural sub-values — they don't carry children.
-    let source = "module cx_metadata\n\ntype Item { name: String  payload: Item? }\nfn check_name(item: Item) -> Bool {\n  if item.name == \"done\" { true }\n  else {\n    match item.payload {\n      Some { value: next } => check_name(item: next)\n      None => false\n    }\n  }\n}\n";
+    let source = "module cx_metadata\n\ntype Item { name: String  payload: Item? }\nfn check_name(item: Item) -> Bool {\n  if item.name == \"done\" { true }\n  else {\n    match item.payload {\n      Present { value: next } => check_name(item: next)\n      Absent => false\n    }\n  }\n}\n";
     let result = compile_dag(source);
     // This should compile — it descends through payload (structural child).
     // The name field access is metadata, NOT descent evidence.
@@ -4321,17 +4334,17 @@ fn match_on_coproduct_all_variants_no_diagnostic() {
 
 // ── Optional cardinality checks ──────────────────────────────────────────
 // The DAG compiler models optionality as cardinality on binding sites,
-// not as a type wrapper. This catches None/Some mismatches structurally.
+// not as a type wrapper. This catches Absent/Present mismatches structurally.
 
 #[test]
-fn optional_match_missing_none_arm_produces_diagnostic() {
-    let source = "module opt\n\nfn handle(x: String?) -> String {\n  match x {\n    Some { value: v } => v\n  }\n}\n";
+fn optional_match_missing_absent_arm_produces_diagnostic() {
+    let source = "module opt\n\nfn handle(x: String?) -> String {\n  match x {\n    Present { value: v } => v\n  }\n}\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
         msgs.iter()
-            .any(|m| m.contains("non-exhaustive") || m.contains("None")),
-        "missing None arm on Optional should produce diagnostic, got: {:?}",
+            .any(|m| m.contains("non-exhaustive") || m.contains("Absent")),
+        "missing Absent arm on Optional should produce diagnostic, got: {:?}",
         msgs
     );
 }
@@ -5089,8 +5102,8 @@ fn map_get_returns_optional() {
 
 fn find(m: Map<String, Int>, key: String) -> Int {
   match m |> get(key) {
-    Some { value: v } => v
-    None => 0
+    Present { value: v } => v
+    Absent => 0
   }
 }
 "#;
@@ -5238,11 +5251,11 @@ fn pick_smaller(a: Int, b: Int) -> Int {
 
 fn optional_merge(merge: fn(Int, Int) -> Int, a: Int?, b: Int?) -> Int? {
   match a {
-    None => b
-    Some { value: va } =>
+    Absent => b
+    Present { value: va } =>
       match b {
-        None => a
-        Some { value: vb } => Some { value: merge(va, vb) }
+        Absent => a
+        Present { value: vb } => Present { value: merge(va, vb) }
       }
   }
 }
@@ -6657,12 +6670,12 @@ fn nested_let_in_match_propagates_expected() {
     let source = r#"module test_nested_let_match
 fn classify(items: List<Int>) -> Map<String, Int> {
   match items |> first {
-    Some { value: head } =>
+    Present { value: head } =>
       let label = if head > 0 { "positive" } else { "negative" }
       items |> fold(init: empty_map(), f: (acc, x) =>
         map_insert(acc, label, x)
       )
-    None => empty_map()
+    Absent => empty_map()
   }
 }
 "#;
@@ -10140,7 +10153,7 @@ fn size(t: BinTree<Int>) -> Int {
 
 #[test]
 fn structural_bound_optional_chain() {
-    // OptionalRecursion on a record field: match c.next { Some { rest } => ... }
+    // OptionalRecursion on a record field: match c.next { Present { rest } => ... }
     // CX-L2 handles field-access scrutinees: c.next where c: Chain, next: Chain?
     let source = r#"module opt_chain
 
@@ -10148,8 +10161,8 @@ type Chain { value: Int, next: Chain? }
 
 fn count(c: Chain) -> Int {
   match c.next {
-    Some { value: rest } => 1 + count(c: rest)
-    None => 1
+    Present { value: rest } => 1 + count(c: rest)
+    Absent => 1
   }
 }
 "#;
@@ -10438,8 +10451,8 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
     let mid = n / 2
     let mid_val = xs |> skip(mid) |> first
     match mid_val {
-      None => false
-      Some { value: v } =>
+      Absent => false
+      Present { value: v } =>
         if v == target { true }
         else if target < v { binary_search(xs: xs |> take(mid), target: target) }
         else { binary_search(xs: xs |> skip(mid + 1), target: target) }
@@ -10608,8 +10621,8 @@ fn binary_search(sorted: List<Int>, target: Int) -> Bool {
     let mid = n / 2
     let mid_val = sorted |> skip(mid) |> first
     match mid_val {
-      None => false
-      Some { value: v } =>
+      Absent => false
+      Present { value: v } =>
         if v == target { true }
         else if target < v { binary_search(sorted: sorted |> take(mid), target: target) }
         else { binary_search(sorted: sorted |> skip(mid + 1), target: target) }
@@ -11074,8 +11087,8 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
     let mid = n / 2
     let mid_val = xs |> skip(mid) |> first
     match mid_val {
-      None => false
-      Some { value: v } =>
+      Absent => false
+      Present { value: v } =>
         if v == target { true }
         else if target < v { binary_search(xs: xs |> take(mid), target: target) }
         else { binary_search(xs: xs |> skip(mid + 1), target: target) }
@@ -11408,12 +11421,12 @@ type Item {
 fn count_items(item: Item) -> Int {
   let child_count = item.children |> fold(init: 0, f: (acc, c) => acc + count_items(item: c))
   let body_count = match item.body {
-    Some { value: b } => count_items(item: b)
-    None => 0
+    Present { value: b } => count_items(item: b)
+    Absent => 0
   }
   let anno_count = match item.annotation {
-    Some { value: a } => count_items(item: a)
-    None => 0
+    Present { value: a } => count_items(item: a)
+    Absent => 0
   }
   1 + child_count + body_count + anno_count
 }
@@ -11471,8 +11484,8 @@ fn get_inner(w: Wrapper) -> Wrapper? { w.inner }
 
 fn depth(w: Wrapper) -> Int {
   match get_inner(w: w) {
-    Some { value: next } => 1 + depth(w: next)
-    None => 0
+    Present { value: next } => 1 + depth(w: next)
+    Absent => 0
   }
 }
 "#;

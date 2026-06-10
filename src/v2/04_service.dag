@@ -57,8 +57,8 @@ fn is_typed_service_call_receiver(receiver: Node, source_indices: Map<String, Ne
       match b.expr_data {
         ExprVar { binding_kind: _ } => {
           match f |> chars |> first {
-            Some { value: ch } => ch >= 65 && ch <= 90
-            None => false
+            Present { value: ch } => ch >= 65 && ch <= 90
+            Absent => false
           }
         }
         _ => false
@@ -75,7 +75,7 @@ fn extract_typed_service_name(receiver: Node, source_indices: Map<String, Newlin
       match b.expr_data {
         ExprVar { binding_kind: _ } =>
           let ns = expr_var_name_at(texpr: b, source_indices: source_indices)
-          Some { value: concat(ns, ".", f) }
+          Present { value: concat(ns, ".", f) }
         _ => none
       }
     _ => none
@@ -93,10 +93,10 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum, source_indice
       let r = method_receiver(texpr: texpr)
       if is_typed_service_call_receiver(receiver: r, source_indices: source_indices) {
         match extract_typed_service_name(receiver: r, source_indices: source_indices) {
-          Some { value: service_name } =>
+          Present { value: service_name } =>
             if emit_map_has(m: acc.seen, key: service_name) { acc }
             else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: list_push(acc.result, service_name) } }
-          None => acc
+          Absent => acc
         }
       } else { acc }
     _ => acc
@@ -131,15 +131,15 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
     m.items |> fold(init: reg, f: (reg2, item) =>
     let item_name = authored_name_at(source_indices: m.type_env.source_indices, node: item)
     match map_get(reg2, item_name) {
-      Some { value: info } =>
+      Present { value: info } =>
         let has_no_body = item.body == none
         if has_no_body { reg2 }
         else {
           let called = collect_called_func_names(texpr: item.body.value, source_indices: m.type_env.source_indices)
           let extra = called |> flat_map(callee_name =>
             match map_get(reg2, callee_name) {
-              Some { value: callee_info } => callee_info.service_names
-              None => []
+              Present { value: callee_info } => callee_info.service_names
+              Absent => []
             }
           )
           let merged = extra |> fold(init: info.service_names, f: (svc_list, svc) =>
@@ -161,7 +161,7 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
             })
           }
         }
-      None => reg2
+      Absent => reg2
     }
   ))
 }
@@ -189,8 +189,8 @@ fn check_service_field_access_node(base_type: Node, field: String, service_regis
   if base_type.connective == NoConnective && base_type.children |> count == 0 {
     let path = concat(authored_name_at(source_indices: source_indices, node: base_type), ".", field)
     match map_get(service_registry, path) {
-      Some { value: _ } => Some { value: nominal_type_ref(name: path) }
-      None => none
+      Present { value: _ } => Present { value: nominal_type_ref(name: path) }
+      Absent => none
     }
   } else { none }
 }
@@ -198,26 +198,26 @@ fn check_service_field_access_node(base_type: Node, field: String, service_regis
 fn check_service_method_call_node(receiver_type: Node, method: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> ServiceMethodResult? {
   if receiver_type.connective == NoConnective && receiver_type.children |> count == 0 {
     match map_get(service_registry, authored_name_at(source_indices: source_indices, node: receiver_type)) {
-      Some { value: ops } =>
+      Present { value: ops } =>
         let matching = ops |> filter(op => op.name == method)
         match matching |> first {
-          Some { value: op } =>
+          Present { value: op } =>
             if op.outputs |> count == 0 {
-              Some { value: ServiceMethodResult { result_type: unit_type, op_params: op.params } }
+              Present { value: ServiceMethodResult { result_type: unit_type, op_params: op.params } }
             } else {
-              Some { value: ServiceMethodResult {
+              Present { value: ServiceMethodResult {
                 result_type: Node {
                   name: "", span: no_span(), ident_span: none,
-                  children: map(op.outputs, f => Node { name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: param_node_type_expr(n: f) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }),
+                  children: map(op.outputs, f => Node { name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: param_node_type_expr(n: f) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }),
                   connective: Conj,
                   params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
                 },
                 op_params: op.params
               } }
             }
-          None => none
+          Absent => none
         }
-      None => none
+      Absent => none
     }
   } else { none }
 }

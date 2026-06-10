@@ -60,7 +60,7 @@ data python_operators: List<OperatorSpec> = [
   // Div is algebra-aware for total reciprocal-shaped Field division and the
   // v2-only AlgQuotient compatibility selector.
   // Ref: Python Reference §6.7 "Binary arithmetic operations"
-  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: AlgReciprocal } },
-  OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: AlgQuotient } },
+  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Present { value: AlgReciprocal } },
+  OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Present { value: AlgQuotient } },
   OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none }
 ]

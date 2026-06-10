@@ -18,11 +18,27 @@ module v4.test.claim.parse.parse_table_claims
 
 
 import v4.std.logic { Bool }
-import v4.std.collection { List }
+import v4.std.collection { List, Set }
 import v4.std.algebra { Cons, Empty, length }
 import v4.std.lexing { Token }
 import v4.std.node { Symbol }
-import v4.compiler.parse { token_position_indices }
+import v4.std.grammar {
+  Choice,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  Nonterminal,
+  Optional,
+  ParseGrammar,
+  Repeat,
+  Sequence,
+  Terminal,
+  grammar_atom,
+  grammar_carries_symbol,
+  grammar_empty_sync_tokens
+}
+import v4.compiler.parse { expr_is_nullable_given_set, token_position_indices }
 
 import v4.std.verification {
   BoolWitness,
@@ -54,11 +70,142 @@ fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
     && ((length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 4) == false)
 }
 
+// Singleton nullable set: only `name` is nullable.
+fn nullable_set_singleton(name: Symbol) -> Set<Symbol> {
+  Set { member: fn(sym) { sym == name } }
+}
+
+
+// Receipt B (expr_is_nullable_given_set is a correct GrammarExprFold catamorphism consumer):
+// EXECUTES the rewritten nullable query over a fixed nullable set across every GrammarExpr
+// variant and BOTH branch directions, discriminating each result:
+//   - Terminal: never nullable (false)
+//   - Nonterminal: nullable iff in the set (probe → true, other → false)
+//   - Optional / Repeat: always nullable (true)
+//   - Sequence: nullable iff BOTH sides nullable (Optional;probe → true; Terminal;Optional → false)
+//   - Choice: nullable iff EITHER side nullable (Terminal|Optional → true; Terminal|other → false)
+// Mutating any combine arm of expr_is_nullable_given_set (or fold_grammar_expr's recursion) flips
+// at least one conjunct → red.
+fn parse_table_nullable_morphism_holds() -> Bool {
+  let ns = nullable_set_singleton(name: ^parse_table_nullable_probe_nt)
+  (expr_is_nullable_given_set(
+    expr: Terminal { token_class: ^parse_table_nullable_tok },
+    nullable_set: ns
+  ) == false)
+    && (expr_is_nullable_given_set(
+      expr: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Repeat { element: Terminal { token_class: ^parse_table_nullable_tok } },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Nonterminal { production: ^parse_table_nullable_probe_nt },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Nonterminal { production: ^parse_table_nullable_other_nt },
+      nullable_set: ns
+    ) == false)
+    && (expr_is_nullable_given_set(
+      expr: Sequence {
+        left: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } },
+        right: Nonterminal { production: ^parse_table_nullable_probe_nt }
+      },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Sequence {
+        left: Terminal { token_class: ^parse_table_nullable_tok },
+        right: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } }
+      },
+      nullable_set: ns
+    ) == false)
+    && (expr_is_nullable_given_set(
+      expr: Choice {
+        left: Terminal { token_class: ^parse_table_nullable_tok },
+        right: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } }
+      },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Choice {
+        left: Terminal { token_class: ^parse_table_nullable_tok },
+        right: Nonterminal { production: ^parse_table_nullable_other_nt }
+      },
+      nullable_set: ns
+    ) == false)
+}
+
+
+// ModeledGrammar whose single production expression nests every compound GrammarExpr variant
+// (Sequence over Choice over Optional over Repeat) plus the leaf variants (Terminal, Nonterminal).
+// grammar_carries_symbol projects the grammar to a Node via grammar_expr_to_node (now a
+// fold_grammar_expr consumer) and folds it looking for an atom identity.
+fn parse_table_projection_grammar() -> ParseGrammar {
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ^pt_proj_start,
+      productions: Cons {
+        head: GrammarProduction {
+          name: ^pt_proj_start,
+          expression: Sequence {
+            left: Terminal { token_class: ^pt_proj_tok_a },
+            right: Choice {
+              left: Nonterminal { production: ^pt_proj_nt_b },
+              right: Optional { element: Repeat { element: Terminal { token_class: ^pt_proj_tok_c } } }
+            }
+          },
+          emitted: grammar_atom(identity: ^pt_proj_start)
+        },
+        tail: Empty
+      },
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+// Receipt C (grammar_expr_to_node walker dissolution is behavior-preserving): the projection now
+// routes through fold_grammar_expr. EXECUTES grammar_carries_symbol over a grammar nesting all six
+// GrammarExpr variants and discriminates: each symbol that the projection must carry through a
+// distinct variant's edge (Terminal token_class, Nonterminal production, Repeat-wrapped Terminal)
+// is found; an absent symbol is not. Dropping any variant's child edge in the fold algebra makes
+// the corresponding symbol unreachable → red.
+fn parse_table_grammar_expr_projection_holds() -> Bool {
+  (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_tok_a) == true)
+    && (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_nt_b) == true)
+    && (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_tok_c) == true)
+    && (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_absent) == false)
+}
+
+
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
 // Co-located with `parse_table_token_position_indices_no_extra_append_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_parse_table_token_position_indices: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/parse/parse_table_claims.dag",
     function: parse_table_token_position_indices_no_extra_append_holds
+  }
+}
+
+
+// Co-located BoolWitnessClaim for the GrammarExprFold catamorphism consumer (node://adhoc-b696538c-710),
+// so glob discovery finds the witness without the central roster.
+data unified_claim_parse_table_nullable_morphism: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/parse/parse_table_claims.dag",
+    function: parse_table_nullable_morphism_holds
+  }
+}
+
+
+// Co-located BoolWitnessClaim for the grammar_expr_to_node walker dissolution (node://adhoc-b696538c-710),
+// so glob discovery finds the witness without the central roster.
+data unified_claim_parse_table_grammar_expr_projection: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/parse/parse_table_claims.dag",
+    function: parse_table_grammar_expr_projection_holds
   }
 }

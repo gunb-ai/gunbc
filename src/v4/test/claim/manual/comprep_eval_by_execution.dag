@@ -32,7 +32,7 @@ import v4.extdeps.languages.dag {
   dag_language_model_wave1,
   dag_mvp1_source_text
 }
-import v4.std.collection { List, Map, Set, map_insert }
+import v4.std.collection { Absent, List, Map, Present, Set, map_insert }
 import v4.std.cardinality { termination_proof_witness_for_node }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.diagnostic {
@@ -184,14 +184,14 @@ fn comprep_eval_arg_is_count(value: RuntimeValue, n: Int) -> Bool {
 fn comprep_eval_ordered_add_args(args: List<RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match first(args) {
-      Some { value: left } =>
+      Present { value: left } =>
         match last(args) {
-          Some { value: right } =>
+          Present { value: right } =>
             comprep_eval_arg_is_count(value: left, n: 2)
               && comprep_eval_arg_is_count(value: right, n: 3)
-          None => false
+          Absent => false
         }
-      None => false
+      Absent => false
     }
   } else {
     false

@@ -748,15 +748,15 @@ fn render_coercion_test_rust(entry: CoercionTestEntry) -> String {
 
 fn first_or_empty(items: List<String>) -> String {
   match items |> first {
-    Some { value: v } => v
-    None => ""
+    Present { value: v } => v
+    Absent => ""
   }
 }
 
 fn second_or_empty(items: List<String>) -> String {
   match items |> skip(count: 1) |> first {
-    Some { value: v } => v
-    None => ""
+    Present { value: v } => v
+    Absent => ""
   }
 }
 

@@ -214,7 +214,7 @@ data compiler_recursive_types: Map<String, Bool> = {
 // Query: is a type name in the compiler's recursive type set?
 fn is_compiler_recursive_type(name: String) -> Bool {
   match map_get(compiler_recursive_types, name) {
-    Some { value: _ } => true
-    None => false
+    Present { value: _ } => true
+    Absent => false
   }
 }

@@ -6,6 +6,8 @@ use crate::extdeps_cargo::CargoDepSource::{LocalPathDep, RegistryDep};
 pub use crate::extdeps_cargo::{CargoDepSource, CargoDependency};
 pub use crate::v2_compiler_emit_rust::{emit_cargo_dep, emit_non_empty_wrappers};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 pub use crate::v2_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

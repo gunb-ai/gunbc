@@ -15,6 +15,8 @@ pub use crate::v2_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, node_is_keyed_collection, resolved_type,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::{ArityMismatch, InternalError, UnresolvedType};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
