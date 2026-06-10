@@ -222,15 +222,6 @@ fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
   )
 }
 
-fn rust_witness_pattern_qualifier(scrut_type: String) -> String {
-  let prefix = "v2_rt::Witness"
-  if string_length(s: scrut_type) >= string_length(s: prefix) && substring(s: scrut_type, start: 0, end: string_length(s: prefix)) == prefix {
-    "v2_rt::Witness"
-  } else {
-    "v2_rt::Witness"
-  }
-}
-
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Present { value: TypeVariable { id: tv } } => tv
@@ -3458,6 +3449,8 @@ fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String
                 _ => ""
               }
             } else {
+              // This path segment follows the emitted Rust Option pattern (`Some(...)`),
+              // not the canonical DAG Optional constructor (`Present`).
               collect_pattern_string_guards(pattern: fb_pat, path_prefix: list_push(path_prefix, "Some"), source_indices: source_indices)
             }
           Absent => ""
@@ -3587,12 +3580,12 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   let qualified = if optional_variant {
     rust_name
   } else {
-    match resolved_parent {
-      Present { value: parent } =>
-        if parent == "Witness" { concat(rust_witness_pattern_qualifier(scrut_type: scrut_type), "::", rust_name) }
-        else { concat(parent, "::", rust_name) }
-      Absent => rust_name
-    }
+	    match resolved_parent {
+	      Present { value: parent } =>
+	        if parent == "Witness" { concat("v2_rt::Witness::", rust_name) }
+	        else { concat(parent, "::", rust_name) }
+	      Absent => rust_name
+	    }
   }
   if optional_variant && name == "Present" && field_bindings |> count == 1 {
     match field_bindings |> first {
@@ -3814,12 +3807,12 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   let qualified = if optional_variant {
     rust_name
   } else {
-    match resolved_parent {
-      Present { value: parent } =>
-        if parent == "Witness" { concat(rust_witness_pattern_qualifier(scrut_type: scrut_type), "::", rust_name) }
-        else { concat(parent, "::", rust_name) }
-      Absent => rust_name
-    }
+	    match resolved_parent {
+	      Present { value: parent } =>
+	        if parent == "Witness" { concat("v2_rt::Witness::", rust_name) }
+	        else { concat(parent, "::", rust_name) }
+	      Absent => rust_name
+	    }
   }
   if optional_variant && name == "Present" && field_bindings |> count == 1 {
     match field_bindings |> first {

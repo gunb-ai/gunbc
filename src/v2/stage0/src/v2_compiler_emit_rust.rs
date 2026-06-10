@@ -282,20 +282,6 @@ pub fn rust_normalize_partial_function_field_type_text(rendered: String) -> Stri
     )
 }
 
-pub fn rust_witness_pattern_qualifier(scrut_type: String) -> String {
-    {
-        let prefix = "v2_rt::Witness".to_string();
-        if ((v2_rt::string_length(&scrut_type) >= v2_rt::string_length(&prefix))
-            && (v2_rt::substring(&scrut_type, 0, v2_rt::string_length(&prefix)).as_str()
-                == prefix.clone().as_str()))
-        {
-            "v2_rt::Witness".to_string()
-        } else {
-            "v2_rt::Witness".to_string()
-        }
-    }
-}
-
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -8823,13 +8809,7 @@ pub fn emit_variant_pattern(
             match resolved_parent.clone() {
                 Some(parent) => {
                     if (parent.clone().as_str() == "Witness".to_string().as_str()) {
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                rust_witness_pattern_qualifier(scrut_type.clone()),
-                                "::".to_string(),
-                            ),
-                            rust_name.clone(),
-                        )
+                        v2_rt::concat("v2_rt::Witness::".to_string(), rust_name.clone())
                     } else {
                         v2_rt::concat(
                             v2_rt::concat(parent.clone(), "::".to_string()),
@@ -9462,13 +9442,7 @@ pub fn emit_variant_pattern_rc_aware(
             match resolved_parent.clone() {
                 Some(parent) => {
                     if (parent.clone().as_str() == "Witness".to_string().as_str()) {
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                rust_witness_pattern_qualifier(scrut_type.clone()),
-                                "::".to_string(),
-                            ),
-                            rust_name.clone(),
-                        )
+                        v2_rt::concat("v2_rt::Witness::".to_string(), rust_name.clone())
                     } else {
                         v2_rt::concat(
                             v2_rt::concat(parent.clone(), "::".to_string()),
