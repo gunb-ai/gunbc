@@ -1,0 +1,561 @@
+// src/v4/compiler/06_value_expression.dag
+// Scope: T6 value-expression tier — Behavior sub-DAG → TargetValueExpression → ConcreteSyntaxToken.
+// Status: skeleton — Transform-for-add arm only (COMPREP wave-3 / #4623 vetting consumer).
+// Anchor: docs/design-value-emit-schema.md §4.1–§4.4.
+
+module v4.compiler.value_expression
+
+import v4.std.algebra { fold, fold_list }
+import v4.std.collection {
+  List,
+  Optional,
+  optional_absent,
+  optional_present,
+  map_get,
+  list_at_optional
+}
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.node {
+  Atom,
+  ComputationNode,
+  Named,
+  Node,
+  Transform,
+  TypeNode,
+  Symbol
+}
+import v4.std.node_query { find_arrow_body_child, node_positional_child_targets }
+import v4.std.target_model {
+  BoundToken,
+  CanonicalOperation,
+  ConcreteSyntaxToken,
+  FixedToken,
+  InfixToken,
+  canonical_operation_op_add,
+  TargetModel,
+  TargetOperatorRealization,
+  TargetOperatorShape,
+  TargetValueExpression,
+  TargetValueExpressionProjection,
+  TargetValueExprPrimitiveApply,
+  decode_value_expression_projection_bundle,
+  target_model_edge_operator_realizations,
+  target_model_edge_value_expression_projection,
+  target_operator_realization_field_operation,
+  target_operator_realization_field_shape,
+  target_operator_shape_field_token,
+  target_value_expr_field_binding,
+  target_value_expr_field_operand,
+  target_value_expression_binding_ref,
+  target_value_expression_primitive_apply
+}
+
+data value_expr_reason_surface_op_unmapped: Symbol = value_expr_reason_surface_op_unmapped
+data value_expr_reason_operator_catalog_miss: Symbol = value_expr_reason_operator_catalog_miss
+data value_expr_reason_transform_shape_invalid: Symbol = value_expr_reason_transform_shape_invalid
+data value_expr_reason_projection_bundle_missing: Symbol = value_expr_reason_projection_bundle_missing
+
+fn value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟡 gated — feature:canonical-op-from-surface-atom — dissolve-on: resolve maps surface op token → CanonicalOperation at resolve stage.
+fn surface_op_atom_to_canonical(op_atom: Symbol) -> Optional<CanonicalOperation> {
+  if op_atom == ^dag_token_plus {
+    optional_present(canonical_operation_op_add())
+  } else {
+    optional_absent()
+  }
+}
+
+fn transform_positional_operand_binding(node: Node, index: Int) -> Outcome<Symbol> {
+  bind_outcome(
+    o: list_nth(xs: node_positional_child_targets(node: node), index: index),
+    f: fn(child) {
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          outcome_accepted(id)
+        _ =>
+          outcome_rejected(
+            value_expr_diagnostic(
+              reason: value_expr_reason_transform_shape_invalid,
+              node: child
+            )
+          )
+      }
+    }
+  )
+}
+
+fn transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: list_nth(xs: node_positional_child_targets(node: node), index: 0),
+    f: fn(child) {
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+        _ =>
+          outcome_rejected(
+            value_expr_diagnostic(
+              reason: value_expr_reason_transform_shape_invalid,
+              node: child
+            )
+          )
+      }
+    }
+  )
+}
+
+fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      bind_outcome(
+        o: transform_surface_op_atom(node: node),
+        f: fn(op_atom) {
+          match surface_op_atom_to_canonical(op_atom: op_atom) {
+            Absent =>
+              outcome_rejected(
+                value_expr_diagnostic(
+                  reason: value_expr_reason_surface_op_unmapped,
+                  node: node
+                )
+              )
+            Present { value: operation } =>
+              bind_outcome(
+                o: transform_positional_operand_binding(node: node, index: 1),
+                f: fn(left_binding) {
+                  bind_outcome(
+                    o: transform_positional_operand_binding(node: node, index: 2),
+                    f: fn(right_binding) {
+                      outcome_accepted(
+                        target_value_expression_primitive_apply(
+                          operation: operation,
+                          operands: [
+                            target_value_expression_binding_ref(binding: left_binding),
+                            target_value_expression_binding_ref(binding: right_binding)
+                          ]
+                        )
+                      )
+                    }
+                  )
+                }
+              )
+          }
+        }
+      )
+    _ =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_transform_shape_invalid,
+          node: node
+        )
+      )
+  }
+}
+
+fn project_computation_to_value_expression(node: Node) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      project_transform_primitive_apply(node: node)
+    _ =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_transform_shape_invalid,
+          node: node
+        )
+      )
+  }
+}
+
+fn target_bundle_named_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
+  match target.bundle.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        target.bundle.children,
+        init: Rejected {
+          diagnostics: diagnostics_singleton(
+            d: value_expr_diagnostic(
+              reason: value_expr_reason_projection_bundle_missing,
+              node: target.bundle
+            )
+          )
+        },
+        f: fn(acc, e) {
+          match acc {
+            Accepted { value: _, diagnostics: _ } => acc
+            Rejected { diagnostics: _ } =>
+              match e.label {
+                Named { name: n } =>
+                  if n == edge_name {
+                    Accepted { value: e.target, diagnostics: None }
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Accepted { value: child, diagnostics: d } =>
+          Accepted { value: child, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_projection_bundle_missing,
+          node: target.bundle
+        )
+      )
+  }
+}
+
+fn value_expression_projection_from_target(
+  target: TargetModel
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: target_bundle_named_child(
+      target: target,
+      edge_name: target_model_edge_value_expression_projection
+    ),
+    f: fn(bundle) {
+      decode_value_expression_projection_bundle(bundle: bundle)
+    }
+  )
+}
+
+fn operator_realization_shape_from_row(row: Node) -> Outcome<TargetOperatorShape> {
+  match row.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        row.children,
+        init: Rejected {
+          diagnostics: diagnostics_singleton(
+            d: value_expr_diagnostic(
+              reason: value_expr_reason_operator_catalog_miss,
+              node: row
+            )
+          )
+        },
+        f: fn(acc, e) {
+          match acc {
+            Accepted { value: _, diagnostics: _ } => acc
+            Rejected { diagnostics: _ } =>
+              match e.label {
+                Named { name: n } =>
+                  if n == target_operator_realization_field_shape {
+                    match e.target.kind {
+                      TypeNode { connective: Atom { identity: id } } =>
+                        if id == discriminant(v: InfixToken {}) {
+                          match fold(
+                            e.target.children,
+                            init: Rejected {
+                              diagnostics: diagnostics_singleton(
+                                d: value_expr_diagnostic(
+                                  reason: value_expr_reason_operator_catalog_miss,
+                                  node: row
+                                )
+                              )
+                            },
+                            f: fn(tok_acc, tok_e) {
+                              match tok_acc {
+                                Accepted { value: _, diagnostics: _ } => tok_acc
+                                Rejected { diagnostics: _ } =>
+                                  match tok_e.label {
+                                    Named { name: tn } =>
+                                      if tn == target_operator_shape_field_token {
+                                        match tok_e.target.kind {
+                                          TypeNode {
+                                            connective: Atom { identity: token }
+                                          } =>
+                                            Accepted {
+                                              value: InfixToken { token: token },
+                                              diagnostics: None
+                                            }
+                                          _ => tok_acc
+                                        }
+                                      } else {
+                                        tok_acc
+                                      }
+                                    Positional => tok_acc
+                                  }
+                              }
+                            }
+                          ) {
+                            Accepted { value: shape, diagnostics: d } =>
+                              Accepted { value: shape, diagnostics: d }
+                            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          }
+                        } else {
+                          acc
+                        }
+                      _ => acc
+                    }
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Accepted { value: shape, diagnostics: d } =>
+          Accepted { value: shape, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_operator_catalog_miss,
+          node: row
+        )
+      )
+  }
+}
+
+fn operator_realization_row_matches_operation(
+  row: Node,
+  operation: CanonicalOperation
+) -> Bool {
+  match row.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        row.children,
+        init: false,
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: n } =>
+              if n == target_operator_realization_field_operation {
+                match e.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    acc || (id == discriminant(v: operation))
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+        }
+      )
+    _ => false
+  }
+}
+
+fn operator_realization_lookup(
+  catalog: Node,
+  operation: CanonicalOperation
+) -> Outcome<TargetOperatorRealization> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: Rejected {
+          diagnostics: diagnostics_singleton(
+            d: value_expr_diagnostic(
+              reason: value_expr_reason_operator_catalog_miss,
+              node: catalog
+            )
+          )
+        },
+        f: fn(acc, e) {
+          match acc {
+            Accepted { value: _, diagnostics: _ } => acc
+            Rejected { diagnostics: _ } =>
+              match e.label {
+                Named { name: _ } =>
+                  if operator_realization_row_matches_operation(
+                    row: e.target,
+                    operation: operation
+                  ) {
+                    bind_outcome(
+                      o: operator_realization_shape_from_row(row: e.target),
+                      f: fn(shape) {
+                        outcome_accepted(
+                          TargetOperatorRealization {
+                            operation: operation,
+                            shape: shape
+                          }
+                        )
+                      }
+                    )
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Accepted { value: row, diagnostics: d } =>
+          Accepted { value: row, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_operator_catalog_miss,
+          node: catalog
+        )
+      )
+  }
+}
+
+fn operator_realization_catalog_from_target(target: TargetModel) -> Outcome<Node> {
+  target_bundle_named_child(
+    target: target,
+    edge_name: target_model_edge_operator_realizations
+  )
+}
+
+fn primitive_apply_operand_bindings(expr: TargetValueExpression) -> Outcome<List<Symbol>> {
+  match expr.kind {
+    TargetValueExprPrimitiveApply =>
+      outcome_accepted(
+        fold_list(
+          xs: expr.node.children,
+          empty: Empty,
+          cons: fn(acc, edge) {
+            match edge.label {
+              Named { name: n } =>
+                if n == target_value_expr_field_operand {
+                  match fold(
+                    edge.target.children,
+                    init: acc,
+                    f: fn(a, inner_e) {
+                      match inner_e.label {
+                        Named { name: bn } =>
+                          if bn == target_value_expr_field_binding {
+                            match inner_e.target.kind {
+                              TypeNode { connective: Atom { identity: id } } =>
+                                Cons { head: id, tail: a }
+                              _ => a
+                            }
+                          } else {
+                            a
+                          }
+                        Positional => a
+                      }
+                    }
+                  ) {
+                    bindings => bindings
+                  }
+                } else {
+                  acc
+                }
+              Positional => acc
+            }
+          }
+        )
+      )
+    _ =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_transform_shape_invalid,
+          node: expr.node
+        )
+      )
+  }
+}
+
+fn value_expression_to_concrete_tokens(
+  expr: TargetValueExpression,
+  target: TargetModel,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: operator_realization_catalog_from_target(target: target),
+    f: fn(catalog) {
+      match expr.kind {
+        TargetValueExprPrimitiveApply =>
+          bind_outcome(
+            o: primitive_apply_operand_bindings(expr: expr),
+            f: fn(bindings) {
+              bind_outcome(
+                o: list_nth(xs: bindings, index: 0),
+                f: fn(left_binding) {
+                  bind_outcome(
+                    o: list_nth(xs: bindings, index: 1),
+                    f: fn(right_binding) {
+                      bind_outcome(
+                        o: operator_realization_lookup(
+                          catalog: catalog,
+                          operation: canonical_operation_op_add()
+                        ),
+                        f: fn(realization) {
+                          match realization.shape {
+                            InfixToken { token: op_token } =>
+                              outcome_accepted(
+                                [
+                                  BoundToken {
+                                    token_class: projection.binding_ref_form.ident_token,
+                                    binding: left_binding
+                                  },
+                                  FixedToken { token_class: op_token },
+                                  BoundToken {
+                                    token_class: projection.binding_ref_form.ident_token,
+                                    binding: right_binding
+                                  }
+                                ]
+                              )
+                            _ =>
+                              outcome_rejected(
+                                value_expr_diagnostic(
+                                  reason: value_expr_reason_operator_catalog_miss,
+                                  node: expr.node
+                                )
+                              )
+                          }
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        _ =>
+          outcome_rejected(
+            value_expr_diagnostic(
+              reason: value_expr_reason_transform_shape_invalid,
+              node: expr.node
+            )
+          )
+      }
+    }
+  )
+}
+
+fn arrow_has_transform_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match body.kind {
+        ComputationNode { behavior: Transform } => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn project_arrow_body_to_value_expression(arrow: Node) -> Outcome<TargetValueExpression> {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      project_computation_to_value_expression(node: body)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}

@@ -12,6 +12,14 @@
 module v4.compiler.translate
 
 
+import v4.compiler.value_expression {
+  arrow_has_transform_body,
+  project_arrow_body_to_value_expression,
+  value_expression_projection_from_target,
+  value_expression_to_concrete_tokens
+}
+// 🟡 gated — feature:t6-value-expr-bodied-arrow-serialize — dissolve-on: statement scaffold rows live on TargetModel bundle, not extdeps import from translate.
+import v4.extdeps.languages.typescript { ts_mvp1_compose_add_fn_tokens }
 import v4.compiler.target_carriers { TargetSource }
 import v4.std.target_model { TargetModel }
 import v4.compiler.infer { InferredTree, canonical_grounding_for_node }
@@ -79,6 +87,7 @@ import v4.std.target_model {
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
+  TargetValueExpression,
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -893,6 +902,87 @@ fn grammar_inverse_source_validated(
     }
   )
 }
+fn serialize_concrete_syntax_tokens_to_source(
+  target: TargetModel,
+  tokens: List<ConcreteSyntaxToken>
+) -> Outcome<TargetSource> {
+  fold_list(
+    xs: tokens,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, token) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          match token {
+            FixedToken { token_class: token_class } =>
+              bind_outcome(
+                o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
+                f: fn(spelling) {
+                  Accepted {
+                    value: list_append(left: partial, right: spelling),
+                    diagnostics: ad
+                  }
+                }
+              )
+            BoundToken { token_class: _, binding: binding } =>
+              match map_get(target.binding_spellings, binding) {
+                Accepted { value: opt, diagnostics: pending } =>
+                  match opt {
+                    Present { value: spelling } =>
+                      Accepted {
+                        value: list_append(left: partial, right: spelling),
+                        diagnostics: diagnostics_merge(outer: ad, inner: pending)
+                      }
+                    Absent =>
+                      Rejected {
+                        diagnostics: rejected_with_pending(
+                          pending: ad,
+                          rejected: diagnostics_singleton(
+                            d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+                          )
+                        )
+                      }
+                  }
+                Rejected { diagnostics: r } =>
+                  Rejected {
+                    diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                  }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn target_serialize_bodied_arrow_from_model(
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: value_expression_projection_from_target(target: target),
+    f: fn(projection) {
+      bind_outcome(
+        o: project_arrow_body_to_value_expression(arrow: emitted),
+        f: fn(expr) {
+          bind_outcome(
+            o: value_expression_to_concrete_tokens(
+              expr: expr,
+              target: target,
+              projection: projection
+            ),
+            f: fn(body_tokens) {
+              serialize_concrete_syntax_tokens_to_source(
+                target: target,
+                tokens: ts_mvp1_compose_add_fn_tokens(body_tokens: body_tokens)
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn target_serialize_relation_row_from_model_bounded(
   remaining: Int,
   target: TargetModel,
@@ -902,6 +992,8 @@ fn target_serialize_relation_row_from_model_bounded(
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
+  } else if arrow_has_transform_body(arrow: emitted) {
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     bind_outcome(
       o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
