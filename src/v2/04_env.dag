@@ -133,6 +133,13 @@ fn lookup_carrier_type_for(env: TypeEnv, node: Node) -> Node? {
   }
 }
 
+fn lookup_carrier_type_by_name(env: TypeEnv, name: String) -> Node? {
+  match env.carrier_bindings |> map_values |> filter(binding => binding.name == name) |> first {
+    Present { value: binding } => Present { value: binding.resolved }
+    Absent => none
+  }
+}
+
 fn node_has_binding_id(n: Node, binding_id: BindingId) -> Bool {
   match n.binding_id {
     Present { value: actual } => actual == binding_id

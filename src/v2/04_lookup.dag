@@ -33,7 +33,7 @@ import v2.compiler.infer_types {
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
-  is_recursive_type, lookup_type, lookup_type_for
+  is_recursive_type, lookup_type, lookup_type_for, lookup_carrier_type_by_name
 }
 import v2.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
@@ -178,13 +178,26 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
       match lookup_type_for(env: env, node: normed) {
         Present { value: resolved } =>
           if authored_name(env: env, node: resolved) == canonical && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
-            normed
+            match lookup_carrier_type_by_name(env: env, name: canonical) {
+              Present { value: carrier } =>
+                let result = resolve_scrutinee_type_node_seen(env: env, n: carrier, seen: next_seen)
+                let is_optional = normed.return_cardinality == CardOptional
+                if is_optional { with_optional_cardinality(n: result) } else { result }
+              Absent => normed
+            }
           } else {
             let result = resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
             let is_optional = normed.return_cardinality == CardOptional
             if is_optional { with_optional_cardinality(n: result) } else { result }
           }
-        Absent => normed
+        Absent =>
+          match lookup_carrier_type_by_name(env: env, name: canonical) {
+            Present { value: carrier } =>
+              let result = resolve_scrutinee_type_node_seen(env: env, n: carrier, seen: next_seen)
+              let is_optional = normed.return_cardinality == CardOptional
+              if is_optional { with_optional_cardinality(n: result) } else { result }
+            Absent => normed
+          }
       }
     }
   } else { normed }
