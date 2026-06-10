@@ -8,8 +8,8 @@
 
 use emit_host_runner::{
     host_logical_run_from_exit, run_emit_host_go, run_emit_host_python, run_emit_host_rust,
-    run_emit_host_typescript, EmitHostFixtureInputs, EmitHostRunReceipt, HostExit, HostSetupFailure,
-    RuntimeValueParseFailure,
+    run_emit_host_typescript, EmitHostFixtureInputs, EmitHostRunReceipt, HostExit,
+    HostSetupFailure, RuntimeValueParseFailure,
 };
 
 /// MVP-2 / `eval_runtime_mvp` alignment: five stdout bytes denote runtime value `5`.

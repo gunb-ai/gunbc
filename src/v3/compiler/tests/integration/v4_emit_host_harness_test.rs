@@ -127,8 +127,7 @@ const EMIT_HOST_GO_FIXTURE_SOURCE: &str =
     "package main\nimport \"os\"\nfunc main() { _, _ = os.Stdout.Write(make([]byte, 5)) }\n";
 
 /// Minimal typescript host fixture: five stdout bytes (MVP runtime value `5` alignment).
-const EMIT_HOST_TYPESCRIPT_FIXTURE_SOURCE: &str =
-    "process.stdout.write(Buffer.alloc(5));\n";
+const EMIT_HOST_TYPESCRIPT_FIXTURE_SOURCE: &str = "process.stdout.write(Buffer.alloc(5));\n";
 
 /// Mutated mvp1 add-fn emit (wrong op) — transport harness must refuse / fail closed.
 const EMIT_HOST_TYPESCRIPT_MUTATED_ADD_SOURCE: &str =
