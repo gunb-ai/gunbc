@@ -558,6 +558,15 @@ pub const EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN: &str =
 /// `npx -p` package pin for the typescript host row (matches M0 probe).
 pub const EMIT_HOST_TYPESCRIPT_TSC_PACKAGE: &str = "typescript@5.9.2";
 
+/// Ambient Node globals for `tsc` without requiring `@types/node` in the ephemeral work dir.
+const TYPESCRIPT_NODE_AMBIENT_DECLS: &str = r#"
+declare const process: {
+  exit(code?: number): never;
+  stdout: { write(chunk: Uint8Array): boolean };
+};
+declare const Buffer: { alloc(size: number): Uint8Array };
+"#;
+
 /// Transport harness appended after gunbc-emitted mvp1 add-fn source (not part of emitted text).
 const TYPESCRIPT_MVP1_ADD_EXECUTE_HARNESS: &str = r#"
 const __gunbc_add_probe = add(2, 3);
@@ -567,12 +576,91 @@ if (__gunbc_add_probe !== 5) {
 process.stdout.write(Buffer.alloc(5));
 "#;
 
+fn is_mvp1_typescript_add_fn_source(source: &str) -> bool {
+    source.starts_with("function add(x: number, y: number): number")
+}
+
+fn typescript_needs_node_ambients(source: &str) -> bool {
+    source.contains("process.") || source.contains("Buffer.")
+}
+
 fn typescript_fixture_source(source: &str) -> String {
-    if source == EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN {
+    let body = if is_mvp1_typescript_add_fn_source(source) {
         format!("{source}{TYPESCRIPT_MVP1_ADD_EXECUTE_HARNESS}")
     } else {
         source.to_string()
+    };
+    if typescript_needs_node_ambients(&body) {
+        format!("{TYPESCRIPT_NODE_AMBIENT_DECLS}{body}")
+    } else {
+        body
     }
+}
+
+/// Compile `source` with `tsc`, run emitted JS on Node, capture stdout/stderr.
+///
+/// For the mvp1 add-fn authority pin, transport appends a Node harness that calls `add(2, 3)`
+/// and writes the MVP-2 five-byte stdout contract on success — the gunbc-emitted function text
+/// is passed through unchanged.
+pub fn run_emit_host_typescript(
+    source: &str,
+    inputs: &EmitHostTransportInputs,
+    work_dir: &Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+    validate_emit_host_transport_inputs(inputs)?;
+    fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
+        source: e.to_string(),
+    })?;
+
+    let fixture_source = typescript_fixture_source(source);
+    let fixture_ts = work_dir.join("fixture.ts");
+    fs::write(&fixture_ts, &fixture_source).map_err(|e| HostSetupFailure::SourceWriteFailed {
+        source: e.to_string(),
+    })?;
+
+    let out_dir = work_dir.join("tsc-out");
+    fs::create_dir_all(&out_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
+        source: e.to_string(),
+    })?;
+
+    let mut build_cmd = Command::new("npx");
+    build_cmd.args([
+        "-y",
+        "-p",
+        EMIT_HOST_TYPESCRIPT_TSC_PACKAGE,
+        "tsc",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--outDir",
+    ]);
+    build_cmd.arg(&out_dir).arg(&fixture_ts);
+    let build = run_command_bounded(build_cmd, HOST_BUILD_TIMEOUT, HostPhase::Build)?;
+    let build_log = bounded_output_to_log(&build, "tsc");
+    if !matches!(build.status, Some(s) if s.success()) {
+        return Ok(EmitHostRunReceipt {
+            source_text: source.to_string(),
+            exit: host_exit_from_bounded(&build, HostPhase::Build),
+            stdout_bytes: build.stdout,
+            stderr_bytes: build.stderr,
+            build_log,
+        });
+    }
+
+    let js_path = out_dir.join("fixture.js");
+    let mut run_cmd = Command::new(node_binary());
+    run_cmd.arg(&js_path);
+    let run = run_command_bounded(run_cmd, HOST_RUN_TIMEOUT, HostPhase::FixtureRun)?;
+    let mut lines = build_log.lines;
+    lines.extend(bounded_output_to_log(&run, "node").lines);
+    Ok(EmitHostRunReceipt {
+        source_text: source.to_string(),
+        exit: host_exit_from_bounded(&run, HostPhase::FixtureRun),
+        stdout_bytes: run.stdout,
+        stderr_bytes: run.stderr,
+        build_log: BuildLog { lines },
+    })
 }
 
 /// Run `source` as a Python script in `work_dir`, capture stdout/stderr.

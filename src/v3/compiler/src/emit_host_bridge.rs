@@ -1,4 +1,5 @@
-//! Host transport rows for `v4.compiler.emit_host` (`run_emit_host_rust` / `run_emit_host_python` / `run_emit_host_go`).
+//! Host transport rows for `v4.compiler.emit_host` (`run_emit_host_rust` / `run_emit_host_python` /
+//! `run_emit_host_go` / `run_emit_host_typescript`).
 //!
 //! **Modeled authority:** `src/v4/compiler/emit_host.dag` — executable host-process boundary is
 //! `tools/emit_host_runner`; substrate `.dag` assembles `EmitHostRunReceipt` from typed host facts.
@@ -7,7 +8,7 @@
 
 use emit_host_runner::{
     host_logical_run_from_exit, run_emit_host_go, run_emit_host_python, run_emit_host_rust,
-    EmitHostFixtureInputs, EmitHostRunReceipt, HostExit, HostSetupFailure,
+    run_emit_host_typescript, EmitHostFixtureInputs, EmitHostRunReceipt, HostExit, HostSetupFailure,
     RuntimeValueParseFailure,
 };
 
@@ -91,6 +92,16 @@ pub fn run_emit_host_go_transport(
 ) -> Result<EmitHostRunReceipt, emit_host_runner::HostSetupFailure> {
     validate_emit_vs_eval_fixture_inputs(inputs)?;
     run_emit_host_go(source, &inputs.transport(), work_dir)
+}
+
+/// Host-process transport: compile emitted TypeScript via `tsc`, run on Node.
+pub fn run_emit_host_typescript_transport(
+    source: &str,
+    inputs: &EmitHostFixtureInputs,
+    work_dir: &std::path::Path,
+) -> Result<EmitHostRunReceipt, emit_host_runner::HostSetupFailure> {
+    validate_emit_vs_eval_fixture_inputs(inputs)?;
+    run_emit_host_typescript(source, &inputs.transport(), work_dir)
 }
 
 /// True when the host exit witness is `Holds` (logical child succeeded).
@@ -184,6 +195,21 @@ pub fn run_emit_vs_eval_mvp2_go_transport(
         receipt,
         expected_bytes,
         emit_host_runner::runtime_value_parse_go,
+    ))
+}
+
+/// Brief T: real `run_emit_host_typescript` transport + MVP-2 five-byte stdout (mvp1 add-fn row).
+pub fn run_emit_vs_eval_mvp2_typescript_transport(
+    emitted_source: &str,
+    inputs: &EmitHostFixtureInputs,
+    work_dir: &std::path::Path,
+    expected_bytes: [u8; 5],
+) -> Result<EmitHostEmitVsEvalVerdict, emit_host_runner::HostSetupFailure> {
+    let receipt = run_emit_host_typescript_transport(emitted_source, inputs, work_dir)?;
+    Ok(emit_vs_eval_mvp2_verdict_from_receipt(
+        receipt,
+        expected_bytes,
+        emit_host_runner::runtime_value_parse_typescript,
     ))
 }
 
