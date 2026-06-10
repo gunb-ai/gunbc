@@ -419,14 +419,14 @@ type FreeMonoid<T> {
 // Map<K, V> = K -> (1 + V) — a function that may be undefined for some keys.
 //
 // Declared surface (receiver-shaped fields — matches the record below):
-//   lookup(k), get(k) -> V?        (application / alias accessors)
+//   lookup(k) -> Witness<V>; get(k) -> V?        (application / alias accessors)
 //   empty, insert(k, v)
 //   merge(other: PartialFunction<K, V>) -> PartialFunction<K, V>
 //   has(k), contains_key(k) -> Bool
 //   keys() -> FreeMonoid<K>, values() -> FreeMonoid<V>   (sequence views)
 //   size() -> Int
 type PartialFunction<K, V> {
-  lookup: fn(K) -> V?
+  lookup: fn(K) -> Witness<V>
   empty: PartialFunction<K, V>
   get: fn(K) -> V?
   insert: fn(K, V) -> PartialFunction<K, V>
