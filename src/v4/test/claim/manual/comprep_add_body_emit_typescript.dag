@@ -10,8 +10,11 @@ module v4.test.claim.manual.comprep_add_body_emit_typescript
 import v4.compiler.body_producer {
   mvp1_add_arrow_signature_node,
   mvp1_add_arrow_with_body_node,
+  mvp1_add_arrow_with_body_swapped_operands_node,
   mvp1_add_binary_body_node,
-  produce_mvp1_add_arrow_with_body
+  mvp1_add_binary_body_swapped_operands_node,
+  produce_mvp1_add_arrow_with_body,
+  produce_mvp1_add_arrow_with_body_swapped_operands
 }
 import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -99,64 +102,6 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 data comprep_ts_body_emit_pass: Symbol = comprep_ts_body_emit_pass
 data comprep_ts_body_emit_fail: Symbol = comprep_ts_body_emit_fail
 data comprep_ts_body_grounding_miss: Symbol = comprep_ts_body_grounding_miss
-
-data comprep_ts_swapped_operand_body_node: Node = node_unanchored(
-  kind: ComputationNode { behavior: Transform },
-  children: [
-    Edge {
-      label: Positional,
-      target: node_unanchored(
-        kind: TypeNode { connective: Atom { identity: ^dag_token_plus } },
-        children: []
-      )
-    },
-    Edge {
-      label: Positional,
-      target: node_unanchored(
-        kind: TypeNode { connective: Atom { identity: ^dag_binding_param_y } },
-        children: []
-      )
-    },
-    Edge {
-      label: Positional,
-      target: node_unanchored(
-        kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
-        children: []
-      )
-    }
-  ]
-)
-
-data comprep_ts_swapped_bodied_arrow_root: Node = node_unanchored(
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge {
-      label: Positional,
-      target: node_unanchored(
-        kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
-        children: []
-      )
-    },
-    Edge {
-      label: Positional,
-      target: node_unanchored(
-        kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
-        children: []
-      )
-    },
-    Edge {
-      label: Positional,
-      target: node_unanchored(
-        kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
-        children: []
-      )
-    },
-    Edge {
-      label: Named { name: arrow_body_edge },
-      target: comprep_ts_swapped_operand_body_node
-    }
-  ]
-)
 
 data comprep_ts_emit_operand_swap_source_text: String = "function add(x: number, y: number): number { return y + x; }"
 
@@ -284,11 +229,11 @@ fn comprep_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding>
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == comprep_ts_swapped_bodied_arrow_root {
+  } else if node == mvp1_add_arrow_with_body_swapped_operands_node {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == comprep_ts_swapped_operand_body_node {
+  } else if node == mvp1_add_binary_body_swapped_operands_node {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
@@ -467,6 +412,17 @@ fn comprep_ts_producer_inferred_tree() -> Outcome<InferredTree> {
   }
 }
 
+fn comprep_ts_producer_swapped_inferred_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_add_arrow_with_body_swapped_operands() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: comprep_ts_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
 fn comprep_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<TargetSource> {
   bind_outcome(
     o: comprep_ts_producer_inferred_tree(),
@@ -476,9 +432,13 @@ fn comprep_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<TargetSour
   )
 }
 
-data comprep_ts_swapped_bodied_inferred_tree: InferredTree = InferredTree {
-  root: comprep_ts_swapped_bodied_arrow_root,
-  facts: Map { lookup: comprep_ts_facts_lookup }
+fn comprep_ts_emit_from_producer_swapped_tree(target: TargetModel) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: comprep_ts_producer_swapped_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
 }
 
 // E-10 emit-only green: producer-rooted bodied arrow renders the fidelity TS source string.
@@ -492,7 +452,7 @@ fn comprep_ts_bodied_emit_add_fn_accepts_holds() -> Bool {
 }
 
 fn comprep_ts_bodied_emit_operand_swap_discriminates() -> Bool {
-  match emit(tree: comprep_ts_swapped_bodied_inferred_tree, target: ts_mvp1_target_model()) {
+  match comprep_ts_emit_from_producer_swapped_tree(target: ts_mvp1_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source == comprep_ts_emit_operand_swap_source_text) &&
       (source != ts_mvp1_source_text) &&
