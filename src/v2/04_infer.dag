@@ -567,25 +567,10 @@ fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source
   expected_is_optional_coproduct && got_is_string
 }
 
-fn expected_variant_node(expected: Node?, variant_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
-  match expected {
-    Some { value: exp } =>
-      let parent = with_required_cardinality(n: exp)
-      if parent.connective == Disj {
-        parent.children |> filter(v => authored_name_at(source_indices: source_indices, node: v) == variant_name) |> first
-      } else { none }
-    None => none
-  }
-}
-
-fn expected_variant_parent_name(expected: Node?, variant_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
-  match expected_variant_node(expected: expected, variant_name: variant_name, source_indices: source_indices) {
-    Some { value: _ } =>
-      match expected {
-        Some { value: exp } => Some { value: authored_name_at(source_indices: source_indices, node: with_required_cardinality(n: exp)) }
-        None => none
-      }
-    None => none
+fn expected_coproduct_variant(parent: Node, variant_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match parent.connective {
+    Disj => find_child_named(n: parent, name: variant_name, source_indices: source_indices)
+    _ => none
   }
 }
 
@@ -606,8 +591,12 @@ fn record_lit_expected_fields(type_name: String?, scope: InferScope, expected: N
                 None => []
               }
             None =>
-              match expected_variant_node(expected: expected, variant_name: tn, source_indices: scope.type_env.source_indices) {
-                Some { value: variant } => variant.children
+              match expected {
+                Some { value: expected_node } =>
+                  match expected_coproduct_variant(parent: expected_node, variant_name: tn, source_indices: scope.type_env.source_indices) {
+                    Some { value: variant } => variant.children
+                    None => []
+                  }
                 None => []
               }
           }
@@ -2803,7 +2792,14 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
     let local_variant_parent = lookup_variant_parent_enum(scope: scope, name: type_name.value)
-    let expected_variant_parent = expected_variant_parent_name(expected: expected, variant_name: type_name.value, source_indices: scope.type_env.source_indices)
+    let expected_variant_parent = match expected {
+      Some { value: expected_node } =>
+        match expected_coproduct_variant(parent: expected_node, variant_name: type_name.value, source_indices: scope.type_env.source_indices) {
+          Some { value: _ } => Some { value: authored_name_at(source_indices: scope.type_env.source_indices, node: expected_node) }
+          None => none
+        }
+      None => none
+    }
     let effective_variant_parent = match local_variant_parent {
       Some { value: _ } => local_variant_parent
       None => expected_variant_parent
@@ -2816,10 +2812,10 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
           Some { value: local_node } =>
             lookup_type_for(env: scope.type_env, node: local_node)
           None =>
-            match expected_variant_node(expected: expected, variant_name: type_name.value, source_indices: scope.type_env.source_indices) {
-              Some { value: _ } =>
-                match expected {
-                  Some { value: exp } => Some { value: with_required_cardinality(n: exp) }
+            match expected {
+              Some { value: expected_node } =>
+                match expected_coproduct_variant(parent: expected_node, variant_name: type_name.value, source_indices: scope.type_env.source_indices) {
+                  Some { value: _ } => Some { value: expected_node }
                   None => None
                 }
               None => None
