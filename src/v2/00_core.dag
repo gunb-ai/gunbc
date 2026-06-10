@@ -790,23 +790,32 @@ data function_size_effects: Map<String, FunctionSizeEffect> = {
 
 fn is_tree_size_preserving(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
-    Holds { value: TreeSizePreserving } => true
-    Holds { value: PropertyContraction { domain_size: _ } } => true
-    _ => false
+    Holds { value: effect } => match effect {
+      TreeSizePreserving => true
+      PropertyContraction { domain_size: _ } => true
+      _ => false
+    }
+    Violates { diagnostic: _ } => false
   }
 }
 
 fn is_tree_size_reducing(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
-    Holds { value: TreeSizeReducing } => true
-    _ => false
+    Holds { value: effect } => match effect {
+      TreeSizeReducing => true
+      _ => false
+    }
+    Violates { diagnostic: _ } => false
   }
 }
 
 fn is_property_contraction(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
-    Holds { value: PropertyContraction { domain_size: _ } } => true
-    _ => false
+    Holds { value: effect } => match effect {
+      PropertyContraction { domain_size: _ } => true
+      _ => false
+    }
+    Violates { diagnostic: _ } => false
   }
 }
 

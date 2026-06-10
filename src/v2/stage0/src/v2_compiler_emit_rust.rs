@@ -10062,7 +10062,9 @@ pub fn emit_var_ref(
     {
         emit_keyword("null".to_string(), RenderTarget::Rust)
     } else {
-        if ((name.clone().as_str() == "true".to_string().as_str())
+        if name.clone().as_str() == "Absent".to_string().as_str() {
+            "None".to_string()
+        } else if ((name.clone().as_str() == "true".to_string().as_str())
             || (name.clone().as_str() == "false".to_string().as_str()))
         {
             emit_keyword(name.clone(), RenderTarget::Rust)
@@ -10167,7 +10169,9 @@ pub fn emit_typed_expr_base(
                 {
                     emit_keyword("null".to_string(), RenderTarget::Rust)
                 } else {
-                    if ((n.clone().as_str() == "true".to_string().as_str())
+                    if n.clone().as_str() == "Absent".to_string().as_str() {
+                        "None".to_string()
+                    } else if ((n.clone().as_str() == "true".to_string().as_str())
                         || (n.clone().as_str() == "false".to_string().as_str()))
                     {
                         emit_keyword(n.clone(), RenderTarget::Rust)

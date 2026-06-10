@@ -136,7 +136,7 @@ fn rt_collection_ops() -> String {
     "    match table.get(&key).cloned() {\n",
     "        Some(value) => Witness::Holds { value },\n",
     "        None => Witness::Violates {\n",
-    "            diagnostic: format!(\"lookup miss for key {key}\"),\n",
+    "            diagnostic: format!(\"lookup miss for key {}\", key),\n",
     "        },\n",
     "    }\n",
     "}\n\n",
