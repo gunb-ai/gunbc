@@ -1568,38 +1568,32 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
 
 pub fn is_tree_size_preserving(func_name: String) -> bool {
     match v2_rt::lookup(&function_size_effects(), func_name) {
-        v2_rt::Witness::Holds { ref value, .. } => {
-            match value.as_ref() {
-                FunctionSizeEffect::TreeSizePreserving => true,
-                FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
-                _ => false,
-            }
-        }
-        _ => false,
+        v2_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
+            FunctionSizeEffect::TreeSizePreserving => true,
+            FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
+            _ => false,
+        },
+        v2_rt::Witness::Violates { diagnostic: _, .. } => false,
     }
 }
 
 pub fn is_tree_size_reducing(func_name: String) -> bool {
     match v2_rt::lookup(&function_size_effects(), func_name) {
-        v2_rt::Witness::Holds { ref value, .. } => {
-            match value.as_ref() {
-                FunctionSizeEffect::TreeSizeReducing => true,
-                _ => false,
-            }
-        }
-        _ => false,
+        v2_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
+            FunctionSizeEffect::TreeSizeReducing => true,
+            _ => false,
+        },
+        v2_rt::Witness::Violates { diagnostic: _, .. } => false,
     }
 }
 
 pub fn is_property_contraction(func_name: String) -> bool {
     match v2_rt::lookup(&function_size_effects(), func_name) {
-        v2_rt::Witness::Holds { ref value, .. } => {
-            match value.as_ref() {
-                FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
-                _ => false,
-            }
-        }
-        _ => false,
+        v2_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
+            FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
+            _ => false,
+        },
+        v2_rt::Witness::Violates { diagnostic: _, .. } => false,
     }
 }
 

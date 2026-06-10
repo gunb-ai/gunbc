@@ -166,7 +166,7 @@ pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Witness<V> {
     match table.get(&key).cloned() {
         Some(value) => Witness::Holds { value },
         None => Witness::Violates {
-            diagnostic: format!("lookup miss for key {key}"),
+            diagnostic: format!("lookup miss for key {}", key),
         },
     }
 }

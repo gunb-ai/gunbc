@@ -3485,6 +3485,8 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, t
   let scrut_is_known_enum = scrut_type != "" && is_enum_type_name(type_name: scrut_type, type_summaries: type_summaries)
   if name == "Present" || name == "Absent" {
     none
+  } else if name == "Holds" || name == "Violates" {
+    Present { value: "Witness" }
   } else if scrut_is_known_enum {
     Present { value: scrut_type }
   } else {
@@ -5483,7 +5485,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
   match texpr.expr_data {
     ExprLiteral { value: v } => match v { LitNull => true, _ => false }
     ExprVar { binding_kind: _ } =>
-      if n == "none" || n == "None" {
+      if n == "none" || n == "None" || n == "Absent" {
         true
       } else {
         match texpr.inferred {

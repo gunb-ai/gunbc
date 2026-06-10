@@ -8648,10 +8648,16 @@ pub fn pattern_parent_enum(
         {
             None
         } else {
-            if scrut_is_known_enum {
-                Some(scrut_type.clone())
+            if ((name.clone().as_str() == "Holds".to_string().as_str())
+                || (name.clone().as_str() == "Violates".to_string().as_str()))
+            {
+                Some("Witness".to_string())
             } else {
-                parent_enum
+                if scrut_is_known_enum {
+                    Some(scrut_type.clone())
+                } else {
+                    parent_enum
+                }
             }
         }
     }
@@ -8723,10 +8729,16 @@ pub fn emit_variant_pattern(
             }
         };
         let qualified = match resolved_parent.clone() {
-            Some(parent) => v2_rt::concat(
-                v2_rt::concat(parent.clone(), "::".to_string()),
-                rust_name.clone(),
-            ),
+            Some(parent) => {
+                if (parent.clone().as_str() == "Witness".to_string().as_str()) {
+                    v2_rt::concat("v2_rt::Witness::".to_string(), rust_name.clone())
+                } else {
+                    v2_rt::concat(
+                        v2_rt::concat(parent.clone(), "::".to_string()),
+                        rust_name.clone(),
+                    )
+                }
+            }
             None => rust_name.clone(),
         };
         if ((name.clone().as_str() == "Present".to_string().as_str())
@@ -9352,10 +9364,16 @@ pub fn emit_variant_pattern_rc_aware(
             }
         };
         let qualified = match resolved_parent.clone() {
-            Some(parent) => v2_rt::concat(
-                v2_rt::concat(parent.clone(), "::".to_string()),
-                rust_name.clone(),
-            ),
+            Some(parent) => {
+                if (parent.clone().as_str() == "Witness".to_string().as_str()) {
+                    v2_rt::concat("v2_rt::Witness::".to_string(), rust_name.clone())
+                } else {
+                    v2_rt::concat(
+                        v2_rt::concat(parent.clone(), "::".to_string()),
+                        rust_name.clone(),
+                    )
+                }
+            }
             None => rust_name.clone(),
         };
         if ((name.clone().as_str() == "Present".to_string().as_str())
@@ -10062,87 +10080,90 @@ pub fn emit_var_ref(
     {
         emit_keyword("null".to_string(), RenderTarget::Rust)
     } else {
-        if name.clone().as_str() == "Absent".to_string().as_str() {
+        if (name.clone().as_str() == "Absent".to_string().as_str()) {
             "None".to_string()
-        } else if ((name.clone().as_str() == "true".to_string().as_str())
-            || (name.clone().as_str() == "false".to_string().as_str()))
-        {
-            emit_keyword(name.clone(), RenderTarget::Rust)
         } else {
+            if ((name.clone().as_str() == "true".to_string().as_str())
+                || (name.clone().as_str() == "false".to_string().as_str()))
             {
-                let moves_by_value = v2_rt::set_contains(&emit_info.movable.clone(), name.clone());
-                let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-                let variant_parent = effective_variant_parent(
-                    name.clone(),
-                    binding_kind.clone(),
-                    resolved_type.clone(),
-                    emit_info.clone(),
-                    source_indices,
-                );
-                let ref_str = match variant_parent {
-                    Some(enum_name) => {
-                        let qualified = v2_rt::concat(
-                            v2_rt::concat(enum_name.clone(), "::".to_string()),
-                            name.clone(),
-                        );
-                        if v2_rt::set_contains(&shared_types, enum_name.clone()) {
-                            v2_rt::concat(
-                                v2_rt::concat("Rc::new(".to_string(), qualified),
-                                ")".to_string(),
-                            )
-                        } else {
-                            qualified
-                        }
-                    }
-                    None => match v2_rt::map_get(&registry, name.clone()) {
-                        Some(info) => {
-                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-                            if is_data {
-                                v2_rt::concat(to_snake(name.clone()), "()".to_string())
+                emit_keyword(name.clone(), RenderTarget::Rust)
+            } else {
+                {
+                    let moves_by_value =
+                        v2_rt::set_contains(&emit_info.movable.clone(), name.clone());
+                    let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+                    let variant_parent = effective_variant_parent(
+                        name.clone(),
+                        binding_kind.clone(),
+                        resolved_type.clone(),
+                        emit_info.clone(),
+                        source_indices,
+                    );
+                    let ref_str = match variant_parent {
+                        Some(enum_name) => {
+                            let qualified = v2_rt::concat(
+                                v2_rt::concat(enum_name.clone(), "::".to_string()),
+                                name.clone(),
+                            );
+                            if v2_rt::set_contains(&shared_types, enum_name.clone()) {
+                                v2_rt::concat(
+                                    v2_rt::concat("Rc::new(".to_string(), qualified),
+                                    ")".to_string(),
+                                )
                             } else {
-                                {
-                                    let is_function_value =
-                                        match binding_kind.clone().as_deref().cloned() {
-                                            Some(VarBindingKind::FunctionValueBinding) => true,
-                                            _ => false,
-                                        };
-                                    let ident = emit_ident(name.clone(), RenderTarget::Rust);
-                                    let ident_str = if is_function_value {
-                                        ident
-                                    } else {
-                                        if moves_by_value {
-                                            ident
-                                        } else {
-                                            match resolved_type.clone() {
-                                                Some(_) => apply_type_template1(
-                                                    sharing.clone_value.clone(),
-                                                    ident,
-                                                ),
-                                                _ => ident,
-                                            }
-                                        }
-                                    };
-                                    ident_str
-                                }
+                                qualified
                             }
                         }
-                        None => {
-                            let ident = emit_ident(name.clone(), RenderTarget::Rust);
-                            let ident_str = if moves_by_value {
-                                ident
-                            } else {
-                                match resolved_type.clone() {
-                                    Some(_) => {
-                                        apply_type_template1(sharing.clone_value.clone(), ident)
+                        None => match v2_rt::map_get(&registry, name.clone()) {
+                            Some(info) => {
+                                let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                if is_data {
+                                    v2_rt::concat(to_snake(name.clone()), "()".to_string())
+                                } else {
+                                    {
+                                        let is_function_value =
+                                            match binding_kind.clone().as_deref().cloned() {
+                                                Some(VarBindingKind::FunctionValueBinding) => true,
+                                                _ => false,
+                                            };
+                                        let ident = emit_ident(name.clone(), RenderTarget::Rust);
+                                        let ident_str = if is_function_value {
+                                            ident
+                                        } else {
+                                            if moves_by_value {
+                                                ident
+                                            } else {
+                                                match resolved_type.clone() {
+                                                    Some(_) => apply_type_template1(
+                                                        sharing.clone_value.clone(),
+                                                        ident,
+                                                    ),
+                                                    _ => ident,
+                                                }
+                                            }
+                                        };
+                                        ident_str
                                     }
-                                    _ => ident,
                                 }
-                            };
-                            ident_str
-                        }
-                    },
-                };
-                ref_str
+                            }
+                            None => {
+                                let ident = emit_ident(name.clone(), RenderTarget::Rust);
+                                let ident_str = if moves_by_value {
+                                    ident
+                                } else {
+                                    match resolved_type.clone() {
+                                        Some(_) => {
+                                            apply_type_template1(sharing.clone_value.clone(), ident)
+                                        }
+                                        _ => ident,
+                                    }
+                                };
+                                ident_str
+                            }
+                        },
+                    };
+                    ref_str
+                }
             }
         }
     }
@@ -10169,47 +10190,49 @@ pub fn emit_typed_expr_base(
                 {
                     emit_keyword("null".to_string(), RenderTarget::Rust)
                 } else {
-                    if n.clone().as_str() == "Absent".to_string().as_str() {
+                    if (n.clone().as_str() == "Absent".to_string().as_str()) {
                         "None".to_string()
-                    } else if ((n.clone().as_str() == "true".to_string().as_str())
-                        || (n.clone().as_str() == "false".to_string().as_str()))
-                    {
-                        emit_keyword(n.clone(), RenderTarget::Rust)
                     } else {
+                        if ((n.clone().as_str() == "true".to_string().as_str())
+                            || (n.clone().as_str() == "false".to_string().as_str()))
                         {
-                            let variant_parent = effective_variant_parent(
-                                n.clone(),
-                                binding_kind.clone(),
-                                texpr.inferred.clone(),
-                                emit_info,
-                                si.clone(),
-                            );
-                            match variant_parent {
-                                Some(enum_name) => {
-                                    let qualified = v2_rt::concat(
-                                        v2_rt::concat(enum_name.clone(), "::".to_string()),
-                                        n.clone(),
-                                    );
-                                    if v2_rt::set_contains(&shared_types, enum_name.clone()) {
-                                        v2_rt::concat(
-                                            v2_rt::concat("Rc::new(".to_string(), qualified),
-                                            ")".to_string(),
-                                        )
-                                    } else {
-                                        qualified
-                                    }
-                                }
-                                None => match v2_rt::map_get(&registry, n.clone()) {
-                                    Some(info) => {
-                                        let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                        if is_data {
-                                            v2_rt::concat(to_snake(n.clone()), "()".to_string())
+                            emit_keyword(n.clone(), RenderTarget::Rust)
+                        } else {
+                            {
+                                let variant_parent = effective_variant_parent(
+                                    n.clone(),
+                                    binding_kind.clone(),
+                                    texpr.inferred.clone(),
+                                    emit_info,
+                                    si.clone(),
+                                );
+                                match variant_parent {
+                                    Some(enum_name) => {
+                                        let qualified = v2_rt::concat(
+                                            v2_rt::concat(enum_name.clone(), "::".to_string()),
+                                            n.clone(),
+                                        );
+                                        if v2_rt::set_contains(&shared_types, enum_name.clone()) {
+                                            v2_rt::concat(
+                                                v2_rt::concat("Rc::new(".to_string(), qualified),
+                                                ")".to_string(),
+                                            )
                                         } else {
-                                            emit_ident(n.clone(), RenderTarget::Rust)
+                                            qualified
                                         }
                                     }
-                                    None => emit_ident(n.clone(), RenderTarget::Rust),
-                                },
+                                    None => match v2_rt::map_get(&registry, n.clone()) {
+                                        Some(info) => {
+                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                            if is_data {
+                                                v2_rt::concat(to_snake(n.clone()), "()".to_string())
+                                            } else {
+                                                emit_ident(n.clone(), RenderTarget::Rust)
+                                            }
+                                        }
+                                        None => emit_ident(n.clone(), RenderTarget::Rust),
+                                    },
+                                }
                             }
                         }
                     }
@@ -14815,7 +14838,8 @@ pub fn is_already_optional(
                 binding_kind: _, ..
             } => {
                 if ((n.clone().as_str() == "none".to_string().as_str())
-                    || (n.clone().as_str() == "None".to_string().as_str()))
+                    || (n.clone().as_str() == "None".to_string().as_str())
+                    || (n.clone().as_str() == "Absent".to_string().as_str()))
                 {
                     true
                 } else {
