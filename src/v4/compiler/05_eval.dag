@@ -73,6 +73,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   Value,
+  Arrow,
   Atom,
   bag_hash_digest,
   combine_hash,
@@ -937,6 +938,7 @@ data eval_rejected_bind_value_absent: Symbol = eval_rejected_bind_value_absent
 data eval_rejected_bind_body_absent: Symbol = eval_rejected_bind_body_absent
 data eval_rejected_callee_absent: Symbol = eval_rejected_callee_absent
 data eval_rejected_argument_bind_absent: Symbol = eval_rejected_argument_bind_absent
+data eval_rejected_unsupported_callee: Symbol = eval_rejected_unsupported_callee
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -1281,6 +1283,13 @@ fn eval_node_is_arrow(node: Node) -> Bool {
   }
 }
 
+fn eval_node_is_atom(node: Node, sym: Symbol) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == sym
+    _ => false
+  }
+}
+
 fn eval_node_is_callee_reference(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
@@ -1289,12 +1298,72 @@ fn eval_node_is_callee_reference(node: Node) -> Bool {
   }
 }
 
+fn eval_positional_child_atom_is(node: Node, wanted: Int, sym: Symbol) -> Bool {
+  match eval_nth_child(
+    node: node,
+    wanted: wanted,
+    absent_reason: eval_rejected_unsupported_callee
+  ) {
+    Accepted { value: e, diagnostics: _ } =>
+      match e.label {
+        Positional => eval_node_is_atom(node: e.target, sym: sym)
+        Named { name: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn eval_wave1_add_signature(arrow: Node) -> Bool {
+  eval_node_is_arrow(node: arrow)
+    && eval_positional_child_atom_is(node: arrow, wanted: 0, sym: ^dag_binding_type_int)
+    && eval_positional_child_atom_is(node: arrow, wanted: 1, sym: ^dag_binding_type_int)
+    && eval_positional_child_atom_is(node: arrow, wanted: 2, sym: ^dag_binding_type_int)
+}
+
+fn eval_wave1_add_body_operand_set(body: Node) -> Bool {
+  (
+    eval_positional_child_atom_is(node: body, wanted: 1, sym: ^dag_binding_param_x)
+      && eval_positional_child_atom_is(node: body, wanted: 2, sym: ^dag_binding_param_y)
+  ) || (
+    eval_positional_child_atom_is(node: body, wanted: 1, sym: ^dag_binding_param_y)
+      && eval_positional_child_atom_is(node: body, wanted: 2, sym: ^dag_binding_param_x)
+  )
+}
+
+fn eval_wave1_add_body(body: Node) -> Bool {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      eval_positional_child_atom_is(node: body, wanted: 0, sym: ^dag_token_plus)
+        && eval_wave1_add_body_operand_set(body: body)
+    _ => false
+  }
+}
+
+fn eval_wave1_add_callee(arrow: Node) -> Bool {
+  if eval_wave1_add_signature(arrow: arrow) {
+    match find_arrow_body_child(root: arrow) {
+      Accepted { value: body, diagnostics: _ } => eval_wave1_add_body(body: body)
+      Rejected { diagnostics: _ } => false
+    }
+  } else {
+    false
+  }
+}
+
 fn eval_transform_has_callee_reference(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      match first(node.children) {
-        Some { value: e0 } => eval_node_is_callee_reference(node: e0.target)
-        None => false
+      match eval_nth_child(
+        node: node,
+        wanted: 0,
+        absent_reason: eval_rejected_callee_absent
+      ) {
+        Accepted { value: e0, diagnostics: _ } =>
+          match e0.label {
+            Positional => eval_node_is_callee_reference(node: e0.target)
+            Named { name: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
       }
     _ => false
   }
@@ -1332,7 +1401,7 @@ fn eval_transform_node(
         bind_outcome(
           o: eval_transform_callee_edge(node: node),
           f: fn(callee_edge) {
-            if eval_node_is_arrow(node: callee_edge.target) {
+            if eval_wave1_add_callee(arrow: callee_edge.target) {
               bind_outcome(
                 o: find_arrow_body_child(root: callee_edge.target),
                 f: fn(body) {
@@ -1354,6 +1423,10 @@ fn eval_transform_node(
                     }
                   )
                 }
+              )
+            } else if eval_node_is_arrow(node: callee_edge.target) {
+              outcome_rejected(
+                d: eval_diagnostic(reason: eval_rejected_unsupported_callee, node: callee_edge.target)
               )
             } else {
               transform.call_primitive(node, args, environment)
