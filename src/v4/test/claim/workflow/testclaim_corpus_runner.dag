@@ -44,12 +44,6 @@ import v4.std.verification {
 import v4.test.claim.manual.manual_corpus_roster {
   manual_corpus_node_subject_rows
 }
-import v4.test.claim.workflow.glob_discovery {
-  glob_discovered_smoke_bool_witness_unified_claims,
-  witness_glob_discovery_declares_smoke_claim_run_rows
-}
-
-
 // Consolidation #4553 Phase 2: execution receipts are unified here at the workflow layer.
 // `UnifiedTestClaim` remains a descriptor-only registration row in `std.verification`.
 // RULING-1: needs-more-work — authoring-time queue vs runtime verdict until Phase 4 host transport.
@@ -249,10 +243,9 @@ fn manual_node_corpus_unified_claims() -> List<UnifiedTestClaim> {
 
 
 fn unified_corpus_eval_pilot_claims() -> List<UnifiedTestClaim> {
-  list_append(
-    left: manual_node_corpus_unified_claims(),
-    right: glob_discovered_smoke_bool_witness_unified_claims
-  )
+  // BoolWitness smoke slice uses distributed-marker host projection
+  // (scripts/v4-glob-discovery-project.sh) until Phase 4 unified CI transport.
+  manual_node_corpus_unified_claims()
 }
 
 
@@ -260,24 +253,6 @@ fn corpus_entry_from_queued_bool_witness(witness: BoolWitness) -> CorpusEvalEntr
   CorpusEvalEntry {
     run: BoolWitnessRunReceipt { run: queued_bool_witness_run(witness: witness) }
   }
-}
-
-
-fn glob_discovered_queued_bool_witness_entries() -> List<CorpusEvalEntry> {
-  fold(
-    glob_discovered_smoke_bool_witness_unified_claims,
-    init: [],
-    f: fn(acc, c) {
-      match c {
-        BoolWitnessClaim { witness: w } =>
-          list_append(
-            left: acc,
-            right: [corpus_entry_from_queued_bool_witness(witness: w)]
-          )
-        NodeCorpus { claim: _, transport: _ } => acc
-      }
-    }
-  )
 }
 
 

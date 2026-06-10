@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Consolidation #4553 C9 substrate-equivalence gate.
 #
-# Runs witness_substrate_equivalence via `gunbc run --claim-run`.
-# `--perturb-check` rewrites witness_substrate_equivalence data to `false` and
-# requires the witness to fail, so every green has a red-under-perturb receipt.
+# 1. Projects distributed BoolWitnessClaim markers (fail-closed on empty).
+# 2. Runs witness_substrate_equivalence (modality / marker law).
+# 3. --perturb-check: empty-discovery guard must fail; witness perturb must fail.
 
 set -euo pipefail
 
@@ -12,6 +12,8 @@ cd "$root"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
 model="src/v4/test/claim/workflow/unified_test_claim_substrate_equivalence.dag"
+law_model="src/v4/test/claim/workflow/glob_discovery.dag"
+project_sh="$root/scripts/v4-glob-discovery-project.sh"
 perturb=0
 
 case "${1:-}" in
@@ -31,12 +33,22 @@ if [[ ! -x "$bin" ]]; then
   exit 2
 fi
 
+# shellcheck source=scripts/v4-glob-discovery-project.sh
+source "$project_sh"
+
+dag_string_data() {
+  local file="$1" name="$2"
+  grep -E "^data ${name}: String = \"" "$root/$file" \
+    | sed -n "s/^data ${name}: String = \"\\(.*\\)\"/\\1/p" \
+    | head -1
+}
+
 run_witness() {
-  local source_root="$1" entry="$2"
+  local source_root="$1" entry="$2" function="$3"
   "$bin" run \
     --source-root "$source_root" \
     --entry "$entry" \
-    --function witness_substrate_equivalence \
+    --function "$function" \
     --claim-run
 }
 
@@ -61,11 +73,42 @@ path.write_text(text, encoding="utf-8")
 PY
 }
 
+run_discovery_projection_or_fail() {
+  local claims_root="${1:-}"
+  if [[ -n "$claims_root" ]]; then
+    v4_glob_discovery_project_distributed_markers "$claims_root"
+  else
+    v4_glob_discovery_project_distributed_markers
+  fi
+  local expected_count
+  expected_count="$(dag_string_data "$law_model" glob_discovered_smoke_marker_count)"
+  if [[ -z "$expected_count" ]]; then
+    echo "error: missing glob_discovered_smoke_marker_count in $law_model" >&2
+    exit 2
+  fi
+  if [[ "$V4_GLOB_DISCOVERY_ROW_COUNT" -ne "$expected_count" ]]; then
+    echo "error: discovery projected ${V4_GLOB_DISCOVERY_ROW_COUNT} rows; modeled count is ${expected_count}" >&2
+    exit 2
+  fi
+}
+
+echo "::group::substrate equivalence: distributed marker projection"
+run_discovery_projection_or_fail
+echo "::notice title=substrate equivalence::discovered ${V4_GLOB_DISCOVERY_ROW_COUNT} distributed BoolWitnessClaim marker(s)"
+echo "::endgroup::"
+
 echo "::group::substrate equivalence: witness_substrate_equivalence"
-run_witness "src/v4" "$model"
+run_witness "src/v4" "$model" witness_substrate_equivalence
 echo "::endgroup::"
 
 if [[ "$perturb" -eq 1 ]]; then
+  echo "::group::substrate equivalence perturb: empty discovery projection"
+  if v4_glob_discovery_project_distributed_markers "$root/src/v4/test/claim/impossible_bug" 2>/dev/null; then
+    echo "::error::empty-discovery perturb still projected ${V4_GLOB_DISCOVERY_ROW_COUNT} row(s)"
+    exit 1
+  fi
+  echo "::endgroup::"
+
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
   mkdir -p "$tmp"
@@ -73,7 +116,7 @@ if [[ "$perturb" -eq 1 ]]; then
   perturbed_entry="$tmp/src/${model#src/v4/}"
   perturb_data_witness_to_false "$perturbed_entry" witness_substrate_equivalence
   echo "::group::substrate equivalence perturb: witness_substrate_equivalence"
-  if run_witness "$tmp/src" "$perturbed_entry"; then
+  if run_witness "$tmp/src" "$perturbed_entry" witness_substrate_equivalence; then
     echo "::error::perturbed witness_substrate_equivalence still passed"
     exit 1
   fi
