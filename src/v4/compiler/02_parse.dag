@@ -100,6 +100,19 @@ type ParseRepeatAcc {
   done: Bool
 }
 
+// Product accumulator for expr_direct_left_corner_list: corners plus nullable flag
+// threaded through fold_grammar_expr so Sequence can gate right corners on left nullability.
+type GrammarExprCornerFold {
+  corners: List<Symbol>
+  nullable: Bool
+}
+
+// Deferred suffix consumer for parse_expr: fold_grammar_expr supplies structural recursion;
+// each variant handler returns a token-threaded parse step invoked at the call site.
+type ParseExprWalk {
+  run: fn(List<Token>) -> ParseExprResult
+}
+
 // Memo key for parse table: token offset × production name.
 type ParsePositionKey {
   position: Int
