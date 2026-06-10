@@ -5144,11 +5144,11 @@ pub fn infer_record_lit(
                     None => error_type(),
                 };
                 let expected_optional_parent = Some("Optional".to_string());
-                let is_some_ctor = ((type_name.clone().unwrap().as_str()
-                    == "Some".to_string().as_str())
+                let is_present_ctor = ((type_name.clone().unwrap().as_str()
+                    == "Present".to_string().as_str())
                     && (local_variant_parent.clone().as_deref()
                         == expected_optional_parent.as_deref()));
-                let resolved_node = if is_some_ctor {
+                let resolved_node = if is_present_ctor {
                     {
                         let val_field = Rc::new({
                             let mut __result = Vec::new();
@@ -10658,8 +10658,8 @@ pub fn build_type_env(
             );
         let source_indices = Rc::new(vec![
             "Optional".to_string(),
-            "Some".to_string(),
-            "None".to_string(),
+            "Present".to_string(),
+            "Absent".to_string(),
             "value".to_string(),
             "none".to_string(),
         ])
@@ -10692,8 +10692,8 @@ pub fn build_type_env(
             });
         let intern_table = Rc::new(vec![
             "Optional".to_string(),
-            "Some".to_string(),
-            "None".to_string(),
+            "Present".to_string(),
+            "Absent".to_string(),
             "value".to_string(),
             "none".to_string(),
         ])
@@ -10773,7 +10773,7 @@ pub fn build_type_env(
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
-        let some_value_field = Rc::new(Node {
+        let present_value_field = Rc::new(Node {
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
@@ -10781,7 +10781,7 @@ pub fn build_type_env(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "some_value".to_string(),
+                id: "present_value".to_string(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -10795,11 +10795,31 @@ pub fn build_type_env(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let some_variant = Rc::new(Node {
-            name: "Some".to_string(),
-            span: kernel_span("Some".to_string()),
-            ident_span: Some(kernel_span("Some".to_string())),
-            children: Rc::new(vec![some_value_field]),
+        let present_variant = Rc::new(Node {
+            name: "Present".to_string(),
+            span: kernel_span("Present".to_string()),
+            ident_span: Some(kernel_span("Present".to_string())),
+            children: Rc::new(vec![present_value_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let absent_variant = Rc::new(Node {
+            name: "Absent".to_string(),
+            span: kernel_span("Absent".to_string()),
+            ident_span: Some(kernel_span("Absent".to_string())),
+            children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
@@ -10819,7 +10839,7 @@ pub fn build_type_env(
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
             ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![some_variant, none_type()]),
+            children: Rc::new(vec![present_variant, absent_variant]),
             connective: Connective::Disj,
             params: Rc::new(vec![]),
             inferred: None,
@@ -11394,7 +11414,7 @@ pub fn build_type_env_unresolved(
                     )
                 },
             );
-        let some_value_field = Rc::new(Node {
+        let present_value_field = Rc::new(Node {
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
@@ -11402,7 +11422,7 @@ pub fn build_type_env_unresolved(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "some_value".to_string(),
+                id: "present_value".to_string(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -11416,11 +11436,31 @@ pub fn build_type_env_unresolved(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let some_variant = Rc::new(Node {
-            name: "Some".to_string(),
-            span: kernel_span("Some".to_string()),
-            ident_span: Some(kernel_span("Some".to_string())),
-            children: Rc::new(vec![some_value_field]),
+        let present_variant = Rc::new(Node {
+            name: "Present".to_string(),
+            span: kernel_span("Present".to_string()),
+            ident_span: Some(kernel_span("Present".to_string())),
+            children: Rc::new(vec![present_value_field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let absent_variant = Rc::new(Node {
+            name: "Absent".to_string(),
+            span: kernel_span("Absent".to_string()),
+            ident_span: Some(kernel_span("Absent".to_string())),
+            children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
@@ -11440,7 +11480,7 @@ pub fn build_type_env_unresolved(
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
             ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![some_variant, none_type()]),
+            children: Rc::new(vec![present_variant, absent_variant]),
             connective: Connective::Disj,
             params: Rc::new(vec![]),
             inferred: None,

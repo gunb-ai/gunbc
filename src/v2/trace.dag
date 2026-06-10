@@ -142,7 +142,7 @@ fn capture_repro(func_name: String, inputs: Map<String, String>, trace: Trace) -
     func_name: func_name,
     inputs: inputs,
     expected_output: none,
-    trace: Some { value: trace }
+    trace: Present { value: trace }
   }
 }
 

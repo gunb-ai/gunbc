@@ -33,7 +33,7 @@ import v2.compiler.infer_types {
 // =========================================================================
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn map_of_type_variables() -> Node {
@@ -128,7 +128,7 @@ fn infer_builtin_call_type(name: String) -> Node? {
 
 fn resolve_builtin_call_type(name: String) -> Node {
   match infer_builtin_call_type(name: name) {
-    Some { value: v } => v
-    None => unit_type
+    Present { value: v } => v
+    Absent => unit_type
   }
 }

@@ -62,24 +62,24 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 // it has no explicit `Present` child in the v2 type node.
 fn synthesize_optional_present_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
-  let value_field = Node { name: "value", span: scrut.span, ident_span: Some { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_node = Node { name: "Present", span: scrut.span, ident_span: Some { value: kernel_span(name: "Present") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let value_field = Node { name: "value", span: scrut.span, ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_node = Node { name: "Present", span: scrut.span, ident_span: Present { value: kernel_span(name: "Present") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   present_node
 }
 
 fn synthesize_witness_holds_variant(scrut: Node) -> Node {
   let inner = match scrut.children |> first {
-    Some { value: child } => child_type_node(ch: child)
-    None => error_type
+    Present { value: child } => child_type_node(ch: child)
+    Absent => error_type
   }
-  let value_field = Node { name: "value", span: scrut.span, ident_span: Some { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  Node { name: "Holds", span: scrut.span, ident_span: Some { value: kernel_span(name: "Holds") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let value_field = Node { name: "value", span: scrut.span, ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Holds", span: scrut.span, ident_span: Present { value: kernel_span(name: "Holds") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn synthesize_witness_violates_variant(scrut: Node) -> Node {
-  let diagnostic_type = Node { name: "Diagnostic", span: scrut.span, ident_span: Some { value: kernel_span(name: "Diagnostic") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let diagnostic_field = Node { name: "diagnostic", span: scrut.span, ident_span: Some { value: kernel_span(name: "diagnostic") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: diagnostic_type } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  Node { name: "Violates", span: scrut.span, ident_span: Some { value: kernel_span(name: "Violates") }, children: [diagnostic_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let diagnostic_type = Node { name: "Diagnostic", span: scrut.span, ident_span: Present { value: kernel_span(name: "Diagnostic") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let diagnostic_field = Node { name: "diagnostic", span: scrut.span, ident_span: Present { value: kernel_span(name: "diagnostic") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: diagnostic_type } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Violates", span: scrut.span, ident_span: Present { value: kernel_span(name: "Violates") }, children: [diagnostic_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
@@ -91,7 +91,7 @@ fn pattern_subject_from_node(n: Node) -> PatternSubject {
     PatternLookupBlocked
   } else if n.connective == NoConnective && n.children |> count > 0 && n.inferred != none {
     match n.inferred {
-      Some { value: Resolved { node: target } } => pattern_subject_from_node(n: target)
+      Present { value: Resolved { node: target } } => pattern_subject_from_node(n: target)
       _ => PatternResolved { node: n }
     }
   } else {
@@ -101,7 +101,7 @@ fn pattern_subject_from_node(n: Node) -> PatternSubject {
 
 fn pattern_subject_from_inferred(n: InferredNode?) -> PatternSubject {
   match n {
-    Some { value: Resolved { node: resolved } } => pattern_subject_from_node(n: resolved)
+    Present { value: Resolved { node: resolved } } => pattern_subject_from_node(n: resolved)
     _ => PatternLookupBlocked
   }
 }
@@ -176,8 +176,8 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
             variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
           }
           match direct_match {
-            Some { value: v } => node_lookup_resolved(node: v)
-            None => fallback
+            Present { value: v } => node_lookup_resolved(node: v)
+            Absent => fallback
           }
         }
       }
@@ -192,10 +192,10 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
       node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: variant_node } =>
       match find_child_named(n: variant_node, name: field_name, source_indices: source_indices) {
-        Some { value: field_child } =>
+        Present { value: field_child } =>
           let resolved = child_type_node(ch: field_child)
           node_lookup_resolved(node: resolved)
-        None => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: authored_name_at(source_indices: source_indices, node: variant_node), span: variant_node.span }, module_name: module_name)])
+        Absent => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: authored_name_at(source_indices: source_indices, node: variant_node), span: variant_node.span }, module_name: module_name)])
       }
   }
 }
@@ -217,8 +217,8 @@ fn check_match_exhaustiveness(
     scrutinee_type
   } else {
     match lookup_type_by_name(env: env, name: authored_name_at(source_indices: env.source_indices, node: scrutinee_type)) {
-      Some { value: def } => def
-      None => scrutinee_type
+      Present { value: def } => def
+      Absent => scrutinee_type
     }
   }
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
