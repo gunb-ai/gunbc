@@ -2,8 +2,9 @@
 # scripts/v4-testclaim-smoke-roster.sh
 #
 # Wave-A consolidated smoke-roster transport. Row authority lives in
-# src/v4/test/claim/workflow/v4_roster_pilot.dag (`v4_roster_pilot_claim_run_rows` list);
-# this shell projects only list member bindings and invokes v2 claim-run.
+# src/v4/test/claim/workflow/glob_discovery.dag
+# (`glob_discovered_smoke_bool_witness_unified_claims` list); this shell projects
+# distributed BoolWitnessClaim markers and invokes v2 claim-run.
 #
 # Env:
 #   V2_COMPILER — gunbc binary (default: target/release/gunbc)
@@ -14,7 +15,8 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
-roster="src/v4/test/claim/workflow/v4_roster_pilot.dag"
+discovery="src/v4/test/claim/workflow/glob_discovery.dag"
+claims_root="src/v4/test/claim"
 
 if [[ ! -x "$bin" ]]; then
   echo "error: gunbc (v2 stage0 binary) not found at $bin" >&2
@@ -22,8 +24,8 @@ if [[ ! -x "$bin" ]]; then
 fi
 
 dag_string_data() {
-  local name="$1"
-  grep -E "^data ${name}: String = \"" "$root/$roster" \
+  local file="$1" name="$2"
+  grep -E "^data ${name}: String = \"" "$root/$file" \
     | sed -n "s/^data ${name}: String = \"\\(.*\\)\"/\\1/p" \
     | head -1
 }
@@ -35,75 +37,75 @@ claim_run() {
   echo "::endgroup::"
 }
 
-# List member names from `v4_roster_pilot_claim_run_rows` authority (not free file scan).
-list_claim_run_row_members() {
+list_claim_members() {
   awk '
-    /data v4_roster_pilot_claim_run_rows:/ { in_list = 1; next }
+    /data glob_discovered_smoke_bool_witness_unified_claims:/ { in_list = 1; next }
     in_list && /^\]/ { in_list = 0 }
-    in_list && /^  v4_roster_pilot_row_/ {
+    in_list && /^  unified_claim_/ {
       gsub(/^  /, "")
       gsub(/,.*/, "")
       print
     }
-  ' "$root/$roster"
+  ' "$root/$discovery"
 }
 
-# Project one list member binding: `data <name>: V4RosterPilotClaimRunRow = V4RosterPilotClaimRunRow { ... }`.
-project_list_member_row() {
+project_unified_claim_member() {
   local name="$1"
+  local file
+  file="$(grep -rl "^data ${name}: UnifiedTestClaim" "$root/$claims_root" | head -1)"
+  if [[ -z "$file" ]]; then
+    return 1
+  fi
+  local rel="${file#"$root"/}"
   awk -v n="$name" '
-    $0 ~ "^data " n ": V4RosterPilotClaimRunRow" { in_row = 1; label = ""; entry = ""; fn = "" }
-    in_row && /label: "/ {
-      sub(/.*label: "/, "")
-      sub(/".*/, "")
-      label = $0
-    }
+    $0 ~ "^data " n ": UnifiedTestClaim" { in_row = 1; entry = ""; fn = "" }
     in_row && /entry: "/ {
       sub(/.*entry: "/, "")
       sub(/".*/, "")
       entry = $0
     }
-    in_row && /function: "/ {
-      sub(/.*function: "/, "")
-      sub(/".*/, "")
+    in_row && /function: / {
+      sub(/.*function: /, "")
+      sub(/[[:space:]].*/, "")
       fn = $0
     }
     in_row && /\}/ {
-      if (label != "" && entry != "" && fn != "") {
-        print label "\t" entry "\t" fn
+      if (entry != "" && fn != "") {
+        print entry "\t" fn
       }
       in_row = 0
     }
-  ' "$root/$roster"
+  ' "$file"
 }
 
 "$bin" run \
   --source-root src/v4 \
-  --entry "$roster" \
-  --function witness_v4_roster_pilot_declares_claim_run_rows \
+  --entry "$discovery" \
+  --function witness_glob_discovery_declares_smoke_claim_run_rows \
   --claim-run
 
-expected_count="$(dag_string_data v4_roster_pilot_claim_run_row_count)"
+expected_count="$(dag_string_data "$discovery" glob_discovered_claim_run_row_count)"
 if [[ -z "$expected_count" ]]; then
-  echo "error: missing v4_roster_pilot_claim_run_row_count in $roster" >&2
+  echo "error: missing glob_discovered_claim_run_row_count in $discovery" >&2
   exit 2
 fi
 
 row_count=0
 while IFS= read -r member; do
   [[ -z "$member" ]] && continue
-  row="$(project_list_member_row "$member")"
+  row="$(project_unified_claim_member "$member")"
   if [[ -z "$row" ]]; then
-    echo "error: list member $member missing V4RosterPilotClaimRunRow binding in $roster" >&2
+    echo "error: list member $member missing BoolWitnessClaim binding under $claims_root" >&2
     exit 2
   fi
-  IFS=$'\t' read -r label entry function <<< "$row"
+  IFS=$'\t' read -r entry function <<< "$row"
+  label="${member#unified_claim_}"
   claim_run "$label" "$entry" "$function"
   row_count=$((row_count + 1))
-done < <(list_claim_run_row_members)
+done < <(list_claim_members)
 
 if [[ "$row_count" -eq 0 ]]; then
-  echo "error: v4_roster_pilot_claim_run_rows has no members in $roster" >&2
+  echo "error: glob_discovered_smoke_bool_witness_unified_claims has no members in $discovery" >&2
   exit 2
 fi
 

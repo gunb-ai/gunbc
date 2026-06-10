@@ -271,11 +271,6 @@ data glob_discovered_smoke_bool_witness_unified_claims: List<UnifiedTestClaim> =
 data glob_discovered_claim_run_row_count: String = "80"
 
 
-fn glob_discovered_smoke_bool_witness_unified_claims() -> List<UnifiedTestClaim> {
-  glob_discovered_smoke_bool_witness_unified_claims
-}
-
-
 fn glob_discovery_claim_is_bool_witness_modality(c: UnifiedTestClaim) -> Bool {
   unified_test_claim_modality(c: c) == UnifiedBoolWitnessModality
 }
@@ -299,7 +294,6 @@ fn glob_discovery_all_smoke_claims_are_bool_witness_modality() -> Bool {
 }
 
 
-fn glob_discovery_smoke_claim_list_composition_holds() -> Bool {
 fn glob_discovery_smoke_claim_list_composition_holds() -> Bool {
   glob_discovery_smoke_claim_list_contains_once(c: unified_claim_coordination_obligation_exchange)
     && glob_discovery_smoke_claim_list_contains_once(c: unified_claim_coordination_obligation_settlement)
