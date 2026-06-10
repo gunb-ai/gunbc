@@ -2799,11 +2799,17 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let field_type_diags = match field_expected {
       Some { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
-        if rejects_string_for_optional_coproduct_field(
+        let string_optional_reject = rejects_string_for_optional_coproduct_field(
           expected: expected_node,
           got: got_node,
           source_indices: scope.type_env.source_indices
-        ) {
+        )
+        let incompatible_field = !node_type_compatible(
+          left: expected_node,
+          right: got_node,
+          source_indices: scope.type_env.source_indices
+        )
+        if string_optional_reject {
           [type_mismatch_error(
             expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
             got: node_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
@@ -2811,7 +2817,16 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
             module_name: scope.module_name
           )]
         } else {
-          []
+          if incompatible_field {
+            [type_mismatch_error(
+              expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
+              span: ar_typed.span,
+              module_name: scope.module_name
+            )]
+          } else {
+            []
+          }
         }
       None => []
     }
