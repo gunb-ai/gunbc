@@ -8,7 +8,7 @@ module v4.std.diagnostic
 
 
 import v4.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item }
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
   = WholeFile
