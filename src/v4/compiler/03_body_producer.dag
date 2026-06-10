@@ -5,16 +5,13 @@
 
 module v4.compiler.body_producer
 
-import v4.extdeps.languages.dag {
-  dag_binding_param_x,
-  dag_binding_param_y,
-  dag_binding_type_int
-}
 import v4.std.algebra { list_snoc_item }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
   Outcome,
+  Rejected,
   Unavailable,
   bind_outcome,
   node_locus,
@@ -97,11 +94,11 @@ fn produce_mvp1_add_binary_body() -> Node {
       },
       Edge {
         label: Positional,
-        target: computation_param_ref_node(identity: dag_binding_param_x)
+        target: computation_param_ref_node(identity: ^dag_binding_param_x)
       },
       Edge {
         label: Positional,
-        target: computation_param_ref_node(identity: dag_binding_param_y)
+        target: computation_param_ref_node(identity: ^dag_binding_param_y)
       }
     ]
   }
@@ -113,15 +110,15 @@ fn produce_mvp1_add_arrow_signature() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: type_atom_node(identity: dag_binding_type_int)
+        target: type_atom_node(identity: ^dag_binding_type_int)
       },
       Edge {
         label: Positional,
-        target: type_atom_node(identity: dag_binding_type_int)
+        target: type_atom_node(identity: ^dag_binding_type_int)
       },
       Edge {
         label: Positional,
-        target: type_atom_node(identity: dag_binding_type_int)
+        target: type_atom_node(identity: ^dag_binding_type_int)
       }
     ]
   }

@@ -9,10 +9,6 @@ import v4.compiler.body_producer {
   produce_mvp1_add_arrow_with_body,
   produce_mvp1_add_binary_body
 }
-import v4.extdeps.languages.dag {
-  dag_binding_param_x,
-  dag_binding_param_y
-}
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node {
@@ -75,14 +71,14 @@ fn comprep_swapped_operand_body() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: dag_binding_param_y } },
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_param_y } },
           children: []
         }
       },
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: dag_binding_param_x } },
+          kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
           children: []
         }
       }
