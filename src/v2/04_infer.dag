@@ -1734,10 +1734,15 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         // actual Outcome<Concrete> ⇒ T=Concrete, then substitute into
         // f: fn(T) -> ... so the lambda param binds to the concrete success
         // type. A single left-to-right fold infers each arg exactly once.
-        let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-        let generic_names = sig_params
-          |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-          |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: param_node_type_expr(n: p)))
+	        let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
+	        let explicit_generic_names = sig_params
+	          |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
+	          |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: param_node_type_expr(n: p)))
+          let payload_generic_names = concat(
+            sig_params |> flat_map(p => node_type_variable_names(n: param_node_type_expr(n: p))),
+            match sig { Present { value: s } => node_type_variable_names(n: s.inferred)  Absent => [] }
+          )
+	        let generic_names = concat(explicit_generic_names, payload_generic_names)
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
           let formal_lookup = value_params |> skip(pair.first) |> first
@@ -5391,6 +5396,58 @@ fn generic_binding_actual(actual: Node) -> Node {
   }
 }
 
+fn formal_generic_name(formal: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String? {
+  let fname = authored_name_at(source_indices: source_indices, node: formal)
+  let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
+  if !f_bare { none }
+  else if generic_names |> any(g => g == fname) { Present { value: fname } }
+  else {
+    match formal.inferred {
+      Present { value: TypeVariable { id: tv } } =>
+        if generic_names |> any(g => g == tv) { Present { value: tv } } else { none }
+      Present { value: Resolved { node: rt } } =>
+        match rt.inferred {
+          Present { value: TypeVariable { id: tv } } =>
+            if generic_names |> any(g => g == tv) { Present { value: tv } } else { none }
+          _ => none
+        }
+      _ => none
+    }
+  }
+}
+
+fn generic_substitution_for_node(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node? {
+  let nm = authored_name_at(source_indices: source_indices, node: n)
+  match map_get(subst, nm) {
+    Present { value: by_name } => Present { value: by_name }
+    Absent =>
+      match n.inferred {
+        Present { value: TypeVariable { id: tv } } => map_get(subst, tv)
+        Present { value: Resolved { node: rt } } =>
+          match rt.inferred {
+            Present { value: TypeVariable { id: tv } } => map_get(subst, tv)
+            _ => none
+          }
+        _ => none
+      }
+  }
+}
+
+fn node_type_variable_names(n: Node) -> List<String> {
+  let inferred_names = match n.inferred {
+    Present { value: TypeVariable { id: tv } } => [tv]
+    Present { value: Resolved { node: rt } } => node_type_variable_names(n: rt)
+    _ => []
+  }
+  concat(
+    inferred_names,
+    concat(
+      n.children |> flat_map(ch => node_type_variable_names(n: ch)),
+      n.params |> flat_map(p => node_type_variable_names(n: p))
+    )
+  )
+}
+
 fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let pt = param_node_type_expr(n: p)
   let pname = param_node_name_at(n: p, source_indices: source_indices)
@@ -5411,19 +5468,19 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 // into its one type-arg. Multi-generic / nested / arrow unification is the
 // deferred roadmap (A) — added only when a witness forces it.
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
-  let fname = authored_name_at(source_indices: source_indices, node: formal)
-  let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
-  if f_bare && (generic_names |> any(g => g == fname)) {
+  match formal_generic_name(formal: formal, generic_names: generic_names, source_indices: source_indices) {
     // Fail-closed on conflict: bind a generic ONCE (first occurrence wins); never
     // silently overwrite. A later occurrence that disagrees is not papered over by
     // a fresh binding here — it is caught when that arg is inferred against the
     // formal already substituted with the first binding (a typed mismatch at the
     // arg), so inference cannot proceed with a silent unstated choice.
-    match map_get(acc, fname) {
-      Absent => map_insert(acc, fname, generic_binding_actual(actual: actual))
-      Present { value: _ } => acc
-    }
-  } else if formal.children |> count == 1 && actual.children |> count == 1 {
+    Present { value: generic_id } =>
+      match map_get(acc, generic_id) {
+        Absent => map_insert(acc, generic_id, generic_binding_actual(actual: actual))
+        Present { value: _ } => acc
+      }
+    Absent =>
+      if formal.children |> count == 1 && actual.children |> count == 1 {
     match formal.children |> first {
       Present { value: fc } =>
         match actual.children |> first {
@@ -5432,7 +5489,8 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
         }
       Absent => acc
     }
-  } else { acc }
+      } else { acc }
+  }
 }
 
 fn node_contains_call_generic(n: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -5462,12 +5520,12 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
   if (map_keys(subst) |> count) == 0 { n }
   else {
   let nm = authored_name_at(source_indices: source_indices, node: n)
-  let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
-  if is_bare {
-    match map_get(subst, nm) {
-      Present { value: c } => c
-      Absent => n
-    }
+	  let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
+	  if is_bare {
+	    match generic_substitution_for_node(n: n, subst: subst, source_indices: source_indices) {
+	      Present { value: c } => c
+	      Absent => n
+	    }
   } else {
     Node {
       name: n.name, ident: n.ident, binding_id: n.binding_id,

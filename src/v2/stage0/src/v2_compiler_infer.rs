@@ -11079,6 +11079,109 @@ pub struct ArgGenericFoldState {
     pub subst: Rc<HashMap<String, Rc<Node>>>,
 }
 
+pub fn generic_binding_actual(actual: Rc<Node>) -> Rc<Node> {
+    match actual.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+        _ => actual.clone(),
+    }
+}
+
+pub fn formal_generic_name(
+    formal: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    {
+        let fname = authored_name_at(source_indices, formal.clone());
+        let f_bare = (((formal.children.clone().len() as i64) == 0)
+            && (formal.connective.clone() == Connective::NoConnective));
+        if !f_bare {
+            None
+        } else {
+            if {
+                let mut __found = false;
+                for g in generic_names.clone().iter().cloned() {
+                    if (g.clone().as_str() == fname.clone().as_str()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Some(fname.clone())
+            } else {
+                match formal.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::TypeVariable { id: tv, .. }) => {
+                        if {
+                            let mut __found = false;
+                            for g in generic_names.clone().iter().cloned() {
+                                if (g.clone().as_str() == tv.clone().as_str()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
+                            Some(tv.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        match rt.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::TypeVariable { id: tv, .. }) => {
+                                if {
+                                    let mut __found = false;
+                                    for g in generic_names.clone().iter().cloned() {
+                                        if (g.clone().as_str() == tv.clone().as_str()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    Some(tv.clone())
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            }
+        }
+    }
+}
+
+pub fn generic_substitution_for_node(
+    n: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    {
+        let nm = authored_name_at(source_indices, n.clone());
+        match v2_rt::map_get(&subst, nm) {
+            Some(by_name) => Some(by_name.clone()),
+            None => match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv, .. }) => {
+                    v2_rt::map_get(&subst, tv.clone())
+                }
+                Some(InferredNode::Resolved { node: rt, .. }) => {
+                    match rt.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::TypeVariable { id: tv, .. }) => {
+                            v2_rt::map_get(&subst, tv.clone())
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            },
+        }
+    }
+}
+
 pub fn param_is_generic_decl(
     p: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -11102,50 +11205,47 @@ pub fn unify_generics(
     mut acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
     loop {
-        let fname = authored_name_at(source_indices.clone(), formal.clone());
-        let f_bare = (((formal.children.clone().len() as i64) == 0)
-            && (formal.connective.clone() == Connective::NoConnective));
-        if (f_bare && {
-            let mut __found = false;
-            for g in generic_names.clone().iter().cloned() {
-                if (g.clone().as_str() == fname.clone().as_str()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }) {
-            match v2_rt::map_get(&acc, fname.clone()) {
+        match formal_generic_name(
+            formal.clone(),
+            generic_names.clone(),
+            source_indices.clone(),
+        ) {
+            Some(generic_id) => match v2_rt::map_get(&acc, generic_id.clone()) {
                 None => {
-                    break v2_rt::rc_map_insert(acc.clone(), fname.clone(), actual.clone());
+                    break v2_rt::rc_map_insert(
+                        acc.clone(),
+                        generic_id.clone(),
+                        generic_binding_actual(actual.clone()),
+                    );
                 }
                 Some(_) => {
                     break acc.clone();
                 }
-            }
-        } else {
-            if (((formal.children.clone().len() as i64) == 1)
-                && ((actual.children.clone().len() as i64) == 1))
-            {
-                match formal.children.clone().first().cloned() {
-                    Some(fc) => match actual.children.clone().first().cloned() {
-                        Some(ac) => {
-                            let __tco_0 = fc.clone();
-                            let __tco_1 = ac.clone();
-                            formal = __tco_0;
-                            actual = __tco_1;
-                            continue;
-                        }
+            },
+            None => {
+                if (((formal.children.clone().len() as i64) == 1)
+                    && ((actual.children.clone().len() as i64) == 1))
+                {
+                    match formal.children.clone().first().cloned() {
+                        Some(fc) => match actual.children.clone().first().cloned() {
+                            Some(ac) => {
+                                let __tco_0 = fc.clone();
+                                let __tco_1 = ac.clone();
+                                formal = __tco_0;
+                                actual = __tco_1;
+                                continue;
+                            }
+                            None => {
+                                break acc.clone();
+                            }
+                        },
                         None => {
                             break acc.clone();
                         }
-                    },
-                    None => {
-                        break acc.clone();
                     }
+                } else {
+                    break acc.clone();
                 }
-            } else {
-                break acc.clone();
             }
         }
     }
@@ -11234,7 +11334,11 @@ pub fn substitute_generics(
                     && (n.connective.clone() == Connective::NoConnective))
                     && ((n.params.clone().len() as i64) == 0));
                 if is_bare {
-                    match v2_rt::map_get(&subst, nm) {
+                    match generic_substitution_for_node(
+                        n.clone(),
+                        subst.clone(),
+                        source_indices.clone(),
+                    ) {
                         Some(c) => c.clone(),
                         None => n.clone(),
                     }
