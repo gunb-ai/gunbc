@@ -47,7 +47,7 @@ import v4.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -99,7 +99,7 @@ fn nominal_distinct_input_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -205,7 +205,7 @@ fn nominal_distinct_runtime_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^nominal_distinct_type_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

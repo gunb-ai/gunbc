@@ -178,7 +178,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v4.std.algebra {
@@ -299,7 +299,7 @@ fn ts_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -352,7 +352,7 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -377,7 +377,7 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -402,7 +402,7 @@ fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -416,7 +416,7 @@ fn ts_number_inhabitant_node(id: Symbol, facts: TsNumberPrimitiveFacts) -> Node 
         target: ts_number_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -430,7 +430,7 @@ fn ts_bigint_inhabitant_node(id: Symbol, facts: TsBigIntPrimitiveFacts) -> Node 
         target: ts_bigint_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -444,7 +444,7 @@ fn ts_bool_inhabitant_node(id: Symbol, facts: TsBooleanPrimitiveFacts) -> Node {
         target: ts_bool_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -468,7 +468,7 @@ fn ts_declared_inhabitants_root() -> Node {
       ts_named_edge(name: ^ts_inhabitant_field_bigint, target: ts_inhabitant_bigint_node()),
       ts_named_edge(name: ^ts_inhabitant_field_boolean, target: ts_inhabitant_boolean_node())
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -526,7 +526,7 @@ fn ts_mvp1_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: ts_mvp1_coercion_candidate_edges(),
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -542,7 +542,7 @@ fn ts_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: ts_inhabitant_number_node() },
       Edge { label: Positional, target: ts_inhabitant_number_node() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -590,7 +590,7 @@ fn ts_mvp1_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: ts_mvp1_serialize_source_children(),
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -649,7 +649,7 @@ fn ts_wave2a_type_annotation_name_emitted(binding: Symbol) -> Node {
     children: [
       Edge { label: Positional, target: ts_inhabitant_atom(id: binding) }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -660,7 +660,7 @@ fn ts_wave2a_record_field_emitted(field_binding: Symbol, type_child: Node) -> No
       Edge { label: Positional, target: ts_inhabitant_atom(id: field_binding) },
       Edge { label: Positional, target: type_child }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -670,7 +670,7 @@ fn ts_wave2a_record_fields_single_emitted(field: Node) -> Node {
     children: [
       Edge { label: Positional, target: field }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -681,7 +681,7 @@ fn ts_wave2a_record_fields_pair_emitted(left: Node, right: Node) -> Node {
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: right }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -711,7 +711,7 @@ fn ts_wave2a_record_type_task_emitted() -> Node {
         )
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -721,7 +721,7 @@ fn ts_wave2a_type_annotation_task_record_emitted() -> Node {
     children: [
       Edge { label: Positional, target: ts_wave2a_record_type_task_emitted() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -732,7 +732,7 @@ fn ts_wave2a_type_alias_decl_emitted(name_binding: Symbol, type_child: Node) -> 
       Edge { label: Positional, target: ts_inhabitant_atom(id: name_binding) },
       Edge { label: Positional, target: type_child }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -882,7 +882,7 @@ fn ts_wave2a_task_serialize_source_witness() -> Witness<Node> {
                 left: ts_wave2a_task_serialize_source_children(),
                 right: token_edges
               ),
-              span: Unanchored
+              occurrence_id: substrate_synthetic_occurrence_id
 }
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -927,7 +927,7 @@ fn ts_pr3_identity_typed_param_emitted() -> Node {
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
       Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -937,7 +937,7 @@ fn ts_pr3_identity_typed_params_emitted() -> Node {
     children: [
       Edge { label: Positional, target: ts_pr3_identity_typed_param_emitted() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -947,7 +947,7 @@ fn ts_pr3_identity_typed_params_opt_emitted() -> Node {
     children: [
       Edge { label: Positional, target: ts_pr3_identity_typed_params_emitted() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -960,7 +960,7 @@ fn ts_pr3_identity_typed_fn_emitted() -> Node {
       Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() },
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1055,7 +1055,7 @@ fn ts_pr3_identity_serialize_source_witness() -> Witness<Node> {
                 left: ts_pr3_identity_serialize_source_children(),
                 right: token_edges
               ),
-              span: Unanchored
+              occurrence_id: substrate_synthetic_occurrence_id
 }
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -1086,7 +1086,7 @@ fn ts_pr3_translation_rules_witness() -> Witness<Node> {
                   target: pr3_row
                 )
               ],
-              span: Unanchored
+              occurrence_id: substrate_synthetic_occurrence_id
 }
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -1121,7 +1121,7 @@ fn ts_pr3_identity_target_model_bundle_witness() -> Witness<Node> {
                   target: serialize
                 )
               ],
-              span: Unanchored
+              occurrence_id: substrate_synthetic_occurrence_id
 }
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -1185,7 +1185,7 @@ fn ts_mvp1_translation_rules_node() -> Node {
         target: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1205,7 +1205,7 @@ fn ts_mvp1_translation_rules_witness() -> Witness<Node> {
               target: task_row
             )
           ],
-          span: Unanchored
+          occurrence_id: substrate_synthetic_occurrence_id
 }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -1233,7 +1233,7 @@ fn ts_mvp1_target_model_node() -> Node {
         target: ts_mvp1_serialize_source_node()
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1414,7 +1414,7 @@ fn ts_sg2_type_expr_target_model_node() -> Node {
         target: ts_type_expression_projection_bundle_node()
       )
     ),
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1431,7 +1431,7 @@ fn ts_target_atom_realization_target_model_node() -> Node {
         )
       )
     ),
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1494,7 +1494,7 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_foobar } },
           children: [],
-          span: Unanchored
+          occurrence_id: substrate_synthetic_occurrence_id
         }
       },
       Edge {
@@ -1507,7 +1507,7 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
               target: Node {
                 kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_x } },
                 children: [],
-                span: Unanchored
+                occurrence_id: substrate_synthetic_occurrence_id
               }
             },
             Edge {
@@ -1515,15 +1515,15 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
               target: Node {
                 kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_y } },
                 children: [],
-                span: Unanchored
+                occurrence_id: substrate_synthetic_occurrence_id
               }
             }
           ],
-          span: Unanchored
+          occurrence_id: substrate_synthetic_occurrence_id
         }
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1531,7 +1531,7 @@ fn ts_sg2_atom_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1585,7 +1585,7 @@ fn ts_sg2_arrow_mixed_wire_emitted() -> Node {
         )
       )
     ),
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1596,7 +1596,7 @@ fn ts_sg2_arrow_source_type_node() -> Node {
       Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
       Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1613,7 +1613,7 @@ fn ts_sg2_arrow_malformed_source_type_node() -> Node {
     children: [
       Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1646,7 +1646,7 @@ fn ts_sg2_conj_source_type_node() -> Node {
       ts_named_edge(name: ^ts_binding_sg2_x, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x)),
       ts_named_edge(name: ^ts_binding_sg2_y, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y))
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1679,7 +1679,7 @@ fn ts_sg2_disj_source_type_node() -> Node {
       ts_named_edge(name: ^ts_binding_sg2_x, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x)),
       ts_named_edge(name: ^ts_binding_sg2_y, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y))
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1709,7 +1709,7 @@ fn ts_wave2a_task_target_model_bundle_witness() -> Witness<Node> {
                   target: serialize
                 )
               ],
-              span: Unanchored
+              occurrence_id: substrate_synthetic_occurrence_id
 }
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -1970,7 +1970,7 @@ fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1991,7 +1991,7 @@ fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2012,7 +2012,7 @@ fn ts_bool_algebra_witness_node() -> Node {
         target: ts_inhabitant_atom(id: ts_facts_boolean.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2895,7 +2895,7 @@ fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2910,7 +2910,7 @@ fn ts_string_inhabitant_node(id: Symbol, facts: TsStringPrimitiveFacts) -> Node 
         target: ts_inhabitant_atom(id: facts.surface_spelling)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2931,7 +2931,7 @@ fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -3148,7 +3148,7 @@ fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) 
         target: ts_inhabitant_atom(id: discriminant(v: key))
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

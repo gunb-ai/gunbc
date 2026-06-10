@@ -12,7 +12,7 @@ import v4.compiler.compile {
 
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -26,7 +26,7 @@ import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
 data hollow_alias_nested_child: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_nested_el_subject } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data hollow_alias_nested_root: Node = Node {
@@ -37,7 +37,7 @@ data hollow_alias_nested_root: Node = Node {
       target: hollow_alias_nested_child
     }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data hollow_alias_nested_authority: Node = claim_atom_node(s: ^hollow_alias_nested_el_symbol)
@@ -60,7 +60,7 @@ fn hollow_alias_nested_rejected_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

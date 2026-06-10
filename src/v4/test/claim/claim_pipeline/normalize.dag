@@ -8,7 +8,7 @@ import v4.compiler.normalize { normalize }
 
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   CompilesClaim,
   EqualsClaim,
@@ -22,7 +22,7 @@ import v4.std.verification {
 data spine_normalize_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_normalize_module } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 fn spine_normalize_service_parse_tree() -> Node {
   Node {
@@ -35,11 +35,11 @@ fn spine_normalize_service_parse_tree() -> Node {
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [],
-          span: Unanchored
+          occurrence_id: substrate_synthetic_occurrence_id
 }
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -58,13 +58,13 @@ fn spine_normalize_bool_atom(b: Bool) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_normalize_pass } },
         children: [],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
     false =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^spine_normalize_fail } },
         children: [],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

@@ -12,7 +12,7 @@ import v4.compiler.eval {
 }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -30,7 +30,7 @@ fn ownership_claim_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_pass_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -39,7 +39,7 @@ fn ownership_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_fail_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

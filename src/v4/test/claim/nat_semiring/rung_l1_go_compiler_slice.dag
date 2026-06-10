@@ -11,7 +11,7 @@ module v4.test.claim.nat_semiring.rung_l1_go_compiler_slice
 
 
 import v4.std.collection { List }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.text { String }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -38,7 +38,7 @@ fn l1_go_receipt_atom(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -53,7 +53,7 @@ data phase1_nat_semiring_l1_go_compiler_slice_subject: Node = Node {
       target: phase1_l1_go_compiler_slice_subject_slice_binding
     }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 fn phase1_l1_go_compiler_slice_claim(label: String) -> TestClaim {

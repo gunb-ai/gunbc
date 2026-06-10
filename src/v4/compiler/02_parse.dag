@@ -34,13 +34,14 @@ import v4.std.node {
   Edge,
   Named,
   Node,
-  NodeSpan,
+  OccurrenceId,
   Symbol,
   TypeNode,
-  Unanchored,
+  node_synthetic,
+  node_with_occurrence_id,
+  substrate_synthetic_occurrence_id,
   well_formed
 }
-import v4.std.provenance { fold_node_tree_span, make_node_span_anchored }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v4.std.logic { Bool }
@@ -290,62 +291,19 @@ fn token_position_indices(tokens: List<Token>) -> List<Int> {
   }
 }
 
-fn parse_node_span_from_token(tok: Token) -> Outcome<NodeSpan> {
-  make_node_span_anchored(file: tok.file, start: tok.start, end: tok.end)
-}
-
 fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnostic> {
   list_append(left: [ned.head], right: ned.tail)
 }
 
-// 🟢 substrate catamorphism consumer — feature: T-8 captured-node tree span merge —
-// bind node://adhoc-2145db6b-69a — first consumer of v4.std.provenance.fold_node_tree_span:
-// Conj-wrapped capture children merge via the substrate NodeFold rather than hand-written
-// flat span folds (parse_merge_captured_spans / parse_fold_node_spans).
-fn parse_conj_captured_tree_span(children: List<Edge>) -> Outcome<NodeSpan> {
-  fold_node_tree_span(
-    n: Node {
-      kind: TypeNode { connective: Conj },
-      children: children,
-      span: Unanchored
-    }
-  )
-}
-
-fn parse_sequence_captured_span(cap1: Node, cap2: Node) -> Outcome<NodeSpan> {
-  parse_conj_captured_tree_span(children: [
-    grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
-    grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
-  ])
-}
-
-fn parse_repeat_captured_span(acc_nodes: List<Node>) -> Outcome<NodeSpan> {
-  parse_conj_captured_tree_span(
-    children: fold_list(
-      xs: acc_nodes,
-      empty: Empty,
-      cons: fn(acc, n) {
-        list_snoc_item(
-          xs: acc,
-          item: Edge {
-            label: Named { name: ^grammar_repeat_element_node_projection },
-            target: n
-          }
-        )
-      }
-    )
-  )
-}
-
 fn parse_wrap_production_captured(production: GrammarProduction, captured: Node) -> Node {
-  Node {
+  node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
       grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
       grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
     ],
-    span: captured.span
-  }
+    occurrence_id: captured.occurrence_id
+  )
 }
 
 fn parse_nonterminal_from_table(
@@ -706,8 +664,8 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
 
 // --- Parse walk helpers ---
 
-fn parse_repeat_captured_node(acc_nodes: List<Node>, span: NodeSpan) -> Node {
-  Node {
+fn parse_repeat_captured_node(acc_nodes: List<Node>, occurrence_id: OccurrenceId) -> Node {
+  node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: acc_nodes,
@@ -722,8 +680,8 @@ fn parse_repeat_captured_node(acc_nodes: List<Node>, span: NodeSpan) -> Node {
         )
       }
     ),
-    span: span
-  }
+    occurrence_id: occurrence_id
+  )
 }
 
 
@@ -790,21 +748,13 @@ fn parse_expr_run_walk(
             true =>
               match list_tail(xs: tokens) {
                 TailFound { tail: remaining } =>
-                  match parse_node_span_from_token(tok: tok) {
-                    Rejected { diagnostics: r } =>
-                      ParseExprRejected {
-                        diagnostics: parse_non_empty_diagnostics_to_list(ned: r)
-                      }
-                    Accepted { value: span, diagnostics: _ } =>
-                      ParseExprAccepted {
-                        remaining: remaining,
-                        captured: Node {
-                          kind: TypeNode { connective: Atom { identity: tok.class } },
-                          children: [],
-                          span: span
-                        },
-                        diagnostics: []
-                      }
+                  ParseExprAccepted {
+                    remaining: remaining,
+                    captured: node_synthetic(
+                      kind: TypeNode { connective: Atom { identity: tok.class } },
+                      children: []
+                    ),
+                    diagnostics: []
                   }
                 TailAbsent => ParseExprRejected { diagnostics: [] }
               }
@@ -840,27 +790,17 @@ fn parse_expr_run_walk(
             ParseExprRejected { diagnostics: diags2 } =>
               ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
             ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
-              match parse_sequence_captured_span(cap1: cap1, cap2: cap2) {
-                Rejected { diagnostics: r } =>
-                  ParseExprRejected {
-                    diagnostics: list_append(
-                      left: list_append(left: diags1, right: diags2),
-                      right: parse_non_empty_diagnostics_to_list(ned: r)
-                    )
-                  }
-                Accepted { value: span, diagnostics: _ } =>
-                  ParseExprAccepted {
-                    remaining: rest2,
-                    captured: Node {
-                      kind: TypeNode { connective: Conj },
-                      children: [
-                        grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
-                        grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
-                      ],
-                      span: span
-                    },
-                    diagnostics: list_append(left: diags1, right: diags2)
-                  }
+              ParseExprAccepted {
+                remaining: rest2,
+                captured: node_with_occurrence_id(
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
+                    grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
+                  ],
+                  occurrence_id: cap1.occurrence_id
+                ),
+                diagnostics: list_append(left: diags1, right: diags2)
               }
           }
       }
@@ -944,20 +884,13 @@ fn parse_expr_run_walk(
           }
         }
       )
-      match parse_repeat_captured_span(acc_nodes: result.acc_nodes) {
-        Rejected { diagnostics: r } =>
-          ParseExprRejected {
-            diagnostics: list_append(
-              left: result.acc_diags,
-              right: parse_non_empty_diagnostics_to_list(ned: r)
-            )
-          }
-        Accepted { value: span, diagnostics: _ } =>
-          ParseExprAccepted {
-            remaining: result.remaining,
-            captured: parse_repeat_captured_node(acc_nodes: result.acc_nodes, span: span),
-            diagnostics: result.acc_diags
-          }
+      ParseExprAccepted {
+        remaining: result.remaining,
+        captured: parse_repeat_captured_node(
+          acc_nodes: result.acc_nodes,
+          occurrence_id: substrate_synthetic_occurrence_id
+        ),
+        diagnostics: result.acc_diags
       }
   }
 }

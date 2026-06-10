@@ -13,7 +13,7 @@ import v4.std.dependency {
   topological_layers
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.workflow.scheduler {
   RunnableFrontier,
   SchedulerNoRunnableFrontier,
@@ -42,25 +42,25 @@ data scheduler_missing_source_symbol: Symbol = scheduler_missing_source_symbol
 data scheduler_build_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: scheduler_build_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data scheduler_test_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: scheduler_test_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data scheduler_emit_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: scheduler_emit_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data scheduler_missing_source_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: scheduler_missing_source_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data scheduler_fixture_graph: Node = Node {
@@ -70,7 +70,7 @@ data scheduler_fixture_graph: Node = Node {
     Edge { label: Named { name: scheduler_test_symbol }, target: scheduler_test_node },
     Edge { label: Named { name: scheduler_emit_symbol }, target: scheduler_emit_node }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data scheduler_build_to_emit_dependency: DependencyView = DependencyView {

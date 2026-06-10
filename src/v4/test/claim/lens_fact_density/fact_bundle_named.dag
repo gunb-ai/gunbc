@@ -16,7 +16,7 @@ import v4.std.node {
   Node,
   Symbol,
   TypeNode,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   EqualsClaim,
@@ -30,7 +30,7 @@ import v4.std.verification {
 data fact_bundle_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_bundle_alias_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data fact_bundle_input: Node = Node {
@@ -45,7 +45,7 @@ data fact_bundle_input: Node = Node {
       target: fact_bundle_alias
     }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 fn fact_bundle_named_claim_holds() -> Bool {
@@ -60,7 +60,7 @@ fn fact_bundle_named_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

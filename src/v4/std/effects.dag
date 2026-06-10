@@ -5,7 +5,7 @@
 module v4.std.effects
 
 
-import v4.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, substrate_synthetic_occurrence_id }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -83,7 +83,7 @@ data sample_label_only_callable: Symbol = sample_label_only_callable
 data sample_state: Node = Node {
   kind: TypeNode { connective: Atom { identity: sample_state_value } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 
@@ -142,7 +142,7 @@ data sample_label_only_subject: IdempotentOperationSubject = LabelOnlyIdempotent
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -162,7 +162,7 @@ fn key_source_node(key_source: KeySource) -> Node {
             target: atom_node(s: p)
           },
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
     InputField { field: f } =>
       Node {
@@ -177,7 +177,7 @@ fn key_source_node(key_source: KeySource) -> Node {
             target: atom_node(s: f)
           },
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }
@@ -199,7 +199,7 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
             target: key_source_node(key_source: key_source)
           },
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
     DeleteEffect { key_source: key_source } =>
       Node {
@@ -214,7 +214,7 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
             target: key_source_node(key_source: key_source)
           },
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }
@@ -233,7 +233,7 @@ fn classified_idempotent_effect_node(shape: IdempotentShape) -> Node {
         target: idempotent_shape_node(shape: shape)
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -247,7 +247,7 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
         target: atom_node(s: operation.callable)
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -265,7 +265,7 @@ fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOpe
         target: idempotent_operation_witness_node(subject: subject)
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -298,7 +298,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
     UpsertIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
@@ -313,7 +313,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
     DeleteIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
@@ -328,7 +328,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }
