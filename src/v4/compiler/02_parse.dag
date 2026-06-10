@@ -52,6 +52,7 @@ import v4.std.grammar {
   Choice,
   ParseGrammar,
   GrammarExpr,
+  GrammarExprFold,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
@@ -62,6 +63,7 @@ import v4.std.grammar {
   Terminal,
   ValidatedGrammarRoot,
   VoidGrammar,
+  fold_grammar_expr,
   grammar_empty_node,
   grammar_named_edge,
   grammar_to_node
@@ -356,23 +358,25 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived nullable query morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating nullable logic outside this function.
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr structural morphism substrate —
+// bind node://adhoc-b696538c-710 — first consumer of v4.std.grammar.fold_grammar_expr: the
+// nullable query is now expressed as a GrammarExprFold algebra over Bool rather than a hand-written
+// per-variant recursion. The structural recursion lives once in fold_grammar_expr; this function
+// supplies only the per-variant combine.
 // expr_is_nullable_given_set: true iff expr can match empty input given a pre-computed nullable set.
-// Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
 // Nonterminal arms consult nullable_set rather than following production references.
 fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> Bool {
-  match expr {
-    Terminal { token_class: _ } => false
-    Nonterminal { production: name } => nullable_set.member(name)
-    Sequence { left: left, right: right } =>
-      expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) &&
-      expr_is_nullable_given_set(expr: right, nullable_set: nullable_set)
-    Choice { left: left, right: right } =>
-      expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) ||
-      expr_is_nullable_given_set(expr: right, nullable_set: nullable_set)
-    Optional { element: _ } => true
-    Repeat { element: _ } => true
-  }
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_) { false },
+      nonterminal: fn(name) { nullable_set.member(name) },
+      sequence: fn(left_nullable, right_nullable) { left_nullable && right_nullable },
+      choice: fn(left_nullable, right_nullable) { left_nullable || right_nullable },
+      optional: fn(_) { true },
+      repeat: fn(_) { true }
+    }
+  )
 }
 
 
