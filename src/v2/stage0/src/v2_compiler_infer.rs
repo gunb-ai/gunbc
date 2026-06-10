@@ -13393,25 +13393,25 @@ pub fn build_module_context(
                 &parent_index,
                 imp.module_path.clone(),
             ) {
-                Some(typed_parent) => module_items(typed_parent.module.clone())
-                    .iter()
-                    .cloned()
-                    .fold(
-                        acc.clone(),
-                        |inner: Rc<HashMap<String, bool>>, parent_item: Rc<Node>| {
-                            let parent_name = authored_name_at(
-                                typed_parent.type_env.clone().source_indices.clone(),
-                                parent_item.clone(),
-                            );
-                            if ((parent_item.connective.clone() == Connective::Disj)
-                                && import_allows_binding_name(imp.clone(), parent_name.clone()))
-                            {
-                                v2_rt::rc_map_insert(inner.clone(), parent_name.clone(), true)
-                            } else {
-                                inner.clone()
-                            }
-                        },
-                    ),
+                Some(typed_parent) => Rc::new(v2_rt::map_values(
+                    &typed_parent.type_env.clone().bindings.clone(),
+                ))
+                .iter()
+                .cloned()
+                .fold(
+                    acc.clone(),
+                    |inner: Rc<HashMap<String, bool>>, parent_binding: Rc<TypeBinding>| {
+                        let parent_name = parent_binding.name.clone();
+                        if ((parent_binding.resolved.clone().connective.clone()
+                            == Connective::Disj)
+                            && import_allows_binding_name(imp.clone(), parent_name.clone()))
+                        {
+                            v2_rt::rc_map_insert(inner.clone(), parent_name.clone(), true)
+                        } else {
+                            inner.clone()
+                        }
+                    },
+                ),
                 None => acc.clone(),
             },
         );
@@ -13424,43 +13424,40 @@ pub fn build_module_context(
                 Some(typed_parent) => imp.specific_names.clone().iter().cloned().fold(
                     acc.clone(),
                     |inner: Rc<HashMap<String, bool>>, n: String| {
-                        module_items(typed_parent.module.clone())
-                            .iter()
-                            .cloned()
-                            .fold(
-                                inner,
-                                |pacc: Rc<HashMap<String, bool>>, parent_item: Rc<Node>| {
-                                    let parent_name = authored_name_at(
+                        Rc::new(v2_rt::map_values(
+                            &typed_parent.type_env.clone().bindings.clone(),
+                        ))
+                        .iter()
+                        .cloned()
+                        .fold(
+                            inner,
+                            |pacc: Rc<HashMap<String, bool>>, parent_binding: Rc<TypeBinding>| {
+                                let parent_name = parent_binding.name.clone();
+                                if (((parent_binding.resolved.clone().connective.clone()
+                                    == Connective::Disj)
+                                    && (import_allows_binding_name(
+                                        imp.clone(),
+                                        parent_name.clone(),
+                                    ) == false))
+                                    && has_child_named(
+                                        parent_binding.resolved.clone(),
+                                        n.clone(),
                                         typed_parent.type_env.clone().source_indices.clone(),
-                                        parent_item.clone(),
-                                    );
-                                    if (((parent_item.connective.clone() == Connective::Disj)
-                                        && (import_allows_binding_name(
-                                            imp.clone(),
-                                            parent_name.clone(),
-                                        ) == false))
-                                        && has_child_named(
-                                            parent_item.clone(),
+                                    ))
+                                {
+                                    v2_rt::rc_map_insert(
+                                        pacc.clone(),
+                                        v2_rt::concat(
+                                            v2_rt::concat(parent_name.clone(), "::".to_string()),
                                             n.clone(),
-                                            typed_parent.type_env.clone().source_indices.clone(),
-                                        ))
-                                    {
-                                        v2_rt::rc_map_insert(
-                                            pacc.clone(),
-                                            v2_rt::concat(
-                                                v2_rt::concat(
-                                                    parent_name.clone(),
-                                                    "::".to_string(),
-                                                ),
-                                                n.clone(),
-                                            ),
-                                            true,
-                                        )
-                                    } else {
-                                        pacc.clone()
-                                    }
-                                },
-                            )
+                                        ),
+                                        true,
+                                    )
+                                } else {
+                                    pacc.clone()
+                                }
+                            },
+                        )
                     },
                 ),
                 None => acc.clone(),
@@ -13474,7 +13471,7 @@ pub fn build_module_context(
 if is_coproduct.clone() {
                 {
                     let curr_parent_name = authored_name_at(env.source_indices.clone(), binding.resolved.clone());
-let curr_parent_imported = (v2_rt::map_get(&imported_enum_names, curr_parent_name.clone()) != None);
+let curr_parent_imported = ((curr_parent_name.clone().as_str() == "Optional".to_string().as_str()) || (v2_rt::map_get(&imported_enum_names, curr_parent_name.clone()) != None));
 binding.resolved.clone().children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
                         let child_name = authored_name_at(env.source_indices.clone(), child.clone());
 let curr_variant_imported = (v2_rt::map_get(&imported_variant_parent_names, v2_rt::concat(v2_rt::concat(curr_parent_name.clone(), "::".to_string()), child_name.clone())) != None);
@@ -13496,7 +13493,24 @@ if ((((((curr_variant_imported.clone() && prev_variant_imported.clone()) && (is_
 }), module_name.clone())),
 })
                             } else {
-                                vacc.clone()
+                                if (curr_parent_imported.clone()
+                                    && (prev_parent_imported.clone() == false))
+                                {
+                                    Rc::new(VariantFoldState {
+                                        locals: v2_rt::rc_map_insert(
+                                            vacc.locals.clone(),
+                                            child_name.clone(),
+                                            Rc::new(TypeBinding {
+                                                name: child_name.clone(),
+                                                resolved: binding.resolved.clone(),
+                                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                            }),
+                                        ),
+                                        collisions: vacc.collisions.clone(),
+                                    })
+                                } else {
+                                    vacc.clone()
+                                }
                             }
 },
     None => if curr_is_imported.clone() {

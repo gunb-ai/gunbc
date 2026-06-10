@@ -6135,9 +6135,9 @@ fn build_module_context(contributions: List<ItemContribution>,
 		  let imported_enum_names = fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
 		    match map_get(parent_index, imp.module_path) {
 		      Present { value: typed_parent } =>
-		        fold(module_items(n: typed_parent.module), init: acc, f: (inner, parent_item) =>
-		          let parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: parent_item)
-		          if parent_item.connective == Disj && import_allows_binding_name(imp: imp, name: parent_name) {
+		        fold(typed_parent.type_env.bindings |> map_values, init: acc, f: (inner, parent_binding) =>
+		          let parent_name = parent_binding.name
+		          if parent_binding.resolved.connective == Disj && import_allows_binding_name(imp: imp, name: parent_name) {
 		            map_insert(inner, parent_name, true)
 		          } else { inner }
 		        )
@@ -6148,9 +6148,9 @@ fn build_module_context(contributions: List<ItemContribution>,
 		    match map_get(parent_index, imp.module_path) {
 		      Present { value: typed_parent } =>
 		        fold(imp.specific_names, init: acc, f: (inner, n) =>
-		          fold(module_items(n: typed_parent.module), init: inner, f: (pacc, parent_item) =>
-		            let parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: parent_item)
-		            if parent_item.connective == Disj && import_allows_binding_name(imp: imp, name: parent_name) == false && has_child_named(n: parent_item, name: n, source_indices: typed_parent.type_env.source_indices) {
+		          fold(typed_parent.type_env.bindings |> map_values, init: inner, f: (pacc, parent_binding) =>
+		            let parent_name = parent_binding.name
+		            if parent_binding.resolved.connective == Disj && import_allows_binding_name(imp: imp, name: parent_name) == false && has_child_named(n: parent_binding.resolved, name: n, source_indices: typed_parent.type_env.source_indices) {
 		              map_insert(pacc, concat(parent_name, "::", n), true)
 		            } else { pacc }
 		          )
@@ -6162,7 +6162,7 @@ fn build_module_context(contributions: List<ItemContribution>,
 		    let is_coproduct = binding.resolved.connective == Disj
 		    if is_coproduct {
 		      let curr_parent_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
-		      let curr_parent_imported = map_get(imported_enum_names, curr_parent_name) != none
+		      let curr_parent_imported = curr_parent_name == "Optional" || map_get(imported_enum_names, curr_parent_name) != none
 		      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
 		        let child_name = authored_name_at(source_indices: env.source_indices, node: child)
 		        let curr_variant_imported = map_get(imported_variant_parent_names, concat(curr_parent_name, "::", child_name)) != none
@@ -6177,6 +6177,11 @@ fn build_module_context(contributions: List<ItemContribution>,
 		              VariantFoldState {
 		                locals: vacc.locals,
 		                collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: curr_parent_name, span: no_span() }, module_name: module_name))
+		              }
+		            } else if curr_parent_imported && prev_parent_imported == false {
+		              VariantFoldState {
+		                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
+		                collisions: vacc.collisions
 		              }
 		            } else { vacc }
 		          Absent =>
