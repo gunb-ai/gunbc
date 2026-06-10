@@ -188,20 +188,21 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
     }
   })
 }
-type ArrowBodyTargetLookup
-  = ArrowBodyTargetAbsent
-  | ArrowBodyTargetFound { target: Node }
-  | ArrowBodyTargetAmbiguous
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-named-edge-target-lookup — bind COMPREP wave-0 / node-behavior-loop-bound-measure-target — dissolve-on-arrival: substrate canonical single Named-edge target projection shared by well_formed validation, cardinality witness, and node_query diagnostics; forbidden: parallel ad-hoc single-named-edge extraction outside std.node/std.node_query.
+type NamedEdgeTargetLookup
+  = Found { target: Node }
+  | Ambiguous
+  | Absent
 
-fn arrow_body_target_lookup(children: List<Edge>) -> ArrowBodyTargetLookup {
-  fold(children, init: ArrowBodyTargetAbsent, f: fn(acc, e) {
+fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTargetLookup {
+  fold(children, init: Absent, f: fn(acc, e) {
     match e.label {
       Named { name: sym } =>
-        if sym == ^arrow_body_edge {
+        if sym == name {
           match acc {
-            ArrowBodyTargetAbsent => ArrowBodyTargetFound { target: e.target }
-            ArrowBodyTargetFound { target: _ } => ArrowBodyTargetAmbiguous
-            ArrowBodyTargetAmbiguous => ArrowBodyTargetAmbiguous
+            Absent => Found { target: e.target }
+            Found { target: _ } => Ambiguous
+            Ambiguous => Ambiguous
           }
         } else {
           acc
@@ -209,6 +210,10 @@ fn arrow_body_target_lookup(children: List<Edge>) -> ArrowBodyTargetLookup {
       Positional => acc
     }
   })
+}
+
+fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^arrow_body_edge)
 }
 
 // Wave-0: internal L1 Behavior sub-DAG only. E-9 external realization carrier validation lands with extdeps primitive wiring.
@@ -221,9 +226,9 @@ fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
 
 fn arrow_body_target_conforms(children: List<Edge>) -> Bool {
   match arrow_body_target_lookup(children: children) {
-    ArrowBodyTargetAbsent => true
-    ArrowBodyTargetFound { target: t } => arrow_body_target_is_valid_realization(target: t)
-    ArrowBodyTargetAmbiguous => false
+    Absent => true
+    Found { target: t } => arrow_body_target_is_valid_realization(target: t)
+    Ambiguous => false
   }
 }
 
@@ -234,27 +239,8 @@ fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
   && (positional_child_count(children: children) >= 1)
   && arrow_body_target_conforms(children: children)
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-bound-measure-target — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop loop_bound_edge target projection shared by cardinality witness; forbidden: parallel ad-hoc loop_bound_edge extraction outside well_formed/cardinality.
-type LoopMeasureTargetLookup
-  = Found { target: Node }
-  | Ambiguous
-  | Absent
-fn loop_bound_measure_target(children: List<Edge>) -> LoopMeasureTargetLookup {
-  fold(children, init: Absent, f: fn(acc, e) {
-    match e.label {
-      Named { name: sym } =>
-        if sym == ^loop_bound_edge {
-          match acc {
-            Absent => Found { target: e.target }
-            Found { target: _ } => Ambiguous
-            Ambiguous => Ambiguous
-          }
-        } else {
-          acc
-        }
-      Positional => acc
-    }
-  })
+fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_bound_edge)
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query scoped to Loop parents; forbidden: edge-label-only loop_bound_edge skip outside Loop.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
