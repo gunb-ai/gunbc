@@ -88,7 +88,8 @@ pub fn lookup_field_type_node(
                 if (field_name.clone().as_str() == "value".to_string().as_str()) {
                     Some(inner)
                 } else {
-                    match lookup_field_type_node(inner, field_name.clone(), source_indices) {
+                    match lookup_field_type_node(inner, field_name.clone(), source_indices.clone())
+                    {
                         Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
                         None => None,
                     }
@@ -111,19 +112,21 @@ pub fn lookup_field_type_node(
                                         && (field_name.clone().as_str()
                                             == "lookup".to_string().as_str()))
                                     {
-                                        let value_child =
-                                            match n.children.iter().skip(1).next().cloned() {
-                                                Some(child) => child_type_node(child),
-                                                None => nominal_type_ref("V".to_string()),
-                                            };
-                                        Some(
-                                            make_container_type(
-                                                "Witness".to_string(),
-                                                value_child.clone(),
+                                        {
+                                            let value_child =
+                                                match n.children.clone().get(1 as usize).cloned() {
+                                                    Some(child) => child_type_node(child.clone()),
+                                                    None => nominal_type_ref("V".to_string()),
+                                                };
+                                            Some(
+                                                make_container_type(
+                                                    "Witness".to_string(),
+                                                    value_child,
+                                                )
+                                                .ty
+                                                .clone(),
                                             )
-                                            .ty
-                                            .clone(),
-                                        )
+                                        }
                                     } else {
                                         Some(child_type_node(field_child.clone()))
                                     }
@@ -134,7 +137,7 @@ pub fn lookup_field_type_node(
                             lookup_coproduct_common_field_node(
                                 n.children.clone(),
                                 field_name.clone(),
-                                source_indices,
+                                source_indices.clone(),
                             )
                         }
                     }
@@ -450,9 +453,7 @@ pub fn map_lookup_result_type(
     field: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    if (authored_name_at(source_indices.clone(), product.clone()).as_str()
-        == "Map".to_string().as_str())
-    {
+    if (authored_name_at(source_indices.clone(), product).as_str() == "Map".to_string().as_str()) {
         match product_field_result_type(field) {
             Some(raw) => {
                 if (authored_name_at(source_indices.clone(), raw.clone()).as_str()
@@ -492,33 +493,30 @@ pub fn lookup_field_in_product(
             __result
         });
         match matching.first().cloned() {
-            Some(field) => {
-                let map_lookup = if (method_name.clone().as_str() == "lookup".to_string().as_str())
-                {
-                    map_lookup_result_type(product.clone(), field.clone(), source_indices.clone())
-                } else {
-                    None
-                };
-                match map_lookup {
-                    Some(result_type) => Some(Rc::new(MethodFieldResult {
+            Some(field) => match if (method_name.clone().as_str() == "lookup".to_string().as_str())
+            {
+                map_lookup_result_type(product.clone(), field.clone(), source_indices.clone())
+            } else {
+                None
+            } {
+                Some(lookup_rt) => Some(Rc::new(MethodFieldResult {
+                    field_node: field.clone(),
+                    result_type: lookup_rt.clone(),
+                    size_effect: None,
+                    cost_shape: None,
+                    algebra_template: None,
+                })),
+                None => match product_field_result_type(field.clone()) {
+                    Some(rt) => Some(Rc::new(MethodFieldResult {
                         field_node: field.clone(),
-                        result_type: result_type.clone(),
+                        result_type: rt.clone(),
                         size_effect: None,
                         cost_shape: None,
                         algebra_template: None,
                     })),
-                    None => match product_field_result_type(field.clone()) {
-                        Some(rt) => Some(Rc::new(MethodFieldResult {
-                            field_node: field.clone(),
-                            result_type: rt.clone(),
-                            size_effect: None,
-                            cost_shape: None,
-                            algebra_template: None,
-                        })),
-                        _ => None,
-                    },
-                }
-            }
+                    None => None,
+                },
+            },
             None => None,
         }
     }

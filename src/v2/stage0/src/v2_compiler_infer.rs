@@ -1199,7 +1199,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                     }) => {
                         match map_value_type_in_env(receiver_type.clone(), scope.type_env.clone()) {
                             Some(value_type) => {
-                                if func_name.clone().as_str() == "lookup".to_string().as_str() {
+                                if (func_name.clone().as_str() == "lookup".to_string().as_str()) {
                                     witness_of_element(value_type.clone())
                                 } else {
                                     with_optional_cardinality(value_type.clone())

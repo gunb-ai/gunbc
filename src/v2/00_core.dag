@@ -734,7 +734,7 @@ fn is_child_accessor_in_model(name: String) -> Bool {
 // Returns None if the variant is not in the model (fail-closed: callers
 // must handle missing layout explicitly, not assume "no children").
 fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
-  lookup(expr_child_roles, key: variant_name)
+  map_get(expr_child_roles, variant_name)
 }
 
 // =========================================================================

@@ -117,8 +117,8 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
 
 pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
-        let inner = match scrut.children.first().cloned() {
-            Some(child) => child_type_node(child),
+        let inner = match scrut.children.clone().first().cloned() {
+            Some(child) => child_type_node(child.clone()),
             None => error_type(),
         };
         let value_field = Rc::new(Node {
@@ -501,16 +501,19 @@ pub fn check_match_exhaustiveness(
             {
                 let variant_names = if resolved_is_optional.clone() {
                     Rc::new(vec!["Present".to_string(), "Absent".to_string()])
-                } else if resolved_is_witness.clone() {
-                    Rc::new(vec!["Holds".to_string(), "Violates".to_string()])
                 } else {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for c in resolved.children.clone().iter().cloned() {
-                            __result.push(authored_name_at(env.source_indices.clone(), c.clone()));
-                        }
-                        __result
-                    })
+                    if resolved_is_witness.clone() {
+                        Rc::new(vec!["Holds".to_string(), "Violates".to_string()])
+                    } else {
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for c in resolved.children.clone().iter().cloned() {
+                                __result
+                                    .push(authored_name_at(env.source_indices.clone(), c.clone()));
+                            }
+                            __result
+                        })
+                    }
                 };
                 let has_catch_all = {
                     let mut __found = false;

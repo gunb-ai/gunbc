@@ -3522,7 +3522,9 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
     else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
   let rust_name = if name == "Present" { "Some" } else if name == "Absent" { "None" } else { name }
   let qualified = match resolved_parent {
-    Present { value: parent } => concat(parent, "::", rust_name)
+    Present { value: parent } =>
+      if parent == "Witness" { concat("v2_rt::Witness::", rust_name) }
+      else { concat(parent, "::", rust_name) }
     Absent => rust_name
   }
   if name == "Present" && field_bindings |> count == 1 {
@@ -3741,7 +3743,9 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
     else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
   let rust_name = if name == "Present" { "Some" } else if name == "Absent" { "None" } else { name }
   let qualified = match resolved_parent {
-    Present { value: parent } => concat(parent, "::", rust_name)
+    Present { value: parent } =>
+      if parent == "Witness" { concat("v2_rt::Witness::", rust_name) }
+      else { concat(parent, "::", rust_name) }
     Absent => rust_name
   }
   if name == "Present" && field_bindings |> count == 1 {
@@ -3970,6 +3974,7 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
 
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
+  else if name == "Absent" { "None" }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
     // `movable` is the sole authority for emitting plain variable references
@@ -4026,6 +4031,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: texpr, source_indices: si)
       if n == "none" || n == "None" { emit_keyword(key: "null", target: Rust) }
+      else if n == "Absent" { "None" }
       else if n == "true" || n == "false" { emit_keyword(key: n, target: Rust) }
       else {
         let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)

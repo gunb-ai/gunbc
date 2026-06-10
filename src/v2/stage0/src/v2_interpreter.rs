@@ -1228,7 +1228,7 @@ fn match_pattern(
                     ..
                 } => {
                     // Symmetric Witness projection: a *present* coproduct value bridges to
-                    // `Holds { value: <self> }`. A native `Value::Map` lookup returns the raw
+                    // `v2_rt::Witness::Holds { value: <self> }`. A native `Value::Map` lookup returns the raw
                     // stored value, and a `-> Witness`-annotated `.lookup` consumer (e.g.
                     // parse_table_lookup / lookup_table) matches `Holds`/`Violates`, so a
                     // present coproduct value must satisfy the `Holds` arm. Same absent-arm
@@ -1440,7 +1440,7 @@ fn match_pattern(
                 }
                 // Symmetric to the `Some` bridge above, for a `-> Witness` match: a present
                 // non-Variant value (e.g. a native-map `Int` lookup hit) bridges to
-                // `Holds { value: <self> }`. `Null` (a miss) does not match `Holds` — it
+                // `v2_rt::Witness::Holds { value: <self> }`. `Null` (a miss) does not match `Holds` — it
                 // falls through to the `Null → Violates` bridge above.
                 _ if name == "Holds" => {
                     if matches!(value, Value::Null) {

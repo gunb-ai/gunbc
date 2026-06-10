@@ -1476,7 +1476,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
 }
 
 pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
-    v2_rt::lookup(&expr_child_roles(), variant_name)
+    v2_rt::map_get(&expr_child_roles(), variant_name)
 }
 
 #[derive(
@@ -1506,15 +1506,24 @@ pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
 
 pub fn is_children_list_field(field_name: String) -> bool {
     match v2_rt::lookup(&node_field_roles(), field_name) {
-        Some(NodeFieldRole::ChildrenListField) => true,
+        v2_rt::Witness::Holds {
+            value: NodeFieldRole::ChildrenListField,
+            ..
+        } => true,
         _ => false,
     }
 }
 
 pub fn is_sub_value_field(field_name: String) -> bool {
     match v2_rt::lookup(&node_field_roles(), field_name) {
-        Some(NodeFieldRole::SubValueField) => true,
-        Some(NodeFieldRole::ChildrenListField) => true,
+        v2_rt::Witness::Holds {
+            value: NodeFieldRole::SubValueField,
+            ..
+        } => true,
+        v2_rt::Witness::Holds {
+            value: NodeFieldRole::ChildrenListField,
+            ..
+        } => true,
         _ => false,
     }
 }
@@ -1558,32 +1567,45 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
 }
 
 pub fn is_tree_size_preserving(func_name: String) -> bool {
-    match v2_rt::lookup(&function_size_effects(), func_name)
-        .as_deref()
-        .cloned()
-    {
-        Some(FunctionSizeEffect::TreeSizePreserving) => true,
-        Some(FunctionSizeEffect::PropertyContraction { domain_size: _, .. }) => true,
+    match v2_rt::lookup(&function_size_effects(), func_name) {
+        v2_rt::Witness::Holds { ref value, .. } => {
+            let FunctionSizeEffect::TreeSizePreserving = value.as_ref() else {
+                unreachable!()
+            };
+            true
+        }
+        v2_rt::Witness::Holds { ref value, .. } => {
+            let FunctionSizeEffect::PropertyContraction { domain_size: _, .. } = value.as_ref()
+            else {
+                unreachable!()
+            };
+            true
+        }
         _ => false,
     }
 }
 
 pub fn is_tree_size_reducing(func_name: String) -> bool {
-    match v2_rt::lookup(&function_size_effects(), func_name)
-        .as_deref()
-        .cloned()
-    {
-        Some(FunctionSizeEffect::TreeSizeReducing) => true,
+    match v2_rt::lookup(&function_size_effects(), func_name) {
+        v2_rt::Witness::Holds { ref value, .. } => {
+            let FunctionSizeEffect::TreeSizeReducing = value.as_ref() else {
+                unreachable!()
+            };
+            true
+        }
         _ => false,
     }
 }
 
 pub fn is_property_contraction(func_name: String) -> bool {
-    match v2_rt::lookup(&function_size_effects(), func_name)
-        .as_deref()
-        .cloned()
-    {
-        Some(FunctionSizeEffect::PropertyContraction { domain_size: _, .. }) => true,
+    match v2_rt::lookup(&function_size_effects(), func_name) {
+        v2_rt::Witness::Holds { ref value, .. } => {
+            let FunctionSizeEffect::PropertyContraction { domain_size: _, .. } = value.as_ref()
+            else {
+                unreachable!()
+            };
+            true
+        }
         _ => false,
     }
 }

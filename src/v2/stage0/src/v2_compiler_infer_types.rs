@@ -8,7 +8,7 @@ use crate::std_algebra::AlgebraProfile::{
 };
 use crate::std_algebra::AlgebraTypeTemplate::{
     AlgebraTypeVariable, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey,
-    ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
+    ReceiverSelf, ReceiverValue, TupleOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
