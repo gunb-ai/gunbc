@@ -1,7 +1,7 @@
 // v2 type environment -- structural type bindings and lookup.
 module v2.compiler.infer_env
 
-import v2.std.core { BindingId, Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
+import v2.std.core { BindingId, Node, SourceSpan, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
@@ -27,9 +27,16 @@ type TypeBinding {
 
 type TypeDeclBinding {
   binding_id: BindingId
+  authority: TypeDeclAuthority
   binding_key: Int
   name: String
   provenance: SubValueRelation
+}
+
+type TypeDeclAuthority {
+  module_name: String
+  decl_name: String
+  decl_span: SourceSpan
 }
 
 type BindingIdAllocator {
@@ -63,7 +70,7 @@ fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<Bindin
       Some { value: binding } =>
         match map_get(acc.decl_registry, binding_id) {
           Some { value: existing } =>
-            if existing.binding_key == binding.binding_key && existing.name == binding.name {
+            if existing.authority == binding.authority {
               acc
             } else {
               DeclRegistryMergeState {

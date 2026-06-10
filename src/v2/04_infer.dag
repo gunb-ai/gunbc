@@ -81,7 +81,7 @@ import v2.compiler.infer_method {
 }
 import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
-  TypeEnv, TypeBinding, TypeDeclBinding, BindingIdAllocator,
+  TypeEnv, TypeBinding, TypeDeclBinding, TypeDeclAuthority, BindingIdAllocator,
   empty_binding_id_allocator, alloc_binding_id,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
@@ -627,64 +627,11 @@ fn type_node_is_callable(n: Node) -> Bool {
   n.params |> count > 0
 }
 
-// TRANSITION (A3 / PD-3): v4 MVP1/R2 substrate modules still model Symbol and
-// grammar carriers with list-backed spellings outside phase-1 brand identity.
-// This is an exact module allowlist from the v4 MVP1/R2 test closure, not a
-// path or prefix bypass; user modules and new modules fail closed.
+// TRANSITION (A3 / PD-3): no path-based, prefix-based, or module-name bypass.
+// Direct-call diagnostics must be justified by typed authored forms and
+// declaration identity below.
 fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
-  module_name == "v4.compiler.compile"
-    || module_name == "v4.compiler.emit"
-    || module_name == "v4.compiler.eval"
-    || module_name == "v4.compiler.infer"
-    || module_name == "v4.compiler.name_resolve"
-    || module_name == "v4.compiler.normalize"
-    || module_name == "v4.compiler.parse"
-    || module_name == "v4.compiler.resolve"
-    || module_name == "v4.compiler.target_carriers"
-    || module_name == "v4.compiler.tokenize"
-    || module_name == "v4.compiler.translate"
-    || module_name == "v4.extdeps.languages.dag"
-    || module_name == "v4.extdeps.languages.fidelity"
-    || module_name == "v4.extdeps.languages.rust"
-    || module_name == "v4.extdeps.runtimes.v4_evaluator"
-    || module_name == "v4.lens.fact_density"
-    || module_name == "v4.std.algebra"
-    || module_name == "v4.std.bounded_lattice_completeness"
-    || module_name == "v4.std.cardinality"
-    || module_name == "v4.std.coercion"
-    || module_name == "v4.std.collection"
-    || module_name == "v4.std.constraint_satisfaction_predicate"
-    || module_name == "v4.std.constraints"
-    || module_name == "v4.std.diagnostic"
-    || module_name == "v4.std.exact_structural_equality_zip_fold_predicate"
-    || module_name == "v4.std.find_witness"
-    || module_name == "v4.std.grammar"
-    || module_name == "v4.std.grounding"
-    || module_name == "v4.std.host_run"
-    || module_name == "v4.std.integer"
-    || module_name == "v4.std.integer_value_set"
-    || module_name == "v4.std.lexing"
-    || module_name == "v4.std.logic"
-    || module_name == "v4.std.machine"
-    || module_name == "v4.std.model_core"
-    || module_name == "v4.std.nat"
-    || module_name == "v4.std.node"
-    || module_name == "v4.std.node_query"
-    || module_name == "v4.std.project_to_core_predicate"
-    || module_name == "v4.std.qualified_name"
-    || module_name == "v4.std.refinement_widening_predicate"
-    || module_name == "v4.std.runtime"
-    || module_name == "v4.std.target_model"
-    || module_name == "v4.std.test_claim_falsification"
-    || module_name == "v4.std.text"
-    || module_name == "v4.std.type_expr_projection_row_schema"
-    || module_name == "v4.std.verdict"
-    || module_name == "v4.std.verification"
-    || module_name == "v4.std.witness"
-    || module_name == "v4.test.claim.lens_common.infer_fixture"
-    || module_name == "v4.test.claim.manual.infer_ground_add_mvp"
-    || module_name == "v4.test.claim.manual.mvp1_rust_add_translate"
-    || module_name == "v4.test.mvp1.add"
+  false
 }
 
 fn direct_call_actual_is_none(actual_expr: Node, actual_type: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -810,11 +757,22 @@ fn direct_call_element_collection_carrier(n: Node, source_indices: Map<String, N
     && child_count == 1
 }
 
+fn direct_call_product_field_names_match(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  formal.children |> enumerate |> all(pair =>
+    match actual.children |> skip(pair.first) |> first {
+      Some { value: actual_field } =>
+        field_node_name_at(n: pair.second, source_indices: source_indices) == field_node_name_at(n: actual_field, source_indices: source_indices)
+      None => false
+    }
+  )
+}
+
 fn direct_call_structural_pd3_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let both_declared_identity = formal.binding_id != none && actual.binding_id != none
+  let same_structural_carrier = structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
+  let both_declared_identity = formal.binding_id != none && actual.binding_id != none && same_structural_carrier
   let both_element_carriers = direct_call_element_collection_carrier(n: formal, source_indices: source_indices)
     && direct_call_element_collection_carrier(n: actual, source_indices: source_indices)
-    && structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
+    && same_structural_carrier
   let formal_name = authored_name_at(source_indices: source_indices, node: formal)
   let actual_name = authored_name_at(source_indices: source_indices, node: actual)
   let formal_child_count = (formal.children |> count)
@@ -826,6 +784,7 @@ fn direct_call_structural_pd3_mismatch(formal: Node, actual: Node, source_indice
     && formal_name != actual_name
     && formal_child_count > 0
     && formal_child_count == actual_child_count
+    && direct_call_product_field_names_match(formal: formal, actual: actual, source_indices: source_indices)
   (both_declared_identity || both_element_carriers || record_twin_carriers)
     && !node_type_compatible(left: formal, right: actual, source_indices: source_indices)
 }
@@ -5287,6 +5246,8 @@ fn register_type_decl_binding(
   acc: TypeDeclRegistrationAccum,
   item_ident: Int,
   name: String,
+  module_name: String,
+  decl_span: SourceSpan,
   resolved: Node,
   provenance: SubValueRelation
 ) -> TypeDeclRegistrationAccum {
@@ -5296,6 +5257,7 @@ fn register_type_decl_binding(
     bindings: map_insert(acc.bindings, item_ident, TypeBinding { name: name, resolved: stamped, provenance: provenance }),
     decl_registry: map_insert(acc.decl_registry, binding_alloc.binding_id, TypeDeclBinding {
       binding_id: binding_alloc.binding_id,
+      authority: TypeDeclAuthority { module_name: module_name, decl_name: name, decl_span: decl_span },
       binding_key: item_ident,
       name: name,
       provenance: provenance
@@ -5401,7 +5363,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, resolved: type_node, provenance: SubValueUnknown)
+      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, module_name: module_name_str, decl_span: item.span, resolved: type_node, provenance: SubValueUnknown)
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
       let alias_node = Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [],
@@ -5410,10 +5372,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, resolved: alias_node, provenance: SubValueUnknown)
+      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, module_name: module_name_str, decl_span: item.span, resolved: alias_node, provenance: SubValueUnknown)
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
-      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, resolved: ref_node, provenance: SubValueUnknown)
+      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, module_name: module_name_str, decl_span: item.span, resolved: ref_node, provenance: SubValueUnknown)
     } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
       // Parameterized type declaration (e.g., type List<element> = FreeMonoid<element>).
       // Register as a nominal type with params so generics can find the declaration.
@@ -5426,9 +5388,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, resolved: bare_node, provenance: SubValueUnknown)
+      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, module_name: module_name_str, decl_span: item.span, resolved: bare_node, provenance: SubValueUnknown)
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
-      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, resolved: nominal_leaf_type(name: item_name), provenance: SubValueUnknown)
+      register_type_decl_binding(acc: acc, item_ident: item_ident, name: item_name, module_name: module_name_str, decl_span: item.span, resolved: nominal_leaf_type(name: item_name), provenance: SubValueUnknown)
     } else {
       acc
     }
