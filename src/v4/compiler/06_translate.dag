@@ -582,7 +582,7 @@ fn grammar_relation_row_for_bodied_arrow_serialize(
       bind_outcome(
         o: bodied_arrow_scaffold_from_grammar_relation_row(row: row),
         f: fn(scaffold) {
-          Accepted { value: row, diagnostics: None }
+          outcome_accepted(value: row)
         }
       )
     }

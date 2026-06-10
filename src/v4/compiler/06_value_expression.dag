@@ -55,6 +55,7 @@ import v4.std.target_model {
   FixedToken,
   InfixToken,
   canonical_operation_equal,
+  canonical_operation_from_wire_node,
   canonical_operation_op_add,
   TargetModel,
   TargetOperatorRealization,
@@ -148,15 +149,38 @@ fn transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   transform_positional_operand_binding(node: node, index: 0)
 }
 
-fn value_expr_positional_child_atom_is(node: Node, index: Int, sym: Symbol) -> Bool {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: index) {
-    Present { value: child } =>
-      match child.kind {
-        TypeNode { connective: Atom { identity: id } } => id == sym
-        _ => false
+fn value_expr_positional_child_atom_is_at(
+  targets: FreeMonoid<Node>,
+  wanted: Int,
+  sym: Symbol,
+  cursor: Int
+) -> Bool {
+  match targets {
+    Empty => false
+    Cons { head: child, tail: rest } =>
+      if cursor == wanted {
+        match child.kind {
+          TypeNode { connective: Atom { identity: id } } => id == sym
+          _ => false
+        }
+      } else {
+        value_expr_positional_child_atom_is_at(
+          targets: rest,
+          wanted: wanted,
+          sym: sym,
+          cursor: cursor + 1
+        )
       }
-    Absent => false
   }
+}
+
+fn value_expr_positional_child_atom_is(node: Node, index: Int, sym: Symbol) -> Bool {
+  value_expr_positional_child_atom_is_at(
+    targets: node_positional_child_targets(node: node),
+    wanted: index,
+    sym: sym,
+    cursor: 0
+  )
 }
 
 // 🟡 gated — COMPREP wave-1 body-scope binding authority (E-9) — dissolve-on: Arrow signature
