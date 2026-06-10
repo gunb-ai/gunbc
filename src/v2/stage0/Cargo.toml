@@ -39,3 +39,9 @@ path = "src/bin/claim_batch.rs"
 [[bin]]
 name = "claim_executor"
 path = "src/bin/claim_executor.rs"
+
+# Resolved-type owned-data discovery for Consolidation #4553 glob discovery.
+# Hand-written CI tool (like claim_batch); exposes neutral decl facts only.
+[[bin]]
+name = "discover_owned_data"
+path = "src/bin/discover_owned_data.rs"
