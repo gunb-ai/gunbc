@@ -169,10 +169,13 @@ import v4.std.target_model {
   InfixToken,
   canonical_operation_op_add,
   TargetBindingRefShape,
+  TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
+  bodied_arrow_statement_scaffold_bundle_node,
+  target_model_edge_bodied_arrow_statement_scaffold,
   target_model_edge_operator_realizations,
   target_model_edge_value_expression_projection,
   target_operator_realization_node,
@@ -655,6 +658,13 @@ fn ts_mvp1_fn_add_statement_suffix_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^ts_token_semicolon },
     FixedToken { token_class: ^ts_token_rbrace }
   ]
+}
+
+fn ts_mvp1_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+  TargetBodiedArrowStatementScaffold {
+    prefix: ts_mvp1_fn_add_statement_prefix_tokens(),
+    suffix: ts_mvp1_fn_add_statement_suffix_tokens()
+  }
 }
 
 fn ts_mvp1_compose_add_fn_tokens(body_tokens: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
@@ -1376,6 +1386,12 @@ fn ts_mvp1_target_model_node() -> Node {
       ts_named_edge(
         name: target_model_edge_operator_realizations,
         target: ts_operator_realizations_catalog_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_bodied_arrow_statement_scaffold,
+        target: bodied_arrow_statement_scaffold_bundle_node(
+          scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
+        )
       )
     ],
     span: Unanchored

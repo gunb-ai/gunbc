@@ -5,7 +5,7 @@
 
 module v4.compiler.value_expression
 
-import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid, length, list_snoc_item }
 import v4.std.collection {
   Absent,
   List,
@@ -32,9 +32,11 @@ import v4.std.diagnostic {
 import v4.std.node {
   Atom,
   ComputationNode,
+  Conj,
   Edge,
   Named,
   Node,
+  Positional,
   Transform,
   TypeNode,
   Symbol
@@ -140,9 +142,21 @@ fn transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   transform_positional_operand_binding(node: node, index: 0)
 }
 
+fn transform_positional_child_count(node: Node) -> Int {
+  length(xs: node_positional_child_targets(node: node))
+}
+
 fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpression> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
+      if transform_positional_child_count(node: node) != 3 {
+        outcome_rejected(
+          value_expr_diagnostic(
+            reason: value_expr_reason_transform_shape_invalid,
+            node: node
+          )
+        )
+      } else {
       bind_outcome(
         o: transform_surface_op_atom(node: node),
         f: fn(op_atom) {
@@ -177,6 +191,7 @@ fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpressio
           }
         }
       )
+      }
     _ =>
       outcome_rejected(
         value_expr_diagnostic(
@@ -584,6 +599,8 @@ fn value_expression_to_concrete_tokens(
   )
 }
 
+// 🟡 gated — feature:t6-value-expr-bodied-arrow-serialize — dissolve-on: route bodied-arrow
+// serialize through relation-row / connective dispatch instead of this predicate sidecar.
 fn arrow_has_transform_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>

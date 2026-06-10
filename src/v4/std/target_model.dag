@@ -10,6 +10,9 @@ import v4.std.algebra {
   Empty,
   FreeMonoid,
   fold_list,
+  fold_list_node,
+  fold_list_node_head,
+  fold_list_node_tail,
   free_monoid_field_head,
   free_monoid_field_tail,
   free_monoid_variant_empty,
@@ -423,30 +426,194 @@ fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
   }
 }
 
+fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_projection_field_missing,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn projection_bundle_child(bundle: Node, name: Symbol) -> Outcome<Node> {
+  match bundle.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        bundle.children,
+        init: Absent,
+        f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              match e.label {
+                Named { name: n } =>
+                  if n == name {
+                    optional_present(value: e.target)
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Present { value: child } => outcome_accepted(child)
+        Absent =>
+          outcome_rejected(
+            target_value_projection_field_missing_diagnostic(bundle: bundle, field: name)
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
+      )
+  }
+}
+
+fn projection_bundle_symbol_field(bundle: Node, field: Symbol) -> Outcome<Symbol> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: field),
+    f: fn(child) {
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+        _ =>
+          outcome_rejected(
+            target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
+          )
+      }
+    }
+  )
+}
+
+fn decode_binding_ref_shape_bundle(bundle: Node) -> Outcome<TargetBindingRefShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: target_value_expr_field_ident_token
+    ),
+    f: fn(ident_token) {
+      outcome_accepted(
+        TargetBindingRefShape { ident_token: ident_token }
+      )
+    }
+  )
+}
+
+fn decode_primitive_apply_shape_bundle(bundle: Node) -> Outcome<TargetPrimitiveApplyShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+    f: fn(open) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_close),
+        f: fn(close) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: target_value_expr_field_separator
+            ),
+            f: fn(separator) {
+              outcome_accepted(
+                TargetPrimitiveApplyShape {
+                  open: open,
+                  close: close,
+                  separator: separator
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplyShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: target_value_expr_field_ident_token
+    ),
+    f: fn(callee_ident_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: target_value_expr_field_separator
+            ),
+            f: fn(separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: target_value_expr_field_close
+                ),
+                f: fn(close) {
+                  outcome_accepted(
+                    TargetCallApplyShape {
+                      callee_ident_token: callee_ident_token,
+                      open: open,
+                      separator: separator,
+                      close: close
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn decode_value_expression_projection_bundle(
   bundle: Node
 ) -> Outcome<TargetValueExpressionProjection> {
   match bundle.kind {
     TypeNode { connective: Conj } =>
-      outcome_accepted(
-        TargetValueExpressionProjection {
-          binding_ref_form: decode_binding_ref_shape_bundle(
-            bundle: projection_bundle_child(
-              bundle: bundle,
-              name: target_value_expr_field_binding_ref
-            )
-          ),
-          primitive_apply_form: decode_primitive_apply_shape_bundle(
-            bundle: projection_bundle_child(
-              bundle: bundle,
-              name: target_value_expr_field_primitive_apply
-            )
-          ),
-          callable_apply_form: decode_callable_apply_shape_bundle(
-            bundle: projection_bundle_child(
-              bundle: bundle,
-              name: target_value_expr_field_callable_apply
-            )
+      bind_outcome(
+        o: projection_bundle_child(
+          bundle: bundle,
+          name: target_value_expr_field_binding_ref
+        ),
+        f: fn(binding_ref_bundle) {
+          bind_outcome(
+            o: decode_binding_ref_shape_bundle(bundle: binding_ref_bundle),
+            f: fn(binding_ref_form) {
+              bind_outcome(
+                o: projection_bundle_child(
+                  bundle: bundle,
+                  name: target_value_expr_field_primitive_apply
+                ),
+                f: fn(primitive_bundle) {
+                  bind_outcome(
+                    o: decode_primitive_apply_shape_bundle(bundle: primitive_bundle),
+                    f: fn(primitive_apply_form) {
+                      bind_outcome(
+                        o: projection_bundle_child(
+                          bundle: bundle,
+                          name: target_value_expr_field_callable_apply
+                        ),
+                        f: fn(callable_bundle) {
+                          bind_outcome(
+                            o: decode_callable_apply_shape_bundle(bundle: callable_bundle),
+                            f: fn(callable_apply_form) {
+                              outcome_accepted(
+                                TargetValueExpressionProjection {
+                                  binding_ref_form: binding_ref_form,
+                                  primitive_apply_form: primitive_apply_form,
+                                  callable_apply_form: callable_apply_form
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
           )
         }
       )
@@ -457,84 +624,231 @@ fn decode_value_expression_projection_bundle(
   }
 }
 
-fn projection_bundle_child(bundle: Node, name: Symbol) -> Node {
-  match bundle.kind {
-    TypeNode { connective: Conj } =>
-      match fold(
-        bundle.children,
-        init: bundle,
-        f: fn(acc, e) {
-          match e.label {
-            Named { name: n } => if n == name { e.target } else { acc }
-            Positional => acc
-          }
+fn concrete_syntax_token_list_to_node(tokens: List<ConcreteSyntaxToken>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: tokens,
+      empty: Empty,
+      cons: fn(acc, tok) {
+        Cons {
+          head: Edge {
+            label: Positional,
+            target: concrete_syntax_token_to_node(token: tok)
+          },
+          tail: acc
         }
-      ) {
-        child => child
       }
-    _ => bundle
+    )
   }
 }
 
-fn projection_bundle_symbol_field(bundle: Node, field: Symbol) -> Symbol {
-  match bundle.kind {
+fn bodied_arrow_statement_scaffold_bundle_node(
+  scaffold: TargetBodiedArrowStatementScaffold
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: target_bodied_arrow_scaffold_field_prefix,
+        target: concrete_syntax_token_list_to_node(tokens: scaffold.prefix)
+      ),
+      target_model_named_edge(
+        name: target_bodied_arrow_scaffold_field_suffix,
+        target: concrete_syntax_token_list_to_node(tokens: scaffold.suffix)
+      )
+    ]
+  }
+}
+
+fn target_bodied_arrow_compose_statement_tokens(
+  scaffold: TargetBodiedArrowStatementScaffold,
+  body: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(left: scaffold.prefix, right: body),
+    right: scaffold.suffix
+  )
+}
+
+fn wire_conj_named_optional_child(parent: Node, edge_name: Symbol) -> Optional<Node> {
+  match parent.kind {
     TypeNode { connective: Conj } =>
       match fold(
-        bundle.children,
-        init: target_value_projection_field_missing,
+        parent.children,
+        init: Absent,
         f: fn(acc, e) {
-          match e.label {
-            Named { name: n } =>
-              if n == field {
-                match e.target.kind {
-                  TypeNode { connective: Atom { identity: id } } => id
-                  _ => acc
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              match e.label {
+                Named { name: n } =>
+                  if n == edge_name {
+                    optional_present(value: e.target)
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        opt => opt
+      }
+    _ => optional_absent()
+  }
+}
+
+fn concrete_syntax_token_wire_malformed_diagnostic(token: Node) -> Diagnostic {
+  Diagnostic {
+    reason: concrete_syntax_token_wire_malformed,
+    at: node_locus(node: token),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: token, name: concrete_syntax_token_field_kind),
+    f: fn(kind_node) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: token, name: concrete_syntax_token_field_class),
+        f: fn(token_class) {
+          match kind_node.kind {
+            TypeNode { connective: Atom { identity: kind } } =>
+              if kind == concrete_syntax_token_kind_fixed {
+                match wire_conj_named_optional_child(
+                  parent: token,
+                  edge_name: concrete_syntax_token_field_binding
+                ) {
+                  Present { value: _ } =>
+                    outcome_rejected(
+                      concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                    )
+                  Absent =>
+                    outcome_accepted(
+                      FixedToken { token_class: token_class }
+                    )
                 }
               } else {
-                acc
+                if kind == concrete_syntax_token_kind_bound {
+                  match wire_conj_named_optional_child(
+                    parent: token,
+                    edge_name: concrete_syntax_token_field_binding
+                  ) {
+                    Present { value: binding_node } =>
+                      match binding_node.kind {
+                        TypeNode { connective: Atom { identity: binding } } =>
+                          outcome_accepted(
+                            BoundToken {
+                              token_class: token_class,
+                              binding: binding
+                            }
+                          )
+                        _ =>
+                          outcome_rejected(
+                            concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                          )
+                      }
+                    Absent =>
+                      outcome_rejected(
+                        concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                      )
+                  }
+                } else {
+                  outcome_rejected(
+                    concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                  )
+                }
               }
-            Positional => acc
+            _ =>
+              outcome_rejected(
+                concrete_syntax_token_wire_malformed_diagnostic(token: token)
+              )
           }
         }
-      ) {
-        sym => sym
-      }
-    _ => target_value_projection_field_missing
+      )
+    }
+  )
+}
+
+fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  match list_node.kind {
+    TypeNode { connective: Conj } =>
+      fold_list(
+        xs: node_positional_child_targets(node: list_node),
+        empty: Accepted { value: Empty, diagnostics: None },
+        cons: fn(acc, token_node) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: partial, diagnostics: ad } =>
+              bind_outcome(
+                o: concrete_syntax_token_from_wire_node(token: token_node),
+                f: fn(tok) {
+                  outcome_accepted(
+                    list_snoc_item(xs: partial, item: tok)
+                  )
+                }
+              )
+          }
+        }
+      )
+    _ =>
+      outcome_rejected(
+        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: list_node)
+      )
   }
 }
 
-fn decode_binding_ref_shape_bundle(bundle: Node) -> TargetBindingRefShape {
-  TargetBindingRefShape {
-    ident_token: projection_bundle_symbol_field(
-      bundle: bundle,
-      field: target_value_expr_field_ident_token
-    )
+fn target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_bodied_arrow_scaffold_bundle_malformed,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn decode_primitive_apply_shape_bundle(bundle: Node) -> TargetPrimitiveApplyShape {
-  TargetPrimitiveApplyShape {
-    open: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
-    close: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_close),
-    separator: projection_bundle_symbol_field(
-      bundle: bundle,
-      field: target_value_expr_field_separator
-    )
-  }
-}
-
-fn decode_callable_apply_shape_bundle(bundle: Node) -> TargetCallApplyShape {
-  TargetCallApplyShape {
-    callee_ident_token: projection_bundle_symbol_field(
-      bundle: bundle,
-      field: target_value_expr_field_ident_token
-    ),
-    open: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
-    separator: projection_bundle_symbol_field(
-      bundle: bundle,
-      field: target_value_expr_field_separator
-    ),
-    close: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_close)
+fn decode_bodied_arrow_statement_scaffold_bundle(
+  bundle: Node
+) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  match bundle.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: projection_bundle_child(
+          bundle: bundle,
+          name: target_bodied_arrow_scaffold_field_prefix
+        ),
+        f: fn(prefix_node) {
+          bind_outcome(
+            o: concrete_syntax_token_list_from_node(list_node: prefix_node),
+            f: fn(prefix) {
+              bind_outcome(
+                o: projection_bundle_child(
+                  bundle: bundle,
+                  name: target_bodied_arrow_scaffold_field_suffix
+                ),
+                f: fn(suffix_node) {
+                  bind_outcome(
+                    o: concrete_syntax_token_list_from_node(list_node: suffix_node),
+                    f: fn(suffix) {
+                      outcome_accepted(
+                        TargetBodiedArrowStatementScaffold {
+                          prefix: prefix,
+                          suffix: suffix
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: bundle)
+      )
   }
 }
 

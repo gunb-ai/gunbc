@@ -18,10 +18,13 @@ import v4.compiler.value_expression {
   value_expression_projection_from_target,
   value_expression_to_concrete_tokens
 }
-// 🟡 gated — feature:t6-value-expr-bodied-arrow-serialize — dissolve-on: statement scaffold rows live on TargetModel bundle, not extdeps import from translate.
-import v4.extdeps.languages.typescript { ts_mvp1_compose_add_fn_tokens }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model {
+  TargetModel,
+  decode_bodied_arrow_statement_scaffold_bundle,
+  target_bodied_arrow_compose_statement_tokens,
+  target_model_edge_bodied_arrow_statement_scaffold
+}
 import v4.compiler.infer { InferredTree, canonical_grounding_for_node }
 import v4.std.coercion {
   CoercionCandidateSet,
@@ -959,21 +962,37 @@ fn target_serialize_bodied_arrow_from_model(
   emitted: Node
 ) -> Outcome<TargetSource> {
   bind_outcome(
-    o: value_expression_projection_from_target(target: target),
-    f: fn(projection) {
+    o: target_bundle_child(
+      target: target,
+      edge_name: target_model_edge_bodied_arrow_statement_scaffold
+    ),
+    f: fn(scaffold_bundle) {
       bind_outcome(
-        o: project_arrow_body_to_value_expression(arrow: emitted),
-        f: fn(expr) {
+        o: decode_bodied_arrow_statement_scaffold_bundle(bundle: scaffold_bundle),
+        f: fn(scaffold) {
           bind_outcome(
-            o: value_expression_to_concrete_tokens(
-              expr: expr,
-              target: target,
-              projection: projection
-            ),
-            f: fn(body_tokens) {
-              serialize_concrete_syntax_tokens_to_source(
-                target: target,
-                tokens: ts_mvp1_compose_add_fn_tokens(body_tokens: body_tokens)
+            o: value_expression_projection_from_target(target: target),
+            f: fn(projection) {
+              bind_outcome(
+                o: project_arrow_body_to_value_expression(arrow: emitted),
+                f: fn(expr) {
+                  bind_outcome(
+                    o: value_expression_to_concrete_tokens(
+                      expr: expr,
+                      target: target,
+                      projection: projection
+                    ),
+                    f: fn(body_tokens) {
+                      serialize_concrete_syntax_tokens_to_source(
+                        target: target,
+                        tokens: target_bodied_arrow_compose_statement_tokens(
+                          scaffold: scaffold,
+                          body: body_tokens
+                        )
+                      )
+                    }
+                  )
+                }
               )
             }
           )
