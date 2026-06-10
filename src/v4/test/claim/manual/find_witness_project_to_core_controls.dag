@@ -76,7 +76,6 @@ data integer_value_set_rejects_malformed_interval: Symbol = integer_value_set_re
 data integer_value_set_interval_rejects_malformed_interval: Symbol = integer_value_set_interval_rejects_malformed_interval
 data integer_value_set_reverse_strict: Symbol = integer_value_set_reverse_strict
 data integer_value_set_refuses_incompatible: Symbol = integer_value_set_refuses_incompatible
-data integer_interval_bound_compare_orders_pointer_width_bounds: Symbol = integer_interval_bound_compare_orders_pointer_width_bounds
 data integer_value_set_rejects_unbounded_with_extra_field: Symbol = integer_value_set_rejects_unbounded_with_extra_field
 
 fn control_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
