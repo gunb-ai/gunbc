@@ -5,7 +5,12 @@
 module v4.test.claim.manual.comprep_add_body_emit_typescript
 
 import v4.compiler.emit { emit }
-import v4.compiler.translate { target_serialize_source_from_model, translate }
+import v4.compiler.translate {
+  target_serialize_source_from_model,
+  translate,
+  translate_grammar_relation_row_match,
+  type_expression_projection_from_target
+}
 import v4.compiler.value_expression {
   arrow_has_transform_body,
   project_arrow_body_to_value_expression,
@@ -233,6 +238,23 @@ fn anchor_comprep_ts_bodied_emit_accepts() -> Outcome<TargetSource> {
 }
 
 data comprep_ts_bodied_emit_receipt: Outcome<TargetSource> = anchor_comprep_ts_bodied_emit_accepts()
+
+fn comprep_ts_debug_type_expr_projection_accepts() -> Bool {
+  match type_expression_projection_from_target(target: ts_mvp1_target_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_debug_grammar_row_match() -> Bool {
+  match translate_grammar_relation_row_match(
+    target: ts_mvp1_target_model(),
+    emitted: comprep_ts_bodied_arrow_root
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 fn comprep_ts_debug_root_has_transform_body() -> Bool {
   arrow_has_transform_body(arrow: comprep_ts_bodied_arrow_root)
