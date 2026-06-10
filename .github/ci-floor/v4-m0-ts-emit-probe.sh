@@ -29,7 +29,23 @@ node_log="${out}.node-run.log"
 
 entry="src/v4/test/claim/manual/mvp1_typescript_add_translate.dag"
 witness="mvp1_ts_emit_add_fn_accepts_holds"
-canonical_source='function add(x: number, y: number): number { return x + y; }'
+ts_authority_dag="src/v4/extdeps/languages/typescript.dag"
+ts_source_text_name="ts_mvp1_source_text"
+
+# Project canonical source from modeled authority (same string mvp1_ts_emit_add_fn_accepts_holds
+# compares against); do not author a parallel shell literal (INVARIANTS P2).
+dag_string_data() {
+  local dag_path="$1" name="$2"
+  grep -E "^data ${name}: String = \"" "$root/${dag_path}" \
+    | sed -n "s/^data ${name}: String = \"\\(.*\\)\"/\\1/p" \
+    | head -1
+}
+
+canonical_source="$(dag_string_data "$ts_authority_dag" "$ts_source_text_name")"
+if [[ -z "$canonical_source" ]]; then
+  echo "error: M0 probe could not project ${ts_source_text_name} from ${ts_authority_dag}" >&2
+  exit 1
+fi
 
 if [[ ! -x "$bin" ]]; then
   echo "error: v2-compiler not found at $bin (build v2-compiler --release first)" >&2
@@ -110,6 +126,7 @@ gap_detail="v4 translate emit is green (${witness}=${witness_result:-<unknown>})
   echo "==========================="
   echo "structural claim-run exit: ${claim_status}"
   echo "structural witness (${witness}): ${witness_result:-<missing>}"
+  echo "canonical source authority: ${ts_authority_dag}:${ts_source_text_name}"
   echo "canonical source: ${canonical_source}"
   echo "tsc --noEmit exit: ${tsc_status}"
   echo "tsc emit exit: ${tsc_emit_status}"
