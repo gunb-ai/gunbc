@@ -3244,7 +3244,7 @@ pub fn infer_expr(
                             }
                             __result
                         });
-                        let generic_names = Rc::new({
+                        let explicit_generic_names = Rc::new({
                             let mut __result = Vec::new();
                             for p in Rc::new({
                                 let mut __result = Vec::new();
@@ -3268,6 +3268,27 @@ pub fn infer_expr(
                             }
                             __result
                         });
+                        let payload_generic_names = v2_rt::concat(
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for p in sig_params.clone().iter().cloned() {
+                                    __result.extend(
+                                        (*node_type_variable_names(param_node_type_expr(
+                                            p.clone(),
+                                        )))
+                                        .iter()
+                                        .cloned(),
+                                    );
+                                }
+                                __result
+                            }),
+                            match sig.clone() {
+                                Some(s) => node_type_variable_names(s.inferred.clone()),
+                                None => Rc::new(vec![]),
+                            },
+                        );
+                        let generic_names =
+                            v2_rt::concat(explicit_generic_names, payload_generic_names);
                         let final_state = Rc::new(
                             call_args
                                 .clone()
@@ -11180,6 +11201,35 @@ pub fn generic_substitution_for_node(
             },
         }
     }
+}
+
+pub fn node_type_variable_names(n: Rc<Node>) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let inferred_names = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: tv, .. }) => Rc::new(vec![tv.clone()]),
+            Some(InferredNode::Resolved { node: rt, .. }) => node_type_variable_names(rt.clone()),
+            _ => Rc::new(vec![]),
+        };
+        v2_rt::concat(
+            inferred_names,
+            v2_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for ch in n.children.clone().iter().cloned() {
+                        __result.extend((*node_type_variable_names(ch.clone())).iter().cloned());
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for p in n.params.clone().iter().cloned() {
+                        __result.extend((*node_type_variable_names(p.clone())).iter().cloned());
+                    }
+                    __result
+                }),
+            ),
+        )
+    })
 }
 
 pub fn param_is_generic_decl(
