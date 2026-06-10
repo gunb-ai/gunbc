@@ -576,8 +576,9 @@ if (__gunbc_add_probe !== 5) {
 process.stdout.write(Buffer.alloc(5));
 "#;
 
-fn is_mvp1_typescript_add_fn_source(source: &str) -> bool {
-    source.starts_with("function add(x: number, y: number): number")
+/// True only for the modeled `emit_host_typescript_authority_pin` (exact match — no prefix heuristic).
+pub fn typescript_uses_mvp1_add_execute_harness(source: &str) -> bool {
+    source == EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN
 }
 
 fn typescript_needs_node_ambients(source: &str) -> bool {
@@ -585,7 +586,7 @@ fn typescript_needs_node_ambients(source: &str) -> bool {
 }
 
 fn typescript_fixture_source(source: &str) -> String {
-    let body = if is_mvp1_typescript_add_fn_source(source) {
+    let body = if typescript_uses_mvp1_add_execute_harness(source) {
         format!("{source}{TYPESCRIPT_MVP1_ADD_EXECUTE_HARNESS}")
     } else {
         source.to_string()
@@ -792,6 +793,47 @@ mod tests {
             HostExitOutcome::Accepted(ExitWitness::Violates(HostLogicalFailure::TimedOut {
                 phase: HostPhase::FixtureRun
             }))
+        ));
+    }
+
+    #[test]
+    fn typescript_mvp1_harness_only_on_exact_authority_pin() {
+        assert!(typescript_uses_mvp1_add_execute_harness(
+            EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN
+        ));
+        assert!(!typescript_uses_mvp1_add_execute_harness(
+            "function add(x: number, y: number): number { return x - y; }"
+        ));
+        assert!(!typescript_uses_mvp1_add_execute_harness(
+            "function add(x: number, y: number): number { return x + y; }"
+        ));
+    }
+
+    /// Brief T execution gate — requires `node` + `npx` on PATH (CI: v4-mvp1-typescript-emit-host-probe).
+    #[test]
+    fn typescript_mvp1_authority_pin_executes_on_node() {
+        if Command::new("node").output().is_err() || Command::new("npx").output().is_err() {
+            eprintln!("skip typescript_mvp1_authority_pin_executes_on_node: node/npx unavailable");
+            return;
+        }
+        let work_dir = unique_work_dir("gunbc_emit_host_ts_mvp1_gate");
+        let inputs = EmitHostTransportInputs {
+            claim_input_root: "mvp1_ts_add_claim_input".into(),
+        };
+        let receipt = run_emit_host_typescript(
+            EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN,
+            &inputs,
+            &work_dir,
+        )
+        .expect("run_emit_host_typescript");
+        assert!(receipt.exit.exit_holds(), "mvp1 add-fn must exit 0 on Node");
+        runtime_value_parse_typescript(&receipt.stdout_bytes).expect("MVP-2 stdout");
+    }
+
+    #[test]
+    fn typescript_non_authority_pin_skips_execute_harness() {
+        assert!(!typescript_uses_mvp1_add_execute_harness(
+            "function add(x: number, y: number): number { return x - y; }"
         ));
     }
 }

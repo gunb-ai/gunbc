@@ -4,8 +4,9 @@
 //   assembles receipts via `emit_host_receipt_from_source` (substrate eval, not hand-encoded).
 //   T-22 python row — eval intercept dispatches `run_emit_host_python` → `emit_host_runner` and
 //   hand-reifies `v4.std.host_run` in `emit_host_eval.rs` (claim-only transport pins).
-//   T-22 typescript row — eval intercept dispatches `run_emit_host_typescript` → `emit_host_runner`
-//   (tsc emit + Node); substrate eval assembles receipts via `emit_host_receipt_from_source`.
+//   Brief T typescript row — substrate pin + fail-closed `run_emit_host_typescript` row; executable
+//   transport is `tools/emit_host_runner` (tsc + Node) gated by `.github/ci-floor/v4-mvp1-typescript-emit-host-probe.sh`.
+//   Eval intercept for typescript deferred T-PB-B (no new v3 hand-Rust dispatch).
 //   `emit_host_bridge.rs` remains for W3 harness until T-PB-B dissolution (SG-0 receipts).
 // Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
 // Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
@@ -241,8 +242,8 @@ fn run_emit_host_go(
   }
 }
 
-// Substrate row: body stays fail-closed; T-22 eval intercept runs `emit_host_runner` (tsc + Node)
-// and assembles receipts via `emit_host_receipt_from_source` (`emit_host_eval.rs`).
+// Substrate row: body stays fail-closed; executable transport is `tools/emit_host_runner` only
+// (`.github/ci-floor/v4-mvp1-typescript-emit-host-probe.sh`). Eval intercept deferred T-PB-B.
 fn run_emit_host_typescript(
   target: TargetModel,
   source: TargetSource,

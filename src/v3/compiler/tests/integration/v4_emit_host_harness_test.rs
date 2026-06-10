@@ -126,13 +126,6 @@ const PYTHON_FIXTURE_VALUE_MISMATCH: &str =
 const EMIT_HOST_GO_FIXTURE_SOURCE: &str =
     "package main\nimport \"os\"\nfunc main() { _, _ = os.Stdout.Write(make([]byte, 5)) }\n";
 
-/// Minimal typescript host fixture: five stdout bytes (MVP runtime value `5` alignment).
-const EMIT_HOST_TYPESCRIPT_FIXTURE_SOURCE: &str = "process.stdout.write(Buffer.alloc(5));\n";
-
-/// Mutated mvp1 add-fn emit (wrong op) — transport harness must refuse / fail closed.
-const EMIT_HOST_TYPESCRIPT_MUTATED_ADD_SOURCE: &str =
-    "function add(x: number, y: number): number { return x - y; }";
-
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
     "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }";
@@ -876,11 +869,9 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
         "run_emit_host_rust",
         "run_emit_host_python",
         "run_emit_host_go",
-        "run_emit_host_typescript",
         "run_emit_host",
         "runtime_value_parse_python",
         "runtime_value_parse_go",
-        "runtime_value_parse_typescript",
         "host_exit_failure_outcome",
         "run_test_claim_emit_vs_eval_for_claim",
         "run_test_claim_emit_vs_eval",
@@ -905,10 +896,6 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
     assert!(
         surface_declares_data(&module, "emit_host_go_authority_pin"),
         "{EMIT_HOST_PATH}: go authority pin (W3.3)"
-    );
-    assert!(
-        surface_declares_data(&module, "emit_host_typescript_authority_pin"),
-        "{EMIT_HOST_PATH}: typescript authority pin (Brief T)"
     );
 }
 
@@ -1157,76 +1144,6 @@ fn v4_branch_dispatch_rung8_dag_tokenizes_and_parses_full_fixture_roster() {
 }
 
 #[test]
-fn emit_host_runner_typescript_row_runs_and_parses_stdout() {
-    let work_dir = emit_host_runner::default_work_dir(&format!(
-        "gunbc_v4_emit_host_ts_{}",
-        std::process::id()
-    ));
-    let inputs = emit_host_runner::EmitHostFixtureInputs {
-        claim_input_root: "brief_t_ts_claim_input".to_string(),
-        expected_eval_root: "brief_t_ts_expected_eval".to_string(),
-    };
-    let receipt = emit_host_runner::run_emit_host_typescript(
-        EMIT_HOST_TYPESCRIPT_FIXTURE_SOURCE,
-        &inputs.transport(),
-        &work_dir,
-    )
-    .expect("run_emit_host_typescript");
-    assert!(receipt.exit.exit_holds());
-    emit_host_runner::runtime_value_parse_typescript(&receipt.stdout_bytes).expect("parse");
-}
-
-#[test]
-fn emit_host_typescript_mvp1_add_executes_gunbc_emitted_source() {
-    let work_dir = emit_host_runner::default_work_dir(&format!(
-        "gunbc_v4_emit_host_ts_mvp1_{}",
-        std::process::id()
-    ));
-    let inputs = emit_host_runner::EmitHostFixtureInputs {
-        claim_input_root: "mvp1_ts_add_claim_input".to_string(),
-        expected_eval_root: "mvp1_ts_add_expected_eval".to_string(),
-    };
-    let verdict = emit_host_bridge::run_emit_vs_eval_mvp2_typescript_transport(
-        emit_host_runner::EMIT_HOST_TYPESCRIPT_AUTHORITY_PIN,
-        &inputs,
-        &work_dir,
-        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
-    )
-    .expect("typescript mvp1 add transport");
-    assert_eq!(
-        verdict,
-        emit_host_bridge::EmitHostEmitVsEvalVerdict::Pass,
-        "gunbc-emitted mvp1 add-fn must run on Node (tsc emit) and satisfy MVP-2 stdout contract"
-    );
-}
-
-#[test]
-fn emit_host_typescript_mutated_add_emit_refused() {
-    let work_dir = emit_host_runner::default_work_dir(&format!(
-        "gunbc_v4_emit_host_ts_mut_{}",
-        std::process::id()
-    ));
-    let inputs = emit_host_runner::EmitHostFixtureInputs {
-        claim_input_root: "mvp1_ts_mut_claim_input".to_string(),
-        expected_eval_root: "mvp1_ts_mut_expected_eval".to_string(),
-    };
-    let verdict = emit_host_bridge::run_emit_vs_eval_mvp2_typescript_transport(
-        EMIT_HOST_TYPESCRIPT_MUTATED_ADD_SOURCE,
-        &inputs,
-        &work_dir,
-        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
-    )
-    .expect("typescript mutated add transport");
-    assert!(
-        matches!(
-            verdict,
-            emit_host_bridge::EmitHostEmitVsEvalVerdict::FailHostExit { .. }
-        ),
-        "mutated add emit must fail closed (wrong result refused), got {verdict:?}"
-    );
-}
-
-#[test]
 fn emit_host_runner_go_row_runs_and_parses_stdout() {
     let work_dir = emit_host_runner::default_work_dir(&format!(
         "gunbc_v4_emit_host_go_{}",
@@ -1326,10 +1243,6 @@ fn v4_nat_semiring_rung_5_dag_tokenizes_and_parses_full_law_roster_three_targets
     assert!(
         surface_declares_data(&common, "rung56_emit_host_go_target_model"),
         "{RUNG_5_6_COMMON_PATH}: go TargetModel (W3.3)"
-    );
-    assert!(
-        surface_declares_data(&common, "rung56_emit_host_typescript_target_model"),
-        "{RUNG_5_6_COMMON_PATH}: typescript TargetModel (Brief T)"
     );
 
     let eval_module = parse_module(NAT_SEMIRING_RUNG5_EVAL_DAG, NAT_SEMIRING_RUNG5_EVAL_PATH);

@@ -8,9 +8,6 @@
 //!
 //! **Go row (`run_emit_host_go`):** same substrate eval pattern as rust (`emit_host_receipt_from_source`).
 //!
-//! **Typescript row (`run_emit_host_typescript`):** same substrate eval pattern as rust/go
-//! (`emit_host_receipt_from_source` after `emit_host_runner` tsc + Node transport).
-//!
 //! **P5:** SG-0 census in `sg0_census_test.rs` (T-PB-B); dissolution when substrate owns all rows.
 
 use std::path::Path;
@@ -190,80 +187,6 @@ fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
 
 fn is_run_emit_host_go_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
     is_run_emit_host_decl(dag, callee_decl, "run_emit_host_go")
-}
-
-fn is_run_emit_host_typescript_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
-    is_run_emit_host_decl(dag, callee_decl, "run_emit_host_typescript")
-}
-
-/// Eval-time dispatch for `run_emit_host_typescript` (substrate `emit_host.dag` only).
-pub fn try_dispatch_emit_host_typescript(
-    dag: &Dag,
-    callee_decl: DeclarationId,
-    operands: &[Value],
-    state: &mut EvalStateStack<Value>,
-    strategy: &EvalStrategy,
-) -> Option<Result<Value, EvalError>> {
-    if !is_run_emit_host_typescript_decl(dag, callee_decl) {
-        return None;
-    }
-    if operands.len() != 3 {
-        return Some(Err(EvalError::TransformArityMismatch {
-            expected: 3,
-            got: operands.len(),
-        }));
-    }
-
-    let source = match expect_string_operand(&operands[1]) {
-        Ok(source) => source,
-        Err(err) => return Some(Err(err)),
-    };
-    let inputs = match emit_host_transport_inputs(dag, &operands[2], state, strategy) {
-        Ok(inputs) => inputs,
-        Err(err) => return Some(Err(err)),
-    };
-    let work_dir = emit_host_runner::unique_work_dir("gunbc_eval_emit_host_typescript");
-    let receipt = match emit_host_runner::run_emit_host_typescript(source, &inputs, &work_dir) {
-        Ok(receipt) => receipt,
-        Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
-    };
-    let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
-        Ok(id) => id,
-        Err(err) => return Some(Err(err)),
-    };
-    let exit = match host_exit_value(dag, &receipt.exit) {
-        Ok(v) => v,
-        Err(err) => return Some(Err(err)),
-    };
-    let stdout = match byte_string_value(dag, &receipt.stdout_bytes) {
-        Ok(v) => v,
-        Err(err) => return Some(Err(err)),
-    };
-    let stderr = match byte_string_value(dag, &receipt.stderr_bytes) {
-        Ok(v) => v,
-        Err(err) => return Some(Err(err)),
-    };
-    let build_log = match build_log_value(dag, &receipt.build_log.lines) {
-        Ok(v) => v,
-        Err(err) => return Some(Err(err)),
-    };
-    Some(
-        crate::evaluator::eval_callable_declaration(
-            dag,
-            callee,
-            vec![
-                operands[0].clone(),
-                Value::LiteralValue(LiteralBits::String(receipt.source_text)),
-                exit,
-                stdout,
-                stderr,
-                build_log,
-            ],
-            state,
-            strategy,
-        )
-        .and_then(|value| accepted_variant(dag, value)),
-    )
 }
 
 fn is_run_emit_host_decl(dag: &Dag, callee_decl: DeclarationId, name: &str) -> bool {
@@ -1920,48 +1843,6 @@ mod tests {
         assert_eq!(
             host_setup_failure_reason(&HostSetupFailure::EmptyClaimInputRoot),
             "emit_host_setup_empty_claim_input_root"
-        );
-    }
-
-    #[test]
-    fn typescript_eval_dispatch_claims_only_emit_host_authority_decl() {
-        let mut dag = Dag::new();
-        let ts_decl = run_emit_host_decl(
-            &mut dag,
-            "run_emit_host_typescript",
-            "src/v4/compiler/emit_host.dag",
-        );
-        let lookalike_decl = run_emit_host_decl(
-            &mut dag,
-            "run_emit_host_typescript",
-            "src/v4/compiler/other.dag",
-        );
-        let go_decl = run_emit_host_decl(
-            &mut dag,
-            "run_emit_host_go",
-            "src/v4/compiler/emit_host.dag",
-        );
-        let mut state = empty_eval_state();
-        let strategy = applicative_strategy();
-
-        let claimed = try_dispatch_emit_host_typescript(&dag, ts_decl, &[], &mut state, &strategy)
-            .expect("claimed");
-        assert_eq!(
-            claimed,
-            Err(EvalError::TransformArityMismatch {
-                expected: 3,
-                got: 0
-            }),
-            "the Typescript hook must claim run_emit_host_typescript before user-body eval"
-        );
-        assert!(
-            try_dispatch_emit_host_typescript(&dag, lookalike_decl, &[], &mut state, &strategy)
-                .is_none(),
-            "same-name declarations outside emit_host.dag must not be intercepted"
-        );
-        assert!(
-            try_dispatch_emit_host_typescript(&dag, go_decl, &[], &mut state, &strategy).is_none(),
-            "run_emit_host_go must stay on the Go dispatch hook"
         );
     }
 

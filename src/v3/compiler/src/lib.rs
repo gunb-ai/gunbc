@@ -1295,15 +1295,6 @@ pub mod evaluator {
                 ) {
                     return result;
                 }
-                if let Some(result) = crate::emit_host_eval::try_dispatch_emit_host_typescript(
-                    dag,
-                    callee_decl,
-                    &operands,
-                    state,
-                    strategy,
-                ) {
-                    return result;
-                }
                 if let Some(result) = crate::emit_host_eval::try_dispatch_emit_host(
                     dag,
                     callee_decl,
