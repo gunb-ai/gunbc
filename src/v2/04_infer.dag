@@ -5303,7 +5303,7 @@ fn stamp_hidden_dependency_refs(n: Node, dep_env: TypeEnv, source_indices: Map<S
     match lookup_type_binding_by_name_in_env(env: dep_env, name: name) {
       Some { value: binding } =>
         if binding.resolved.binding_id != none {
-          binding.resolved
+          node_with_preserved_binding_id(identity: binding.resolved, structural: rebuilt)
         } else { rebuilt }
       None => rebuilt
     }
@@ -5387,6 +5387,26 @@ fn collect_import_carrier_bindings_for_imported_funcs(acc: Map<BindingId, TypeBi
     if import_allows_binding_name(imp: imp, name: sig.name) {
       let with_return = add_node_dependency_closure(state: state, n: sig.inferred, dep_env: env, source_indices: env.source_indices)
       fold(sig.params, init: with_return, f: (pacc, param) =>
+        add_node_dependency_closure(state: pacc, n: param_node_type_expr(n: param), dep_env: env, source_indices: env.source_indices)
+      )
+    } else {
+      state
+    }
+  )
+  closure_state.carrier_bindings
+}
+
+fn collect_import_carrier_bindings_for_imported_items(acc: Map<BindingId, TypeBinding>, imp: ResolvedImport, typed_parent: TypedModule) -> Map<BindingId, TypeBinding> {
+  let env = typed_parent.type_env
+  let closure_state = fold(typed_parent.items, init: CarrierClosureState { carrier_bindings: acc, seen_names: empty_map() }, f: (state, item) =>
+    let item_name = authored_name_at(source_indices: env.source_indices, node: item)
+    let kind = item_kind(item: item)
+    if import_allows_binding_name(imp: imp, name: item_name) && (kind == FnItem || kind == FuncItem) {
+      let with_return = match item.inferred {
+        Some { value: Resolved { node: rt } } => add_node_dependency_closure(state: state, n: rt, dep_env: env, source_indices: env.source_indices)
+        _ => state
+      }
+      fold(item.params, init: with_return, f: (pacc, param) =>
         add_node_dependency_closure(state: pacc, n: param_node_type_expr(n: param), dep_env: env, source_indices: env.source_indices)
       )
     } else {
@@ -5527,8 +5547,12 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_carrier_bindings = fold(module.resolved_imports, init: std_import_carrier_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>
-        collect_import_carrier_bindings_for_imported_funcs(
-          acc: collect_import_carrier_bindings_for_import(acc: acc, imp: imp, env: typed_parent.type_env),
+        collect_import_carrier_bindings_for_imported_items(
+          acc: collect_import_carrier_bindings_for_imported_funcs(
+            acc: collect_import_carrier_bindings_for_import(acc: acc, imp: imp, env: typed_parent.type_env),
+            imp: imp,
+            typed_parent: typed_parent
+          ),
           imp: imp,
           typed_parent: typed_parent
         )
@@ -5687,8 +5711,12 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_carrier_bindings = fold(module.resolved_imports, init: std_import_carrier_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>
-        collect_import_carrier_bindings_for_imported_funcs(
-          acc: collect_import_carrier_bindings_for_import(acc: acc, imp: imp, env: typed_parent.type_env),
+        collect_import_carrier_bindings_for_imported_items(
+          acc: collect_import_carrier_bindings_for_imported_funcs(
+            acc: collect_import_carrier_bindings_for_import(acc: acc, imp: imp, env: typed_parent.type_env),
+            imp: imp,
+            typed_parent: typed_parent
+          ),
           imp: imp,
           typed_parent: typed_parent
         )

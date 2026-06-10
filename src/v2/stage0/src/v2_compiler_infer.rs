@@ -10980,7 +10980,7 @@ pub fn stamp_hidden_dependency_refs(
         match lookup_type_binding_by_name_in_env(dep_env.clone(), name.clone()) {
             Some(binding) => {
                 if binding.resolved.binding_id.clone() != None {
-                    binding.resolved.clone()
+                    node_with_preserved_binding_id(binding.resolved.clone(), rebuilt.clone())
                 } else {
                     rebuilt
                 }
