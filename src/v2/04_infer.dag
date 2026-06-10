@@ -690,9 +690,9 @@ fn container_element_nominal_brand_mismatch(
   } else { false }
 }
 
-// Call-site brand-twin reject only (A3): node_type_compatible stays relation-compat
-// (container-alias tolerance at 04_types.dag:738-742); this hook rejects same-carrier
-// nominal twins at direct ExprCall sites without widening relation-wide.
+// Direct-call argument gate: compare the resolved formal/actual types through
+// node_type_compatible, whose leaf path carries binding_id brand identity and
+// whose container-alias path keeps List/FreeMonoid transparency.
 fn direct_call_arg_type_mismatch(
   formal: Node,
   actual: Node,
@@ -702,7 +702,8 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
-    nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    !node_type_compatible(left: formal, right: actual, source_indices: source_indices)
+      || nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
   }

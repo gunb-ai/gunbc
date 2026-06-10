@@ -38,8 +38,8 @@ pub struct TypeBinding {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeDeclBinding {
     pub binding_id: i64,
+    pub binding_key: i64,
     pub name: String,
-    pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
 }
 
@@ -65,6 +65,44 @@ pub fn alloc_binding_id(allocator: BindingIdAllocator) -> Rc<BindingIdAllocResul
             next_id: (allocator.next_id.clone() + 1),
         },
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DeclRegistryMergeState {
+    pub decl_registry: Rc<HashMap<i64, Rc<TypeDeclBinding>>>,
+    pub duplicate_decl_ids: Rc<Vec<i64>>,
+}
+
+pub fn merge_decl_registry_state(
+    state: Rc<DeclRegistryMergeState>,
+    incoming: Rc<HashMap<i64, Rc<TypeDeclBinding>>>,
+) -> Rc<DeclRegistryMergeState> {
+    Rc::new(v2_rt::map_keys(&incoming)).iter().cloned().fold(
+        state,
+        |acc: Rc<DeclRegistryMergeState>, binding_id: i64| match v2_rt::map_get(
+            &incoming,
+            binding_id.clone(),
+        ) {
+            Some(binding) => match v2_rt::map_get(&acc.decl_registry.clone(), binding_id.clone()) {
+                Some(_) => Rc::new(DeclRegistryMergeState {
+                    decl_registry: acc.decl_registry.clone(),
+                    duplicate_decl_ids: v2_rt::rc_list_push(
+                        acc.duplicate_decl_ids.clone(),
+                        binding_id.clone(),
+                    ),
+                }),
+                None => Rc::new(DeclRegistryMergeState {
+                    decl_registry: v2_rt::rc_map_insert(
+                        acc.decl_registry.clone(),
+                        binding_id.clone(),
+                        binding.clone(),
+                    ),
+                    duplicate_decl_ids: acc.duplicate_decl_ids.clone(),
+                }),
+            },
+            None => acc.clone(),
+        },
+    )
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
@@ -251,10 +289,20 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
                 v2_rt::rc_map_merge(acc, env.bindings.clone())
             },
         );
-        let merged_decl_registry = envs.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
-            |acc: Rc<HashMap<i64, Rc<TypeDeclBinding>>>, env: Rc<TypeEnv>| {
-                v2_rt::rc_map_merge(acc, env.decl_registry.clone())
+        let merged_decl_state = envs.clone().iter().cloned().fold(
+            Rc::new(DeclRegistryMergeState {
+                decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+                duplicate_decl_ids: Rc::new(vec![]),
+            }),
+            |acc: Rc<DeclRegistryMergeState>, env: Rc<TypeEnv>| {
+                let with_prior_duplicates = Rc::new(DeclRegistryMergeState {
+                    decl_registry: acc.decl_registry.clone(),
+                    duplicate_decl_ids: v2_rt::concat(
+                        acc.duplicate_decl_ids.clone(),
+                        env.duplicate_decl_ids.clone(),
+                    ),
+                });
+                merge_decl_registry_state(with_prior_duplicates.clone(), env.decl_registry.clone())
             },
         );
         let merged_recursive = envs
@@ -288,8 +336,8 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
         };
         Rc::new(TypeEnv {
             bindings: merged_bindings,
-            decl_registry: merged_decl_registry,
-            duplicate_decl_ids: Rc::new(vec![]),
+            decl_registry: merged_decl_state.decl_registry.clone(),
+            duplicate_decl_ids: merged_decl_state.duplicate_decl_ids.clone(),
             recursive_types: merged_recursive,
             recursive_type_set: merged_recursive_set,
             inductive_fields: merged_inductive_fields,

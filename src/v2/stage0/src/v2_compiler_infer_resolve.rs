@@ -37,9 +37,9 @@ pub use crate::v2_std_core::{
     make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
     make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
     make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    node_with_preserved_binding_id, param_node_default_value, param_node_name_at,
+    param_node_type_expr, resource_use_name_at, resource_use_resource, string_type,
+    transport_request_body, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -59,27 +59,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 
 pub fn with_preserved_binding_id(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-        name: structural.name.clone(),
-        ident: structural.ident.clone(),
-        binding_id: identity.binding_id.clone(),
-        span: structural.span.clone(),
-        ident_span: structural.ident_span.clone(),
-        children: structural.children.clone(),
-        connective: structural.connective.clone(),
-        params: structural.params.clone(),
-        inferred: structural.inferred.clone(),
-        return_cardinality: structural.return_cardinality.clone(),
-        uses: structural.uses.clone(),
-        body: structural.body.clone(),
-        transport: structural.transport.clone(),
-        properties: structural.properties.clone(),
-        type_annotation: structural.type_annotation.clone(),
-        is_self_recursive: structural.is_self_recursive.clone(),
-        has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
-        match_pattern: structural.match_pattern.clone(),
-        expr_data: structural.expr_data.clone(),
-    })
+    node_with_preserved_binding_id(identity, structural)
 }
 
 pub fn preserve_nominal_brand_on_resolve(
@@ -2940,7 +2920,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                         }),
                     ),
                     decl_registry: e.decl_registry.clone(),
-                    duplicate_decl_ids: Rc::new(vec![]),
+                    duplicate_decl_ids: e.duplicate_decl_ids.clone(),
                     recursive_types: e.recursive_types.clone(),
                     recursive_type_set: e.recursive_type_set.clone(),
                     inductive_fields: e.inductive_fields.clone(),

@@ -37,11 +37,13 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: kind_name.clone(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: default_ident_span(kind_name, sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
             name: param_name.clone(),
             ident: None,
+            binding_id: None,
             span: sp.clone(),
             ident_span: default_ident_span(param_name, sp.clone()),
             children: Rc::new(vec![]),
@@ -84,12 +86,14 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: "Map".to_string(),
         ident: None,
+        binding_id: None,
         span: sp.clone(),
         ident_span: Some(sp.clone()),
         children: Rc::new(vec![
             Rc::new(Node {
                 name: key_name,
                 ident: None,
+                binding_id: None,
                 span: sp.clone(),
                 ident_span: Some(sp.clone()),
                 children: Rc::new(vec![]),
@@ -110,6 +114,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
             Rc::new(Node {
                 name: val_name,
                 ident: None,
+                binding_id: None,
                 span: sp.clone(),
                 ident_span: Some(sp.clone()),
                 children: Rc::new(vec![]),
@@ -613,6 +618,7 @@ fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
         name: "User".to_string(),
         ident: None,
+        binding_id: None,
         span: zero_span(),
         ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan {
             file: "".to_string(),

@@ -739,6 +739,54 @@ pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
     }
 }
 
+pub fn node_with_binding_id(n: Rc<Node>, binding_id: i64) -> Rc<Node> {
+    Rc::new(Node {
+        name: n.name.clone(),
+        ident: n.ident.clone(),
+        binding_id: Some(binding_id),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: n.children.clone(),
+        connective: n.connective.clone(),
+        params: n.params.clone(),
+        inferred: n.inferred.clone(),
+        return_cardinality: n.return_cardinality.clone(),
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        expr_data: n.expr_data.clone(),
+    })
+}
+
+pub fn node_with_preserved_binding_id(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        name: structural.name.clone(),
+        ident: structural.ident.clone(),
+        binding_id: identity.binding_id.clone(),
+        span: structural.span.clone(),
+        ident_span: structural.ident_span.clone(),
+        children: structural.children.clone(),
+        connective: structural.connective.clone(),
+        params: structural.params.clone(),
+        inferred: structural.inferred.clone(),
+        return_cardinality: structural.return_cardinality.clone(),
+        uses: structural.uses.clone(),
+        body: structural.body.clone(),
+        transport: structural.transport.clone(),
+        properties: structural.properties.clone(),
+        type_annotation: structural.type_annotation.clone(),
+        is_self_recursive: structural.is_self_recursive.clone(),
+        has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
+        match_pattern: structural.match_pattern.clone(),
+        expr_data: structural.expr_data.clone(),
+    })
+}
+
 pub fn make_expr_node(
     expr_data: Rc<ExprData>,
     children: Rc<Vec<Rc<Node>>>,
