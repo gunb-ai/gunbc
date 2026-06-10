@@ -158,6 +158,84 @@ data comprep_ts_emit_operand_swap_source_text: String = "function add(x: number,
 
 data comprep_ts_emit_catalog_minus_source_text: String = "function add(x: number, y: number): number { return x - y; }"
 
+// §4.5 discriminating-red perturb fixtures — local to comprep; extdeps carries only fidelity rows.
+fn comprep_ts_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn comprep_ts_add_operator_row_minus() -> Node {
+  target_operator_realization_node(
+    operation: canonical_operation_op_add(),
+    shape: InfixToken { token: ^ts_token_minus }
+  )
+}
+
+fn comprep_ts_operator_catalog_minus() -> Node {
+  target_operator_realizations_catalog_node(rows: [comprep_ts_add_operator_row_minus()])
+}
+
+fn comprep_ts_operator_catalog_empty() -> Node {
+  target_operator_realizations_catalog_node(rows: [])
+}
+
+fn comprep_ts_target_model_bundle(operator_catalog: Node) -> Node {
+  node_unanchored(
+    kind: TypeNode { connective: Conj },
+    children: [
+      comprep_ts_named_edge(
+        name: target_model_edge_selection_policy,
+        target: ts_mvp1_selection_policy_node()
+      ),
+      comprep_ts_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: ts_mvp1_declared_inhabitants_root()
+      ),
+      comprep_ts_named_edge(
+        name: target_model_edge_translation_rules,
+        target: ts_mvp1_translation_rules_node()
+      ),
+      comprep_ts_named_edge(
+        name: target_model_edge_serialize_source,
+        target: ts_mvp1_serialize_source_node()
+      ),
+      comprep_ts_named_edge(
+        name: target_model_edge_value_expression_projection,
+        target: value_expr_projection_bundle_node(
+          projection: ts_value_expression_projection()
+        )
+      ),
+      comprep_ts_named_edge(
+        name: target_model_edge_operator_realizations,
+        target: operator_catalog
+      ),
+      comprep_ts_named_edge(
+        name: target_model_edge_bodied_arrow_statement_scaffold,
+        target: bodied_arrow_statement_scaffold_bundle_node(
+          scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
+        )
+      )
+    ]
+  )
+}
+
+fn comprep_ts_target_model_minus_catalog() -> TargetModel {
+  TargetModel {
+    bundle: comprep_ts_target_model_bundle(operator_catalog: comprep_ts_operator_catalog_minus()),
+    lex: ts_wave1_lex(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    authority_source_text: ts_mvp1_source_text_authority()
+  }
+}
+
+fn comprep_ts_target_model_missing_operator_catalog() -> TargetModel {
+  TargetModel {
+    bundle: comprep_ts_target_model_bundle(operator_catalog: comprep_ts_operator_catalog_empty()),
+    lex: ts_wave1_lex(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    authority_source_text: ts_mvp1_source_text_authority()
+  }
+}
+
 fn comprep_ts_canonical_grounding(node: Node, algebra: Node) -> CanonicalGrounding {
   CanonicalGrounding {
     node: node,
@@ -298,12 +376,44 @@ fn comprep_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding>
       )
     }
   } else {
-    Violates {
-      diagnostic: Diagnostic {
-        reason: comprep_ts_body_grounding_miss,
-        at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      }
+    match node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == ^dag_binding_type_int {
+          Holds {
+            value: comprep_ts_canonical_grounding(
+              node: node,
+              algebra: comprep_ts_number_inhabitant
+            )
+          }
+        } else if id == ^dag_token_plus {
+          Holds {
+            value: comprep_ts_canonical_grounding(node: node, algebra: node)
+          }
+        } else if id == ^dag_binding_param_x {
+          Holds {
+            value: comprep_ts_canonical_grounding(node: node, algebra: node)
+          }
+        } else if id == ^dag_binding_param_y {
+          Holds {
+            value: comprep_ts_canonical_grounding(node: node, algebra: node)
+          }
+        } else {
+          Violates {
+            diagnostic: Diagnostic {
+              reason: comprep_ts_body_grounding_miss,
+              at: node_locus(node: node),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          }
+        }
+      _ =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: comprep_ts_body_grounding_miss,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
     }
   }
 }
@@ -364,7 +474,7 @@ fn comprep_ts_bodied_emit_operand_swap_discriminates() -> Bool {
 }
 
 fn comprep_ts_bodied_emit_catalog_minus_discriminates() -> Bool {
-  match emit(tree: comprep_ts_bodied_inferred_tree, target: ts_mvp1_target_model_minus_catalog()) {
+  match emit(tree: comprep_ts_bodied_inferred_tree, target: comprep_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: d } =>
       (source == comprep_ts_emit_catalog_minus_source_text) &&
       (source != ts_mvp1_source_text) &&
@@ -376,7 +486,7 @@ fn comprep_ts_bodied_emit_catalog_minus_discriminates() -> Bool {
 fn comprep_ts_bodied_emit_missing_catalog_rejects() -> Bool {
   match emit(
     tree: comprep_ts_bodied_inferred_tree,
-    target: ts_mvp1_target_model_missing_operator_catalog()
+    target: comprep_ts_target_model_missing_operator_catalog()
   ) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false

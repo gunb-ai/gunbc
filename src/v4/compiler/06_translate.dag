@@ -4345,6 +4345,32 @@ fn translate_fold_init(
     ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
   }
 }
+fn translate_mvp1_coerce_from_grounding_or_evidence(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  match coerce_grounded_node(source: node, tree: tree, target: target) {
+    Accepted { value: coerced, diagnostics: d } =>
+      translate_coerced_with_atom_realization(
+        source: node,
+        coerced: coerced.target,
+        target: target,
+        pending: d
+      )
+    Rejected { diagnostics: r } =>
+      match canonical_grounding_for_node(tree: tree, node: node) {
+        Accepted { value: grounding } =>
+          translate_coerced_with_atom_realization(
+            source: node,
+            coerced: grounding.witness.structural.evidence,
+            target: target,
+            pending: None
+          )
+        Rejected { diagnostics: _ } => Rejected { diagnostics: r }
+      }
+  }
+}
 fn translate_mvp1_fold_init(
   node: Node,
   tree: InferredTree,
@@ -4367,6 +4393,12 @@ fn translate_mvp1_fold_init(
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
         }
       }
+    TypeNode { connective: Atom { identity: _ } } =>
+      translate_mvp1_coerce_from_grounding_or_evidence(
+        node: node,
+        tree: tree,
+        target: target
+      )
     TypeNode { connective: _ } =>
       match coerce_grounded_node(source: node, tree: tree, target: target) {
         Accepted { value: coerced, diagnostics: d } =>
