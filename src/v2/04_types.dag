@@ -713,7 +713,6 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
   else if left_tv || right_tv { true }
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
-  else if left.binding_id != none && right.binding_id != none && left.binding_id == right.binding_id { true }
   else {
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
     let right_is_container = node_is_element_collection(n: right, source_indices: source_indices)
@@ -803,6 +802,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       else { node_type_compatible(left: left_inner, right: right_inner, source_indices: source_indices) }
     }
     else if left_opt || right_opt { false }
+    else if left.binding_id != none && right.binding_id != none && left.binding_id == right.binding_id { true }
     else {
       match left.binding_id {
         Some { value: left_binding_id } =>

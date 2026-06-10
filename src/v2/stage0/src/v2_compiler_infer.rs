@@ -10834,8 +10834,8 @@ pub fn substitute_generics(
                         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                         match_pattern: n.match_pattern.clone(),
                         expr_data: n.expr_data.clone(),
-                        ident: None,
-                        binding_id: None,
+                        ident: n.ident.clone(),
+                        binding_id: n.binding_id.clone(),
                     })
                 }
             }
