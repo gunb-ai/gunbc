@@ -206,7 +206,7 @@ The descriptor is shared, not emit-private:
 - **Lands with its consumer** (E-10, no speculative fields): ingestion of target *source*
   (reading a TS/Rust project into modeled nodes) reuses the same language module's
   grammar/production rows — the value-emit schema's §4.2 projection rows read backward —
-  and the descriptor's `workspace`/`steps` vocabulary when ingestion needs to *execute*
+  and the descriptor's `workspace`/`build`/`run` vocabulary when ingestion needs to *execute*
   target toolchains (e.g. type-query a foreign project). No `IngestionDescriptor` twin is
   ever declared; the symmetry is one-descriptor-two-directions, or it is a P2 violation.
 
