@@ -1404,7 +1404,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
-      ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, children: [], inferred: Some { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span))
+      let inferred_lit = match lit {
+        LitNull =>
+          match expected {
+            Some { value: exp } =>
+              if exp.return_cardinality == CardOptional { exp } else { infer_literal_node(lit: lit) }
+            None => infer_literal_node(lit: lit)
+          }
+        _ => infer_literal_node(lit: lit)
+      }
+      ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, children: [], inferred: Some { value: Resolved { node: inferred_lit } }, span: span))
 
     ExprError { kind: kind, message: message } =>
       let span = texpr.span

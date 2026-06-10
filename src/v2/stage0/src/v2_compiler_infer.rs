@@ -2659,11 +2659,24 @@ pub fn infer_expr(
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: lit, .. } => {
                 let span = texpr.span.clone();
+                let inferred_lit = match (*lit).clone() {
+                    LitNull => match expected.clone() {
+                        Some(exp) => {
+                            if exp.return_cardinality == Cardinality::CardOptional {
+                                exp
+                            } else {
+                                infer_literal_node(lit.clone())
+                            }
+                        }
+                        None => infer_literal_node(lit.clone()),
+                    },
+                    _ => infer_literal_node(lit.clone()),
+                };
                 ok_infer(make_expr_node(
                     Rc::new(ExprData::ExprLiteral { value: lit.clone() }),
                     Rc::new(vec![]),
                     Some(Rc::new(InferredNode::Resolved {
-                        node: infer_literal_node(lit.clone()),
+                        node: inferred_lit,
                     })),
                     span.clone(),
                 ))
