@@ -919,9 +919,21 @@ pub fn rejects_string_for_optional_coproduct_field(
     }
 }
 
+pub fn expected_coproduct_variant(
+    parent: Rc<Node>,
+    variant_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match parent.connective.clone() {
+        Connective::Disj => find_child_named(parent.clone(), variant_name, source_indices),
+        _ => None,
+    }
+}
+
 pub fn record_lit_expected_fields(
     type_name: Option<String>,
     scope: Rc<InferScope>,
+    expected: Option<Rc<Node>>,
 ) -> Rc<Vec<Rc<Node>>> {
     match type_name {
         Some(tn) => match lookup_type_by_name(scope.type_env.clone(), tn.clone()) {
@@ -953,7 +965,17 @@ pub fn record_lit_expected_fields(
                         None => Rc::new(vec![]),
                     }
                 }
-                None => Rc::new(vec![]),
+                None => match expected {
+                    Some(expected_node) => match expected_coproduct_variant(
+                        expected_node.clone(),
+                        tn.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        Some(variant) => variant.children.clone(),
+                        None => Rc::new(vec![]),
+                    },
+                    None => Rc::new(vec![]),
+                },
             },
         },
         None => Rc::new(vec![]),
@@ -2735,67 +2757,105 @@ pub fn infer_expr(
                             span.clone(),
                         ))
                     }
-                    None => match lookup_func_sig(scope.func_env.clone(), name.clone()) {
-                        Some(fsig) => {
-                            if ((fsig.params.clone().len() as i64) == 0) {
-                                ok_infer(make_named_expr_node(
-                                    name.clone(),
-                                    Rc::new(ExprData::ExprCall {
-                                        call_semantics: Some(CallSemantics::PlainCallSemantics),
-                                        descent_evidence: None,
-                                    }),
-                                    Rc::new(vec![]),
-                                    Some(Rc::new(InferredNode::Resolved {
-                                        node: fsig.inferred.clone(),
-                                    })),
-                                    span.clone(),
-                                    span.clone(),
-                                ))
-                            } else {
-                                ok_infer(make_named_expr_node(
-                                    name.clone(),
-                                    Rc::new(ExprData::ExprVar {
-                                        binding_kind: Some(Rc::new(
-                                            VarBindingKind::FunctionValueBinding,
-                                        )),
-                                    }),
-                                    Rc::new(vec![]),
-                                    Some(Rc::new(InferredNode::Resolved {
-                                        node: resolved_callable_type(
-                                            fsig.params.clone(),
-                                            fsig.inferred.clone(),
-                                        ),
-                                    })),
-                                    span.clone(),
-                                    span.clone(),
-                                ))
-                            }
-                        }
-                        None => {
-                            let err_texpr = make_named_expr_node(
+                    None => {
+                        let expected_variant_parent = match expected.clone() {
+                            Some(expected_node) => match expected_coproduct_variant(
+                                expected_node.clone(),
                                 name.clone(),
-                                Rc::new(ExprData::ExprVar { binding_kind: None }),
+                                scope.type_env.clone().source_indices.clone(),
+                            ) {
+                                Some(_) => Some(authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    expected_node.clone(),
+                                )),
+                                None => None,
+                            },
+                            None => None,
+                        };
+                        match expected_variant_parent {
+                            Some(parent_enum) => ok_infer(make_named_expr_node(
+                                name.clone(),
+                                Rc::new(ExprData::ExprVar {
+                                    binding_kind: Some(Rc::new(
+                                        VarBindingKind::VariantValueBinding {
+                                            parent_enum: parent_enum.clone(),
+                                        },
+                                    )),
+                                }),
                                 Rc::new(vec![]),
-                                Some(Rc::new(InferredNode::Resolved { node: error_type() })),
+                                Some(Rc::new(InferredNode::Resolved {
+                                    node: expected.clone().unwrap(),
+                                })),
                                 span.clone(),
                                 span.clone(),
-                            );
-                            Rc::new(InferResult {
-                                typed: err_texpr,
-                                diagnostics: Rc::new(vec![inference_error(
-                                    v2_rt::concat(
-                                        v2_rt::concat(
-                                            "undefined variable '".to_string(),
+                            )),
+                            None => match lookup_func_sig(scope.func_env.clone(), name.clone()) {
+                                Some(fsig) => {
+                                    if ((fsig.params.clone().len() as i64) == 0) {
+                                        ok_infer(make_named_expr_node(
                                             name.clone(),
-                                        ),
-                                        "'".to_string(),
-                                    ),
-                                    span.clone(),
-                                    scope.module_name.clone(),
-                                )]),
-                            })
+                                            Rc::new(ExprData::ExprCall {
+                                                call_semantics: Some(
+                                                    CallSemantics::PlainCallSemantics,
+                                                ),
+                                                descent_evidence: None,
+                                            }),
+                                            Rc::new(vec![]),
+                                            Some(Rc::new(InferredNode::Resolved {
+                                                node: fsig.inferred.clone(),
+                                            })),
+                                            span.clone(),
+                                            span.clone(),
+                                        ))
+                                    } else {
+                                        ok_infer(make_named_expr_node(
+                                            name.clone(),
+                                            Rc::new(ExprData::ExprVar {
+                                                binding_kind: Some(Rc::new(
+                                                    VarBindingKind::FunctionValueBinding,
+                                                )),
+                                            }),
+                                            Rc::new(vec![]),
+                                            Some(Rc::new(InferredNode::Resolved {
+                                                node: resolved_callable_type(
+                                                    fsig.params.clone(),
+                                                    fsig.inferred.clone(),
+                                                ),
+                                            })),
+                                            span.clone(),
+                                            span.clone(),
+                                        ))
+                                    }
+                                }
+                                None => {
+                                    let err_texpr = make_named_expr_node(
+                                        name.clone(),
+                                        Rc::new(ExprData::ExprVar { binding_kind: None }),
+                                        Rc::new(vec![]),
+                                        Some(Rc::new(InferredNode::Resolved {
+                                            node: error_type(),
+                                        })),
+                                        span.clone(),
+                                        span.clone(),
+                                    );
+                                    Rc::new(InferResult {
+                                        typed: err_texpr,
+                                        diagnostics: Rc::new(vec![inference_error(
+                                            v2_rt::concat(
+                                                v2_rt::concat(
+                                                    "undefined variable '".to_string(),
+                                                    name.clone(),
+                                                ),
+                                                "'".to_string(),
+                                            ),
+                                            span.clone(),
+                                            scope.module_name.clone(),
+                                        )]),
+                                    })
+                                }
+                            },
                         }
-                    },
+                    }
                 }
             }
             ExprData::ExprFieldAccess { summary: _, .. } => {
@@ -4451,6 +4511,7 @@ match bare_s {
                     span.clone(),
                     node_name_span(texpr.clone()),
                     scope.clone(),
+                    expected.clone(),
                 )
             }
             ExprData::ExprListLit => {
@@ -5215,6 +5276,7 @@ pub fn infer_variant_constructor_call(
                                                     span.clone(),
                                                     name_span,
                                                     scope.clone(),
+                                                    None,
                                                 ))
                                             }
                                         },
@@ -5261,9 +5323,11 @@ pub fn infer_record_lit(
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
+    expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
     {
-        let struct_fields = record_lit_expected_fields(type_name.clone(), scope.clone());
+        let struct_fields =
+            record_lit_expected_fields(type_name.clone(), scope.clone(), expected.clone());
         let fi_infer_results = Rc::new({
             let mut __result = Vec::new();
             for fi in field_inits.iter().cloned() {
@@ -5432,6 +5496,24 @@ pub fn infer_record_lit(
                     lookup_type_by_name(scope.type_env.clone(), type_name.clone().unwrap());
                 let local_variant_parent =
                     lookup_variant_parent_enum(scope.clone(), type_name.clone().unwrap());
+                let expected_variant_parent = match expected.clone() {
+                    Some(expected_node) => match expected_coproduct_variant(
+                        expected_node.clone(),
+                        type_name.clone().unwrap(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        Some(_) => Some(authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            expected_node.clone(),
+                        )),
+                        None => None,
+                    },
+                    None => None,
+                };
+                let effective_variant_parent = match local_variant_parent.clone() {
+                    Some(_) => local_variant_parent.clone(),
+                    None => expected_variant_parent,
+                };
                 let effective_lookup = match type_lookup.clone() {
                     Some(_) => type_lookup.clone(),
                     None => {
@@ -5441,7 +5523,17 @@ pub fn infer_record_lit(
                             Some(local_node) => {
                                 lookup_type_for(scope.type_env.clone(), local_node.clone())
                             }
-                            None => None,
+                            None => match expected.clone() {
+                                Some(expected_node) => match expected_coproduct_variant(
+                                    expected_node.clone(),
+                                    type_name.clone().unwrap(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    Some(_) => Some(expected_node.clone()),
+                                    None => None,
+                                },
+                                None => None,
+                            },
                         }
                     }
                 };
@@ -5452,7 +5544,7 @@ pub fn infer_record_lit(
                 let expected_optional_parent = Some("Optional".to_string());
                 let is_some_ctor = ((type_name.clone().unwrap().as_str()
                     == "Some".to_string().as_str())
-                    && (local_variant_parent.clone().as_deref()
+                    && (effective_variant_parent.clone().as_deref()
                         == expected_optional_parent.as_deref()));
                 let resolved_node = if is_some_ctor {
                     {
@@ -5502,7 +5594,7 @@ pub fn infer_record_lit(
                 let texpr = make_named_expr_node(
                     rl_name,
                     Rc::new(ExprData::ExprRecordLit {
-                        parent_enum: local_variant_parent.clone(),
+                        parent_enum: effective_variant_parent.clone(),
                     }),
                     typed_field_nodes2,
                     Some(Rc::new(InferredNode::Resolved {
@@ -10987,7 +11079,24 @@ pub fn lookup_type_binding_by_name_in_env(
     .cloned()
     {
         Some(binding) => Some(binding.clone()),
-        None => None,
+        None => match Rc::new({
+            let mut __result = Vec::new();
+            for binding in Rc::new(v2_rt::map_values(&env.carrier_bindings.clone()))
+                .iter()
+                .cloned()
+            {
+                if (binding.name.clone().as_str() == name.clone().as_str()) {
+                    __result.push(binding);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(binding) => Some(binding.clone()),
+            None => None,
+        },
     }
 }
 

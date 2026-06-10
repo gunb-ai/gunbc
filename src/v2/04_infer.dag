@@ -1461,43 +1461,63 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             name_span: span
           ))
         None =>
-          match lookup_func_sig(func_env: scope.func_env, name: name) {
-            Some { value: fsig } =>
-              if (fsig.params |> count) == 0 {
-                ok_infer(texpr: make_named_expr_node(
-                  name: name,
-                  expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
-                  children: [],
-                  inferred: Some { value: Resolved { node: fsig.inferred } },
-                  span: span,
-                  name_span: span
-                ))
-              } else {
-                ok_infer(texpr: make_named_expr_node(
-                  name: name,
-                  expr_data: ExprVar { binding_kind: Some { value: FunctionValueBinding } },
-                  children: [],
-                  inferred: Some { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
-                  span: span,
-                  name_span: span
-                ))
+          let expected_variant_parent = match expected {
+            Some { value: expected_node } =>
+              match expected_coproduct_variant(parent: expected_node, variant_name: name, source_indices: scope.type_env.source_indices) {
+                Some { value: _ } => Some { value: authored_name_at(source_indices: scope.type_env.source_indices, node: expected_node) }
+                None => none
               }
-            None =>
-              let err_texpr = make_named_expr_node(
+            None => none
+          }
+          match expected_variant_parent {
+            Some { value: parent_enum } =>
+              ok_infer(texpr: make_named_expr_node(
                 name: name,
-                expr_data: ExprVar { binding_kind: none },
+                expr_data: ExprVar { binding_kind: Some { value: VariantValueBinding { parent_enum: parent_enum } } },
                 children: [],
-                inferred: Some { value: Resolved { node: error_type } },
+                inferred: Some { value: Resolved { node: expected.value } },
                 span: span,
                 name_span: span
-              )
-              InferResult {
-                typed: err_texpr,
-                diagnostics: [inference_error(
-                  message: concat("undefined variable '", name, "'"),
-                  span: span,
-                  module_name: scope.module_name
-                )]
+              ))
+            None =>
+              match lookup_func_sig(func_env: scope.func_env, name: name) {
+                Some { value: fsig } =>
+                  if (fsig.params |> count) == 0 {
+                    ok_infer(texpr: make_named_expr_node(
+                      name: name,
+                      expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                      children: [],
+                      inferred: Some { value: Resolved { node: fsig.inferred } },
+                      span: span,
+                      name_span: span
+                    ))
+                  } else {
+                    ok_infer(texpr: make_named_expr_node(
+                      name: name,
+                      expr_data: ExprVar { binding_kind: Some { value: FunctionValueBinding } },
+                      children: [],
+                      inferred: Some { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
+                      span: span,
+                      name_span: span
+                    ))
+                  }
+                None =>
+                  let err_texpr = make_named_expr_node(
+                    name: name,
+                    expr_data: ExprVar { binding_kind: none },
+                    children: [],
+                    inferred: Some { value: Resolved { node: error_type } },
+                    span: span,
+                    name_span: span
+                  )
+                  InferResult {
+                    typed: err_texpr,
+                    diagnostics: [inference_error(
+                      message: concat("undefined variable '", name, "'"),
+                      span: span,
+                      module_name: scope.module_name
+                    )]
+                  }
               }
           }
       }
@@ -5328,7 +5348,11 @@ fn collect_parent_carrier_bindings(envs: List<TypeEnv>) -> Map<BindingId, TypeBi
 fn lookup_type_binding_by_name_in_env(env: TypeEnv, name: String) -> TypeBinding? {
   match env.bindings |> map_values |> filter(binding => binding.name == name) |> first {
     Some { value: binding } => Some { value: binding }
-    None => none
+    None =>
+      match env.carrier_bindings |> map_values |> filter(binding => binding.name == name) |> first {
+        Some { value: binding } => Some { value: binding }
+        None => none
+      }
   }
 }
 
