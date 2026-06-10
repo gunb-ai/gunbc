@@ -316,7 +316,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               acc
             } else {
               let sig_params = rsig.params
-              let sig_rt = rsig.inferred
+              let sig_rt = resolve_node(n: rsig.inferred, env: typed_parent.type_env, module_name: imp.module_path).resolved
               let sig_async = rsig.is_async
               map_insert(acc, sig_key, DeclaredFuncSig {
                 name: sig_key, params: sig_params,

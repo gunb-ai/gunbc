@@ -381,7 +381,13 @@ pub fn merge_scope_from_imports(
                             } else {
                                 {
                                     let sig_params = rsig.params.clone();
-                                    let sig_rt = rsig.inferred.clone();
+                                    let sig_rt = resolve_node(
+                                        rsig.inferred.clone(),
+                                        typed_parent.type_env.clone(),
+                                        imp.module_path.clone(),
+                                    )
+                                    .resolved
+                                    .clone();
                                     let sig_async = rsig.is_async.clone();
                                     v2_rt::rc_map_insert(
                                         acc.clone(),
