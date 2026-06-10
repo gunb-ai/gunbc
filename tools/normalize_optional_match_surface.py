@@ -206,7 +206,14 @@ def diagnostic_rewrite_ranges(text: str, diagnostics: list[Diagnostic], rel: Pat
                     "contains no legacy Optional token"
                 )
             ranges.add((diagnostic.start, diagnostic.end))
-    return sorted(ranges)
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if not merged or start > merged[-1][1]:
+            merged.append((start, end))
+        else:
+            prior_start, prior_end = merged[-1]
+            merged[-1] = (prior_start, max(prior_end, end))
+    return merged
 
 
 def rewrite_ranges(text: str, ranges: list[tuple[int, int]]) -> tuple[str, int]:
