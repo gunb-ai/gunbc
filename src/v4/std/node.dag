@@ -9,6 +9,13 @@
 module v4.std.node
 type Symbol
 type Hash
+// PROV A-pivot (design-node-identity-channels.md, design-provenance-span.md §4.1):
+// opaque occurrence identity; sole mint via v4.std.occurrence_id.alloc_occurrence_id.
+// Distinct id space from binding_id (#4581). Excluded from structural equality / content hash.
+// Node.occurrence_id field lands atomically with #4604 span revert (Phase 1+2).
+type OccurrenceId {
+  value: Int
+}
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Connective
   = Atom { identity: Symbol }

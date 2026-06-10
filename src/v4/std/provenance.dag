@@ -1,14 +1,26 @@
 // src/v4/std/provenance.dag
-// Scope: source-text → Node byte-range provenance (T-8 producer substrate).
-// Status: Layer-3/4 — span on Node (v4.std.node) + parse stamp (v4.compiler.parse).
+// Scope: source-text provenance substrate (T-8 / PROV A-pivot).
+// Status: transitional — on-tree Node.span (#4604) dissolves Phase 1+2; off-tree SpanIndex
+//   (OccurrenceId → OriginEvent) is the A-pivot target (design-provenance-span.md §4.5).
 
 module v4.std.provenance
 
-import v4.std.artifact { Artifact, NodeArtifactProvenance }
+import v4.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
+import v4.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  empty_map,
+  map_get,
+  map_insert
+}
 import v4.std.diagnostic {
   Accepted,
   ByteRange,
   Diagnostic,
+  ExternalContractUnknown,
+  Locus,
   Outcome,
   Rejected,
   Textual,
@@ -17,6 +29,7 @@ import v4.std.diagnostic {
   diagnostics_merge,
   outcome_accepted,
   outcome_rejected,
+  port_locus,
   rejected_with_pending
 }
 import v4.std.node {
@@ -25,6 +38,7 @@ import v4.std.node {
   Node,
   NodeFold,
   NodeSpan,
+  OccurrenceId,
   SourceSpan,
   Symbol,
   Unanchored,
@@ -35,6 +49,53 @@ import v4.std.node {
   node_span_same_file,
   source_span_byte_extent_admits
 }
+import v4.std.witness { Holds, Violates, Witness }
+
+// --- A-pivot off-tree provenance (design-provenance-span.md §4.5) ---
+
+type OriginEvent
+  = FromSource { locus: Locus }
+  | DerivedBy { producer: Symbol, from: List<OccurrenceId> }
+  | GeneratedBy { generator: GeneratorId, from: List<OccurrenceId> }
+
+fn origin_event_from_source(locus: Locus) -> OriginEvent {
+  FromSource { locus: locus }
+}
+
+type SpanIndex {
+  events: Map<OccurrenceId, OriginEvent>
+}
+
+fn span_index_empty() -> SpanIndex {
+  SpanIndex { events: empty_map() }
+}
+
+fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> SpanIndex {
+  SpanIndex { events: map_insert(m: index.events, key: id, value: event) }
+}
+
+data span_index_occurrence_absent: Symbol = span_index_occurrence_absent
+
+fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: span_index_occurrence_absent,
+    at: port_locus(port: ^span_index_lookup_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
+  match map_get(m: index.events, key: id) {
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: event } => Holds { value: event }
+        Absent => Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
+      }
+    Rejected { diagnostics: d } => Violates { diagnostic: d.head }
+  }
+}
+
+// --- Transitional on-tree span (#4604; dissolves Phase 1+2) ---
 
 data provenance_span_file_mismatch: Symbol = provenance_span_file_mismatch
 data provenance_invalid_source_span: Symbol = provenance_invalid_source_span

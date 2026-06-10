@@ -19,7 +19,7 @@
 |---|---|---|---|---|
 | **Brand identity** (A3/A4 nominal distinctness) | `binding_id` field | #4581 authority-direct stamping at type-env registration / resolve | **YES** — it *is* semantic identity; excluding it would re-open the spelling-collision false-accept | building (#4581 — the linchpin) |
 | **Reference** (use→def; callee; the dependency classifier's `BindsTo`) | **no new field** — a substrate fact carried on the `binding_id` channel (the T-9 rider: resolve materializes the use→def relation against the def's `binding_id`) | resolve, same seam as stamping | participates **as structure** (it is an edge/fact, not a field exclusion question) | queued immediately behind #4581 |
-| **Provenance** (source anchoring) | opaque occurrence id field | parse, allocator-issued (PROV wave 1) | **NO** — bookkeeping, never identity; two occurrences of `1 + 1` stay structurally equal | held (PROV operator scoping) |
+| **Provenance** (source anchoring) | opaque `occurrence_id` field (`OccurrenceId` in `v4.std.node`; sole mint `v4.std.occurrence_id.alloc_occurrence_id`) | parse, allocator-issued (PROV wave 1); off-tree `SpanIndex` carries `OriginEvent` (design-provenance-span.md §4.5) | **NO** — bookkeeping, never identity; two occurrences of `1 + 1` stay structurally equal | building (PROV A-pivot Phase 0 model — field on `Node` lands Phase 1+2 atomically with #4604 span revert) |
 
 ## Rules
 
@@ -28,8 +28,8 @@
    immediately after). PROV's occurrence-id allocator copies the *pattern* but is a distinct
    id space — provenance ids and binding ids never share an allocator or a field.
 2. **One landing order, one field-moment each:** `binding_id` (#4581) → T-9 rider →
-   occurrence id (only at PROV GO; the held lane reserves its row here, not a field in the
-   tree).
+   `occurrence_id` (PROV GO 2026-06-10; Phase 0 lands substrate types + allocator; the
+   `Node` field lands Phase 1+2 atomically with #4604 span revert).
 3. **Equality participation is implemented in exactly two places** — the Rust `Value::eq`
    authority (v2 interpreter; the #4564 single-equality discipline) and the `.dag`
    structural-equality predicate (`exact_structural_equality_zip_fold`) — each citing this
