@@ -591,13 +591,21 @@ fn record_lit_expected_fields(type_name: String?, scope: InferScope, expected: N
                 None => []
               }
             None =>
-              match expected {
-                Some { value: expected_node } =>
-                  match expected_coproduct_variant(parent: expected_node, variant_name: tn, source_indices: scope.type_env.source_indices) {
+              match lookup_coproduct_parent_binding_by_variant(env: scope.type_env, variant_name: tn) {
+                Some { value: parent_binding } =>
+                  match expected_coproduct_variant(parent: parent_binding.resolved, variant_name: tn, source_indices: scope.type_env.source_indices) {
                     Some { value: variant } => variant.children
                     None => []
                   }
-                None => []
+                None =>
+                  match expected {
+                    Some { value: expected_node } =>
+                      match expected_coproduct_variant(parent: expected_node, variant_name: tn, source_indices: scope.type_env.source_indices) {
+                        Some { value: variant } => variant.children
+                        None => []
+                      }
+                    None => []
+                  }
               }
           }
       }
@@ -2775,7 +2783,14 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Some { value: sf } =>
         let ft = resolved_type(n: sf)
-        if ft.ident_span != none { Some { value: ft } } else { none }
+        match ft.ident_span {
+          Some { value: _ } => Some { value: ft }
+          None =>
+            match ft.return_cardinality {
+              CardOptional => Some { value: ft }
+              _ => none
+            }
+        }
       None => none
     }
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
@@ -2840,9 +2855,17 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         }
       None => none
     }
+    let env_variant_parent = match lookup_coproduct_parent_binding_by_variant(env: scope.type_env, variant_name: type_name.value) {
+      Some { value: parent_binding } => Some { value: parent_binding.name }
+      None => none
+    }
     let effective_variant_parent = match local_variant_parent {
       Some { value: _ } => local_variant_parent
-      None => expected_variant_parent
+      None =>
+        match env_variant_parent {
+          Some { value: _ } => env_variant_parent
+          None => expected_variant_parent
+        }
     }
     let effective_lookup = match type_lookup {
       Some { value: _ } => type_lookup
@@ -2852,13 +2875,17 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
           Some { value: local_node } =>
             lookup_type_for(env: scope.type_env, node: local_node)
           None =>
-            match expected {
-              Some { value: expected_node } =>
-                match expected_coproduct_variant(parent: expected_node, variant_name: type_name.value, source_indices: scope.type_env.source_indices) {
-                  Some { value: _ } => Some { value: expected_node }
+            match lookup_coproduct_parent_binding_by_variant(env: scope.type_env, variant_name: type_name.value) {
+              Some { value: parent_binding } => Some { value: parent_binding.resolved }
+              None =>
+                match expected {
+                  Some { value: expected_node } =>
+                    match expected_coproduct_variant(parent: expected_node, variant_name: type_name.value, source_indices: scope.type_env.source_indices) {
+                      Some { value: _ } => Some { value: expected_node }
+                      None => None
+                    }
                   None => None
                 }
-              None => None
             }
         }
     }
@@ -5370,6 +5397,23 @@ fn lookup_type_binding_by_name_in_env(env: TypeEnv, name: String) -> TypeBinding
     Some { value: binding } => Some { value: binding }
     None =>
       match env.carrier_bindings |> map_values |> filter(binding => binding.name == name) |> first {
+        Some { value: binding } => Some { value: binding }
+        None => none
+      }
+  }
+}
+
+fn lookup_coproduct_parent_binding_by_variant(env: TypeEnv, variant_name: String) -> TypeBinding? {
+  match env.bindings |> map_values |> filter(binding =>
+    binding.resolved.connective == Disj
+      && has_child_named(n: binding.resolved, name: variant_name, source_indices: env.source_indices)
+  ) |> first {
+    Some { value: binding } => Some { value: binding }
+    None =>
+      match env.carrier_bindings |> map_values |> filter(binding =>
+        binding.resolved.connective == Disj
+          && has_child_named(n: binding.resolved, name: variant_name, source_indices: env.source_indices)
+      ) |> first {
         Some { value: binding } => Some { value: binding }
         None => none
       }

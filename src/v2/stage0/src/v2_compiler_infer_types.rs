@@ -75,8 +75,8 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -277,8 +277,8 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         has_non_tail_self_call: false,
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                         binding_id: None,
+                        ident: None,
                     }),
                     Rc::new(Node {
                         name: val_id.clone(),
@@ -300,8 +300,8 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         has_non_tail_self_call: false,
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                         binding_id: None,
+                        ident: None,
                     }),
                 ]),
                 connective: Connective::NoConnective,
@@ -317,8 +317,8 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             })),
             None => None,
         },
@@ -352,8 +352,8 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             })]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -368,8 +368,8 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         })),
         None => None,
     }
@@ -415,8 +415,8 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
                 kind: ExprErrorKind::InternalExprError,
                 message: msg.clone(),
             }),
-            ident: None,
             binding_id: None,
+            ident: None,
         })
     }
 }
@@ -452,8 +452,8 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 })]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -468,8 +468,8 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             }),
             diagnostics: Rc::new(vec![]),
         }),
@@ -509,8 +509,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         }),
                         Rc::new(Node {
                             name: val_name.clone(),
@@ -530,8 +530,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         }),
                     ]),
                     connective: Connective::NoConnective,
@@ -547,8 +547,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -587,8 +587,8 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -616,8 +616,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             }),
             Rc::new(Node {
                 name: "second".to_string(),
@@ -637,8 +637,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             }),
         ]),
         connective: Connective::Conj,
@@ -654,8 +654,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -678,8 +678,8 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -721,8 +721,8 @@ pub fn algebra_method_field(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         })
     }
 }
