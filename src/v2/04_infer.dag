@@ -162,18 +162,20 @@ type ModuleContext {
   svc_registry: Map<String, List<OpEntry>>
   locals: Map<String, TypeBinding>
   item_registry: Map<String, ItemInfo>
+  variant_collisions: Map<String, ErrorNode>
   diagnostics: List<ErrorNode>
 }
 
 type VariantFoldState {
   locals: Map<String, TypeBinding>
-  collision_errors: List<ErrorNode>
+  collisions: Map<String, ErrorNode>
 }
 
 type InferScope {
   type_env: TypeEnv
   func_env: ResolvedFuncEnv
   locals: Map<String, TypeBinding>
+  variant_collisions: Map<String, ErrorNode>
   match_bound_names: Map<String, Bool>
   module_name: String
   service_registry: Map<String, List<OpEntry>>
@@ -1168,13 +1170,14 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), TypeBinding { name: param_node_name_at(n: p, source_indices: scope.type_env.source_indices), resolved: param_node_type_expr(n: p), provenance: PreservedValue })
   )
-  InferScope {
-    type_env: scope.type_env,
-    func_env: scope.func_env,
-    locals: new_locals,
-    match_bound_names: scope.match_bound_names,
-    module_name: scope.module_name,
-    service_registry: scope.service_registry,
+	  InferScope {
+	    type_env: scope.type_env,
+	    func_env: scope.func_env,
+	    locals: new_locals,
+	    variant_collisions: scope.variant_collisions,
+	    match_bound_names: scope.match_bound_names,
+	    module_name: scope.module_name,
+	    service_registry: scope.service_registry,
     item_registry: scope.item_registry,
     lambda_param_provenance: empty_map()
   }
@@ -1182,26 +1185,28 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
 
 
 fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: SubValueRelation) -> InferScope {
-  InferScope {
-    type_env: scope.type_env,
-    func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
-    match_bound_names: scope.match_bound_names,
-    module_name: scope.module_name,
-    service_registry: scope.service_registry,
+	  InferScope {
+	    type_env: scope.type_env,
+	    func_env: scope.func_env,
+	    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
+	    variant_collisions: scope.variant_collisions,
+	    match_bound_names: scope.match_bound_names,
+	    module_name: scope.module_name,
+	    service_registry: scope.service_registry,
     item_registry: scope.item_registry,
     lambda_param_provenance: scope.lambda_param_provenance
   }
 }
 
 fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, provenance: SubValueRelation) -> InferScope {
-  InferScope {
-    type_env: scope.type_env,
-    func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
-    match_bound_names: map_insert(scope.match_bound_names, name, true),
-    module_name: scope.module_name,
-    service_registry: scope.service_registry,
+	  InferScope {
+	    type_env: scope.type_env,
+	    func_env: scope.func_env,
+	    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
+	    variant_collisions: scope.variant_collisions,
+	    match_bound_names: map_insert(scope.match_bound_names, name, true),
+	    module_name: scope.module_name,
+	    service_registry: scope.service_registry,
     item_registry: scope.item_registry,
     lambda_param_provenance: scope.lambda_param_provenance
   }
@@ -1211,13 +1216,14 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown })
   )
-  InferScope {
-    type_env: scope.type_env,
-    func_env: scope.func_env,
-    locals: new_locals,
-    match_bound_names: scope.match_bound_names,
-    module_name: scope.module_name,
-    service_registry: scope.service_registry,
+	  InferScope {
+	    type_env: scope.type_env,
+	    func_env: scope.func_env,
+	    locals: new_locals,
+	    variant_collisions: scope.variant_collisions,
+	    match_bound_names: scope.match_bound_names,
+	    module_name: scope.module_name,
+	    service_registry: scope.service_registry,
     item_registry: scope.item_registry,
     lambda_param_provenance: scope.lambda_param_provenance
   }
@@ -1372,13 +1378,14 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         SubValueUnknown => empty_map()
         _ => map_insert(empty_map(), "elem", elem_provenance)
       }
-      let fold_scope = InferScope {
-        type_env: scope.type_env,
-        func_env: scope.func_env,
-        locals: scope.locals,
-        match_bound_names: scope.match_bound_names,
-        module_name: scope.module_name,
-        service_registry: scope.service_registry,
+	      let fold_scope = InferScope {
+	        type_env: scope.type_env,
+	        func_env: scope.func_env,
+	        locals: scope.locals,
+	        variant_collisions: scope.variant_collisions,
+	        match_bound_names: scope.match_bound_names,
+	        module_name: scope.module_name,
+	        service_registry: scope.service_registry,
         item_registry: scope.item_registry,
         lambda_param_provenance: prov_map
       }
@@ -1391,13 +1398,14 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         _ => map_insert(empty_map(), "elem", elem_provenance)
       }
       let nf_scope = if is_lambda_expr(e: nf_lam_value) {
-        InferScope {
-          type_env: scope.type_env,
-          func_env: scope.func_env,
-          locals: scope.locals,
-          match_bound_names: scope.match_bound_names,
-          module_name: scope.module_name,
-          service_registry: scope.service_registry,
+	        InferScope {
+	          type_env: scope.type_env,
+	          func_env: scope.func_env,
+	          locals: scope.locals,
+	          variant_collisions: scope.variant_collisions,
+	          match_bound_names: scope.match_bound_names,
+	          module_name: scope.module_name,
+	          service_registry: scope.service_registry,
           item_registry: scope.item_registry,
           lambda_param_provenance: nf_prov_map
         }
@@ -2467,12 +2475,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: callable_inferred(n: exp) }
         } else { none }
       } else { none }
-      let body_scope = InferScope {
-        type_env: lam_scope.type_env, func_env: lam_scope.func_env,
-        locals: lam_scope.locals, match_bound_names: lam_scope.match_bound_names,
-        module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
-        item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map()
-      }
+	      let body_scope = InferScope {
+	        type_env: lam_scope.type_env, func_env: lam_scope.func_env,
+	        locals: lam_scope.locals, match_bound_names: lam_scope.match_bound_names,
+	        variant_collisions: lam_scope.variant_collisions,
+	        module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
+	        item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map()
+	      }
       let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
@@ -6199,13 +6208,14 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       acc
     }
   )
-  let infer_scope = InferScope {
-    type_env: env,
-    func_env: ctx.func_env,
-    locals: data_locals,
-    match_bound_names: empty_map(),
-    module_name: resolved_module_name,
-    service_registry: ctx.svc_registry,
+	  let infer_scope = InferScope {
+	    type_env: env,
+	    func_env: ctx.func_env,
+	    locals: data_locals,
+	    variant_collisions: ctx.variant_collisions,
+	    match_bound_names: empty_map(),
+	    module_name: resolved_module_name,
+	    service_registry: ctx.svc_registry,
     item_registry: ctx.item_registry,
     lambda_param_provenance: empty_map()
   }
