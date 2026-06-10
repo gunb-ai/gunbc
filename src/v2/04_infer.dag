@@ -654,6 +654,38 @@ fn direct_call_arg_span_skips(span: SourceSpan) -> Bool {
   is_src_v2 || is_src_v3 || is_src_v4 || is_dsl_std || is_dsl_v4 || is_dsl_extdeps
 }
 
+fn direct_call_arg_decl_identity(n: Node, env: TypeEnv) -> Node {
+  match n.binding_id {
+    Some { value: _ } => n
+    None =>
+      match lookup_type_for(env: env, node: n) {
+        Some { value: resolved } => resolved
+        None => n
+      }
+  }
+}
+
+fn direct_call_decl_identity_mismatch(
+  formal_identity: Node,
+  actual_identity: Node,
+  formal: Node,
+  actual: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let formal_container = node_is_element_collection(n: formal, source_indices: source_indices)
+  let actual_container = node_is_element_collection(n: actual, source_indices: source_indices)
+  let same_structural_carrier = structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
+  match formal_identity.binding_id {
+    Some { value: formal_binding_id } =>
+      match actual_identity.binding_id {
+        Some { value: actual_binding_id } =>
+          formal_binding_id != actual_binding_id && same_structural_carrier && !formal_container && !actual_container
+        None => false
+      }
+    None => false
+  }
+}
+
 // Bounded direct-call arg check (A3 / E1): surface nominal brand mismatches
 // that share a structural carrier (UserId vs AccountId over Refined<String>)
 // without widening to every !node_type_compatible pair (e.g. fn vs Bool).
@@ -737,15 +769,23 @@ fn direct_call_arg_mismatch_diags(
     pair =>
       let formal_raw = param_node_type_expr(n: pair.second)
       let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
+      let formal_identity = direct_call_arg_decl_identity(n: formal_subst, env: type_env)
       let formal = peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name)
       match typed_args |> skip(pair.first) |> first {
         Some { value: ta } =>
           let actual_raw = resolved_type(n: arg_value(n: ta))
+          let actual_identity = direct_call_arg_decl_identity(n: actual_raw, env: type_env)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
           let arg_span = arg_value(n: ta).span
           if direct_call_arg_span_skips(span: arg_span) {
             []
-          } else if direct_call_arg_type_mismatch(
+          } else if direct_call_decl_identity_mismatch(
+            formal_identity: formal_identity,
+            actual_identity: actual_identity,
+            formal: formal,
+            actual: actual,
+            source_indices: source_indices
+          ) || direct_call_arg_type_mismatch(
             formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),

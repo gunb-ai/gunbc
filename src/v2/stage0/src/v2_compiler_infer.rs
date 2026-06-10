@@ -1047,6 +1047,45 @@ pub fn direct_call_arg_span_skips(span: Rc<SourceSpan>) -> bool {
     }
 }
 
+pub fn direct_call_arg_decl_identity(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+    match n.binding_id.clone() {
+        Some(_) => n.clone(),
+        None => match lookup_type_for(env, n.clone()) {
+            Some(resolved) => resolved.clone(),
+            None => n.clone(),
+        },
+    }
+}
+
+pub fn direct_call_decl_identity_mismatch(
+    formal_identity: Rc<Node>,
+    actual_identity: Rc<Node>,
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let formal_container = node_is_element_collection(formal.clone(), source_indices.clone());
+        let actual_container = node_is_element_collection(actual.clone(), source_indices.clone());
+        let same_structural_carrier =
+            (structural_carrier_template_name(formal.clone(), source_indices.clone()).as_str()
+                == structural_carrier_template_name(actual.clone(), source_indices.clone())
+                    .as_str());
+        match formal_identity.binding_id.clone() {
+            Some(formal_binding_id) => match actual_identity.binding_id.clone() {
+                Some(actual_binding_id) => {
+                    ((((formal_binding_id.clone() != actual_binding_id.clone())
+                        && same_structural_carrier)
+                        && !formal_container)
+                        && !actual_container)
+                }
+                None => false,
+            },
+            None => false,
+        }
+    }
+}
+
 pub fn nominal_call_arg_brand_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -1168,6 +1207,8 @@ pub fn direct_call_arg_mismatch_diags(
                             call_subst.clone(),
                             source_indices.clone(),
                         );
+                        let formal_identity =
+                            direct_call_arg_decl_identity(formal_subst.clone(), type_env.clone());
                         let formal = peel_nominal_alias_identity(
                             formal_subst.clone(),
                             type_env.clone(),
@@ -1176,6 +1217,10 @@ pub fn direct_call_arg_mismatch_diags(
                         match typed_args.clone().get(pair.0.clone() as usize).cloned() {
                             Some(ta) => {
                                 let actual_raw = resolved_type(arg_value(ta.clone()));
+                                let actual_identity = direct_call_arg_decl_identity(
+                                    actual_raw.clone(),
+                                    type_env.clone(),
+                                );
                                 let actual = peel_nominal_alias_identity(
                                     actual_raw.clone(),
                                     type_env.clone(),
@@ -1185,13 +1230,19 @@ pub fn direct_call_arg_mismatch_diags(
                                 if direct_call_arg_span_skips(arg_span.clone()) {
                                     Rc::new(vec![])
                                 } else {
-                                    if direct_call_arg_type_mismatch(
+                                    if (direct_call_decl_identity_mismatch(
+                                        formal_identity.clone(),
+                                        actual_identity.clone(),
+                                        formal.clone(),
+                                        actual.clone(),
+                                        source_indices.clone(),
+                                    ) || direct_call_arg_type_mismatch(
                                         formal.clone(),
                                         actual.clone(),
                                         type_env.clone(),
                                         module_name.clone(),
                                         source_indices.clone(),
-                                    ) {
+                                    )) {
                                         Rc::new(vec![type_mismatch_error(
                                             node_type_shape(formal.clone(), source_indices.clone()),
                                             node_type_shape(actual.clone(), source_indices.clone()),
