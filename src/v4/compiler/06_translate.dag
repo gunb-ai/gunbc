@@ -21,9 +21,9 @@ import v4.compiler.value_expression {
 import v4.compiler.target_carriers { TargetSource }
 import v4.std.target_model {
   TargetModel,
-  decode_bodied_arrow_statement_scaffold_bundle,
+  bodied_arrow_scaffold_from_grammar_relation_row,
   target_bodied_arrow_compose_statement_tokens,
-  target_model_edge_bodied_arrow_statement_scaffold
+  target_model_edge_translation_rules
 }
 import v4.compiler.infer {
   InferredTree,

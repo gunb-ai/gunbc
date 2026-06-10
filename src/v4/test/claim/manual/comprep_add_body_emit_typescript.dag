@@ -10,7 +10,8 @@ module v4.test.claim.manual.comprep_add_body_emit_typescript
 import v4.compiler.body_producer {
   mvp1_add_arrow_signature_node,
   mvp1_add_arrow_with_body_node,
-  mvp1_add_binary_body_node
+  mvp1_add_binary_body_node,
+  produce_mvp1_add_arrow_with_body
 }
 import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
@@ -100,8 +101,6 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 data comprep_ts_body_emit_pass: Symbol = comprep_ts_body_emit_pass
 data comprep_ts_body_emit_fail: Symbol = comprep_ts_body_emit_fail
 data comprep_ts_body_grounding_miss: Symbol = comprep_ts_body_grounding_miss
-
-data comprep_ts_bodied_arrow_root: Node = mvp1_add_arrow_with_body_node
 
 data comprep_ts_swapped_operand_body_node: Node = node_unanchored(
   kind: ComputationNode { behavior: Transform },
@@ -281,11 +280,7 @@ data comprep_ts_arithmetic_semantics_node: Node = ts_number_arithmetic_semantics
 data comprep_ts_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node()
 
 fn comprep_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == comprep_ts_bodied_arrow_root {
-    Holds {
-      value: comprep_ts_canonical_grounding(node: node, algebra: node)
-    }
-  } else if node == mvp1_add_arrow_with_body_node {
+  if node == mvp1_add_arrow_with_body_node {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
@@ -462,9 +457,34 @@ fn comprep_ts_facts_lookup(key: Node) -> Witness<InferredFacts> {
   comprep_ts_inferred_facts_for(node: key)
 }
 
-data comprep_ts_bodied_inferred_tree: InferredTree = InferredTree {
-  root: comprep_ts_bodied_arrow_root,
-  facts: Map { lookup: comprep_ts_facts_lookup }
+fn comprep_ts_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: comprep_ts_facts_lookup }
+  }
+}
+
+fn comprep_ts_producer_inferred_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_add_arrow_with_body() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: comprep_ts_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn comprep_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<TargetSource> {
+  match comprep_ts_producer_inferred_tree() {
+    Accepted { value: tree, diagnostics: d } =>
+      match emit(tree: tree, target: target) {
+        Accepted { value: source, diagnostics: ed } =>
+          Accepted { value: source, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
 }
 
 data comprep_ts_swapped_bodied_inferred_tree: InferredTree = InferredTree {
@@ -472,16 +492,10 @@ data comprep_ts_swapped_bodied_inferred_tree: InferredTree = InferredTree {
   facts: Map { lookup: comprep_ts_facts_lookup }
 }
 
-fn anchor_comprep_ts_bodied_emit_accepts() -> Outcome<TargetSource> {
-  emit(tree: comprep_ts_bodied_inferred_tree, target: ts_mvp1_target_model())
-}
-
-data comprep_ts_bodied_emit_receipt: Outcome<TargetSource> = anchor_comprep_ts_bodied_emit_accepts()
-
 // E-10 emit-only green: producer-rooted bodied arrow renders the fidelity TS source string.
 // Not an execution consumer — no Node/tsc run; wrong emitted spelling fails this witness.
 fn comprep_ts_bodied_emit_add_fn_accepts_holds() -> Bool {
-  match comprep_ts_bodied_emit_receipt {
+  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source == ts_mvp1_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
@@ -499,7 +513,7 @@ fn comprep_ts_bodied_emit_operand_swap_discriminates() -> Bool {
 }
 
 fn comprep_ts_bodied_emit_catalog_minus_discriminates() -> Bool {
-  match emit(tree: comprep_ts_bodied_inferred_tree, target: comprep_ts_target_model_minus_catalog()) {
+  match comprep_ts_emit_from_producer_tree(target: comprep_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: d } =>
       (source == comprep_ts_emit_catalog_minus_source_text) &&
       (source != ts_mvp1_source_text) &&
@@ -509,8 +523,7 @@ fn comprep_ts_bodied_emit_catalog_minus_discriminates() -> Bool {
 }
 
 fn comprep_ts_bodied_emit_missing_catalog_rejects() -> Bool {
-  match emit(
-    tree: comprep_ts_bodied_inferred_tree,
+  match comprep_ts_emit_from_producer_tree(
     target: comprep_ts_target_model_missing_operator_catalog()
   ) {
     Rejected { diagnostics: _ } => true
