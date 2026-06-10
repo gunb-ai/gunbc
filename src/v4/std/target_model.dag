@@ -38,6 +38,7 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_merge,
   node_locus,
+  bind_outcome,
   outcome_accepted,
   outcome_rejected
 }
@@ -258,7 +259,10 @@ fn canonical_operation_op_add() -> CanonicalOperation {
   OpAdd {}
 }
 
-// T6 — per-language operator spelling catalog entry.
+// T6 — per-language operator spelling shape axis.
+// 🟢 coproduct dissolution — InfixToken, PrefixToken, CallIdent, and MethodIdent are genuine
+// one-at-a-time alternatives for how a canonical operation is realized on a target surface; each
+// arm carries a distinct spelling payload and none reduces to record coordinates.
 type TargetOperatorShape
   = InfixToken { token: Symbol }
   | PrefixToken { token: Symbol }
@@ -294,7 +298,18 @@ type TargetValueExpressionProjection {
   callable_apply_form: TargetCallApplyShape
 }
 
+// T6 — per-language bodied-arrow statement scaffold (prefix/suffix around dynamic body tokens).
+type TargetBodiedArrowStatementScaffold {
+  prefix: List<ConcreteSyntaxToken>
+  suffix: List<ConcreteSyntaxToken>
+}
+
 data target_model_edge_value_expression_projection: Symbol = target_model_edge_value_expression_projection
+data target_model_edge_bodied_arrow_statement_scaffold: Symbol = target_model_edge_bodied_arrow_statement_scaffold
+data target_bodied_arrow_scaffold_field_prefix: Symbol = target_bodied_arrow_scaffold_field_prefix
+data target_bodied_arrow_scaffold_field_suffix: Symbol = target_bodied_arrow_scaffold_field_suffix
+data target_bodied_arrow_scaffold_bundle_malformed: Symbol = target_bodied_arrow_scaffold_bundle_malformed
+data concrete_syntax_token_wire_malformed: Symbol = concrete_syntax_token_wire_malformed
 data target_model_edge_operator_realizations: Symbol = target_model_edge_operator_realizations
 
 data target_value_expr_field_binding_ref: Symbol = target_value_expr_field_binding_ref
