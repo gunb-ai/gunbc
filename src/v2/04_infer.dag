@@ -7,7 +7,7 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
   intern, intern_str,
-  authored_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
+  authored_name_at, NewlineIndex, find_child_named, has_child_named, variant_node_fields, build_newline_index,
   module_node, module_imports, module_items, import_is_all,
   make_param_node, param_node_name_at, param_node_type_expr,
   field_node_type_expr, field_node_name_at,
@@ -5653,34 +5653,6 @@ fn import_allows_type_binding(imp: ResolvedImport, binding: TypeBinding, env: Ty
   }
 }
 
-fn add_imported_variant_child(
-  acc: VariantFoldState,
-  parent_item: Node,
-  child: Node,
-  imp: ResolvedImport,
-  source_indices: Map<String, NewlineIndex>,
-  module_name: String
-) -> VariantFoldState {
-  let parent_name = authored_name_at(source_indices: source_indices, node: parent_item)
-  let child_name = authored_name_at(source_indices: source_indices, node: child)
-  let variant_imported = import_allows_binding_name(imp: imp, name: parent_name) || (imp.specific_names |> any(n => n == child_name))
-  if variant_imported {
-    match map_get(acc.locals, child_name) {
-      Present { value: prev } =>
-        let prev_parent_name = authored_name_at(source_indices: source_indices, node: prev.resolved)
-        VariantFoldState {
-          locals: acc.locals,
-          collisions: map_insert(acc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: parent_name, span: no_span() }, module_name: module_name))
-        }
-      Absent =>
-        VariantFoldState {
-          locals: map_insert(acc.locals, child_name, TypeBinding { name: child_name, resolved: parent_item, provenance: SubValueUnknown }),
-          collisions: acc.collisions
-        }
-    }
-  } else { acc }
-}
-
 fn collect_import_bindings_for_import(acc: Map<Int, TypeBinding>, imp: ResolvedImport, env: TypeEnv) -> Map<Int, TypeBinding> {
   fold(map_keys(env.bindings), init: acc, f: (bacc, ident) =>
     let name = intern_str(table: env.intern_table, id: ident)
@@ -6156,20 +6128,68 @@ fn build_module_context(contributions: List<ItemContribution>,
     diag_chunks: [],
     source_indices: env.source_indices
   )
-	  let variant_fold = fold(resolved_imports, init: VariantFoldState { locals: empty_map(), collisions: empty_map() }, f: fn(acc, imp) {
-	    match map_get(parent_index, imp.module_path) {
-	      Present { value: typed_parent } =>
-	        let parent_items = module_items(n: typed_parent.module)
-	        parent_items |> fold(init: acc, f: fn(iacc, parent_item) {
-	          if parent_item.connective == Disj {
-	            parent_item.children |> fold(init: iacc, f: (vacc, child) =>
-	              add_imported_variant_child(acc: vacc, parent_item: parent_item, child: child, imp: imp, source_indices: typed_parent.type_env.source_indices, module_name: module_name)
-	            )
-	          } else { iacc }
-	        })
-	      Absent => acc
-	    }
-	  })
+		  let imported_enum_names = fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
+		    match map_get(parent_index, imp.module_path) {
+		      Present { value: typed_parent } =>
+		        fold(module_items(n: typed_parent.module), init: acc, f: (inner, parent_item) =>
+		          let parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: parent_item)
+		          if parent_item.connective == Disj && import_allows_binding_name(imp: imp, name: parent_name) {
+		            map_insert(inner, parent_name, true)
+		          } else { inner }
+		        )
+		      Absent => acc
+		    }
+		  )
+		  let imported_variant_parent_names = fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
+		    match map_get(parent_index, imp.module_path) {
+		      Present { value: typed_parent } =>
+		        fold(imp.specific_names, init: acc, f: (inner, n) =>
+		          fold(module_items(n: typed_parent.module), init: inner, f: (pacc, parent_item) =>
+		            if parent_item.connective == Disj && has_child_named(n: parent_item, name: n, source_indices: typed_parent.type_env.source_indices) {
+		              map_insert(pacc, concat(authored_name_at(source_indices: typed_parent.type_env.source_indices, node: parent_item), "::", n), true)
+		            } else { pacc }
+		          )
+		        )
+		      Absent => acc
+		    }
+		  )
+		  let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), collisions: empty_map() }, f: (acc, binding) =>
+		    let is_coproduct = binding.resolved.connective == Disj
+		    if is_coproduct {
+		      let curr_parent_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
+		      let curr_parent_imported = map_get(imported_enum_names, curr_parent_name) != none
+		      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
+		        let child_name = authored_name_at(source_indices: env.source_indices, node: child)
+		        let curr_variant_imported = map_get(imported_variant_parent_names, concat(curr_parent_name, "::", child_name)) != none
+		        let curr_is_imported = curr_parent_imported || curr_variant_imported
+		        match map_get(vacc.locals, child_name) {
+		          Present { value: prev } =>
+		            let prev_parent_name = authored_name_at(source_indices: env.source_indices, node: prev.resolved)
+		            let prev_parent_imported = map_get(imported_enum_names, prev_parent_name) != none
+		            let prev_variant_imported = map_get(imported_variant_parent_names, concat(prev_parent_name, "::", child_name)) != none
+		            let prev_is_imported = prev_parent_imported || prev_variant_imported
+		            if curr_variant_imported && prev_variant_imported && curr_is_imported && prev_is_imported {
+		              VariantFoldState {
+		                locals: vacc.locals,
+		                collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: curr_parent_name, span: no_span() }, module_name: module_name))
+		              }
+		            } else if curr_is_imported {
+		              VariantFoldState {
+		                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
+		                collisions: vacc.collisions
+		              }
+		            } else { vacc }
+		          Absent =>
+		            if curr_is_imported {
+		              VariantFoldState {
+		                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
+		                collisions: vacc.collisions
+		              }
+		            } else { vacc }
+		        }
+		      )
+		    } else { acc }
+		  )
 	  let imported_variant_locals = variant_fold.locals
 	  let variant_collisions = variant_fold.collisions
   let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals, source_indices: env.source_indices)
