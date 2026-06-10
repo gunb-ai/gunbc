@@ -224,7 +224,7 @@ fn node_with_span(kind: NodeKind, children: List<Edge>, span: NodeSpan) -> Node 
 fn node_unanchored(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_span(kind: kind, children: children, span: Unanchored)
 }
-)
+
 type Node {
   kind: NodeKind
   children: List<Edge>
