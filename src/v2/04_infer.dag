@@ -5637,7 +5637,7 @@ fn stamp_hidden_dependency_refs(n: Node, dep_env: TypeEnv, source_indices: Map<S
     match lookup_type_binding_by_name_in_env(env: dep_env, name: name) {
       Present { value: binding } =>
         if binding.resolved.binding_id != none {
-          node_with_preserved_binding_id(identity: binding.resolved, structural: rebuilt)
+          binding.resolved
         } else { rebuilt }
       Absent => rebuilt
     }
