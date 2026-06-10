@@ -13,6 +13,7 @@ import v4.compiler.eval {
   test_claim_run_claim,
   test_claim_run_verdict
 }
+import v4.std.algebra { length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
@@ -24,9 +25,24 @@ import v4.std.verdict {
   verdict_tally_empty,
   verdict_tally_total
 }
-import v4.std.verification { test_claim_label }
+import v4.std.verification {
+  EvalOnly,
+  NodeCorpus,
+  UnifiedTestClaim,
+  bool_witness_descriptor,
+  test_claim_label,
+  unified_test_claim_modality,
+  UnifiedBoolWitnessModality,
+  UnifiedNodeCorpusModality
+}
 import v4.test.claim.manual.manual_corpus_roster {
   manual_corpus_node_subject_rows
+}
+import v4.test.claim.workflow.v4_roster_pilot {
+  V4RosterPilotClaimRunRow,
+  bool_witness_from_roster_row,
+  v4_roster_pilot_claim_run_rows,
+  v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds
 }
 
 
@@ -119,6 +135,49 @@ fn run_node_runtime_value_subjects(
 }
 
 
+fn node_corpus_claim_from_subject(subject: TestClaimEvalSubject<Node>) -> UnifiedTestClaim {
+  NodeCorpus {
+    claim: subject.claim,
+    transport: EvalOnly
+  }
+}
+
+
+fn manual_node_corpus_unified_claims() -> List<UnifiedTestClaim> {
+  map(manual_corpus_node_subject_rows, fn(subject) { node_corpus_claim_from_subject(subject: subject) })
+}
+
+
+fn bool_witness_unified_claim_from_roster_row(row: V4RosterPilotClaimRunRow) -> UnifiedTestClaim {
+  bool_witness_descriptor(w: bool_witness_from_roster_row(row: row))
+}
+
+
+fn v4_roster_pilot_bool_witness_unified_claims() -> List<UnifiedTestClaim> {
+  map(v4_roster_pilot_claim_run_rows, fn(row) { bool_witness_unified_claim_from_roster_row(row: row) })
+}
+
+
+fn manual_node_corpus_unified_claim_projection_holds() -> Bool {
+  fold(
+    manual_node_corpus_unified_claims(),
+    init: true,
+    f: fn(acc, c) { acc && (unified_test_claim_modality(c: c) == UnifiedNodeCorpusModality) }
+  )
+}
+
+
+fn v4_roster_pilot_bool_witness_unified_claim_projection_holds() -> Bool {
+  v4_roster_pilot_claim_run_row_transport_symbol_consistency_holds()
+    && (length(xs: v4_roster_pilot_bool_witness_unified_claims()) == length(xs: v4_roster_pilot_claim_run_rows))
+    && fold(
+      v4_roster_pilot_bool_witness_unified_claims(),
+      init: true,
+      f: fn(acc, c) { acc && (unified_test_claim_modality(c: c) == UnifiedBoolWitnessModality) }
+    )
+}
+
+
 fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
   CorpusEvalReport {
     entries: corpus_entries_from_node_runtime_value_runs(
@@ -150,3 +209,5 @@ fn manual_testclaim_subject_roster_family_receipt_holds() -> Bool {
 
 
 data witness_manual_testclaim_subject_roster_family_receipt: Bool = manual_testclaim_subject_roster_family_receipt_holds()
+data witness_manual_node_corpus_unified_claim_projection: Bool = manual_node_corpus_unified_claim_projection_holds()
+data witness_v4_roster_pilot_bool_witness_unified_claim_projection: Bool = v4_roster_pilot_bool_witness_unified_claim_projection_holds()

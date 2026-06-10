@@ -46,7 +46,10 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   Unit,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 
 fn task_id_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
@@ -251,4 +254,22 @@ data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match
   Pass => true
   Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_claim_task_id_surfaces_distinct` so glob discovery finds the witness without the central roster.
+data unified_claim_derivable_coercion_surfaces_distinct: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+    function: witness_claim_task_id_surfaces_distinct
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_claim_crux_substrate_gap` so glob discovery finds the witness without the central roster.
+data unified_claim_derivable_coercion_claim_crux_substrate_gap: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/derivable_coercion_nickname_triple.dag",
+    function: witness_claim_crux_substrate_gap
+  }
 }

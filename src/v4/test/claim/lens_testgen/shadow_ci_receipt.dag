@@ -19,7 +19,10 @@ import v4.std.verification {
   TestClaim,
   Tier1,
   Unit,
-  manual_claim_anchor
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
 }
 fn lens_testgen_shadow_ci_marker_node(marker: Symbol) -> Node {
   Node {
@@ -53,3 +56,12 @@ data claim_lens_testgen_shadow_ci_run_receipt: TestClaim = EqualsClaim {
 }
 
 data witness_lens_testgen_shadow_ci_run_receipt_green: Bool = lens_testgen_shadow_ci_run_receipt_holds()
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `witness_lens_testgen_shadow_ci_run_receipt_green` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_testgen_shadow_ci: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag",
+    function: witness_lens_testgen_shadow_ci_run_receipt_green
+  }
+}

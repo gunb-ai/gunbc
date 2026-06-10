@@ -27,6 +27,12 @@ import v4.test.claim.lens_synthesis.synthesis_gap_polynomial {
 }
 
 
+
+import v4.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 data lens_application_synthesis_root_path: Path = Path { steps: [] }
 
 data lens_application_synthesis_root_declaration: DeclarationId = DeclarationId {
@@ -66,4 +72,31 @@ fn lens_application_synthesis_gap_polynomial_holds() -> Bool {
 
 fn lens_application_synthesis_gap_enforce_rejection_holds() -> Bool {
   lens_application_synthesis_gap_enforce_rejects()
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_application_introspect_advisory_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_application_introspect_advisory: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+    function: lens_application_introspect_advisory_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_application_synthesis_gap_polynomial_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_application_synthesis_gap: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+    function: lens_application_synthesis_gap_polynomial_holds
+  }
+}
+
+// Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
+// Co-located with `lens_application_synthesis_gap_enforce_rejection_holds` so glob discovery finds the witness without the central roster.
+data unified_claim_lens_application_synthesis_gap_enforce: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/lens_application/sg_claims.dag",
+    function: lens_application_synthesis_gap_enforce_rejection_holds
+  }
 }
