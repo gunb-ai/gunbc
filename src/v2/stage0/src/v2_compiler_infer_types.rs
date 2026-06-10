@@ -8,7 +8,7 @@ use crate::std_algebra::AlgebraProfile::{
 };
 use crate::std_algebra::AlgebraTypeTemplate::{
     AlgebraTypeVariable, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey,
-    ReceiverSelf, ReceiverValue, TupleOf,
+    ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
@@ -23,9 +23,12 @@ use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{
-    container_expected_arity, container_param_name, container_template_algebra, is_container_type,
+    container_expected_arity, container_param_name, container_template_algebra,
+    container_template_alias_algebra, is_container_type,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
@@ -108,7 +111,7 @@ pub fn node_is_collection(
 ) -> bool {
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
-        && is_container_type(authored_name_at(source_indices, n.clone())))
+        && is_declared_container_alias_spelling(authored_name_at(source_indices, n.clone())))
 }
 
 pub fn node_is_keyed_collection(
@@ -162,6 +165,7 @@ pub fn structural_carrier_template_name(
         canonical_template_name(
             Rc::new(Node {
                 name: n.name.clone(),
+                ident: n.ident.clone(),
                 binding_id: n.binding_id.clone(),
                 span: n.span.clone(),
                 ident_span: Some(kernel_span(n.name.clone())),
@@ -179,7 +183,6 @@ pub fn structural_carrier_template_name(
                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                 match_pattern: n.match_pattern.clone(),
                 expr_data: n.expr_data.clone(),
-                ident: None,
             }),
             source_indices,
         )
@@ -1594,6 +1597,7 @@ pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
         AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => true,
         AlgebraTypeTemplate::ContainerOf { element: inner, .. } => has_type_variable(inner.clone()),
         AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => has_type_variable(inner.clone()),
+        AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => has_type_variable(inner.clone()),
         AlgebraTypeTemplate::TupleOf {
             first: f,
             second: s,
@@ -1828,9 +1832,13 @@ pub fn node_type_compatible(
                             let right_is_container =
                                 node_is_element_collection(right.clone(), source_indices.clone());
                             if (left_is_container && right_is_container) {
-                                if (authored_name_at(source_indices.clone(), left.clone()).as_str()
-                                    != authored_name_at(source_indices.clone(), right.clone())
-                                        .as_str())
+                                if (canonical_template_name(left.clone(), source_indices.clone())
+                                    .as_str()
+                                    != canonical_template_name(
+                                        right.clone(),
+                                        source_indices.clone(),
+                                    )
+                                    .as_str())
                                 {
                                     false
                                 } else {

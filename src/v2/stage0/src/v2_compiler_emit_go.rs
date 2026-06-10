@@ -182,7 +182,10 @@ pub fn emit_go_v2rt_module() -> Rc<TextFile> {
 
 pub fn emit_go_mod(module_name: String) -> Rc<TextFile> {
     {
-        let manifest_path = match scaffold_for_target(RenderTarget::Go).manifest_file.clone() {
+        let manifest_path = match scaffold_for_target(RenderTarget::Go)
+            .manifest_file
+            .clone()
+        {
             Some(path) => path.clone(),
             None => "go.mod".to_string(),
         };
@@ -1446,7 +1449,8 @@ pub fn emit_go_service_struct(
 ) -> String {
     {
         let fs = compute_service_fields(fallback_transport, op_children, source_indices);
-        let decls = service_field_decls(fs, language_spec(RenderTarget::Go).service_fields.clone());
+        let decls =
+            service_field_decls(fs, language_spec(RenderTarget::Go).service_fields.clone());
         if ((decls.clone().len() as i64) == 0) {
             v2_rt::concat(
                 v2_rt::concat(

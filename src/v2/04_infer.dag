@@ -6178,11 +6178,6 @@ fn build_module_context(contributions: List<ItemContribution>,
 		                locals: vacc.locals,
 		                collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: curr_parent_name, span: no_span() }, module_name: module_name))
 		              }
-		            } else if curr_is_imported {
-		              VariantFoldState {
-		                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
-		                collisions: vacc.collisions
-		              }
 		            } else { vacc }
 		          Absent =>
 		            if curr_is_imported {

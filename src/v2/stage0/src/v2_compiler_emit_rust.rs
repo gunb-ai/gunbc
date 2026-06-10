@@ -592,7 +592,10 @@ pub fn is_rust_value_type(
 ) -> bool {
     {
         let normed = normalize_access_type_node(n);
-        match is_copy(RenderTarget::Rust, authored_name_at(source_indices, normed)) {
+        match is_copy(
+            RenderTarget::Rust,
+            authored_name_at(source_indices, normed),
+        ) {
             Some(v) => v.clone(),
             None => false,
         }
@@ -605,7 +608,10 @@ pub fn is_rust_string_like(
 ) -> bool {
     {
         let normed = normalize_access_type_node(n);
-        is_string_like(RenderTarget::Rust, authored_name_at(source_indices, normed))
+        is_string_like(
+            RenderTarget::Rust,
+            authored_name_at(source_indices, normed),
+        )
     }
 }
 
@@ -9974,7 +9980,10 @@ pub fn rc_pattern_preludes(
                                                         ),
                                                         " = ".to_string(),
                                                     ),
-                                                    emit_ident(fb_name.clone(), RenderTarget::Rust),
+                                                    emit_ident(
+                                                        fb_name.clone(),
+                                                        RenderTarget::Rust,
+                                                    ),
                                                 ),
                                                 ".as_ref() else { unreachable!() };".to_string(),
                                             )])
@@ -10100,7 +10109,9 @@ pub fn apply_field_clone(expr: String, field: String) -> String {
 }
 
 pub fn clone_iterator_suffix() -> String {
-    sharing_for_target(RenderTarget::Rust).clone_suffix.clone()
+    sharing_for_target(RenderTarget::Rust)
+        .clone_suffix
+        .clone()
 }
 
 pub fn effective_variant_parent(
@@ -16215,7 +16226,10 @@ pub fn emit_tco_init_stmt(
             if is_param {
                 v2_rt::concat(
                     v2_rt::concat(
-                        v2_rt::concat(emit_ident(n.clone(), RenderTarget::Rust), " = ".to_string()),
+                        v2_rt::concat(
+                            emit_ident(n.clone(), RenderTarget::Rust),
+                            " = ".to_string(),
+                        ),
                         val_str,
                     ),
                     ";".to_string(),
@@ -16571,7 +16585,10 @@ pub fn emit_rust_tco_let(
             let let_line = if is_param {
                 v2_rt::concat(
                     v2_rt::concat(
-                        v2_rt::concat(emit_ident(n.clone(), RenderTarget::Rust), " = ".to_string()),
+                        v2_rt::concat(
+                            emit_ident(n.clone(), RenderTarget::Rust),
+                            " = ".to_string(),
+                        ),
                         val_str,
                     ),
                     ";".to_string(),
@@ -17766,8 +17783,11 @@ pub fn emit_rest_call(
             for h in headers.iter().cloned() {
                 __result.push({
                     let hval = field_init_node_value(h.clone());
-                    let val_str =
-                        emit_simple_expr(hval.clone(), RenderTarget::Rust, source_indices.clone());
+                    let val_str = emit_simple_expr(
+                        hval.clone(),
+                        RenderTarget::Rust,
+                        source_indices.clone(),
+                    );
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(
@@ -21269,7 +21289,7 @@ pub fn emit_compile_target_helpers(
     pipeline_mod: String,
     artifact_mod: String,
 ) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("fn render_target_from_name(target: &str) -> Option<".to_string(), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget> {\n".to_string()), "    match target {\n".to_string()), "        \"rust\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Rust),\n".to_string()), "        \"python\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Python),\n".to_string()), "        \"go\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Go),\n".to_string()), "        \"dag\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Dag),\n".to_string()), "        _ => None,\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn parse_render_targets(target: &str) -> Vec<(String, ".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget)> {\n".to_string()), "    let mut targets = Vec::new();\n".to_string()), "    for part in target.split('+') {\n".to_string()), "        let trimmed = part.trim();\n".to_string()), "        if trimmed.is_empty() {\n".to_string()), "            continue;\n".to_string()), "        }\n".to_string()), "        match render_target_from_name(trimmed) {\n".to_string()), "            Some(render_target) => targets.push((trimmed.to_string(), render_target)),\n".to_string()), "            None => {\n".to_string()), "                eprintln!(\"unknown target: {}. supported: rust, python, go, dag, rust+dag\", target);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    if targets.is_empty() {\n".to_string()), "        eprintln!(\"error: --target must name at least one target\");\n".to_string()), "        std::process::exit(1);\n".to_string()), "    }\n".to_string()), "    targets\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn write_output_files(output_dir: &str, result: &".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult) {\n".to_string()), "    std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n".to_string()), "        .unwrap_or_else(|e| panic!(\"failed to create output dir: {}\", e));\n".to_string()), "    for file in result.files.iter() {\n".to_string()), "        let out_path = format!(\"{}/{}\", output_dir, file.path);\n".to_string()), "        if let Some(parent) = std::path::Path::new(&out_path).parent() {\n".to_string()), "            std::fs::create_dir_all(parent).ok();\n".to_string()), "        }\n".to_string()), "        std::fs::write(&out_path, &*file.content)\n".to_string()), "            .unwrap_or_else(|e| panic!(\"failed to write {}: {}\", file.path, e));\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn hard_errors(result: &".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult) -> bool {\n".to_string()), "    result.diagnostics.iter().any(|d| {\n".to_string()), "        !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n".to_string()), "    })\n".to_string()), "}\n".to_string()), "\n".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("fn render_target_from_name(target: &str) -> Option<".to_string(), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget> {\n".to_string()), "    match target {\n".to_string()), "        \"rust\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Rust),\n".to_string()), "        \"python\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Python),\n".to_string()), "        \"go\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Go),\n".to_string()), "        \"dag\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Dag),\n".to_string()), "        _ => None,\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn parse_render_targets(target: &str) -> Vec<(String, ".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget)> {\n".to_string()), "    let mut targets = Vec::new();\n".to_string()), "    for part in target.split('+') {\n".to_string()), "        let trimmed = part.trim();\n".to_string()), "        if trimmed.is_empty() {\n".to_string()), "            continue;\n".to_string()), "        }\n".to_string()), "        match render_target_from_name(trimmed) {\n".to_string()), "            Some(render_target) => targets.push((trimmed.to_string(), render_target)),\n".to_string()), "            Absent => {\n".to_string()), "                eprintln!(\"unknown target: {}. supported: rust, python, go, dag, rust+dag\", target);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    if targets.is_empty() {\n".to_string()), "        eprintln!(\"error: --target must name at least one target\");\n".to_string()), "        std::process::exit(1);\n".to_string()), "    }\n".to_string()), "    targets\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn write_output_files(output_dir: &str, result: &".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult) {\n".to_string()), "    std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n".to_string()), "        .unwrap_or_else(|e| panic!(\"failed to create output dir: {}\", e));\n".to_string()), "    for file in result.files.iter() {\n".to_string()), "        let out_path = format!(\"{}/{}\", output_dir, file.path);\n".to_string()), "        if let Some(parent) = std::path::Path::new(&out_path).parent() {\n".to_string()), "            std::fs::create_dir_all(parent).ok();\n".to_string()), "        }\n".to_string()), "        std::fs::write(&out_path, &*file.content)\n".to_string()), "            .unwrap_or_else(|e| panic!(\"failed to write {}: {}\", file.path, e));\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn hard_errors(result: &".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult) -> bool {\n".to_string()), "    result.diagnostics.iter().any(|d| {\n".to_string()), "        !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n".to_string()), "    })\n".to_string()), "}\n".to_string()), "\n".to_string())
 }
 
 pub fn emit_collect_dag_files_fn() -> String {

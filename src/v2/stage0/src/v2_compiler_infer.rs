@@ -150,8 +150,8 @@ pub use crate::v2_std_core::{
     module_items, module_node, no_span, node_name_span, node_with_binding_id,
     node_with_preserved_binding_id, none_type, param_node_name_at, param_node_type_expr,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
-    slice_end, slice_start, string_type, unaryop_operand, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    slice_end, slice_start, string_type, unaryop_operand, unit_type, variant_node_fields,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
     BindingId, CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv,
@@ -195,6 +195,12 @@ pub struct ModuleContext {
 pub struct VariantFoldState {
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub collisions: Rc<HashMap<String, Rc<ErrorNode>>>,
+}
+
+pub fn is_bootstrap_duplicate_variant_name(name: String) -> bool {
+    (((name.clone().as_str() == "Rust".to_string().as_str())
+        || (name.clone().as_str() == "Go".to_string().as_str()))
+        || (name.clone().as_str() == "TreeSize".to_string().as_str()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -858,28 +864,30 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option
     match v2_rt::map_get(&scope.variant_collisions.clone(), name.clone()) {
         Some(_) => None,
         None => match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
-            Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
-                Some(parent) => {
-                    let is_coproduct = (parent.connective.clone() == Connective::Disj);
-                    if is_coproduct {
-                        if has_child_named(
-                            parent.clone(),
-                            name.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ) {
-                            Some(authored_name_at(
+            Some(binding) => {
+                match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
+                    Some(parent) => {
+                        let is_coproduct = (parent.connective.clone() == Connective::Disj);
+                        if is_coproduct {
+                            if has_child_named(
+                                parent.clone(),
+                                name.clone(),
                                 scope.type_env.clone().source_indices.clone(),
-                                binding.resolved.clone(),
-                            ))
+                            ) {
+                                Some(authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    binding.resolved.clone(),
+                                ))
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
-                    } else {
-                        None
                     }
+                    None => None,
                 }
-                None => None,
-            },
+            }
             None => None,
         },
     }
@@ -956,6 +964,22 @@ pub fn expected_coproduct_variant(
     match parent.connective.clone() {
         Connective::Disj => find_child_named(parent.clone(), variant_name, source_indices),
         _ => None,
+    }
+}
+
+pub fn expected_has_coproduct_variant(
+    expected: Option<Rc<Node>>,
+    variant_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match expected {
+        Some(expected_node) => {
+            match expected_coproduct_variant(expected_node.clone(), variant_name, source_indices) {
+                Some(_) => true,
+                None => false,
+            }
+        }
+        None => false,
     }
 }
 
@@ -2815,152 +2839,161 @@ pub fn infer_expr(
                 let name =
                     expr_var_name_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
                 let span = texpr.span.clone();
-                match v2_rt::map_get(&scope.variant_collisions.clone(), name.clone()) {
-                    Some(collision) => variant_collision_result(name.clone(), span.clone(), collision),
-                    None => match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
-                    Some(binding) => {
-                        let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
-                        let local_typed = make_named_expr_node(
-                            name.clone(),
-                            Rc::new(ExprData::ExprVar {
-                                binding_kind: Some(binding_kind),
-                            }),
-                            Rc::new(vec![]),
-                            Some(Rc::new(InferredNode::Resolved {
-                                node: binding.resolved.clone(),
-                            })),
-                            span.clone(),
-                            span.clone(),
-                        );
-                        let expected_local_diags = match expected.clone() {
-                            Some(expected_node) => {
-                                if rejects_string_for_optional_coproduct_field(
-                                    expected_node.clone(),
-                                    binding.resolved.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ) {
-                                    Rc::new(vec![type_mismatch_error(
-                                        node_type_shape(
-                                            expected_node.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                        node_type_shape(
-                                            binding.resolved.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                        span.clone(),
-                                        scope.module_name.clone(),
-                                    )])
-                                } else {
-                                    Rc::new(vec![])
-                                }
-                            }
-                            None => Rc::new(vec![]),
-                        };
-                        Rc::new(InferResult {
-                            typed: local_typed,
-                            diagnostics: expected_local_diags,
-                        })
-                    }
-                    None => {
-                        let expected_variant_parent = match expected.clone() {
-                            Some(expected_node) => match expected_coproduct_variant(
-                                expected_node.clone(),
-                                name.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ) {
-                                Some(_) => Some(authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    expected_node.clone(),
-                                )),
-                                None => None,
-                            },
-                            None => None,
-                        };
-                        match expected_variant_parent {
-                            Some(parent_enum) => ok_infer(make_named_expr_node(
+                let collision = v2_rt::map_get(&scope.variant_collisions.clone(), name.clone());
+                if ((collision.clone() != None)
+                    && !expected_has_coproduct_variant(
+                        expected.clone(),
+                        name.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ))
+                {
+                    variant_collision_result(name.clone(), span.clone(), collision.clone().unwrap())
+                } else {
+                    match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
+                        Some(binding) => {
+                            let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
+                            let local_typed = make_named_expr_node(
                                 name.clone(),
                                 Rc::new(ExprData::ExprVar {
-                                    binding_kind: Some(Rc::new(
-                                        VarBindingKind::VariantValueBinding {
-                                            parent_enum: parent_enum.clone(),
-                                        },
-                                    )),
+                                    binding_kind: Some(binding_kind),
                                 }),
                                 Rc::new(vec![]),
                                 Some(Rc::new(InferredNode::Resolved {
-                                    node: expected.clone().unwrap(),
+                                    node: binding.resolved.clone(),
                                 })),
                                 span.clone(),
                                 span.clone(),
-                            )),
-                            None => match lookup_func_sig(scope.func_env.clone(), name.clone()) {
-                                Some(fsig) => {
-                                    if ((fsig.params.clone().len() as i64) == 0) {
-                                        ok_infer(make_named_expr_node(
-                                            name.clone(),
-                                            Rc::new(ExprData::ExprCall {
-                                                call_semantics: Some(
-                                                    CallSemantics::PlainCallSemantics,
-                                                ),
-                                                descent_evidence: None,
-                                            }),
-                                            Rc::new(vec![]),
-                                            Some(Rc::new(InferredNode::Resolved {
-                                                node: fsig.inferred.clone(),
-                                            })),
-                                            span.clone(),
-                                            span.clone(),
-                                        ))
-                                    } else {
-                                        ok_infer(make_named_expr_node(
-                                            name.clone(),
-                                            Rc::new(ExprData::ExprVar {
-                                                binding_kind: Some(Rc::new(
-                                                    VarBindingKind::FunctionValueBinding,
-                                                )),
-                                            }),
-                                            Rc::new(vec![]),
-                                            Some(Rc::new(InferredNode::Resolved {
-                                                node: resolved_callable_type(
-                                                    fsig.params.clone(),
-                                                    fsig.inferred.clone(),
-                                                ),
-                                            })),
-                                            span.clone(),
-                                            span.clone(),
-                                        ))
-                                    }
-                                }
-                                None => {
-                                    let err_texpr = make_named_expr_node(
-                                        name.clone(),
-                                        Rc::new(ExprData::ExprVar { binding_kind: None }),
-                                        Rc::new(vec![]),
-                                        Some(Rc::new(InferredNode::Resolved {
-                                            node: error_type(),
-                                        })),
-                                        span.clone(),
-                                        span.clone(),
-                                    );
-                                    Rc::new(InferResult {
-                                        typed: err_texpr,
-                                        diagnostics: Rc::new(vec![inference_error(
-                                            v2_rt::concat(
-                                                v2_rt::concat(
-                                                    "undefined variable '".to_string(),
-                                                    name.clone(),
-                                                ),
-                                                "'".to_string(),
+                            );
+                            let expected_local_diags = match expected.clone() {
+                                Some(expected_node) => {
+                                    if rejects_string_for_optional_coproduct_field(
+                                        expected_node.clone(),
+                                        binding.resolved.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ) {
+                                        Rc::new(vec![type_mismatch_error(
+                                            node_type_shape(
+                                                expected_node.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
+                                            node_type_shape(
+                                                binding.resolved.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
                                             ),
                                             span.clone(),
                                             scope.module_name.clone(),
-                                        )]),
-                                    })
+                                        )])
+                                    } else {
+                                        Rc::new(vec![])
+                                    }
                                 }
-                            },
+                                None => Rc::new(vec![]),
+                            };
+                            Rc::new(InferResult {
+                                typed: local_typed,
+                                diagnostics: expected_local_diags,
+                            })
                         }
-                    }
+                        None => {
+                            let expected_variant_parent = match expected.clone() {
+                                Some(expected_node) => match expected_coproduct_variant(
+                                    expected_node.clone(),
+                                    name.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    Some(_) => Some(authored_name_at(
+                                        scope.type_env.clone().source_indices.clone(),
+                                        expected_node.clone(),
+                                    )),
+                                    None => None,
+                                },
+                                None => None,
+                            };
+                            match expected_variant_parent {
+                                Some(parent_enum) => ok_infer(make_named_expr_node(
+                                    name.clone(),
+                                    Rc::new(ExprData::ExprVar {
+                                        binding_kind: Some(Rc::new(
+                                            VarBindingKind::VariantValueBinding {
+                                                parent_enum: parent_enum.clone(),
+                                            },
+                                        )),
+                                    }),
+                                    Rc::new(vec![]),
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: expected.clone().unwrap(),
+                                    })),
+                                    span.clone(),
+                                    span.clone(),
+                                )),
+                                None => match lookup_func_sig(scope.func_env.clone(), name.clone())
+                                {
+                                    Some(fsig) => {
+                                        if ((fsig.params.clone().len() as i64) == 0) {
+                                            ok_infer(make_named_expr_node(
+                                                name.clone(),
+                                                Rc::new(ExprData::ExprCall {
+                                                    call_semantics: Some(
+                                                        CallSemantics::PlainCallSemantics,
+                                                    ),
+                                                    descent_evidence: None,
+                                                }),
+                                                Rc::new(vec![]),
+                                                Some(Rc::new(InferredNode::Resolved {
+                                                    node: fsig.inferred.clone(),
+                                                })),
+                                                span.clone(),
+                                                span.clone(),
+                                            ))
+                                        } else {
+                                            ok_infer(make_named_expr_node(
+                                                name.clone(),
+                                                Rc::new(ExprData::ExprVar {
+                                                    binding_kind: Some(Rc::new(
+                                                        VarBindingKind::FunctionValueBinding,
+                                                    )),
+                                                }),
+                                                Rc::new(vec![]),
+                                                Some(Rc::new(InferredNode::Resolved {
+                                                    node: resolved_callable_type(
+                                                        fsig.params.clone(),
+                                                        fsig.inferred.clone(),
+                                                    ),
+                                                })),
+                                                span.clone(),
+                                                span.clone(),
+                                            ))
+                                        }
+                                    }
+                                    None => {
+                                        let err_texpr = make_named_expr_node(
+                                            name.clone(),
+                                            Rc::new(ExprData::ExprVar { binding_kind: None }),
+                                            Rc::new(vec![]),
+                                            Some(Rc::new(InferredNode::Resolved {
+                                                node: error_type(),
+                                            })),
+                                            span.clone(),
+                                            span.clone(),
+                                        );
+                                        Rc::new(InferResult {
+                                            typed: err_texpr,
+                                            diagnostics: Rc::new(vec![inference_error(
+                                                v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        "undefined variable '".to_string(),
+                                                        name.clone(),
+                                                    ),
+                                                    "'".to_string(),
+                                                ),
+                                                span.clone(),
+                                                scope.module_name.clone(),
+                                            )]),
+                                        })
+                                    }
+                                },
+                            }
+                        }
                     }
                 }
             }
@@ -3834,44 +3867,58 @@ match bare_s {
 })), span.clone(), node_name_span(texpr.clone())),
     diagnostics: arg_diags,
 })
-	                                                }
-	                                            } else {
-	                                                match v2_rt::map_get(&scope.variant_collisions.clone(), func_name.clone()) {
-	                                                    Some(collision) => variant_collision_result(func_name.clone(), span.clone(), collision),
-	                                                    None => match infer_variant_constructor_call(
-	                                                    func_name.clone(),
-	                                                    call_args.clone(),
-	                                                    span.clone(),
-	                                                    node_name_span(texpr.clone()),
-	                                                    scope.clone(),
-	                                                ) {
-                                                    Some(ctor_result) => ctor_result.clone(),
-                                                    None => {
-                                                        let type_match = lookup_type_by_name(
-                                                            scope.type_env.clone(),
+                                                }
+                                            } else {
+                                                {
+                                                    let collision = v2_rt::map_get(
+                                                        &scope.variant_collisions.clone(),
+                                                        func_name.clone(),
+                                                    );
+                                                    if ((collision.clone() != None)
+                                                        && !expected_has_coproduct_variant(
+                                                            expected.clone(),
                                                             func_name.clone(),
-                                                        );
-                                                        let resolved_type = match type_match.clone()
+                                                            scope
+                                                                .type_env
+                                                                .clone()
+                                                                .source_indices
+                                                                .clone(),
+                                                        ))
+                                                    {
+                                                        variant_collision_result(
+                                                            func_name.clone(),
+                                                            span.clone(),
+                                                            collision.clone().unwrap(),
+                                                        )
+                                                    } else {
                                                         {
-                                                            Some(tn) => tn.clone(),
-                                                            None => error_type(),
-                                                        };
-                                                        let call_diags = match type_match.clone() {
-                                                            Some(_) => Rc::new(vec![]),
-                                                            None => Rc::new(vec![inference_error(
-                                                                v2_rt::concat(
-                                                                    v2_rt::concat(
-                                                                        "function '".to_string(),
-                                                                        func_name.clone(),
-                                                                    ),
-                                                                    "' not found in scope"
-                                                                        .to_string(),
-                                                                ),
-                                                                span.clone(),
-                                                                scope.module_name.clone(),
-                                                            )]),
-                                                        };
-                                                        Rc::new(InferResult {
+                                                            let ctor =
+                                                                infer_variant_constructor_call(
+                                                                    func_name.clone(),
+                                                                    call_args.clone(),
+                                                                    span.clone(),
+                                                                    node_name_span(texpr.clone()),
+                                                                    scope.clone(),
+                                                                );
+                                                            if (ctor.clone() != None) {
+                                                                ctor.clone().unwrap()
+                                                            } else {
+                                                                {
+                                                                    let type_match =
+                                                                        lookup_type_by_name(
+                                                                            scope.type_env.clone(),
+                                                                            func_name.clone(),
+                                                                        );
+                                                                    let resolved_type =
+                                                                        match type_match.clone() {
+                                                                            Some(tn) => tn.clone(),
+                                                                            None => error_type(),
+                                                                        };
+                                                                    let call_diags = match type_match.clone() {
+    Some(_) => Rc::new(vec![]),
+    None => Rc::new(vec![inference_error(v2_rt::concat(v2_rt::concat("function '".to_string(), func_name.clone()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())]),
+};
+                                                                    Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
@@ -3880,10 +3927,12 @@ match bare_s {
 })), span.clone(), node_name_span(texpr.clone())),
     diagnostics: v2_rt::concat(arg_diags, call_diags),
 })
-	                                                    }
-	                                                }
-	                                                }
-	                                            }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -4923,8 +4972,8 @@ match bare_s {
                     type_env: lam_scope.type_env.clone(),
                     func_env: lam_scope.func_env.clone(),
                     locals: lam_scope.locals.clone(),
-                    variant_collisions: lam_scope.variant_collisions.clone(),
                     match_bound_names: lam_scope.match_bound_names.clone(),
+                    variant_collisions: lam_scope.variant_collisions.clone(),
                     module_name: lam_scope.module_name.clone(),
                     service_registry: lam_scope.service_registry.clone(),
                     item_registry: lam_scope.item_registry.clone(),
@@ -5571,227 +5620,237 @@ pub fn infer_record_lit(
             }
             __result
         });
-        if ((type_name.clone() != None)
+        if (((type_name.clone() != None)
             && (v2_rt::map_get(
                 &scope.variant_collisions.clone(),
                 type_name.clone().unwrap(),
             ) != None))
+            && !expected_has_coproduct_variant(
+                expected.clone(),
+                type_name.clone().unwrap(),
+                scope.type_env.clone().source_indices.clone(),
+            ))
         {
-            let collision = v2_rt::map_get(
-                &scope.variant_collisions.clone(),
-                type_name.clone().unwrap(),
-            )
-            .unwrap();
-            let texpr = make_named_expr_node(
-                type_name.clone().unwrap(),
-                Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
-                typed_fields,
-                Some(Rc::new(InferredNode::Resolved { node: error_type() })),
-                span.clone(),
-                name_span,
-            );
-            Rc::new(InferResult {
-                typed: texpr,
-                diagnostics: v2_rt::concat(fi_diags, Rc::new(vec![collision])),
-            })
-        } else if (type_name.clone() == None) {
             {
-                let child_nodes = Rc::new({
-                    let mut __result = Vec::new();
-                    for fir in fi_infer_results.clone().iter().cloned() {
-                        __result.push(Rc::new(Node {
-                            name: field_init_node_name_at(
-                                fir.typed_field.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ),
-                            span: fir.typed_field.clone().span.clone(),
-                            ident_span: fir.typed_field.clone().ident_span.clone(),
-                            children: Rc::new(vec![]),
-                            connective: Connective::NoConnective,
-                            params: Rc::new(vec![]),
-                            inferred: fir.infer_result.clone().typed.clone().inferred.clone(),
-                            return_cardinality: Cardinality::Required,
-                            uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
-                            properties: Rc::new(vec![]),
-                            type_annotation: None,
-                            is_self_recursive: false,
-                            has_non_tail_self_call: false,
-                            match_pattern: None,
-                            expr_data: Rc::new(ExprData::NoExprData),
-                            binding_id: None,
-                            ident: None,
-                        }));
-                    }
-                    __result
-                });
-                let anon_node = Rc::new(Node {
-                    name: "".to_string(),
-                    span: no_span(),
-                    ident_span: None,
-                    children: child_nodes,
-                    connective: Connective::Conj,
-                    params: Rc::new(vec![]),
-                    inferred: None,
-                    return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
-                    properties: Rc::new(vec![]),
-                    type_annotation: None,
-                    is_self_recursive: false,
-                    has_non_tail_self_call: false,
-                    match_pattern: None,
-                    expr_data: Rc::new(ExprData::NoExprData),
-                    binding_id: None,
-                    ident: None,
-                });
-                let typed_field_nodes = typed_fields;
-                let texpr = make_expr_node(
-                    Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
-                    typed_field_nodes,
-                    Some(Rc::new(InferredNode::Resolved { node: anon_node })),
-                    span.clone(),
-                );
-                Rc::new(InferResult {
-                    typed: texpr,
-                    diagnostics: fi_diags,
-                })
-            }
-        } else {
-            {
-                let type_lookup =
-                    lookup_type_by_name(scope.type_env.clone(), type_name.clone().unwrap());
-                let local_variant_parent =
-                    lookup_variant_parent_enum(scope.clone(), type_name.clone().unwrap());
-                let expected_variant_parent = match expected.clone() {
-                    Some(expected_node) => match expected_coproduct_variant(
-                        expected_node.clone(),
-                        type_name.clone().unwrap(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) {
-                        Some(_) => Some(authored_name_at(
-                            scope.type_env.clone().source_indices.clone(),
-                            expected_node.clone(),
-                        )),
-                        None => None,
-                    },
-                    None => None,
-                };
-                let env_variant_parent = match lookup_coproduct_parent_binding_by_variant(
-                    scope.type_env.clone(),
+                let collision = v2_rt::map_get(
+                    &scope.variant_collisions.clone(),
                     type_name.clone().unwrap(),
-                ) {
-                    Some(parent_binding) => Some(parent_binding.name.clone()),
-                    None => None,
-                };
-                let effective_variant_parent = match local_variant_parent.clone() {
-                    Some(_) => local_variant_parent.clone(),
-                    None => match env_variant_parent.clone() {
-                        Some(_) => env_variant_parent.clone(),
-                        None => expected_variant_parent,
-                    },
-                };
-                let effective_lookup = match type_lookup.clone() {
-                    Some(_) => type_lookup.clone(),
-                    None => {
-                        let local_lookup =
-                            lookup_in_scope(scope.locals.clone(), type_name.clone().unwrap());
-                        match local_lookup {
-                            Some(local_node) => {
-                                lookup_type_for(scope.type_env.clone(), local_node.clone())
-                            }
-                            None => match lookup_coproduct_parent_binding_by_variant(
-                                scope.type_env.clone(),
-                                type_name.clone().unwrap(),
-                            ) {
-                                Some(parent_binding) => Some(parent_binding.resolved.clone()),
-                                None => match expected.clone() {
-                                    Some(expected_node) => match expected_coproduct_variant(
-                                        expected_node.clone(),
-                                        type_name.clone().unwrap(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    ) {
-                                        Some(_) => Some(expected_node.clone()),
-                                        None => None,
-                                    },
-                                    None => None,
-                                },
-                            },
-                        }
-                    }
-                };
-                let raw_resolved = match effective_lookup.clone() {
-                    Some(tn) => tn.clone(),
-                    None => error_type(),
-                };
-                let expected_optional_parent = Some("Optional".to_string());
-                let is_present_ctor = ((type_name.clone().unwrap().as_str()
-                    == "Present".to_string().as_str())
-                    && (effective_variant_parent.clone().as_deref()
-                        == expected_optional_parent.as_deref()));
-                let resolved_node = if is_present_ctor {
-                    {
-                        let val_field = Rc::new({
-                            let mut __result = Vec::new();
-                            for fir in fi_infer_results.clone().iter().cloned() {
-                                if (field_init_node_name_at(
-                                    fir.typed_field.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                )
-                                .as_str()
-                                    == "value".to_string().as_str())
-                                {
-                                    __result.push(fir);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned();
-                        match val_field {
-                            Some(val_fir) => with_optional_cardinality(resolved_type(
-                                val_fir.infer_result.clone().typed.clone(),
-                            )),
-                            None => raw_resolved,
-                        }
-                    }
-                } else {
-                    raw_resolved
-                };
-                let type_diags = match effective_lookup.clone() {
-                    Some(_) => Rc::new(vec![]),
-                    None => Rc::new(vec![inference_error(
-                        v2_rt::concat(
-                            v2_rt::concat("type '".to_string(), type_name.clone().unwrap()),
-                            "' not found in scope".to_string(),
-                        ),
-                        span.clone(),
-                        scope.module_name.clone(),
-                    )]),
-                };
-                let typed_field_nodes2 = typed_fields;
-                let rl_name = match type_name.clone() {
-                    Some(tn_val) => tn_val.clone(),
-                    None => "".to_string(),
-                };
+                )
+                .clone()
+                .unwrap();
                 let texpr = make_named_expr_node(
-                    rl_name,
-                    Rc::new(ExprData::ExprRecordLit {
-                        parent_enum: effective_variant_parent.clone(),
-                    }),
-                    typed_field_nodes2,
-                    Some(Rc::new(InferredNode::Resolved {
-                        node: resolved_node,
-                    })),
+                    type_name.clone().unwrap(),
+                    Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+                    typed_fields,
+                    Some(Rc::new(InferredNode::Resolved { node: error_type() })),
                     span.clone(),
                     name_span,
                 );
                 Rc::new(InferResult {
                     typed: texpr,
-                    diagnostics: v2_rt::concat(fi_diags, type_diags),
+                    diagnostics: v2_rt::concat(fi_diags, Rc::new(vec![collision])),
                 })
+            }
+        } else {
+            if (type_name.clone() == None) {
+                {
+                    let child_nodes = Rc::new({
+                        let mut __result = Vec::new();
+                        for fir in fi_infer_results.clone().iter().cloned() {
+                            __result.push(Rc::new(Node {
+                                name: field_init_node_name_at(
+                                    fir.typed_field.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                span: fir.typed_field.clone().span.clone(),
+                                ident_span: fir.typed_field.clone().ident_span.clone(),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: fir.infer_result.clone().typed.clone().inferred.clone(),
+                                return_cardinality: Cardinality::Required,
+                                uses: Rc::new(vec![]),
+                                body: None,
+                                transport: None,
+                                properties: Rc::new(vec![]),
+                                type_annotation: None,
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                binding_id: None,
+                                ident: None,
+                            }));
+                        }
+                        __result
+                    });
+                    let anon_node = Rc::new(Node {
+                        name: "".to_string(),
+                        span: no_span(),
+                        ident_span: None,
+                        children: child_nodes,
+                        connective: Connective::Conj,
+                        params: Rc::new(vec![]),
+                        inferred: None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        binding_id: None,
+                        ident: None,
+                    });
+                    let typed_field_nodes = typed_fields;
+                    let texpr = make_expr_node(
+                        Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+                        typed_field_nodes,
+                        Some(Rc::new(InferredNode::Resolved { node: anon_node })),
+                        span.clone(),
+                    );
+                    Rc::new(InferResult {
+                        typed: texpr,
+                        diagnostics: fi_diags,
+                    })
+                }
+            } else {
+                {
+                    let type_lookup =
+                        lookup_type_by_name(scope.type_env.clone(), type_name.clone().unwrap());
+                    let local_variant_parent =
+                        lookup_variant_parent_enum(scope.clone(), type_name.clone().unwrap());
+                    let expected_variant_parent = match expected.clone() {
+                        Some(expected_node) => match expected_coproduct_variant(
+                            expected_node.clone(),
+                            type_name.clone().unwrap(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ) {
+                            Some(_) => Some(authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                expected_node.clone(),
+                            )),
+                            None => None,
+                        },
+                        None => None,
+                    };
+                    let env_variant_parent = match lookup_coproduct_parent_binding_by_variant(
+                        scope.type_env.clone(),
+                        type_name.clone().unwrap(),
+                    ) {
+                        Some(parent_binding) => Some(parent_binding.name.clone()),
+                        None => None,
+                    };
+                    let effective_variant_parent = match local_variant_parent.clone() {
+                        Some(_) => local_variant_parent.clone(),
+                        None => match env_variant_parent.clone() {
+                            Some(_) => env_variant_parent.clone(),
+                            None => expected_variant_parent,
+                        },
+                    };
+                    let effective_lookup = match type_lookup.clone() {
+                        Some(_) => type_lookup.clone(),
+                        None => {
+                            let local_lookup =
+                                lookup_in_scope(scope.locals.clone(), type_name.clone().unwrap());
+                            match local_lookup {
+                                Some(local_node) => {
+                                    lookup_type_for(scope.type_env.clone(), local_node.clone())
+                                }
+                                None => match lookup_coproduct_parent_binding_by_variant(
+                                    scope.type_env.clone(),
+                                    type_name.clone().unwrap(),
+                                ) {
+                                    Some(parent_binding) => Some(parent_binding.resolved.clone()),
+                                    None => match expected.clone() {
+                                        Some(expected_node) => match expected_coproduct_variant(
+                                            expected_node.clone(),
+                                            type_name.clone().unwrap(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ) {
+                                            Some(_) => Some(expected_node.clone()),
+                                            None => None,
+                                        },
+                                        None => None,
+                                    },
+                                },
+                            }
+                        }
+                    };
+                    let raw_resolved = match effective_lookup.clone() {
+                        Some(tn) => tn.clone(),
+                        None => error_type(),
+                    };
+                    let expected_optional_parent = Some("Optional".to_string());
+                    let is_present_ctor = ((type_name.clone().unwrap().as_str()
+                        == "Present".to_string().as_str())
+                        && (effective_variant_parent.clone().as_deref()
+                            == expected_optional_parent.as_deref()));
+                    let resolved_node = if is_present_ctor {
+                        {
+                            let val_field = Rc::new({
+                                let mut __result = Vec::new();
+                                for fir in fi_infer_results.clone().iter().cloned() {
+                                    if (field_init_node_name_at(
+                                        fir.typed_field.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    )
+                                    .as_str()
+                                        == "value".to_string().as_str())
+                                    {
+                                        __result.push(fir);
+                                    }
+                                }
+                                __result
+                            })
+                            .first()
+                            .cloned();
+                            match val_field {
+                                Some(val_fir) => with_optional_cardinality(resolved_type(
+                                    val_fir.infer_result.clone().typed.clone(),
+                                )),
+                                None => raw_resolved,
+                            }
+                        }
+                    } else {
+                        raw_resolved
+                    };
+                    let type_diags = match effective_lookup.clone() {
+                        Some(_) => Rc::new(vec![]),
+                        None => Rc::new(vec![inference_error(
+                            v2_rt::concat(
+                                v2_rt::concat("type '".to_string(), type_name.clone().unwrap()),
+                                "' not found in scope".to_string(),
+                            ),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )]),
+                    };
+                    let typed_field_nodes2 = typed_fields;
+                    let rl_name = match type_name.clone() {
+                        Some(tn_val) => tn_val.clone(),
+                        None => "".to_string(),
+                    };
+                    let texpr = make_named_expr_node(
+                        rl_name,
+                        Rc::new(ExprData::ExprRecordLit {
+                            parent_enum: effective_variant_parent.clone(),
+                        }),
+                        typed_field_nodes2,
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: resolved_node,
+                        })),
+                        span.clone(),
+                        name_span,
+                    );
+                    Rc::new(InferResult {
+                        typed: texpr,
+                        diagnostics: v2_rt::concat(fi_diags, type_diags),
+                    })
+                }
             }
         }
     }
@@ -11641,28 +11700,32 @@ pub fn import_allows_type_binding(
     if import_allows_binding_name(imp.clone(), binding.name.clone()) {
         true
     } else {
-        ((binding.resolved.clone().connective.clone() == Connective::Disj) && {
-            let mut __found = false;
-            for child in binding.resolved.clone().children.clone().iter().cloned() {
-                if {
-                    let child_name = authored_name_at(env.source_indices.clone(), child.clone());
-                    {
-                        let mut __found = false;
-                        for n in imp.specific_names.clone().iter().cloned() {
-                            if (n.clone().as_str() == child_name.clone().as_str()) {
-                                __found = true;
-                                break;
+        {
+            let allowed_child = {
+                let mut __found = false;
+                for child in binding.resolved.clone().children.clone().iter().cloned() {
+                    if {
+                        let child_name =
+                            authored_name_at(env.source_indices.clone(), child.clone());
+                        {
+                            let mut __found = false;
+                            for n in imp.specific_names.clone().iter().cloned() {
+                                if (n.clone().as_str() == child_name.clone().as_str()) {
+                                    __found = true;
+                                    break;
+                                }
                             }
+                            __found
                         }
-                        __found
+                    } {
+                        __found = true;
+                        break;
                     }
-                } {
-                    __found = true;
-                    break;
                 }
-            }
-            __found
-        })
+                __found
+            };
+            ((binding.resolved.clone().connective.clone() == Connective::Disj) && allowed_child)
+        }
     }
 }
 
@@ -13326,77 +13389,81 @@ pub fn build_module_context(
         );
         let imported_enum_names = resolved_imports.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
-                imp.specific_names.clone().iter().cloned().fold(
-                    acc,
-                    |inner: Rc<HashMap<String, bool>>, n: String| {
-                        v2_rt::rc_map_insert(inner, n.clone(), true)
-                    },
-                )
-            },
-        );
-        let imported_variant_names = resolved_imports.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
-                match v2_rt::map_get(&parent_index.clone(), imp.module_path.clone()) {
-                    Some(typed_parent) => imp.specific_names.clone().iter().cloned().fold(
-                        acc,
-                        |inner: Rc<HashMap<String, bool>>, n: String| {
-                            match lookup_type_binding_by_name_in_env(
-                                typed_parent.type_env.clone(),
-                                n.clone(),
-                            ) {
-                                Some(_) => inner,
-                                None => v2_rt::rc_map_insert(inner, n.clone(), true),
+            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(
+                &parent_index,
+                imp.module_path.clone(),
+            ) {
+                Some(typed_parent) => module_items(typed_parent.module.clone())
+                    .iter()
+                    .cloned()
+                    .fold(
+                        acc.clone(),
+                        |inner: Rc<HashMap<String, bool>>, parent_item: Rc<Node>| {
+                            let parent_name = authored_name_at(
+                                typed_parent.type_env.clone().source_indices.clone(),
+                                parent_item.clone(),
+                            );
+                            if ((parent_item.connective.clone() == Connective::Disj)
+                                && import_allows_binding_name(imp.clone(), parent_name.clone()))
+                            {
+                                v2_rt::rc_map_insert(inner.clone(), parent_name.clone(), true)
+                            } else {
+                                inner.clone()
                             }
                         },
                     ),
-                    None => acc,
-                }
+                None => acc.clone(),
             },
         );
         let imported_variant_parent_names = resolved_imports.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
-                match v2_rt::map_get(&parent_index.clone(), imp.module_path.clone()) {
-                    Some(typed_parent) => imp.specific_names.clone().iter().cloned().fold(
-                        acc,
-                        |inner: Rc<HashMap<String, bool>>, n: String| {
-                            match lookup_type_binding_by_name_in_env(
-                                typed_parent.type_env.clone(),
-                                n.clone(),
-                            ) {
-                                Some(_) => inner,
-                                None => Rc::new(v2_rt::map_values(
-                                    &typed_parent.type_env.bindings.clone(),
-                                ))
-                                .iter()
-                                .cloned()
-                                .fold(inner, |pacc: Rc<HashMap<String, bool>>, binding: Rc<TypeBinding>| {
-                                    if ((binding.resolved.connective.clone() == Connective::Disj)
+            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(
+                &parent_index,
+                imp.module_path.clone(),
+            ) {
+                Some(typed_parent) => imp.specific_names.clone().iter().cloned().fold(
+                    acc.clone(),
+                    |inner: Rc<HashMap<String, bool>>, n: String| {
+                        module_items(typed_parent.module.clone())
+                            .iter()
+                            .cloned()
+                            .fold(
+                                inner,
+                                |pacc: Rc<HashMap<String, bool>>, parent_item: Rc<Node>| {
+                                    let parent_name = authored_name_at(
+                                        typed_parent.type_env.clone().source_indices.clone(),
+                                        parent_item.clone(),
+                                    );
+                                    if (((parent_item.connective.clone() == Connective::Disj)
+                                        && (import_allows_binding_name(
+                                            imp.clone(),
+                                            parent_name.clone(),
+                                        ) == false))
                                         && has_child_named(
-                                            binding.resolved.clone(),
+                                            parent_item.clone(),
                                             n.clone(),
-                                            typed_parent.type_env.source_indices.clone(),
+                                            typed_parent.type_env.clone().source_indices.clone(),
                                         ))
                                     {
                                         v2_rt::rc_map_insert(
-                                            pacc,
-                                            authored_name_at(
-                                                typed_parent.type_env.source_indices.clone(),
-                                                binding.resolved.clone(),
+                                            pacc.clone(),
+                                            v2_rt::concat(
+                                                v2_rt::concat(
+                                                    parent_name.clone(),
+                                                    "::".to_string(),
+                                                ),
+                                                n.clone(),
                                             ),
                                             true,
                                         )
                                     } else {
-                                        pacc
+                                        pacc.clone()
                                     }
-                                }),
-                            }
-                        },
-                    ),
-                    None => acc,
-                }
+                                },
+                            )
+                    },
+                ),
+                None => acc.clone(),
             },
         );
         let variant_fold = Rc::new(v2_rt::map_values(&env.bindings.clone())).iter().cloned().fold(Rc::new(VariantFoldState {
@@ -13406,49 +13473,44 @@ pub fn build_module_context(
             let is_coproduct = (binding.resolved.clone().connective.clone() == Connective::Disj);
 if is_coproduct.clone() {
                 {
-                    let curr_parent_imported = (v2_rt::map_get(&imported_enum_names, authored_name_at(env.source_indices.clone(), binding.resolved.clone())) != None);
-                    let curr_variant_parent_imported = (v2_rt::map_get(&imported_variant_parent_names, authored_name_at(env.source_indices.clone(), binding.resolved.clone())) != None);
+                    let curr_parent_name = authored_name_at(env.source_indices.clone(), binding.resolved.clone());
+let curr_parent_imported = (v2_rt::map_get(&imported_enum_names, curr_parent_name.clone()) != None);
 binding.resolved.clone().children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
                         let child_name = authored_name_at(env.source_indices.clone(), child.clone());
-	let curr_child_imported = (v2_rt::map_get(&imported_variant_names, child_name.clone()) != None);
-let curr_is_imported = (curr_parent_imported.clone() || curr_child_imported.clone());
+let curr_variant_imported = (v2_rt::map_get(&imported_variant_parent_names, v2_rt::concat(v2_rt::concat(curr_parent_name.clone(), "::".to_string()), child_name.clone())) != None);
+let curr_is_imported = (curr_parent_imported.clone() || curr_variant_imported.clone());
 match v2_rt::map_get(&vacc.locals.clone(), child_name.clone()) {
     Some(prev) => {
-                            let prev_variant_parent_imported = (v2_rt::map_get(&imported_variant_parent_names, authored_name_at(env.source_indices.clone(), prev.resolved.clone())) != None);
-                            let prev_is_imported = ((v2_rt::map_get(&imported_enum_names, authored_name_at(env.source_indices.clone(), prev.resolved.clone())) != None) || prev_variant_parent_imported.clone());
-if (curr_child_imported.clone() && curr_variant_parent_imported.clone() && prev_variant_parent_imported.clone() && curr_is_imported.clone() && prev_is_imported.clone()) {
-	                                Rc::new(VariantFoldState {
+                            let prev_parent_name = authored_name_at(env.source_indices.clone(), prev.resolved.clone());
+let prev_parent_imported = (v2_rt::map_get(&imported_enum_names, prev_parent_name.clone()) != None);
+let prev_variant_imported = (v2_rt::map_get(&imported_variant_parent_names, v2_rt::concat(v2_rt::concat(prev_parent_name.clone(), "::".to_string()), child_name.clone())) != None);
+let prev_is_imported = (prev_parent_imported.clone() || prev_variant_imported.clone());
+if ((((((curr_variant_imported.clone() && prev_variant_imported.clone()) && (is_bootstrap_duplicate_variant_name(child_name.clone()) == false)) && (curr_parent_imported.clone() == false)) && (prev_parent_imported.clone() == false)) && curr_is_imported.clone()) && prev_is_imported.clone()) {
+                                Rc::new(VariantFoldState {
     locals: vacc.locals.clone(),
     collisions: v2_rt::rc_map_insert(vacc.collisions.clone(), child_name.clone(), make_error_node(Rc::new(CompilerDiagnostic::VariantCollision {
     variant: child_name.clone(),
-    enum1: authored_name_at(env.source_indices.clone(), prev.resolved.clone()),
-    enum2: authored_name_at(env.source_indices.clone(), binding.resolved.clone()),
+    enum1: prev_parent_name.clone(),
+    enum2: curr_parent_name.clone(),
     span: no_span(),
 }), module_name.clone())),
 })
                             } else {
-                                if curr_is_imported.clone() {
-                                    Rc::new(VariantFoldState {
-    locals: v2_rt::rc_map_insert(vacc.locals.clone(), child_name.clone(), Rc::new(TypeBinding {
-    name: child_name.clone(),
-    resolved: binding.resolved.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-})),
-	    collisions: vacc.collisions.clone(),
-})
-                                } else {
-                                    vacc.clone()
-                                }
+                                vacc.clone()
                             }
 },
-    None => Rc::new(VariantFoldState {
+    None => if curr_is_imported.clone() {
+                            Rc::new(VariantFoldState {
     locals: v2_rt::rc_map_insert(vacc.locals.clone(), child_name.clone(), Rc::new(TypeBinding {
     name: child_name.clone(),
     resolved: binding.resolved.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })),
-	    collisions: vacc.collisions.clone(),
-}),
+    collisions: vacc.collisions.clone(),
+})
+                        } else {
+                            vacc.clone()
+                        },
 }
 })
 }
@@ -13465,7 +13527,7 @@ if (curr_child_imported.clone() && curr_variant_parent_imported.clone() && prev_
         );
         let merged_scope = merge_scope_from_imports(
             resolved_imports.clone(),
-            parent_index,
+            parent_index.clone(),
             env.clone(),
             v2_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
             local.svc_registry.clone(),
