@@ -394,6 +394,37 @@ fn operator_realization_row_matches_operation(
   }
 }
 
+type TargetOperatorRealizationLookup
+  = TargetOperatorRealizationMissing
+  | TargetOperatorRealizationUnique { realization: TargetOperatorRealization }
+  | TargetOperatorRealizationAmbiguous
+
+fn target_operator_realization_lookup_step(
+  acc: TargetOperatorRealizationLookup,
+  row: Node,
+  operation: CanonicalOperation
+) -> TargetOperatorRealizationLookup {
+  if operator_realization_row_matches_operation(row: row, operation: operation) {
+    match acc {
+      TargetOperatorRealizationUnique { realization: _ } => TargetOperatorRealizationAmbiguous
+      TargetOperatorRealizationAmbiguous => TargetOperatorRealizationAmbiguous
+      TargetOperatorRealizationMissing =>
+        match operator_realization_shape_from_row(row: row) {
+          Accepted { value: shape, diagnostics: _ } =>
+            TargetOperatorRealizationUnique {
+              realization: TargetOperatorRealization {
+                operation: operation,
+                shape: shape
+              }
+            }
+          Rejected { diagnostics: _ } => TargetOperatorRealizationMissing
+        }
+    }
+  } else {
+    acc
+  }
+}
+
 fn operator_realization_lookup(
   catalog: Node,
   operation: CanonicalOperation
@@ -402,46 +433,35 @@ fn operator_realization_lookup(
     TypeNode { connective: Conj } =>
       match fold(
         catalog.children,
-        init: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: value_expr_diagnostic(
+        init: TargetOperatorRealizationMissing,
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: _ } =>
+              target_operator_realization_lookup_step(
+                acc: acc,
+                row: e.target,
+                operation: operation
+              )
+            Positional => acc
+          }
+        }
+      ) {
+        TargetOperatorRealizationMissing =>
+          outcome_rejected(
+            value_expr_diagnostic(
               reason: value_expr_reason_operator_catalog_miss,
               node: catalog
             )
           )
-        },
-        f: fn(acc, e) {
-          match acc {
-            Accepted { value: _, diagnostics: _ } => acc
-            Rejected { diagnostics: _ } =>
-              match e.label {
-                Named { name: _ } =>
-                  if operator_realization_row_matches_operation(
-                    row: e.target,
-                    operation: operation
-                  ) {
-                    bind_outcome(
-                      o: operator_realization_shape_from_row(row: e.target),
-                      f: fn(shape) {
-                        outcome_accepted(
-                          TargetOperatorRealization {
-                            operation: operation,
-                            shape: shape
-                          }
-                        )
-                      }
-                    )
-                  } else {
-                    acc
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        Accepted { value: row, diagnostics: d } =>
-          Accepted { value: row, diagnostics: d }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        TargetOperatorRealizationUnique { realization: row } =>
+          outcome_accepted(row)
+        TargetOperatorRealizationAmbiguous =>
+          outcome_rejected(
+            value_expr_diagnostic(
+              reason: value_expr_reason_operator_catalog_ambiguous,
+              node: catalog
+            )
+          )
       }
     _ =>
       outcome_rejected(
@@ -485,6 +505,68 @@ fn primitive_apply_operand_binding_from_operand_node(operand_node: Node) -> Opti
   ) {
     Present { value: binding } => optional_present(value: binding)
     Absent => optional_absent()
+  }
+}
+
+fn primitive_apply_operation_from_expr(expr: TargetValueExpression) -> Outcome<CanonicalOperation> {
+  match expr.kind {
+    TargetValueExprPrimitiveApply =>
+      match fold(
+        expr.node.children,
+        init: Rejected {
+          diagnostics: diagnostics_singleton(
+            d: value_expr_diagnostic(
+              reason: value_expr_reason_transform_shape_invalid,
+              node: expr.node
+            )
+          )
+        },
+        f: fn(acc, e) {
+          match acc {
+            Accepted { value: _, diagnostics: _ } => acc
+            Rejected { diagnostics: _ } =>
+              match e.label {
+                Named { name: n } =>
+                  if n == target_value_expr_field_operation {
+                    match e.target.kind {
+                      TypeNode { connective: Atom { identity: id } } =>
+                        if id == discriminant(v: canonical_operation_op_add()) {
+                          outcome_accepted(canonical_operation_op_add())
+                        } else {
+                          outcome_rejected(
+                            value_expr_diagnostic(
+                              reason: value_expr_reason_surface_op_unmapped,
+                              node: expr.node
+                            )
+                          )
+                        }
+                      _ =>
+                        outcome_rejected(
+                          value_expr_diagnostic(
+                            reason: value_expr_reason_transform_shape_invalid,
+                            node: expr.node
+                          )
+                        )
+                    }
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Accepted { value: canonical_op, diagnostics: d } =>
+          Accepted { value: canonical_op, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_transform_shape_invalid,
+          node: expr.node
+        )
+      )
   }
 }
 
@@ -535,61 +617,75 @@ fn value_expression_to_concrete_tokens(
       match expr.kind {
         TargetValueExprPrimitiveApply =>
           bind_outcome(
-            o: primitive_apply_operand_bindings(expr: expr),
-            f: fn(bindings) {
-              match list_at_optional(xs: bindings, index: 0) {
-                Absent =>
-                  outcome_rejected(
-                    value_expr_diagnostic(
-                      reason: value_expr_reason_transform_shape_invalid,
-                      node: expr.node
+            o: primitive_apply_operation_from_expr(expr: expr),
+            f: fn(canonical_op) {
+              bind_outcome(
+                o: primitive_apply_operand_bindings(expr: expr),
+                f: fn(bindings) {
+                  if length(xs: bindings) != 2 {
+                    outcome_rejected(
+                      value_expr_diagnostic(
+                        reason: value_expr_reason_transform_shape_invalid,
+                        node: expr.node
+                      )
                     )
-                  )
-                Present { value: left_binding } =>
-                  match list_at_optional(xs: bindings, index: 1) {
-                    Absent =>
-                      outcome_rejected(
-                        value_expr_diagnostic(
-                          reason: value_expr_reason_transform_shape_invalid,
-                          node: expr.node
+                  } else {
+                    match list_at_optional(xs: bindings, index: 0) {
+                      Absent =>
+                        outcome_rejected(
+                          value_expr_diagnostic(
+                            reason: value_expr_reason_transform_shape_invalid,
+                            node: expr.node
+                          )
                         )
-                      )
-                    Present { value: right_binding } =>
-                      bind_outcome(
-                        o: operator_realization_lookup(
-                          catalog: catalog,
-                          operation: canonical_operation_op_add()
-                        ),
-                        f: fn(realization) {
-                          match realization.shape {
-                            InfixToken { token: op_token } =>
-                              outcome_accepted(
-                                [
-                                  BoundToken {
-                                    token_class: projection.binding_ref_form.ident_token,
-                                    binding: left_binding
-                                  },
-                                  FixedToken { token_class: op_token },
-                                  BoundToken {
-                                    token_class: projection.binding_ref_form.ident_token,
-                                    binding: right_binding
-                                  }
-                                ]
+                      Present { value: left_binding } =>
+                        match list_at_optional(xs: bindings, index: 1) {
+                          Absent =>
+                            outcome_rejected(
+                              value_expr_diagnostic(
+                                reason: value_expr_reason_transform_shape_invalid,
+                                node: expr.node
                               )
-                            _ =>
-                              outcome_rejected(
-                                value_expr_diagnostic(
-                                  reason: value_expr_reason_operator_catalog_miss,
-                                  node: expr.node
-                                )
-                              )
-                          }
+                            )
+                          Present { value: right_binding } =>
+                            bind_outcome(
+                              o: operator_realization_lookup(
+                                catalog: catalog,
+                                operation: canonical_op
+                              ),
+                              f: fn(realization) {
+                                match realization.shape {
+                                  InfixToken { token: op_token } =>
+                                    outcome_accepted(
+                                      [
+                                        BoundToken {
+                                          token_class: projection.binding_ref_form.ident_token,
+                                          binding: left_binding
+                                        },
+                                        FixedToken { token_class: op_token },
+                                        BoundToken {
+                                          token_class: projection.binding_ref_form.ident_token,
+                                          binding: right_binding
+                                        }
+                                      ]
+                                    )
+                                  _ =>
+                                    outcome_rejected(
+                                      value_expr_diagnostic(
+                                        reason: value_expr_reason_operator_catalog_miss,
+                                        node: expr.node
+                                      )
+                                    )
+                                }
+                              }
+                            )
                         }
-                      )
                     }
                   }
                 }
               )
+            }
+          )
         _ =>
           outcome_rejected(
             value_expr_diagnostic(

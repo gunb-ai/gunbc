@@ -1,9 +1,14 @@
 // src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag
 // Scope: T6 skeleton — real Arrow.body → translated TS → add(2,3)=5 vetting consumer (#4623).
-// Status: bodied add-fn emit via value-expression projection (not fixture body tokens).
+// Status: bodied add-fn emit via value-expression projection (producer-rooted, not fixture).
 
 module v4.test.claim.manual.comprep_add_body_emit_typescript
 
+import v4.compiler.body_producer {
+  mvp1_add_arrow_signature_node,
+  mvp1_add_arrow_with_body_node,
+  mvp1_add_binary_body_node
+}
 import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
@@ -11,10 +16,10 @@ import v4.extdeps.languages.typescript {
   ts_facts_number,
   ts_inhabitant_atom,
   ts_inhabitant_number_node,
-  ts_mvp1_add_binary_body_node,
-  ts_mvp1_emitted_add_fn_with_body_node,
   ts_mvp1_source_text,
   ts_mvp1_target_model,
+  ts_mvp1_target_model_minus_catalog,
+  ts_mvp1_target_model_missing_operator_catalog,
   ts_number_arithmetic_semantics_node,
   ts_number_bitwise_semantics_node,
   ts_number_facts_node
@@ -38,7 +43,21 @@ import v4.std.diagnostic {
   node_locus
 }
 import v4.std.logic { Bool }
-import v4.std.node { Node, TypeNode, Atom }
+import v4.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  arrow_body_edge,
+  node_unanchored
+}
 import v4.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -50,8 +69,71 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 data comprep_ts_body_emit_pass: Symbol = comprep_ts_body_emit_pass
 data comprep_ts_body_emit_fail: Symbol = comprep_ts_body_emit_fail
+data comprep_ts_body_grounding_miss: Symbol = comprep_ts_body_grounding_miss
 
-data comprep_ts_bodied_arrow_root: Node = ts_mvp1_emitted_add_fn_with_body_node()
+data comprep_ts_bodied_arrow_root: Node = mvp1_add_arrow_with_body_node
+
+data comprep_ts_swapped_operand_body_node: Node = node_unanchored(
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge {
+      label: Positional,
+      target: node_unanchored(
+        kind: TypeNode { connective: Atom { identity: ^dag_token_plus } },
+        children: []
+      )
+    },
+    Edge {
+      label: Positional,
+      target: node_unanchored(
+        kind: TypeNode { connective: Atom { identity: ^dag_binding_param_y } },
+        children: []
+      )
+    },
+    Edge {
+      label: Positional,
+      target: node_unanchored(
+        kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
+        children: []
+      )
+    }
+  ]
+)
+
+data comprep_ts_swapped_bodied_arrow_root: Node = node_unanchored(
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge {
+      label: Positional,
+      target: node_unanchored(
+        kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+        children: []
+      )
+    },
+    Edge {
+      label: Positional,
+      target: node_unanchored(
+        kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+        children: []
+      )
+    },
+    Edge {
+      label: Positional,
+      target: node_unanchored(
+        kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+        children: []
+      )
+    },
+    Edge {
+      label: Named { name: arrow_body_edge },
+      target: comprep_ts_swapped_operand_body_node
+    }
+  ]
+)
+
+data comprep_ts_emit_operand_swap_source_text: String = "function add(x: number, y: number): number { return y + x; }"
+
+data comprep_ts_emit_catalog_minus_source_text: String = "function add(x: number, y: number): number { return x - y; }"
 
 fn comprep_ts_canonical_grounding(node: Node, algebra: Node) -> CanonicalGrounding {
   CanonicalGrounding {
@@ -76,6 +158,26 @@ data comprep_ts_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node(
 
 fn comprep_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   if node == comprep_ts_bodied_arrow_root {
+    Holds {
+      value: comprep_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == mvp1_add_arrow_with_body_node {
+    Holds {
+      value: comprep_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == mvp1_add_arrow_signature_node {
+    Holds {
+      value: comprep_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == mvp1_add_binary_body_node {
+    Holds {
+      value: comprep_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == comprep_ts_swapped_bodied_arrow_root {
+    Holds {
+      value: comprep_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == comprep_ts_swapped_operand_body_node {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
@@ -157,18 +259,6 @@ fn comprep_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding>
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_mvp1_add_binary_body_node() {
-    Holds {
-      value: comprep_ts_canonical_grounding(node: node, algebra: node)
-    }
-  } else if node == ts_inhabitant_atom(id: ^ts_binding_param_x) {
-    Holds {
-      value: comprep_ts_canonical_grounding(node: node, algebra: node)
-    }
-  } else if node == ts_inhabitant_atom(id: ^ts_binding_param_y) {
-    Holds {
-      value: comprep_ts_canonical_grounding(node: node, algebra: node)
-    }
   } else if node == ts_inhabitant_atom(id: ^dag_binding_param_x) {
     Holds {
       value: comprep_ts_canonical_grounding(node: node, algebra: node)
@@ -187,7 +277,7 @@ fn comprep_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding>
   } else {
     Violates {
       diagnostic: Diagnostic {
-        reason: ^comprep_ts_body_grounding_miss,
+        reason: comprep_ts_body_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
@@ -221,6 +311,11 @@ data comprep_ts_bodied_inferred_tree: InferredTree = InferredTree {
   facts: Map { lookup: comprep_ts_facts_lookup }
 }
 
+data comprep_ts_swapped_bodied_inferred_tree: InferredTree = InferredTree {
+  root: comprep_ts_swapped_bodied_arrow_root,
+  facts: Map { lookup: comprep_ts_facts_lookup }
+}
+
 fn anchor_comprep_ts_bodied_emit_accepts() -> Outcome<TargetSource> {
   emit(tree: comprep_ts_bodied_inferred_tree, target: ts_mvp1_target_model())
 }
@@ -235,9 +330,60 @@ fn comprep_ts_bodied_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
+fn comprep_ts_bodied_emit_operand_swap_discriminates() -> Bool {
+  match emit(tree: comprep_ts_swapped_bodied_inferred_tree, target: ts_mvp1_target_model()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source == comprep_ts_emit_operand_swap_source_text) &&
+      (source != ts_mvp1_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_bodied_emit_catalog_minus_discriminates() -> Bool {
+  match emit(tree: comprep_ts_bodied_inferred_tree, target: ts_mvp1_target_model_minus_catalog()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source == comprep_ts_emit_catalog_minus_source_text) &&
+      (source != ts_mvp1_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_ts_bodied_emit_missing_catalog_rejects() -> Bool {
+  match emit(
+    tree: comprep_ts_bodied_inferred_tree,
+    target: ts_mvp1_target_model_missing_operator_catalog()
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 data unified_claim_comprep_ts_bodied_emit_add_fn: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
     function: comprep_ts_bodied_emit_add_fn_accepts_holds
+  }
+}
+
+data unified_claim_comprep_ts_bodied_emit_operand_swap: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
+    function: comprep_ts_bodied_emit_operand_swap_discriminates
+  }
+}
+
+data unified_claim_comprep_ts_bodied_emit_catalog_minus: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
+    function: comprep_ts_bodied_emit_catalog_minus_discriminates
+  }
+}
+
+data unified_claim_comprep_ts_bodied_emit_missing_catalog: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/manual/comprep_add_body_emit_typescript.dag",
+    function: comprep_ts_bodied_emit_missing_catalog_rejects
   }
 }

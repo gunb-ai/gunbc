@@ -628,8 +628,23 @@ fn ts_add_operator_realization_row() -> Node {
   )
 }
 
+fn ts_add_operator_realization_row_minus() -> Node {
+  target_operator_realization_node(
+    operation: canonical_operation_op_add(),
+    shape: InfixToken { token: ^ts_token_minus }
+  )
+}
+
 fn ts_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row()])
+}
+
+fn ts_operator_realizations_catalog_minus_node() -> Node {
+  target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row_minus()])
+}
+
+fn ts_operator_realizations_catalog_empty_node() -> Node {
+  target_operator_realizations_catalog_node(rows: [])
 }
 
 // Statement scaffold for bodied MVP-1 add-fn: prefix through `return`, suffix `;` `}`.
@@ -768,11 +783,21 @@ fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   }
 }
 
+fn ts_mvp1_add_return_body_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_x },
+    FixedToken { token_class: ^ts_token_plus },
+    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y }
+  ]
+}
+
 fn ts_mvp1_grammar_relation_row_with_body() -> TsGrammarRelationRow {
   TsGrammarRelationRow {
     production: ts_formal_production_mvp1_fn_add(),
     emitted: ts_mvp1_emitted_add_fn_with_body_node(),
-    tokens: ts_mvp1_concrete_tokens()
+    tokens: ts_mvp1_compose_add_fn_tokens(
+      body_tokens: ts_mvp1_add_return_body_tokens()
+    )
   }
 }
 
@@ -1445,6 +1470,106 @@ fn ts_mvp1_binding_spellings() -> Map<Symbol, String> {
 fn ts_mvp1_target_model() -> TargetModel {
   TargetModel {
     bundle: ts_mvp1_target_model_node(),
+    lex: ts_wave1_lex(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    authority_source_text: ts_mvp1_source_text_authority()
+  }
+}
+
+fn ts_mvp1_target_model_node_minus_catalog() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: target_model_edge_selection_policy,
+        target: ts_mvp1_selection_policy_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: ts_mvp1_declared_inhabitants_root()
+      ),
+      ts_named_edge(
+        name: target_model_edge_translation_rules,
+        target: ts_mvp1_translation_rules_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_serialize_source,
+        target: ts_mvp1_serialize_source_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_value_expression_projection,
+        target: value_expr_projection_bundle_node(
+          projection: ts_value_expression_projection()
+        )
+      ),
+      ts_named_edge(
+        name: target_model_edge_operator_realizations,
+        target: ts_operator_realizations_catalog_minus_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_bodied_arrow_statement_scaffold,
+        target: bodied_arrow_statement_scaffold_bundle_node(
+          scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
+        )
+      )
+    ],
+    span: Unanchored
+  }
+}
+
+fn ts_mvp1_target_model_node_missing_operator_catalog() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: target_model_edge_selection_policy,
+        target: ts_mvp1_selection_policy_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: ts_mvp1_declared_inhabitants_root()
+      ),
+      ts_named_edge(
+        name: target_model_edge_translation_rules,
+        target: ts_mvp1_translation_rules_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_serialize_source,
+        target: ts_mvp1_serialize_source_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_value_expression_projection,
+        target: value_expr_projection_bundle_node(
+          projection: ts_value_expression_projection()
+        )
+      ),
+      ts_named_edge(
+        name: target_model_edge_operator_realizations,
+        target: ts_operator_realizations_catalog_empty_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_bodied_arrow_statement_scaffold,
+        target: bodied_arrow_statement_scaffold_bundle_node(
+          scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
+        )
+      )
+    ],
+    span: Unanchored
+  }
+}
+
+fn ts_mvp1_target_model_minus_catalog() -> TargetModel {
+  TargetModel {
+    bundle: ts_mvp1_target_model_node_minus_catalog(),
+    lex: ts_wave1_lex(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    authority_source_text: ts_mvp1_source_text_authority()
+  }
+}
+
+fn ts_mvp1_target_model_missing_operator_catalog() -> TargetModel {
+  TargetModel {
+    bundle: ts_mvp1_target_model_node_missing_operator_catalog(),
     lex: ts_wave1_lex(),
     binding_spellings: ts_mvp1_binding_spellings(),
     authority_source_text: ts_mvp1_source_text_authority()
