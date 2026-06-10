@@ -176,6 +176,35 @@ type VariantFoldState {
   collisions: Map<String, ErrorNode>
 }
 
+fn add_imported_variant_child(acc: VariantFoldState, parent_item: Node, child: Node, imp: ResolvedImport, source_indices: Map<String, NewlineIndex>, module_name: String) -> VariantFoldState {
+  let parent_name = authored_name_at(source_indices: source_indices, node: parent_item)
+  let child_name = authored_name_at(source_indices: source_indices, node: child)
+  let variant_imported = import_allows_binding_name(imp: imp, name: parent_name) || (imp.specific_names |> any(n => n == child_name))
+  if variant_imported {
+    match map_get(acc.locals, child_name) {
+      Present { value: prev } =>
+        let prev_parent_name = authored_name_at(source_indices: source_indices, node: prev.resolved)
+        VariantFoldState {
+          locals: acc.locals,
+          collisions: map_insert(acc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: parent_name, span: no_span() }, module_name: module_name))
+        }
+      Absent =>
+        VariantFoldState {
+          locals: map_insert(acc.locals, child_name, TypeBinding { name: child_name, resolved: parent_item, provenance: SubValueUnknown }),
+          collisions: acc.collisions
+        }
+    }
+  } else { acc }
+}
+
+fn add_imported_variant_parent(acc: VariantFoldState, parent_item: Node, imp: ResolvedImport, source_indices: Map<String, NewlineIndex>, module_name: String) -> VariantFoldState {
+  if parent_item.connective == Disj {
+    parent_item.children |> fold(init: acc, f: fn(vacc, child) {
+      add_imported_variant_child(acc: vacc, parent_item: parent_item, child: child, imp: imp, source_indices: source_indices, module_name: module_name)
+    })
+  } else { acc }
+}
+
 type InferScope {
   type_env: TypeEnv
   func_env: ResolvedFuncEnv
@@ -6128,37 +6157,15 @@ fn build_module_context(contributions: List<ItemContribution>,
     diag_chunks: [],
     source_indices: env.source_indices
   )
-	  let variant_fold = fold(resolved_imports, init: VariantFoldState { locals: empty_map(), collisions: empty_map() }, f: (acc, imp) =>
+	  let variant_fold = fold(resolved_imports, init: VariantFoldState { locals: empty_map(), collisions: empty_map() }, f: fn(acc, imp) {
 	    match map_get(parent_index, imp.module_path) {
 	      Present { value: typed_parent } =>
 	        fold(typed_parent.items, init: acc, f: (iacc, parent_item) =>
-	          if parent_item.connective == Disj {
-	            let parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: parent_item)
-	            let parent_imported = import_allows_binding_name(imp: imp, name: parent_name)
-	            fold(parent_item.children, init: iacc, f: (vacc, child) =>
-	              let child_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: child)
-	              let variant_imported = parent_imported || (imp.specific_names |> any(n => n == child_name))
-	              if variant_imported {
-	                match map_get(vacc.locals, child_name) {
-	                  Present { value: prev } =>
-	                    let prev_parent_name = authored_name_at(source_indices: typed_parent.type_env.source_indices, node: prev.resolved)
-	                    VariantFoldState {
-	                      locals: vacc.locals,
-	                      collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: parent_name, span: no_span() }, module_name: module_name))
-	                    }
-	                  Absent =>
-	                    VariantFoldState {
-	                      locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: parent_item, provenance: SubValueUnknown }),
-	                      collisions: vacc.collisions
-	                    }
-	                }
-	              } else { vacc }
-	            )
-	          } else { iacc }
+	          add_imported_variant_parent(acc: iacc, parent_item: parent_item, imp: imp, source_indices: typed_parent.type_env.source_indices, module_name: module_name)
 	        )
 	      Absent => acc
 	    }
-	  )
+	  })
 	  let imported_variant_locals = variant_fold.locals
 	  let variant_collisions = variant_fold.collisions
   let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals, source_indices: env.source_indices)
