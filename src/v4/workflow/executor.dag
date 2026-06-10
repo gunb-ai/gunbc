@@ -34,18 +34,23 @@ type ExecutorBatch {
   jobs: List<ExecutorJob>
 }
 
-// Host transport landed: src/v2/stage0/src/bin/claim_executor.rs consumes the
+// Consumption half ARRIVED: src/v2/stage0/src/bin/claim_executor.rs reads the
 // ExecutorBatch plans this module projects (via batch_runner.dag) and runs the
-// v4 claim suite batch-by-batch. This coproduct is genuine batching authority —
-// the host reads it to decide execution order, it is not a mirror of a schedule.
+// v4 claim suite batch-by-batch — genuine batching authority, not a mirror.
+// 🟡 coproduct dissolution — feature:executor-host-run-result — consumer:claim_executor — lane:A4-command-authority
+// dissolve-on-arrival (still outstanding): host transport returns per-job
+// execution verdicts back into .dag types, replacing plan-only blocked evidence.
+// The near-term dogfood keeps verdict transport host-side (gated on A4).
 type ExecutorBlockedEvidence
   = ExecutorSchedulerBlocked { evidence: SchedulerBlockedEvidence }
   | ExecutorEmptyFrontier {}
 
-// Host transport (claim_executor) consumes this plan today: it evaluates a
-// ExecutorRunComplete and runs each ExecutorBatch in order. Returning typed
-// per-job run RESULTS back into the .dag is the gated full version (A4 command
-// authority) — the near-term dogfood keeps the run-result transport host-side.
+// Consumption half ARRIVED: claim_executor evaluates an ExecutorRunComplete and
+// runs each ExecutorBatch in order.
+// 🟡 coproduct dissolution — feature:executor-host-run-result — consumer:claim_executor — lane:A4-command-authority
+// dissolve-on-arrival (still outstanding): host transport returns typed per-job
+// run RESULTS for ExecutorBatch back into the .dag, replacing the plan-only
+// complete/blocked projection. Bounded receipt, gated on A4 command authority.
 type ExecutorRunPlan
   = ExecutorRunComplete {
       batches: List<ExecutorBatch>,
