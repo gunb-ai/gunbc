@@ -7,7 +7,7 @@
 module v4.compiler.normalize
 
 import v4.std.algebra { list_snoc_item }
-import v4.std.collection { Absent, Present }
+import v4.std.collection { Absent, Present, optional_absent, optional_present }
 import v4.std.grammar { ParseTree }
 
 import v4.std.diagnostic {
@@ -45,11 +45,11 @@ type SurfaceSugarKind
   | OperationSugar
 
 fn some_surface_sugar_kind(kind: SurfaceSugarKind) -> SurfaceSugarKind? {
-  Present { value: kind }
+  optional_present(value: kind)
 }
 
 fn no_surface_sugar_kind() -> SurfaceSugarKind? {
-  Absent
+  optional_absent()
 }
 
 // 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind TASKS.md T-8 — dissolve-on: classify_sugar reads modeled LanguageModel sugar facts; forbidden: Atom identity string/symbol comparison as permanent authority.

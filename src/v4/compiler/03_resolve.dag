@@ -20,7 +20,9 @@ import v4.std.collection {
   Set,
   empty_map,
   map_get,
-  map_insert
+  map_insert,
+  optional_absent,
+  optional_present
 }
 import v4.std.diagnostic {
   Diagnostic,
@@ -105,8 +107,8 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 
 fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   match e.label {
-    Named { name: sym } => Present { value: DeclaredBinding { name: sym } }
-    Positional => Absent
+    Named { name: sym } => optional_present(value: DeclaredBinding { name: sym })
+    Positional => optional_absent()
   }
 }
 
@@ -218,7 +220,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
       match map_get(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
-            Accepted { value: Present { value: v }, diagnostics: d_here }
+            Accepted { value: optional_present(value: v), diagnostics: d_here }
           Absent =>
             match lookup_chain(s: o, name: name) {
               Accepted { value: found, diagnostics: d_outer } =>
@@ -237,8 +239,8 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
     ScopeRoot { module: mod } =>
       match map_get(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
-          Present { value: v } => Accepted { value: Present { value: v }, diagnostics: d }
-          Absent => Accepted { value: Absent, diagnostics: d }
+          Present { value: v } => Accepted { value: optional_present(value: v), diagnostics: d }
+          Absent => Accepted { value: optional_absent(), diagnostics: d }
         }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }

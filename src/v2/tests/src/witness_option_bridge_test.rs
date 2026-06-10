@@ -19,7 +19,16 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     let msgs: Vec<String> = result
         .diagnostics
         .iter()
-        .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .map(|d| {
+            let span = v2_compiler::v2_std_core::diagnostic_to_span(d.diagnostic.clone());
+            format!(
+                "{}:{}:{} {}",
+                d.module_name,
+                span.file,
+                span.start,
+                v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone())
+            )
+        })
         .filter(|m| !m.starts_with("complexity: "))
         .collect();
     assert!(
@@ -64,7 +73,7 @@ fn match_pattern_does_not_bridge_witness_to_some_none() {
 #[test]
 fn map_get_matches_witness_lookup_to_present_absent() {
     let src = r#"module test.witness_map_get
-import v4.std.collection { empty_map, map_get, map_insert }
+import v4.std.collection { Absent, Present, empty_map, map_get, map_insert }
 import v4.std.diagnostic { Accepted, Rejected }
 
 fn found() -> Bool {

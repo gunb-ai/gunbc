@@ -1243,6 +1243,15 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
+                    if name == "Present" && variant_name != "Present" && variant_name != "Absent" {
+                        let mut bindings = HashMap::new();
+                        for fb in field_bindings.iter() {
+                            let fb_pat = field_binding_pattern(fb.clone());
+                            let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                            bindings.extend(sub_bindings);
+                        }
+                        return Some(bindings);
+                    }
                     if variant_name != name {
                         return None;
                     }
