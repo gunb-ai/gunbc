@@ -8,30 +8,31 @@
 module v4.compiler.emit
 
 
-import v4.compiler.target_carriers { TargetModel, TargetSource }
+import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.infer { InferredTree }
 import v4.compiler.translate {
-  TargetNodeTree,
   target_serialize_source_from_model,
   translate
 }
+import v4.std.node { Node }
+import v4.std.target_model { TargetModelBundle }
 import v4.std.diagnostic {
   Outcome,
   bind_outcome
 }
 
 fn serialize_source_for_emitted(
-  emitted: TargetNodeTree,
-  target: TargetModel
+  emitted: Node,
+  target: TargetModelBundle
 ) -> Outcome<TargetSource> {
   target_serialize_source_from_model(target: target, emitted: emitted)
 }
-fn serialize_target(tree: TargetNodeTree, target: TargetModel) -> Outcome<TargetSource> {
+fn serialize_target(tree: Node, target: TargetModelBundle) -> Outcome<TargetSource> {
   serialize_source_for_emitted(emitted: tree, target: target)
 }
 fn emit(
   tree: InferredTree,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<TargetSource> {
   bind_outcome(
     o: translate(tree: tree, target: target),

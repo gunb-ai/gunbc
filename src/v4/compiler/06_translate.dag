@@ -3,7 +3,7 @@
 // Status: W-T-11 — Shape-A MVP-1 grammar-inverse lex walk is exercised by compile-inferred
 // TestClaims for rust/python/go/cpp/typescript (test/claim/manual/mvp1_*_add_translate.dag);
 // live translate_node/coerce_grounded_node + child reattachment zip-fold;
-// authority_source_text retained on TargetModel as self-host anchor only.
+// authority_source_text retained on TargetModelBundle as self-host anchor only.
 //         grammar-inverse serialize uses translate_serialize_measure (node_subtree_count +
 //         translation_rules subtree) — no fixed fuel constant.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
@@ -13,7 +13,7 @@ module v4.compiler.translate
 
 
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model { TargetModelBundle }
 import v4.compiler.infer { InferredTree, canonical_grounding_for_node }
 import v4.std.coercion {
   CoercionCandidateSet,
@@ -135,6 +135,7 @@ import v4.std.target_model {
   target_collection_free_monoid_no_representation_diagnostic,
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
+  target_collection_set_carrier_node,
   target_carrier_free_monoid_node,
   target_collection_set_element_type_node,
   target_collection_free_monoid_element_type_node,
@@ -248,7 +249,6 @@ import v4.std.algebra {
 }
 import v4.std.logic { Bool }
 import v4.std.text { String }
-type TargetNodeTree = Node
 // 🟢 coproduct dissolution
 type TargetBundleChildLookup
   = BundleChildMissing
@@ -280,7 +280,7 @@ fn node_subtree_count(n: Node) -> Int {
     }
   )
 }
-fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
+fn target_translation_rules_budget(target: TargetModelBundle) -> Outcome<Int> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
     f: fn(rules) {
@@ -291,7 +291,7 @@ fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
     }
   )
 }
-fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<Int> {
+fn translate_serialize_measure(target: TargetModelBundle, emitted: Node) -> Outcome<Int> {
   bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
@@ -302,7 +302,7 @@ fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<In
     }
   )
 }
-fn token_item_serialize_measure(item: Node, target: TargetModel) -> Outcome<Int> {
+fn token_item_serialize_measure(item: Node, target: TargetModelBundle) -> Outcome<Int> {
   bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
@@ -320,7 +320,7 @@ fn token_list_node_budget(tokens: List<Node>) -> Int {
     cons: fn(acc, item) { acc + node_subtree_count(n: item) }
   )
 }
-fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> Outcome<Int> {
+fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModelBundle) -> Outcome<Int> {
   bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
@@ -338,7 +338,7 @@ fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> 
 type TokenSequenceItemKind
   = TokenSequenceConcreteToken
   | TokenSequenceNonterminal
-fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
+fn translate_target_bundle_malformed_diagnostic(target: TargetModelBundle) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_malformed,
     at: node_locus(node: target.bundle),
@@ -346,7 +346,7 @@ fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnost
   }
 }
 fn translate_target_bundle_duplicate_edge_diagnostic(
-  target: TargetModel,
+  target: TargetModelBundle,
   edge_name: Symbol
 ) -> Diagnostic {
   Diagnostic {
@@ -870,7 +870,7 @@ fn grammar_serialize_source_matches_row(
   }
 }
 fn grammar_inverse_source_validated(
-  target: TargetModel,
+  target: TargetModelBundle,
   emitted: Node
 ) -> Outcome<Node> {
   bind_outcome(
@@ -895,7 +895,7 @@ fn grammar_inverse_source_validated(
 }
 fn target_serialize_relation_row_from_model_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   emitted: Node
 ) -> Outcome<TargetSource> {
   if remaining <= 0 {
@@ -1063,7 +1063,7 @@ fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<
       )
   }
 }
-fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
+fn token_spelling_from_model(target: TargetModelBundle, token: Node) -> Outcome<String> {
   bind_outcome(
     o: concrete_syntax_token_from_node(token: token),
     f: fn(decoded) {
@@ -1095,7 +1095,7 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
 fn token_item_to_source_bounded(
   remaining: Int,
   item: Node,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<TargetSource> {
   bind_outcome(
     o: token_sequence_item_kind(item: item),
@@ -1109,7 +1109,7 @@ fn token_item_to_source_bounded(
     }
   )
 }
-fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetSource> {
+fn token_item_to_source(item: Node, target: TargetModelBundle) -> Outcome<TargetSource> {
   bind_outcome(
     o: token_item_serialize_measure(item: item, target: target),
     f: fn(measure) {
@@ -1120,7 +1120,7 @@ fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetSource
 fn token_sequence_to_source_bounded(
   remaining: Int,
   tokens: List<Node>,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<TargetSource> {
   fold_list(
     xs: tokens,
@@ -1144,7 +1144,7 @@ fn token_sequence_to_source_bounded(
     }
   )
 }
-fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetSource> {
+fn token_sequence_to_source(tokens: List<Node>, target: TargetModelBundle) -> Outcome<TargetSource> {
   bind_outcome(
     o: token_sequence_serialize_measure(tokens: tokens, target: target),
     f: fn(measure) {
@@ -1153,11 +1153,11 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
   )
 }
 // Shape-A MVP-1 grammar-inverse serialize via token_sequence_to_source for all five
-// Shape-A targets (rust/python/go/cpp/typescript TestClaims). TargetModel.authority_source_text
+// Shape-A targets (rust/python/go/cpp/typescript TestClaims). TargetModelBundle.authority_source_text
 // must not substitute for validated emitted Node serialization.
 fn target_serialize_source_from_model_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   emitted: Node
 ) -> Outcome<TargetSource> {
   if remaining <= 0 {
@@ -1193,7 +1193,7 @@ fn target_serialize_source_from_model_bounded(
   }
 }
 fn target_serialize_source_from_model(
-  target: TargetModel,
+  target: TargetModelBundle,
   emitted: Node
 ) -> Outcome<TargetSource> {
   bind_outcome(
@@ -1203,7 +1203,7 @@ fn target_serialize_source_from_model(
     }
   )
 }
-fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
+fn target_bundle_child(target: TargetModelBundle, edge_name: Symbol) -> Outcome<Node> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -1231,7 +1231,7 @@ fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> 
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
   }
 }
-fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node?> {
+fn target_bundle_optional_child(target: TargetModelBundle, edge_name: Symbol) -> Outcome<Node?> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -1259,7 +1259,7 @@ fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outco
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
   }
 }
-fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
+fn target_selection_priority_from_model(target: TargetModelBundle) -> Outcome<Node> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_selection_policy),
     f: fn(priority_node) {
@@ -1271,7 +1271,7 @@ fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
   )
 }
 fn coercion_candidates_from_target_model(
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<CoercionCandidateSet> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants),
@@ -1286,7 +1286,7 @@ fn coercion_candidates_from_target_model(
 fn coerce_grounded_node(
   source: Node,
   tree: InferredTree,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<CoercionResult> {
   bind_outcome(
     o: canonical_grounding_for_node(tree: tree, node: source),
@@ -1551,7 +1551,7 @@ fn type_expression_projection_from_bundle(bundle: Node) -> Outcome<TargetTypeExp
     }
   )
 }
-fn type_expression_projection_from_target(target: TargetModel) -> Outcome<TargetTypeExpressionProjection> {
+fn type_expression_projection_from_target(target: TargetModelBundle) -> Outcome<TargetTypeExpressionProjection> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_type_expression_projection),
     f: fn(bundle) { type_expression_projection_from_bundle(bundle: bundle) }
@@ -1794,7 +1794,7 @@ fn target_collection_realization_from_bundle(
   )
 }
 
-fn collection_realization_from_target(target: TargetModel) -> Outcome<TargetCollectionRealization> {
+fn collection_realization_from_target(target: TargetModelBundle) -> Outcome<TargetCollectionRealization> {
   collection_realization_from_target_carrier(
     target: target,
     expected_source_carrier: target_collection_set_carrier_node()
@@ -1802,7 +1802,7 @@ fn collection_realization_from_target(target: TargetModel) -> Outcome<TargetColl
 }
 
 fn free_monoid_collection_realization_from_target(
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<TargetCollectionRealization> {
   collection_realization_from_target_carrier(
     target: target,
@@ -1811,7 +1811,7 @@ fn free_monoid_collection_realization_from_target(
 }
 
 fn collection_realization_from_target_carrier(
-  target: TargetModel,
+  target: TargetModelBundle,
   expected_source_carrier: Node
 ) -> Outcome<TargetCollectionRealization> {
   bind_outcome(
@@ -1838,7 +1838,7 @@ fn collection_realization_from_target_carrier(
 
 fn project_set_collection_type_node_impl(
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match target_collection_set_element_type_node(set_node: node) {
@@ -1884,7 +1884,7 @@ fn project_set_collection_type_node_impl(
 
 fn project_set_collection_type_node(
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   project_set_collection_type_node_impl(
@@ -1896,7 +1896,7 @@ fn project_set_collection_type_node(
 
 fn project_free_monoid_collection_type_node(
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match target_collection_free_monoid_element_type_node(free_monoid_node: node) {
@@ -2051,7 +2051,7 @@ fn project_type_expression_children_go(
   remaining: Int,
   anchor: Node,
   children: List<Node>,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   acc: List<Node>
 ) -> Outcome<List<Node>> {
@@ -2095,7 +2095,7 @@ fn project_type_expression_children(
   remaining: Int,
   anchor: Node,
   children: List<Node>,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<Node>> {
   project_type_expression_children_go(
@@ -2110,7 +2110,7 @@ fn project_type_expression_children(
 fn project_type_expression_field_slots_go(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   edges: List<Edge>,
   acc: List<TargetTypeExprFieldSlot>
@@ -2175,7 +2175,7 @@ fn project_type_expression_field_slots_go(
 fn project_type_expression_field_slots(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprFieldSlot>> {
   project_type_expression_field_slots_go(
@@ -2191,7 +2191,7 @@ fn project_type_expression_field_slots(
 fn project_type_expression_variant_slots_go(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   edges: List<Edge>,
   acc: List<TargetTypeExprVariantSlot>
@@ -2237,7 +2237,7 @@ fn project_type_expression_variant_slots_go(
 fn project_type_expression_variant_slots(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprVariantSlot>> {
   project_type_expression_variant_slots_go(
@@ -2252,7 +2252,7 @@ fn project_type_expression_variant_slots(
 fn project_type_expression_conj_fields(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprFieldSlot>> {
   bind_outcome(
@@ -2278,7 +2278,7 @@ fn project_type_expression_conj_fields(
 fn project_type_expression_disj_variants(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprVariantSlot>> {
   bind_outcome(
@@ -2305,7 +2305,7 @@ fn project_type_expression_connective_bounded(
   remaining: Int,
   node: Node,
   connective: Connective,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   bind_outcome(
@@ -2435,7 +2435,7 @@ fn project_type_expression_connective_bounded(
 }
 fn project_type_expression_node(
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   project_type_expression_node_bounded(
@@ -2448,7 +2448,7 @@ fn project_type_expression_node(
 fn project_type_expression_node_bounded(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   if remaining <= 0 {
@@ -2468,7 +2468,7 @@ fn project_type_expression_node_bounded(
   }
   }
 }
-fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String> {
+fn lex_rules_literal(target: TargetModelBundle, token_class: Symbol) -> Outcome<String> {
   lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
 }
 fn type_expr_atom_binding_from_positional(
@@ -2508,7 +2508,7 @@ fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
     _ => type_expr_atom_binding(node: node)
   }
 }
-fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<TargetSource> {
+fn type_expr_spelling_for_atom(target: TargetModelBundle, node: Node) -> Outcome<TargetSource> {
   bind_outcome(
     o: type_expr_atom_binding(node: node),
     f: fn(binding) {
@@ -2538,7 +2538,7 @@ fn serialize_type_expr_emitted_positional_head_tail(node: Node) -> Outcome<TypeE
 }
 fn serialize_type_expr_generic_apply_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   node: Node
@@ -2599,7 +2599,7 @@ fn serialize_type_expr_generic_apply_bounded(
 }
 fn serialize_type_expr_args_go(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   args: List<Node>,
@@ -2661,7 +2661,7 @@ fn serialize_type_expr_args_go(
 }
 fn serialize_type_expr_args_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   args: List<Node>,
@@ -2679,7 +2679,7 @@ fn serialize_type_expr_args_bounded(
 }
 fn serialize_type_expr_separated_go(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   separator: Symbol,
   items: List<Node>,
@@ -2741,7 +2741,7 @@ fn serialize_type_expr_separated_go(
 }
 fn serialize_type_expr_separated_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   separator: Symbol,
   items: List<Node>,
@@ -2758,7 +2758,7 @@ fn serialize_type_expr_separated_bounded(
   )
 }
 
-fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetSource> {
+fn serialize_type_expr_record_field_label(target: TargetModelBundle, edge: Edge) -> Outcome<TargetSource> {
   match edge.label {
     Named { name: label } =>
       match map_get(target.binding_spellings, label) {
@@ -2783,7 +2783,7 @@ fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Ou
 
 fn serialize_type_expr_record_fields_go(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   separator: Symbol,
   field_label_separator: Symbol,
@@ -2863,7 +2863,7 @@ fn serialize_type_expr_record_fields_go(
 
 fn serialize_type_expr_record_fields_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   separator: Symbol,
   field_label_separator: Symbol,
@@ -2884,7 +2884,7 @@ fn serialize_type_expr_record_fields_bounded(
 
 fn serialize_type_expr_record_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   node: Node
@@ -2931,7 +2931,7 @@ fn serialize_type_expr_record_bounded(
 }
 fn serialize_type_expr_sum_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetSumTypeShape,
   node: Node
@@ -2951,7 +2951,7 @@ fn serialize_type_expr_sum_bounded(
   )
 }
 fn serialize_type_expr_arrow_param_spelling(
-  target: TargetModel,
+  target: TargetModelBundle,
   label: Symbol
 ) -> Outcome<TargetSource> {
   match map_get(target.binding_spellings, label) {
@@ -2973,7 +2973,7 @@ fn serialize_type_expr_arrow_param_spelling(
 
 fn serialize_type_expr_arrow_param_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   slot: TargetTypeExprArrowParamSlot
@@ -3013,7 +3013,7 @@ fn serialize_type_expr_arrow_param_bounded(
 
 fn serialize_type_expr_arrow_params_go(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   params: List<TargetTypeExprArrowParamSlot>,
@@ -3077,7 +3077,7 @@ fn serialize_type_expr_arrow_params_go(
 
 fn serialize_type_expr_arrow_named_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   node: Node
@@ -3148,7 +3148,7 @@ fn serialize_type_expr_arrow_named_bounded(
 
 fn serialize_type_expr_arrow_input_wrapped(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   input_node: Node
@@ -3184,7 +3184,7 @@ fn serialize_type_expr_arrow_input_wrapped(
 }
 fn serialize_type_expr_arrow_inputs_go(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   inputs: List<Node>,
@@ -3247,7 +3247,7 @@ fn serialize_type_expr_arrow_inputs_go(
 }
 fn serialize_type_expr_arrow_inputs_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   inputs: List<Node>,
@@ -3265,7 +3265,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
 }
 fn serialize_type_expr_arrow_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   node: Node
@@ -3334,7 +3334,7 @@ fn serialize_type_expr_arrow_bounded(
 }
 fn serialize_type_expr_emitted_wire_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   wire: TargetTypeExpression
 ) -> Outcome<TargetSource> {
@@ -3385,7 +3385,7 @@ fn serialize_type_expr_emitted_wire_bounded(
 }
 fn serialize_type_expr_emitted_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   emitted: Node
 ) -> Outcome<TargetSource> {
@@ -3413,7 +3413,7 @@ fn translate_outcome_is_catalog_lookup_miss(
   diagnostics.head.reason == target_atom_realization_lookup_miss
 }
 
-fn translate_sg_rc_bundle_edge_present(target: TargetModel, edge_name: Symbol) -> Outcome<Bool> {
+fn translate_sg_rc_bundle_edge_present(target: TargetModelBundle, edge_name: Symbol) -> Outcome<Bool> {
   match target_bundle_optional_child(target: target, edge_name: edge_name) {
     Accepted { value: optional_child, diagnostics: d } =>
       match optional_child {
@@ -3426,7 +3426,7 @@ fn translate_sg_rc_bundle_edge_present(target: TargetModel, edge_name: Symbol) -
 
 // Accepted false => no SG-RC edges (skip consumer); true => apply catalog; Rejected => malformed/partial bundle.
 fn translate_sg_rc_bundle_apply_disposition(
-  target: TargetModel,
+  target: TargetModelBundle,
   source_carrier: Node
 ) -> Outcome<Bool> {
   bind_outcome(
@@ -3457,7 +3457,7 @@ fn translate_sg_rc_bundle_apply_disposition(
 }
 
 fn translate_reference_layer_tokens_from_target(
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<TargetReferenceLayerTokens> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_reference_layer_tokens),
@@ -3466,7 +3466,7 @@ fn translate_reference_layer_tokens_from_target(
 }
 
 fn translate_use_site_ownership_catalog_from_model(
-  target: TargetModel,
+  target: TargetModelBundle,
   source_carrier: Node
 ) -> Outcome<Node> {
   match target_bundle_optional_child(
@@ -3489,7 +3489,7 @@ fn translate_use_site_ownership_catalog_from_model(
 // (a target without value-semantics modeling behaves exactly as before: every
 // carrier flows to the reference catalog). Decoded to the Atom-identity list the
 // authority lookup matches on.
-fn translate_value_semantics_carriers_from_model(target: TargetModel) -> Outcome<List<Symbol>> {
+fn translate_value_semantics_carriers_from_model(target: TargetModelBundle) -> Outcome<List<Symbol>> {
   match target_bundle_optional_child(
     target: target,
     edge_name: target_model_edge_value_semantics_carriers
@@ -3507,7 +3507,7 @@ fn translate_value_semantics_carriers_from_model(target: TargetModel) -> Outcome
 fn translate_apply_use_site_ownership_to_projected_type(
   projected: Node,
   source_carrier: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
   translate_apply_use_site_ownership_to_type_shell(
@@ -3523,7 +3523,7 @@ fn translate_apply_use_site_ownership_to_projected_type(
 fn translate_apply_use_site_ownership_to_projected_boundary(
   projected: Node,
   source_for_binding: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
@@ -3552,7 +3552,7 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
 fn project_type_expression_arrow_emitted_from_original_split(
   original_split: TypeExprArrowSplit,
   anchor: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   bind_outcome(
@@ -3578,7 +3578,7 @@ fn translate_project_arrow_input_types_go(
   remaining: Int,
   anchor: Node,
   original_inputs: List<Node>,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   acc: List<Node>
 ) -> Outcome<List<Node>> {
@@ -3626,7 +3626,7 @@ fn translate_project_arrow_input_types_go(
 
 fn translate_project_arrow_split_types(
   original_split: TypeExprArrowSplit,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   anchor: Node
 ) -> Outcome<TypeExprArrowSplit> {
@@ -3674,7 +3674,7 @@ fn translate_project_arrow_split_types(
 fn translate_apply_use_site_ownership_to_type_shell(
   shell: Node,
   source_carrier: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
   match translate_sg_rc_bundle_apply_disposition(
@@ -3763,7 +3763,7 @@ fn function_boundary_site_to_ownership_use_site(
 // signature catalog OR no row matches (both fall back to the SG-2/binding_spellings path); Rejected
 // only on a genuine decode/ambiguity error.
 fn translate_target_function_signature_realization_for_boundary(
-  target: TargetModel,
+  target: TargetModelBundle,
   emitted: Node,
   boundary_site: FunctionBoundarySite
 ) -> Outcome<Optional<TargetFunctionSignatureRealization>> {
@@ -3805,7 +3805,7 @@ fn translate_target_function_signature_realization_for_boundary(
 // boundary role, then serialize the emitted wire (SG-RC + SG-2; no spelling-only bypass).
 fn serialize_type_expr_boundary_atom_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   boundary_site: FunctionBoundarySite,
   emitted: Node
@@ -3857,7 +3857,7 @@ fn serialize_type_expr_boundary_atom_bounded(
 // Atom boundaries consult signature realization; composite boundary types serialize normally.
 fn serialize_type_expr_boundary_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   boundary_site: FunctionBoundarySite,
   emitted: Node
@@ -3892,7 +3892,7 @@ fn serialize_type_expr_boundary_bounded(
   }
 }
 
-fn translate_coerced_shell_base(coerced: Node, target: TargetModel) -> Outcome<Node> {
+fn translate_coerced_shell_base(coerced: Node, target: TargetModelBundle) -> Outcome<Node> {
   match translate_target_atom_realization_for_carrier(
     target: target,
     source_carrier: coerced
@@ -3913,7 +3913,7 @@ fn translate_coerced_shell_base(coerced: Node, target: TargetModel) -> Outcome<N
 
 fn translate_coerced_shell_at_use_site(
   coerced: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
   translate_coerced_shell_at_use_site_from_source(
@@ -3927,7 +3927,7 @@ fn translate_coerced_shell_at_use_site(
 fn translate_coerced_shell_at_use_site_from_source(
   coerced: Node,
   ownership_source_carrier: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
   match translate_coerced_type_shell_from_source(
@@ -3952,7 +3952,7 @@ fn translate_coerced_shell_at_use_site_from_source(
 fn translate_coerced_type_shell_from_source(
   source_carrier: Node,
   coerced: Node,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<Node> {
   match source_carrier.kind {
     TypeNode { connective: Instantiation } =>
@@ -3970,7 +3970,7 @@ fn translate_coerced_type_shell_from_source(
   }
 }
 
-fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> {
+fn translate_coerced_shell(coerced: Node, target: TargetModelBundle) -> Outcome<Node> {
   translate_coerced_shell_at_use_site(
     coerced: coerced,
     target: target,
@@ -3985,7 +3985,7 @@ fn translate_use_site_ownership_source_carrier(source: Node, coerced: Node) -> N
   }
 }
 fn target_atom_realizations_catalog_from_model(
-  target: TargetModel,
+  target: TargetModelBundle,
   source_carrier: Node
 ) -> Outcome<Node> {
   match target_bundle_optional_child(
@@ -4006,7 +4006,7 @@ fn target_atom_realizations_catalog_from_model(
   }
 }
 fn translate_target_atom_realization_for_carrier(
-  target: TargetModel,
+  target: TargetModelBundle,
   source_carrier: Node
 ) -> Outcome<TargetAtomRealization> {
   bind_outcome(
@@ -4042,7 +4042,7 @@ fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
 fn translate_apply_use_site_ownership_to_value_expression(
   expr: TargetValueExpression,
   source_carrier: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<TargetValueExpression> {
   match translate_sg_rc_bundle_apply_disposition(
@@ -4096,7 +4096,7 @@ fn translate_apply_use_site_ownership_to_value_expression(
 fn translate_atom_realization_value_from_source_at_use_site(
   source: Node,
   coerced: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Optional<Node>> {
   match translate_target_atom_realization_for_carrier(
@@ -4142,7 +4142,7 @@ fn translate_atom_realization_value_from_source_at_use_site(
 fn translate_coerced_with_atom_realization_at_use_site(
   source: Node,
   coerced: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   use_site: TargetOwnershipUseSite,
   pending: Diagnostics
 ) -> Outcome<Node> {
@@ -4200,7 +4200,7 @@ fn translate_coerced_with_atom_realization_at_use_site(
 fn translate_coerced_with_atom_realization(
   source: Node,
   coerced: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   pending: Diagnostics
 ) -> Outcome<Node> {
   translate_coerced_with_atom_realization_at_use_site(
@@ -4221,7 +4221,7 @@ fn translate_type_fold_init(node: Node) -> Outcome<Node> {
 fn translate_fold_init(
   node: Node,
   tree: InferredTree,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<Node> {
   match node.kind {
     TypeNode { connective: _ } => translate_type_fold_init(node: node)
@@ -4241,7 +4241,7 @@ fn translate_fold_init(
 fn translate_mvp1_fold_init(
   node: Node,
   tree: InferredTree,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<Node> {
   match node.kind {
     TypeNode { connective: _ } =>
@@ -4272,7 +4272,7 @@ fn translate_mvp1_fold_init(
 // the target's grammar relation? Accepted(row) => the node is grammar-fixtured and must
 // serialize via the mode-1 whole-node match (grammar_relation_row_for_emitted :536 ->
 // pre-baked tokens); Rejected => no row, fall through to the projection / mode-2 path.
-fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> Outcome<Node> {
+fn translate_grammar_relation_row_match(target: TargetModelBundle, emitted: Node) -> Outcome<Node> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
     f: fn(rules) { grammar_relation_row_for_emitted(rules: rules, emitted: emitted) }
@@ -4281,7 +4281,7 @@ fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> O
 fn translate_type_expression_tree(
   node: Node,
   tree: InferredTree,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   bind_outcome(
@@ -4309,7 +4309,7 @@ fn translate_type_expression_tree(
 fn translate_node_with_projection(
   node: Node,
   tree: InferredTree,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<Node> {
   bind_outcome(
     o: type_expression_projection_from_target(target: target),
@@ -4344,7 +4344,7 @@ fn translate_node_with_projection(
 fn project_type_expression_subtree(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   if remaining <= 0 {
@@ -4379,7 +4379,7 @@ fn project_type_expression_subtree(
 fn project_type_expression_children_in_node_go(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   edges: List<Edge>,
   acc: List<Edge>
@@ -4420,7 +4420,7 @@ fn project_type_expression_children_in_node_go(
 fn project_type_expression_children_in_node(
   remaining: Int,
   node: Node,
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<Edge>> {
   project_type_expression_children_in_node_go(
@@ -4435,7 +4435,7 @@ fn project_type_expression_children_in_node(
 fn translate_node_computation(
   node: Node,
   tree: InferredTree,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<Node> {
   fold_node(
     n: node,
@@ -4448,7 +4448,7 @@ fn translate_node_computation(
 fn translate_node_mvp1(
   node: Node,
   tree: InferredTree,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<Node> {
   fold_node(
     n: node,
@@ -4461,7 +4461,7 @@ fn translate_node_mvp1(
 fn translate_node(
   node: Node,
   tree: InferredTree,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<Node> {
   match target_bundle_child_optional_type_expr_projection(target: target) {
     Accepted { value: ProjectionPresent, diagnostics: _ } =>
@@ -4472,12 +4472,12 @@ fn translate_node(
       Rejected { diagnostics: r }
   }
 }
-// 🟡 gated — coproduct-dissolution interim (docs/modeling-discipline.md Practice 4/9) — feature:sg-2-mvp1-projection-absent-shim — consumer:translate_node — bind PR #3962 / docs/planning/v4-sg2-type-expression-projection-worksheet-2026-05-30.md — owner:Target Realization (SG-2) — lane:extdeps TargetModel row rollout — dissolve-on-arrival: every v4.extdeps.languages.* TargetModel bundle carries target_model_edge_type_expression_projection; delete ProjectionAbsent arm, translate_node_mvp1, and TypeExprProjectionPresence from translate_node — forbidden: steady-state dual translate paths or new ProjectionAbsent match arms outside this gate.
+// 🟡 gated — coproduct-dissolution interim (docs/modeling-discipline.md Practice 4/9) — feature:sg-2-mvp1-projection-absent-shim — consumer:translate_node — bind PR #3962 / docs/planning/v4-sg2-type-expression-projection-worksheet-2026-05-30.md — owner:Target Realization (SG-2) — lane:extdeps TargetModelBundle row rollout — dissolve-on-arrival: every v4.extdeps.languages.* TargetModelBundle bundle carries target_model_edge_type_expression_projection; delete ProjectionAbsent arm, translate_node_mvp1, and TypeExprProjectionPresence from translate_node — forbidden: steady-state dual translate paths or new ProjectionAbsent match arms outside this gate.
 type TypeExprProjectionPresence
   = ProjectionPresent
   | ProjectionAbsent
 fn target_bundle_child_optional_type_expr_projection(
-  target: TargetModel
+  target: TargetModelBundle
 ) -> Outcome<TypeExprProjectionPresence> {
   match target_bundle_optional_child(
     target: target,
@@ -4520,7 +4520,7 @@ fn translate_fold_step(
 }
 fn translate(
   tree: InferredTree,
-  target: TargetModel
-) -> Outcome<TargetNodeTree> {
+  target: TargetModelBundle
+) -> Outcome<Node> {
   translate_node(node: tree.root, tree: tree, target: target)
 }

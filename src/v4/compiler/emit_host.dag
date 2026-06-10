@@ -55,7 +55,7 @@ import v4.std.test_claim_falsification {
 import v4.std.machine { Byte }
 import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
 import v4.std.runtime { RuntimeValue, RuntimePrimitive }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model { TargetModelBundle }
 import v4.std.text { String }
 import v4.std.verdict { Verdict, Pass, Fail, Deferred, verdict_fail }
 import v4.std.verification {
@@ -75,7 +75,7 @@ data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
 data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
 // 🟡 coproduct dissolution — feature:emit-host-rust-authority-pin (joint spec §4.2 A3);
 // W3: executable transport in `emit_host_bridge.rs`; substrate row defers until T-22 dispatch.
-// dissolve-on: structural `runtime_row` on TargetModel replaces `authority_source_text` pin match.
+// dissolve-on: structural `runtime_row` on TargetModelBundle replaces `authority_source_text` pin match.
 data emit_host_rust_authority_pin: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 // Aligns with `python_mvp1_source_text` in `v4.extdeps.languages.python` (W3.4 python host row).
 data emit_host_python_authority_pin: String = "def add(x, y): return x + y"
@@ -140,7 +140,7 @@ fn emit_host_rust_i64_node() -> Node {
 }
 
 fn emit_host_receipt_from_source(
-  target: TargetModel,
+  target: TargetModelBundle,
   source: TargetSource,
   exit: HostExit,
   stdout_bytes: ByteString,
@@ -183,7 +183,7 @@ fn runtime_value_parse_go(bytes: ByteString) -> Outcome<RuntimeValue> {
   runtime_value_parse_rust(bytes: bytes)
 }
 
-fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<RuntimeValue> {
+fn runtime_value_parse(target: TargetModelBundle, stdout: HostRunStdout) -> Outcome<RuntimeValue> {
   if target.authority_source_text == emit_host_rust_authority_pin {
     runtime_value_parse_rust(bytes: stdout.bytes)
   } else if target.authority_source_text == emit_host_python_authority_pin {
@@ -200,7 +200,7 @@ fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<Ru
 // Substrate row: body stays fail-closed; T-22 eval intercepts Callable dispatch to
 // `tools/emit_host_runner` (no fabricated receipt in `.dag`). Executable proof: `emit_host_eval.rs`.
 fn run_emit_host_rust(
-  target: TargetModel,
+  target: TargetModelBundle,
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
@@ -213,7 +213,7 @@ fn run_emit_host_rust(
 // in `emit_host_eval.rs` (rust/go route through substrate `emit_host_receipt_from_source`).
 // Asymmetry is tracked under T-PB-B until python receipt assembly moves into `.dag`.
 fn run_emit_host_python(
-  target: TargetModel,
+  target: TargetModelBundle,
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
@@ -223,7 +223,7 @@ fn run_emit_host_python(
 }
 
 fn run_emit_host_go(
-  target: TargetModel,
+  target: TargetModelBundle,
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
@@ -233,7 +233,7 @@ fn run_emit_host_go(
 }
 
 fn run_emit_host(
-  target: TargetModel,
+  target: TargetModelBundle,
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
@@ -252,7 +252,7 @@ fn run_emit_host(
 
 fn run_test_claim_emit_vs_eval_verdict(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
+  target: TargetModelBundle,
   host_receipt: EmitHostRunReceipt,
   host_actual: RuntimeValue,
   expected: Outcome<RuntimeValue>
@@ -287,7 +287,7 @@ fn run_test_claim_emit_vs_eval_verdict(
 // expected_eval_root: rhs / expected_value (matches run_test_claim_runtime_assert).
 fn run_test_claim_emit_vs_eval_for_claim(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
+  target: TargetModelBundle,
   claim_input_root: Node,
   expected_eval_root: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
@@ -343,7 +343,7 @@ fn run_test_claim_emit_vs_eval_for_claim(
 
 fn run_test_claim_emit_vs_eval_run(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
+  target: TargetModelBundle,
   verdict: Verdict<TestClaimEvalSubject<Node>, RuntimeValue>
 ) -> TestClaimRun<Node, RuntimeValue> {
   TestClaimRun {
@@ -354,7 +354,7 @@ fn run_test_claim_emit_vs_eval_run(
 
 fn run_test_claim_emit_vs_eval(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel
+  target: TargetModelBundle
 ) -> TestClaimRun<Node, RuntimeValue> {
   match subject.claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: lhs, classification: _ } =>

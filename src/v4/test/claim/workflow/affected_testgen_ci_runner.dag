@@ -16,7 +16,7 @@ import v4.lens.edit_locus {
   RepoPath,
   affected_set_reading_from_git_diff_provenance
 }
-import v4.std.algebra { fold_list, length }
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, length }
 import v4.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
@@ -119,6 +119,14 @@ data affected_testgen_source_dependency_provenance: NodeArtifactProvenance = Nod
   artifact: affected_testgen_source_dependency_artifact
 }
 
+data affected_testgen_provenance: FreeMonoid<NodeArtifactProvenance> = Cons {
+  head: affected_testgen_generated_claim_provenance,
+  tail: Cons {
+    head: affected_testgen_source_dependency_provenance,
+    tail: Empty
+  }
+}
+
 
 data affected_testgen_git_diff: GitDiffNameOnly = GitDiffNameOnly {
   changed_paths: [affected_testgen_path_witness_validity]
@@ -153,10 +161,7 @@ fn affected_testgen_reading_from_fixture_diff(
   affected_set_reading_from_git_diff_provenance(
     graph: affected_testgen_claim_tree(),
     git_diff: git_diff,
-    provenance: [
-      affected_testgen_generated_claim_provenance,
-      affected_testgen_source_dependency_provenance
-    ]
+    provenance: affected_testgen_provenance
   )
 }
 

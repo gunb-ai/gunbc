@@ -254,7 +254,7 @@ type TargetConstructorTemplate
 
 type TargetAtomRealization {
   source_carrier: Node
-  target_model: TargetModel
+  target_model: TargetModelBundle
   type_form: TargetTypeExpression
   value_form: TargetValueTemplate
   constructor_form: Optional<TargetConstructorTemplate>
@@ -807,7 +807,7 @@ fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge>
   }
 }
 
-fn target_model_bundle_core(host: TargetModel) -> Node {
+fn target_model_bundle_core(host: TargetModelBundle) -> Node {
   match host.bundle.kind {
     TypeNode { connective: Conj } =>
       Node {
@@ -832,7 +832,7 @@ fn target_model_bundle_core(host: TargetModel) -> Node {
 // content_hash disjunction. Until then, rows encode with host bundle minus
 // atom_realizations (including collection_realization when on the live host); forbidden: a third bundle
 // shape or widening the disjunction without modeling escalation.
-fn target_atom_realization_bundle_matches_host(row_bundle: Node, host: TargetModel) -> Bool {
+fn target_atom_realization_bundle_matches_host(row_bundle: Node, host: TargetModelBundle) -> Bool {
   content_hash(n: row_bundle) == content_hash(n: host.bundle)
   || content_hash(n: row_bundle) == content_hash(n: target_model_bundle_core(host: host))
 }
@@ -946,7 +946,7 @@ fn target_atom_realization_catalog_lookup_step(
   acc: TargetAtomRealizationCatalogLookup,
   row_node: Node,
   source_carrier: Node,
-  host_target_model: TargetModel
+  host_target_model: TargetModelBundle
 ) -> TargetAtomRealizationCatalogLookup {
   match target_atom_realization_from_row_node(
     row_node: row_node,
@@ -997,7 +997,7 @@ fn target_atom_realization_display_name_decode_invalid_diagnostic(
 
 fn target_atom_realization_from_row_node(
   row_node: Node,
-  host_target_model: TargetModel
+  host_target_model: TargetModelBundle
 ) -> Outcome<TargetAtomRealization> {
   let source_carrier = target_atom_realization_conj_child(
     row_node: row_node,
@@ -1175,7 +1175,7 @@ fn target_atom_realization_display_name_from_row(
 fn target_atom_realization_lookup_in_catalog_node(
   catalog: Node,
   source_carrier: Node,
-  host_target_model: TargetModel
+  host_target_model: TargetModelBundle
 ) -> Outcome<TargetAtomRealization> {
   match catalog.kind {
     TypeNode { connective: Conj } =>
@@ -1241,7 +1241,7 @@ type FunctionBoundarySite
 // TargetAtomRealization (shared source_carrier), so it carries no second atom catalog.
 type TargetFunctionSignatureRealization {
   source_carrier: Node
-  target_model: TargetModel
+  target_model: TargetModelBundle
   boundary_site: FunctionBoundarySite
   signature_type_form: TargetTypeExpression
 }
@@ -1403,7 +1403,7 @@ fn target_function_signature_realization_catalog_node(
 
 fn target_function_signature_realization_from_row_node(
   row_node: Node,
-  host_target_model: TargetModel
+  host_target_model: TargetModelBundle
 ) -> Outcome<TargetFunctionSignatureRealization> {
   let source_carrier = target_atom_realization_conj_child(
     row_node: row_node,
@@ -1465,7 +1465,7 @@ fn target_function_signature_realization_catalog_lookup_step(
   row_node: Node,
   source_carrier: Node,
   boundary_site: FunctionBoundarySite,
-  host_target_model: TargetModel
+  host_target_model: TargetModelBundle
 ) -> TargetFunctionSignatureRealizationCatalogLookup {
   match target_function_signature_realization_from_row_node(
     row_node: row_node,
@@ -1495,7 +1495,7 @@ fn target_function_signature_realization_lookup_in_catalog_node(
   catalog: Node,
   source_carrier: Node,
   boundary_site: FunctionBoundarySite,
-  host_target_model: TargetModel
+  host_target_model: TargetModelBundle
 ) -> Outcome<TargetFunctionSignatureRealization> {
   match catalog.kind {
     TypeNode { connective: Conj } =>
@@ -3846,7 +3846,7 @@ fn type_expr_projection_bundle_shape_for_connective(
 
 // SG-2 fold — fail-close when caller projection row disagrees with bundle authority (P2/P3).
 fn type_expr_projection_row_closedness_from_target(
-  target: TargetModel,
+  target: TargetModelBundle,
   projection: TargetTypeExpressionProjection,
   connective: Connective
 ) -> Outcome<Node> {
