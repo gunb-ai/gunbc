@@ -8643,19 +8643,13 @@ pub fn pattern_parent_enum(
     {
         let scrut_is_known_enum = ((scrut_type.clone().as_str() != "".to_string().as_str())
             && is_enum_type_name(scrut_type.clone(), type_summaries));
-        if ((name.clone().as_str() == "Holds".to_string().as_str())
-            || (name.clone().as_str() == "Violates".to_string().as_str()))
-        {
-            Some("Witness".to_string())
+        if (parent_enum.clone() != None) {
+            parent_enum.clone()
         } else {
-            if (parent_enum.clone() != None) {
-                parent_enum.clone()
+            if scrut_is_known_enum {
+                Some(scrut_type.clone())
             } else {
-                if scrut_is_known_enum {
-                    Some(scrut_type.clone())
-                } else {
-                    None
-                }
+                None
             }
         }
     }
