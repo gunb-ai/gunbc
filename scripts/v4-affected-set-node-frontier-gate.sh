@@ -11,6 +11,10 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
+# Batch witness runner: resolves one shared --entry closure once and runs many
+# witnesses in a single process. Used for the GREEN pass only; the perturb pass
+# stays per-row through `$bin` (each row mutates a different function).
+bin_batch="${CLAIM_BATCH:-target/release/claim_batch}"
 perturb=0
 
 case "${1:-}" in
@@ -27,6 +31,11 @@ esac
 
 if [[ ! -x "$bin" ]]; then
   echo "error: gunbc (v2 stage0 binary) not found at $bin" >&2
+  exit 2
+fi
+
+if [[ ! -x "$bin_batch" ]]; then
+  echo "error: claim_batch binary not found at $bin_batch (build with: cargo build -p v2-compiler --release --bin claim_batch)" >&2
   exit 2
 fi
 
@@ -89,6 +98,32 @@ run_row() {
   "$bin" run --source-root "$source_root" --entry "$entry" --function "$function" --claim-run
 }
 
+# GREEN pass for a stream of "<entry>\t<function>" lines on stdin: group the
+# functions by their shared --entry and resolve each entry's import closure ONCE
+# (via claim_batch), running all of that entry's witnesses in a single process.
+# This collapses the N-rows-share-one-entry green pass from N full-tree resolves
+# to one. Fail-closed: a non-zero claim_batch exit (any witness red) aborts.
+batch_green_pass() {
+  local title="$1"
+  local -A entry_fns=()
+  local -a entry_order=()
+  local entry function
+  while IFS=$'\t' read -r entry function; do
+    [[ -z "$entry" ]] && continue
+    if [[ -z "${entry_fns[$entry]+x}" ]]; then
+      entry_order+=("$entry")
+    fi
+    entry_fns[$entry]+="${function},"
+  done
+  local e fns
+  for e in "${entry_order[@]}"; do
+    fns="${entry_fns[$e]%,}"
+    echo "::group::${title} (batch green): ${e}"
+    "$bin_batch" --source-root src/v4 --entry "$e" --functions "$fns" --claim-run
+    echo "::endgroup::"
+  done
+}
+
 perturb_function_to_false() {
   local file="$1" function="$2"
   python3 - "$file" "$function" <<'PY'
@@ -128,7 +163,8 @@ if [[ -z "$expected_count" ]]; then
   exit 2
 fi
 
-row_count=0
+# Collect every row first so the GREEN pass can resolve each shared entry once.
+node_frontier_rows=()
 while IFS= read -r member; do
   [[ -z "$member" ]] && continue
   row="$(project_list_member_row "$member")"
@@ -136,10 +172,22 @@ while IFS= read -r member; do
     echo "error: list member $member missing AffectedSetNodeFrontierClaimRunRow binding in $gate_model" >&2
     exit 2
   fi
+  node_frontier_rows+=("$row")
+done < <(list_claim_run_row_members)
+
+if [[ "${#node_frontier_rows[@]}" -eq 0 ]]; then
+  echo "error: ci_runner_node_frontier_claim_run_rows has no members in $gate_model" >&2
+  exit 2
+fi
+
+# GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
+printf '%s\n' "${node_frontier_rows[@]}" | cut -f2,3 \
+  | batch_green_pass "affected-set node-frontier"
+
+# PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
+row_count=0
+for row in "${node_frontier_rows[@]}"; do
   IFS=$'\t' read -r label entry function <<< "$row"
-  echo "::group::affected-set node-frontier: ${label}"
-  run_row "src/v4" "$entry" "$function"
-  echo "::endgroup::"
 
   if [[ "$perturb" -eq 1 ]]; then
     tmp="$(mktemp -d)"
@@ -158,12 +206,7 @@ while IFS= read -r member; do
     trap - EXIT
   fi
   row_count=$((row_count + 1))
-done < <(list_claim_run_row_members)
-
-if [[ "$row_count" -eq 0 ]]; then
-  echo "error: ci_runner_node_frontier_claim_run_rows has no members in $gate_model" >&2
-  exit 2
-fi
+done
 
 if [[ "$row_count" -ne "$expected_count" ]]; then
   echo "error: node-frontier gate projected ${row_count} rows; modeled count is ${expected_count}" >&2
@@ -286,7 +329,8 @@ if [[ -z "$expected_affected_testgen_count" ]]; then
   exit 2
 fi
 
-affected_testgen_count=0
+# Collect every row first so the GREEN pass can resolve each shared entry once.
+affected_testgen_rows=()
 while IFS= read -r member; do
   [[ -z "$member" ]] && continue
   row="$(project_affected_testgen_row "$member")"
@@ -294,10 +338,22 @@ while IFS= read -r member; do
     echo "error: list member $member missing AffectedTestgenClaimRunRow binding in $affected_testgen_gate_model" >&2
     exit 2
   fi
+  affected_testgen_rows+=("$row")
+done < <(list_affected_testgen_row_members)
+
+if [[ "${#affected_testgen_rows[@]}" -eq 0 ]]; then
+  echo "error: affected_testgen_claim_run_rows has no members in $affected_testgen_gate_model" >&2
+  exit 2
+fi
+
+# GREEN pass: one resolve per shared entry, all that entry's witnesses in it.
+printf '%s\n' "${affected_testgen_rows[@]}" | cut -f2,3 \
+  | batch_green_pass "affected-testgen"
+
+# PERTURB pass + count: one mutated resolve per row (each mutates a different fn).
+affected_testgen_count=0
+for row in "${affected_testgen_rows[@]}"; do
   IFS=$'\t' read -r label entry function <<< "$row"
-  echo "::group::affected-testgen: ${label}"
-  run_row "src/v4" "$entry" "$function"
-  echo "::endgroup::"
 
   if [[ "$perturb" -eq 1 ]]; then
     tmp="$(mktemp -d)"
@@ -316,12 +372,7 @@ while IFS= read -r member; do
     trap - EXIT
   fi
   affected_testgen_count=$((affected_testgen_count + 1))
-done < <(list_affected_testgen_row_members)
-
-if [[ "$affected_testgen_count" -eq 0 ]]; then
-  echo "error: affected_testgen_claim_run_rows has no members in $affected_testgen_gate_model" >&2
-  exit 2
-fi
+done
 
 if [[ "$affected_testgen_count" -ne "$expected_affected_testgen_count" ]]; then
   echo "error: affected-testgen gate projected ${affected_testgen_count} rows; modeled count is ${expected_affected_testgen_count}" >&2
