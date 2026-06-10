@@ -80,6 +80,12 @@ pub fn preserve_nominal_brand_on_resolve(
     }
 }
 
+pub fn is_bare_type_ref(n: Rc<Node>) -> bool {
+    (((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) == 0))
+        && ((n.params.clone().len() as i64) == 0))
+}
+
 pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
     {
         let source_indices = env.source_indices.clone();
@@ -91,14 +97,12 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     && (resolved.inferred.clone() != None))
                 {
                     match resolved.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: target, .. }) => resolve_node_bounded(
+                        Some(InferredNode::Resolved { node: target, .. }) => resolve_alias_target(
                             target.clone(),
                             env.clone(),
                             module_name.clone(),
                             0,
-                        )
-                        .resolved
-                        .clone(),
+                        ),
                         _ => resolve_node_bounded(
                             resolved.clone(),
                             env.clone(),
@@ -119,7 +123,16 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                         != authored_name_at(source_indices.clone(), structural.clone()).as_str()))
                     && !is_declared_container_alias_spelling(brand.clone()))
                 {
-                    with_preserved_binding_id(resolved.clone(), structural.clone())
+                    match resolved.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            if is_bare_type_ref(target.clone()) {
+                                structural.clone()
+                            } else {
+                                with_preserved_binding_id(resolved.clone(), structural.clone())
+                            }
+                        }
+                        _ => with_preserved_binding_id(resolved.clone(), structural.clone()),
+                    }
                 } else {
                     if (((resolved.connective.clone() == Connective::NoConnective)
                         && ((resolved.children.clone().len() as i64) == 0))
@@ -127,14 +140,12 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     {
                         match resolved.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: target, .. }) => {
-                                let target_resolved = resolve_node_bounded(
+                                let target_resolved = resolve_alias_target(
                                     target.clone(),
                                     env.clone(),
                                     module_name.clone(),
                                     0,
-                                )
-                                .resolved
-                                .clone();
+                                );
                                 target_resolved
                             }
                             _ => resolved.clone(),
@@ -1601,8 +1612,8 @@ pub fn resolve_optional_node(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    binding_id: None,
                     ident: None,
+                    binding_id: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -3009,8 +3020,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),

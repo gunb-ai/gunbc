@@ -83,7 +83,7 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       let structural = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Present { value: Resolved { node: target } } =>
-            resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
+            resolve_alias_target(target: target, env: env, module_name: module_name, depth: 0)
           _ => resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0).resolved
         }
       } else {
@@ -103,7 +103,7 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Present { value: Resolved { node: target } } =>
-            let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0).resolved
+            let target_resolved = resolve_alias_target(target: target, env: env, module_name: module_name, depth: 0)
             target_resolved
           _ => resolved
         }
