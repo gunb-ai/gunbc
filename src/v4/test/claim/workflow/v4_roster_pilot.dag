@@ -156,7 +156,6 @@ fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
   let m50 = map_insert(m49, sg_rc_value_rc_wrap_tagged, "sg_rc_value_rc_wrap_tagged")
   let m51 = map_insert(m50, witness_lens_idempotency_family_gate_closed, "witness_lens_idempotency_family_gate_closed")
   let m52 = map_insert(m51, witness_lens_parallelism_family_gate_closed, "witness_lens_parallelism_family_gate_closed")
-<<<<<<< HEAD
   let m53 = map_insert(m52, witness_project_to_core_real_dispatch_accepts_sibling, "witness_project_to_core_real_dispatch_accepts_sibling")
   let m54 = map_insert(m53, witness_project_to_core_real_dispatch_rejects_wrong_core, "witness_project_to_core_real_dispatch_rejects_wrong_core")
   let m55 = map_insert(m54, witness_project_to_core_rejects_surface_only_empty_core, "witness_project_to_core_rejects_surface_only_empty_core")
@@ -177,31 +176,8 @@ fn v4_roster_pilot_witness_function_spellings() -> Map<Symbol, String> {
   let m70 = map_insert(m69, witness_cross_target_rust_i32_to_python_int_accepts, "witness_cross_target_rust_i32_to_python_int_accepts")
   let m71 = map_insert(m70, witness_cross_target_python_to_rust_i32_would_lose_information, "witness_cross_target_python_to_rust_i32_would_lose_information")
   let m72 = map_insert(m71, witness_cross_target_python_to_rust_i32_rejects, "witness_cross_target_python_to_rust_i32_rejects")
-  map_insert(m72, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
-=======
-  let m53 = map_insert(m52, project_to_core_accepts_sibling, "witness_project_to_core_real_dispatch_accepts_sibling")
-  let m54 = map_insert(m53, project_to_core_rejects_wrong_core, "witness_project_to_core_real_dispatch_rejects_wrong_core")
-  let m55 = map_insert(m54, project_to_core_rejects_empty_core, "witness_project_to_core_rejects_surface_only_empty_core")
-  let m56 = map_insert(m55, project_to_core_rejects_surface_wrapped_core, "witness_project_to_core_rejects_core_only_under_surface")
-  let m57 = map_insert(m56, project_to_core_preserves_ambiguity, "witness_project_to_core_derives_preserves_ambiguity")
-  let m58 = map_insert(m57, project_to_core_drops_nested_surface, "witness_project_to_core_drops_nested_surface")
-  let m59 = map_insert(m58, project_to_core_rejects_nested_core_difference, "witness_project_to_core_rejects_nested_core_difference")
-  let m60 = map_insert(m59, project_to_core_rejects_different_connective_same_core_children, "witness_project_to_core_rejects_different_connective_same_core_children")
-  let m61 = map_insert(m60, integer_value_set_accepts_subset, "witness_integer_value_set_accepts_i32_subset_python_int")
-  let m62 = map_insert(m61, integer_value_set_accepts_proper_subrange, "witness_integer_value_set_accepts_i16_subset_i32")
-  let m63 = map_insert(m62, integer_value_set_accepts_cross_signed_subrange, "witness_integer_value_set_accepts_u8_subset_i16")
-  let m64 = map_insert(m63, integer_value_set_rejects_malformed_interval, "witness_integer_value_set_rejects_malformed_interval_payload")
-  let m65 = map_insert(m64, integer_value_set_interval_rejects_malformed_interval, "witness_integer_value_set_interval_containment_rejects_malformed_payload")
-  let m66 = map_insert(m65, integer_value_set_reverse_strict, "witness_integer_value_set_reverse_is_strict_coarsening")
-  let m67 = map_insert(m66, integer_value_set_refuses_incompatible, "witness_integer_value_set_refuses_incompatible_unknown")
-  let m68 = map_insert(m67, integer_interval_bound_compare_orders_pointer_width_bounds, "witness_integer_interval_bound_compare_orders_pointer_width_bounds")
-  let m69 = map_insert(m68, integer_value_set_rejects_unbounded_with_extra_field, "witness_integer_value_set_rejects_unbounded_with_extra_field")
-  let m70 = map_insert(m69, cross_target_rust_i32_python_int_widens, "witness_cross_target_rust_i32_to_python_int_accepts")
-  let m71 = map_insert(m70, cross_target_python_int_rust_i32_narrows, "witness_cross_target_python_to_rust_i32_would_lose_information")
-  let m72 = map_insert(m71, cross_target_python_int_rust_i32_exact_rejects, "witness_cross_target_python_to_rust_i32_rejects")
   let m73 = map_insert(m72, scheduler_runnable_frontier_claims_hold, "scheduler_runnable_frontier_claims_hold")
   map_insert(m73, parallel_executor_claims_hold, "parallel_executor_claims_hold")
->>>>>>> origin/main
 }
 
 
