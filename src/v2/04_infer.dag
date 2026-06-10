@@ -494,6 +494,17 @@ fn ok_infer(texpr: Node) -> InferResult {
   }
 }
 
+fn infer_null_literal_node(expected: Node?) -> Node {
+  match expected {
+    Some { value: exp } =>
+      match exp.return_cardinality {
+        CardOptional => exp
+        _ => infer_literal_node(lit: LitNull)
+      }
+    None => infer_literal_node(lit: LitNull)
+  }
+}
+
 fn semantic_expr_error_node(message: String, span: SourceSpan) -> Node {
   make_expr_error_node(kind: SemanticExprError, message: message, span: span)
 }
@@ -1405,12 +1416,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     ExprLiteral { value: lit } =>
       let span = texpr.span
       let inferred_lit = match lit {
-        LitNull =>
-          match expected {
-            Some { value: exp } =>
-              if exp.return_cardinality == CardOptional { exp } else { infer_literal_node(lit: lit) }
-            None => infer_literal_node(lit: lit)
-          }
+        LitNull => infer_null_literal_node(expected: expected)
         _ => infer_literal_node(lit: lit)
       }
       ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, children: [], inferred: Some { value: Resolved { node: inferred_lit } }, span: span))
@@ -5279,10 +5285,8 @@ fn collect_import_bindings_for_import(acc: Map<Int, TypeBinding>, imp: ResolvedI
           bacc
         } else if import_allows_type_binding(imp: imp, binding: binding, env: env) {
           map_insert(bacc, ident, binding)
-        } else if map_get(bacc, ident) != none {
-          bacc
         } else {
-          map_insert(bacc, ident, binding)
+          bacc
         }
       None => bacc
     }

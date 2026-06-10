@@ -10943,15 +10943,7 @@ pub fn collect_import_bindings_for_import(
                             {
                                 v2_rt::rc_map_insert(bacc.clone(), ident.clone(), binding.clone())
                             } else {
-                                if (v2_rt::map_get(&bacc, ident.clone()) != None) {
-                                    bacc.clone()
-                                } else {
-                                    v2_rt::rc_map_insert(
-                                        bacc.clone(),
-                                        ident.clone(),
-                                        binding.clone(),
-                                    )
-                                }
+                                bacc.clone()
                             }
                         }
                     }
