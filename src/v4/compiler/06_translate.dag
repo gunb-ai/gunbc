@@ -25,7 +25,11 @@ import v4.std.target_model {
   target_bodied_arrow_compose_statement_tokens,
   target_model_edge_bodied_arrow_statement_scaffold
 }
-import v4.compiler.infer { InferredTree, canonical_grounding_for_node }
+import v4.compiler.infer {
+  InferredTree,
+  algebra_ref_is_grounded,
+  canonical_grounding_for_node
+}
 import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
@@ -4361,14 +4365,19 @@ fn translate_mvp1_coerce_from_grounding_or_evidence(
     Rejected { diagnostics: r } =>
       match canonical_grounding_for_node(tree: tree, node: node) {
         Accepted { value: grounding } =>
-          translate_coerced_with_atom_realization(
-            source: node,
-            coerced: grounding.witness.structural.evidence,
-            target: target,
-            pending: None
-          )
+          if algebra_ref_is_grounded(algebra: grounding.witness.structural.evidence) {
+            translate_coerced_with_atom_realization(
+              source: node,
+              coerced: grounding.witness.structural.evidence,
+              target: target,
+              pending: None
+            )
+          } else {
+            // E-9: body-scope operator/param atoms — structural carrier, not target type coercion.
+            translate_type_fold_init(node: node)
+          }
         Rejected { diagnostics: _ } =>
-          // E-9 body-scope atoms (e.g. Transform operator/param refs) carry structurally.
+          // E-9: no grounding witness — same explicit structural carrier (not silent coercion).
           translate_type_fold_init(node: node)
       }
   }
