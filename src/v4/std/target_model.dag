@@ -3487,7 +3487,8 @@ data target_type_expr_projection_candidate_closedness: Symbol = target_type_expr
 fn target_type_expr_symbol_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
-    children: []
+    children: [],
+    span: Unanchored
   }
 }
 
@@ -3503,7 +3504,8 @@ fn target_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
         name: target_type_expr_field_ident_token,
         target: target_type_expr_symbol_atom(id: form.ident_token)
       )
-    ]
+    ],
+    span: Unanchored
   }
 }
 
@@ -3555,7 +3557,8 @@ fn target_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
             target: target_type_expr_symbol_atom(id: form.close)
           )
         ]
-    }
+    },
+    span: Unanchored
   }
 }
 
@@ -3571,7 +3574,8 @@ fn target_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
         name: target_type_expr_field_variant_separator,
         target: target_type_expr_symbol_atom(id: form.variant_separator)
       )
-    ]
+    ],
+    span: Unanchored
   }
 }
 
@@ -3607,7 +3611,8 @@ fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
         name: target_type_expr_field_param_list_separator,
         target: target_type_expr_symbol_atom(id: form.param_list_separator)
       )
-    ]
+    ],
+    span: Unanchored
   }
 }
 
@@ -3638,7 +3643,8 @@ fn type_expr_projection_row_shape_envelope(
         ),
         tail: Empty
       }
-    )
+    ),
+    span: envelope.span
   }
 }
 
@@ -3689,7 +3695,8 @@ fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection)
           connective: Instantiation
         )
       )
-    ]
+    ],
+    span: Unanchored
   }
 }
 
