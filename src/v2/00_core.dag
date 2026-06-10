@@ -318,12 +318,14 @@ type DeclaredFuncEnv {
 // Node -- unified recursive structure
 // =========================================================================
 
-type BindingId = Int
+type BindingId {
+  value: Int
+}
 
 type Node {
   name: String
   ident: Int?
-  binding_id: Int?
+  binding_id: BindingId?
   span: SourceSpan
   ident_span: SourceSpan?
   children: List<Node>
@@ -353,7 +355,7 @@ fn node_name_span(n: Node) -> SourceSpan {
   match n.ident_span { Some { value: s } => s  None => n.span }
 }
 
-fn node_with_binding_id(n: Node, binding_id: Int) -> Node {
+fn node_with_binding_id(n: Node, binding_id: BindingId) -> Node {
   Node {
     name: n.name, ident: n.ident, binding_id: Some { value: binding_id },
     span: n.span, ident_span: n.ident_span, children: n.children,

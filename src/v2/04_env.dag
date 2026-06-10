@@ -1,7 +1,7 @@
 // v2 type environment -- structural type bindings and lookup.
 module v2.compiler.infer_env
 
-import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
+import v2.std.core { BindingId, Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
@@ -10,8 +10,8 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
-  decl_registry: Map<Int, TypeDeclBinding>
-  duplicate_decl_ids: List<Int>
+  decl_registry: Map<BindingId, TypeDeclBinding>
+  duplicate_decl_ids: List<BindingId>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
   inductive_fields: Map<String, List<InductiveField>>
@@ -26,7 +26,7 @@ type TypeBinding {
 }
 
 type TypeDeclBinding {
-  binding_id: Int
+  binding_id: BindingId
   binding_key: Int
   name: String
   provenance: SubValueRelation
@@ -37,7 +37,7 @@ type BindingIdAllocator {
 }
 
 type BindingIdAllocResult {
-  binding_id: Int
+  binding_id: BindingId
   allocator: BindingIdAllocator
 }
 
@@ -47,17 +47,17 @@ fn empty_binding_id_allocator() -> BindingIdAllocator {
 
 fn alloc_binding_id(allocator: BindingIdAllocator) -> BindingIdAllocResult {
   BindingIdAllocResult {
-    binding_id: allocator.next_id,
+    binding_id: BindingId { value: allocator.next_id },
     allocator: BindingIdAllocator { next_id: allocator.next_id + 1 }
   }
 }
 
 type DeclRegistryMergeState {
-  decl_registry: Map<Int, TypeDeclBinding>
-  duplicate_decl_ids: List<Int>
+  decl_registry: Map<BindingId, TypeDeclBinding>
+  duplicate_decl_ids: List<BindingId>
 }
 
-fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<Int, TypeDeclBinding>) -> DeclRegistryMergeState {
+fn merge_decl_registry_state(state: DeclRegistryMergeState, incoming: Map<BindingId, TypeDeclBinding>) -> DeclRegistryMergeState {
   fold(map_keys(incoming), init: state, f: (acc, binding_id) =>
     match map_get(incoming, binding_id) {
       Some { value: binding } =>

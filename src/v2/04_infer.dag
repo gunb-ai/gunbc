@@ -643,17 +643,6 @@ fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
   is_unknown || is_v4 || is_compiler_substrate || is_v2_std || is_std || is_extdeps
 }
 
-fn direct_call_arg_span_skips(span: SourceSpan) -> Bool {
-  let file = span.file
-  let is_src_v2 = string_length(s: file) >= 7 && substring(s: file, start: 0, end: 7) == "src/v2/"
-  let is_src_v3 = string_length(s: file) >= 7 && substring(s: file, start: 0, end: 7) == "src/v3/"
-  let is_src_v4 = string_length(s: file) >= 7 && substring(s: file, start: 0, end: 7) == "src/v4/"
-  let is_dsl_std = string_length(s: file) >= 8 && substring(s: file, start: 0, end: 8) == "dsl/std/"
-  let is_dsl_v4 = string_length(s: file) >= 7 && substring(s: file, start: 0, end: 7) == "dsl/v4/"
-  let is_dsl_extdeps = string_length(s: file) >= 12 && substring(s: file, start: 0, end: 12) == "dsl/extdeps/"
-  is_src_v2 || is_src_v3 || is_src_v4 || is_dsl_std || is_dsl_v4 || is_dsl_extdeps
-}
-
 fn direct_call_arg_decl_identity(n: Node, env: TypeEnv) -> Node {
   match n.binding_id {
     Some { value: _ } => n
@@ -777,9 +766,7 @@ fn direct_call_arg_mismatch_diags(
           let actual_identity = direct_call_arg_decl_identity(n: actual_raw, env: type_env)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
           let arg_span = arg_value(n: ta).span
-          if direct_call_arg_span_skips(span: arg_span) {
-            []
-          } else if direct_call_decl_identity_mismatch(
+          if direct_call_decl_identity_mismatch(
             formal_identity: formal_identity,
             actual_identity: actual_identity,
             formal: formal,

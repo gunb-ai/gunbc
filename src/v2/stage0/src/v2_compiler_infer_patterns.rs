@@ -89,8 +89,8 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_id: None,
             ident: None,
+            binding_id: None,
         });
         let some_node = Rc::new(Node {
             name: "Some".to_string(),
@@ -110,8 +110,8 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            binding_id: None,
             ident: None,
+            binding_id: None,
         });
         some_node
     }
