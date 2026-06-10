@@ -4367,7 +4367,9 @@ fn translate_mvp1_coerce_from_grounding_or_evidence(
             target: target,
             pending: None
           )
-        Rejected { diagnostics: _ } => Rejected { diagnostics: r }
+        Rejected { diagnostics: _ } =>
+          // E-9 body-scope atoms (e.g. Transform operator/param refs) carry structurally.
+          translate_type_fold_init(node: node)
       }
   }
 }

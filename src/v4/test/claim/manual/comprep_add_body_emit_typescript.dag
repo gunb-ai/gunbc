@@ -16,6 +16,7 @@ import v4.extdeps.languages.typescript {
   ts_facts_number,
   ts_inhabitant_atom,
   ts_inhabitant_number_node,
+  ts_lex_rule,
   ts_mvp1_binding_spellings,
   ts_mvp1_bodied_arrow_statement_scaffold,
   ts_mvp1_declared_inhabitants_root,
@@ -29,8 +30,11 @@ import v4.extdeps.languages.typescript {
   ts_number_bitwise_semantics_node,
   ts_number_facts_node,
   ts_value_expression_projection,
-  ts_wave1_lex
+  ts_wave1_lex,
+  ts_wave1_lex_rules
 }
+import v4.std.algebra { Cons, Empty, list_append }
+import v4.std.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v4.std.target_model {
   InfixToken,
   TargetModel,
@@ -218,10 +222,26 @@ fn comprep_ts_target_model_bundle(operator_catalog: Node) -> Node {
   )
 }
 
+// §4.5 perturb fixture — wave1 lex plus minus rule only (extdeps wave1 omits `-` by design).
+fn comprep_ts_mvp1_lex_with_minus() -> LexRules {
+  let base = ts_wave1_lex_rules()
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: list_append(
+        left: base.rules,
+        right: Cons {
+          head: ts_lex_rule(token_class: ^ts_token_minus, text: " - "),
+          tail: Empty
+        }
+      )
+    }
+  }
+}
+
 fn comprep_ts_target_model_minus_catalog() -> TargetModel {
   TargetModel {
     bundle: comprep_ts_target_model_bundle(operator_catalog: comprep_ts_operator_catalog_minus()),
-    lex: ts_wave1_lex(),
+    lex: comprep_ts_mvp1_lex_with_minus(),
     binding_spellings: ts_mvp1_binding_spellings(),
     authority_source_text: ts_mvp1_source_text_authority()
   }
