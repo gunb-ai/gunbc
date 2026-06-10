@@ -42,19 +42,43 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.lexing { LexRules, VoidLexRules }
+import v4.std.find_witness {
+  CandidateSet,
+  PreservationPredicate,
+  UniqueOnly,
+  find_witness,
+  preservation_rule_exact_structural_equality_zip_fold
+}
 import v4.std.node {
+  Arrow,
   Atom,
+  Cardinality,
   Conj,
+  Connective,
+  Disj,
   Edge,
+  EdgeDiscipline,
   Instantiation,
+  LabeledEdges,
+  LoopBoundEdges,
   Named,
+  NoEdges,
   Node,
   NodeFold,
   Positional,
+  PositionalEdges,
   Symbol,
   TypeNode,
+  connective_edge_discipline,
   content_hash,
   fold_node
+}
+import v4.std.witness { StructuralPropertyWitness }
+import v4.std.type_expr_projection_row_schema {
+  target_type_expr_discipline_labeled,
+  target_type_expr_discipline_no_edges,
+  target_type_expr_discipline_positional,
+  target_type_expr_field_child_slot_discipline
 }
 import v4.std.node_query { find_named_child, node_labeled_child_edges, node_positional_child_targets }
 import v4.std.logic { Bool }
@@ -3402,4 +3426,383 @@ fn target_reference_layer_probe_from_emitted_type(
       }
     Rejected { diagnostics: _ } => ReferenceLayerProbeInvalid
   }
+}
+
+// SG-2 fold — closed per-connective projection-row candidate algebra (std authority; translate consumer).
+data target_type_expr_projection_candidate_closedness: Symbol = target_type_expr_projection_candidate_closedness
+
+fn target_type_expr_symbol_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+fn target_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: target_type_expr_field_surface,
+        target: target_type_expr_symbol_atom(id: form.surface)
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_ident_token,
+        target: target_type_expr_symbol_atom(id: form.ident_token)
+      )
+    ]
+  }
+}
+
+fn target_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: match form.field_label_separator {
+      Present { value: s } =>
+        list_snoc_item(
+          xs: [
+            target_model_named_edge(
+              name: target_type_expr_field_surface,
+              target: target_type_expr_symbol_atom(id: form.surface)
+            ),
+            target_model_named_edge(
+              name: target_type_expr_field_open,
+              target: target_type_expr_symbol_atom(id: form.open)
+            ),
+            target_model_named_edge(
+              name: target_type_expr_field_separator,
+              target: target_type_expr_symbol_atom(id: form.separator)
+            ),
+            target_model_named_edge(
+              name: target_type_expr_field_close,
+              target: target_type_expr_symbol_atom(id: form.close)
+            )
+          ],
+          item: target_model_named_edge(
+            name: target_type_expr_field_field_label_separator,
+            target: target_type_expr_symbol_atom(id: s)
+          )
+        )
+      Absent =>
+        [
+          target_model_named_edge(
+            name: target_type_expr_field_surface,
+            target: target_type_expr_symbol_atom(id: form.surface)
+          ),
+          target_model_named_edge(
+            name: target_type_expr_field_open,
+            target: target_type_expr_symbol_atom(id: form.open)
+          ),
+          target_model_named_edge(
+            name: target_type_expr_field_separator,
+            target: target_type_expr_symbol_atom(id: form.separator)
+          ),
+          target_model_named_edge(
+            name: target_type_expr_field_close,
+            target: target_type_expr_symbol_atom(id: form.close)
+          )
+        ]
+    }
+  }
+}
+
+fn target_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: target_type_expr_field_surface,
+        target: target_type_expr_symbol_atom(id: form.surface)
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_variant_separator,
+        target: target_type_expr_symbol_atom(id: form.variant_separator)
+      )
+    ]
+  }
+}
+
+fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: target_type_expr_field_surface,
+        target: target_type_expr_symbol_atom(id: form.surface)
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_open,
+        target: target_type_expr_symbol_atom(id: form.open)
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_close,
+        target: target_type_expr_symbol_atom(id: form.close)
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_arrow,
+        target: target_type_expr_symbol_atom(id: form.arrow)
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_param_ident_token,
+        target: target_type_expr_symbol_atom(id: form.param_ident_token)
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_param_type_separator,
+        target: target_type_expr_symbol_atom(id: form.param_type_separator)
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_param_list_separator,
+        target: target_type_expr_symbol_atom(id: form.param_list_separator)
+      )
+    ]
+  }
+}
+
+// SG-2 fold — edge-discipline DATA per connective (connective_edge_discipline authority).
+// TypeNode connectives never map to LoopBoundEdges (see node.dag connective_edge_discipline).
+fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> Node {
+  match connective_edge_discipline(c: connective) {
+    NoEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_no_edges)
+    LabeledEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_labeled)
+    PositionalEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
+    LoopBoundEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
+  }
+}
+
+fn type_expr_projection_row_shape_envelope(
+  envelope: Node,
+  connective: Connective
+) -> Node {
+  Node {
+    kind: envelope.kind,
+    children: list_append(
+      left: envelope.children,
+      right: Cons {
+        head: target_model_named_edge(
+          name: target_type_expr_field_child_slot_discipline,
+          target: type_expr_projection_child_slot_discipline_atom(connective: connective)
+        ),
+        tail: Empty
+      }
+    )
+  }
+}
+
+// P2 row-shape authority — consumed by *type_expression_projection_bundle_node in language targets.
+fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: target_type_expr_field_atom,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_atom_shape_node(form: projection.atom_form),
+          connective: Atom { identity: target_type_expr_field_atom }
+        )
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_conj,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.conj_form),
+          connective: Conj
+        )
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_disj,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_sum_shape_node(form: projection.disj_form),
+          connective: Disj
+        )
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_arrow,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_arrow_shape_node(form: projection.arrow_form),
+          connective: Arrow
+        )
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_cardinality,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.cardinality_form),
+          connective: Cardinality
+        )
+      ),
+      target_model_named_edge(
+        name: target_type_expr_field_instantiation,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.instantiation_form),
+          connective: Instantiation
+        )
+      )
+    ]
+  }
+}
+
+fn type_expr_projection_shape_for_connective(
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<Node> {
+  match connective {
+    Atom { identity: _ } =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_atom_shape_node(form: projection.atom_form),
+          connective: connective
+        )
+      )
+    Conj =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.conj_form),
+          connective: Conj
+        )
+      )
+    Disj =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_sum_shape_node(form: projection.disj_form),
+          connective: Disj
+        )
+      )
+    Arrow =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_arrow_shape_node(form: projection.arrow_form),
+          connective: Arrow
+        )
+      )
+    Cardinality =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.cardinality_form),
+          connective: Cardinality
+        )
+      )
+    Instantiation =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.instantiation_form),
+          connective: Instantiation
+        )
+      )
+  }
+}
+
+fn type_expr_projection_candidate_for_connective(
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<CandidateSet> {
+  bind_outcome(
+    o: type_expr_projection_shape_for_connective(
+      projection: projection,
+      connective: connective
+    ),
+    f: fn(shape) {
+      outcome_accepted(
+        CandidateSet {
+          candidates: [shape],
+          closedness: StructuralPropertyWitness {
+            property: target_type_expr_projection_candidate_closedness,
+            evidence: shape
+          }
+        }
+      )
+    }
+  )
+}
+
+fn type_expr_projection_row_witness_gate_with_rule(
+  source_facts: Node,
+  projection: TargetTypeExpressionProjection,
+  connective: Connective,
+  preservation_rule: Symbol
+) -> Outcome<Node> {
+  bind_outcome(
+    o: type_expr_projection_candidate_for_connective(
+      projection: projection,
+      connective: connective
+    ),
+    f: fn(candidates) {
+      match find_witness(
+        source_facts: source_facts,
+        candidates: candidates,
+        predicate: PreservationPredicate {
+          algebra: source_facts,
+          preservation_rule: preservation_rule
+        },
+        multiplicity_policy: UniqueOnly
+      ) {
+        Accepted { value: fw, diagnostics: d } =>
+          outcome_accepted(fw.candidate)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+
+// SG-2 fold — bundle row-shape closedness (no graft child-slot coordinate; exact structural match).
+fn type_expr_projection_row_shape_witness_gate(
+  source_facts: Node,
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<Node> {
+  type_expr_projection_row_witness_gate_with_rule(
+    source_facts: source_facts,
+    projection: projection,
+    connective: connective,
+    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+  )
+}
+
+// SG-2 fold — connective → step_algebra row slot field (uniform key for bundle decode).
+fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symbol {
+  match connective {
+    Atom { identity: _ } => target_type_expr_field_atom
+    Conj => target_type_expr_field_conj
+    Disj => target_type_expr_field_disj
+    Arrow => target_type_expr_field_arrow
+    Cardinality => target_type_expr_field_cardinality
+    Instantiation => target_type_expr_field_instantiation
+  }
+}
+
+// SG-2 fold — connective shape node from TargetModel bundle (P2 authority; not caller projection).
+fn type_expr_projection_bundle_shape_for_connective(
+  bundle: Node,
+  connective: Connective
+) -> Outcome<Node> {
+  find_named_child(
+    root: bundle,
+    name: type_expr_projection_row_field_for_connective(connective: connective)
+  )
+}
+
+// SG-2 fold — fail-close when caller projection row disagrees with bundle authority (P2/P3).
+fn type_expr_projection_row_closedness_from_target(
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<Node> {
+  bind_outcome(
+    o: find_named_child(
+      root: target.bundle,
+      name: target_model_edge_type_expression_projection
+    ),
+    f: fn(bundle) {
+      bind_outcome(
+        o: type_expr_projection_bundle_shape_for_connective(
+          bundle: bundle,
+          connective: connective
+        ),
+        f: fn(bundle_shape) {
+          type_expr_projection_row_shape_witness_gate(
+            source_facts: bundle_shape,
+            projection: projection,
+            connective: connective
+          )
+        }
+      )
+    }
+  )
 }
