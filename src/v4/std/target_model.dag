@@ -466,7 +466,7 @@ fn projection_bundle_symbol_field(bundle: Node, field: Symbol) -> Symbol {
     TypeNode { connective: Conj } =>
       match fold(
         bundle.children,
-        init: ^target_value_projection_field_missing,
+        init: target_value_projection_field_missing,
         f: fn(acc, e) {
           match e.label {
             Named { name: n } =>
@@ -484,7 +484,7 @@ fn projection_bundle_symbol_field(bundle: Node, field: Symbol) -> Symbol {
       ) {
         sym => sym
       }
-    _ => ^target_value_projection_field_missing
+    _ => target_value_projection_field_missing
   }
 }
 

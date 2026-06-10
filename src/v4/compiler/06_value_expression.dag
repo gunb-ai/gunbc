@@ -5,14 +5,16 @@
 
 module v4.compiler.value_expression
 
-import v4.std.algebra { fold, fold_list }
+import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v4.std.collection {
+  Absent,
   List,
   Optional,
+  Present,
   optional_absent,
   optional_present,
-  map_get,
-  list_at_optional
+  list_at_optional,
+  map_get
 }
 import v4.std.diagnostic {
   Accepted,
@@ -30,13 +32,18 @@ import v4.std.diagnostic {
 import v4.std.node {
   Atom,
   ComputationNode,
+  Edge,
   Named,
   Node,
   Transform,
   TypeNode,
   Symbol
 }
-import v4.std.node_query { find_arrow_body_child, node_positional_child_targets }
+import v4.std.node_query {
+  find_arrow_body_child,
+  find_named_child,
+  node_positional_child_targets
+}
 import v4.std.target_model {
   BoundToken,
   CanonicalOperation,
@@ -84,41 +91,54 @@ fn surface_op_atom_to_canonical(op_atom: Symbol) -> Optional<CanonicalOperation>
   }
 }
 
-fn transform_positional_operand_binding(node: Node, index: Int) -> Outcome<Symbol> {
-  bind_outcome(
-    o: list_nth(xs: node_positional_child_targets(node: node), index: index),
-    f: fn(child) {
-      match child.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          outcome_accepted(id)
-        _ =>
-          outcome_rejected(
-            value_expr_diagnostic(
-              reason: value_expr_reason_transform_shape_invalid,
-              node: child
+fn transform_positional_operand_binding_at(
+  source: Node,
+  targets: FreeMonoid<Node>,
+  wanted: Int,
+  cursor: Int
+) -> Outcome<Symbol> {
+  match targets {
+    Empty =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_transform_shape_invalid,
+          node: source
+        )
+      )
+    Cons { head: child, tail: rest } =>
+      if cursor == wanted {
+        match child.kind {
+          TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+          _ =>
+            outcome_rejected(
+              value_expr_diagnostic(
+                reason: value_expr_reason_transform_shape_invalid,
+                node: child
+              )
             )
-          )
+        }
+      } else {
+        transform_positional_operand_binding_at(
+          source: source,
+          targets: rest,
+          wanted: wanted,
+          cursor: cursor + 1
+        )
       }
-    }
+  }
+}
+
+fn transform_positional_operand_binding(node: Node, index: Int) -> Outcome<Symbol> {
+  transform_positional_operand_binding_at(
+    source: node,
+    targets: node_positional_child_targets(node: node),
+    wanted: index,
+    cursor: 0
   )
 }
 
 fn transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
-  bind_outcome(
-    o: list_nth(xs: node_positional_child_targets(node: node), index: 0),
-    f: fn(child) {
-      match child.kind {
-        TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
-        _ =>
-          outcome_rejected(
-            value_expr_diagnostic(
-              reason: value_expr_reason_transform_shape_invalid,
-              node: child
-            )
-          )
-      }
-    }
-  )
+  transform_positional_operand_binding(node: node, index: 0)
 }
 
 fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpression> {
@@ -135,7 +155,7 @@ fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpressio
                   node: node
                 )
               )
-            Present { value: operation } =>
+            Present { value: canonical_op } =>
               bind_outcome(
                 o: transform_positional_operand_binding(node: node, index: 1),
                 f: fn(left_binding) {
@@ -144,7 +164,7 @@ fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpressio
                     f: fn(right_binding) {
                       outcome_accepted(
                         target_value_expression_primitive_apply(
-                          operation: operation,
+                          operation: canonical_op,
                           operands: [
                             target_value_expression_binding_ref(binding: left_binding),
                             target_value_expression_binding_ref(binding: right_binding)
@@ -423,37 +443,34 @@ fn operator_realization_catalog_from_target(target: TargetModel) -> Outcome<Node
   )
 }
 
+fn primitive_apply_operand_binding_from_operand_node(operand_node: Node) -> Optional<Symbol> {
+  match find_named_child(root: operand_node, name: target_value_expr_field_binding) {
+    Accepted { value: binding_node, diagnostics: _ } =>
+      match binding_node.kind {
+        TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+        _ => optional_absent()
+      }
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
 fn primitive_apply_operand_bindings(expr: TargetValueExpression) -> Outcome<List<Symbol>> {
   match expr.kind {
     TargetValueExprPrimitiveApply =>
       outcome_accepted(
-        fold_list(
-          xs: expr.node.children,
-          empty: Empty,
-          cons: fn(acc, edge) {
+        fold(
+          expr.node.children,
+          init: Empty,
+          f: fn(acc, edge) {
             match edge.label {
               Named { name: n } =>
                 if n == target_value_expr_field_operand {
-                  match fold(
-                    edge.target.children,
-                    init: acc,
-                    f: fn(a, inner_e) {
-                      match inner_e.label {
-                        Named { name: bn } =>
-                          if bn == target_value_expr_field_binding {
-                            match inner_e.target.kind {
-                              TypeNode { connective: Atom { identity: id } } =>
-                                Cons { head: id, tail: a }
-                              _ => a
-                            }
-                          } else {
-                            a
-                          }
-                        Positional => a
-                      }
-                    }
+                  match primitive_apply_operand_binding_from_operand_node(
+                    operand_node: edge.target
                   ) {
-                    bindings => bindings
+                    Present { value: binding } =>
+                      Cons { head: binding, tail: acc }
+                    Absent => acc
                   }
                 } else {
                   acc
@@ -486,12 +503,24 @@ fn value_expression_to_concrete_tokens(
           bind_outcome(
             o: primitive_apply_operand_bindings(expr: expr),
             f: fn(bindings) {
-              bind_outcome(
-                o: list_nth(xs: bindings, index: 0),
-                f: fn(left_binding) {
-                  bind_outcome(
-                    o: list_nth(xs: bindings, index: 1),
-                    f: fn(right_binding) {
+              match list_at_optional(xs: bindings, index: 0) {
+                Absent =>
+                  outcome_rejected(
+                    value_expr_diagnostic(
+                      reason: value_expr_reason_transform_shape_invalid,
+                      node: expr.node
+                    )
+                  )
+                Present { value: left_binding } =>
+                  match list_at_optional(xs: bindings, index: 1) {
+                    Absent =>
+                      outcome_rejected(
+                        value_expr_diagnostic(
+                          reason: value_expr_reason_transform_shape_invalid,
+                          node: expr.node
+                        )
+                      )
+                    Present { value: right_binding } =>
                       bind_outcome(
                         o: operator_realization_lookup(
                           catalog: catalog,
@@ -524,11 +553,9 @@ fn value_expression_to_concrete_tokens(
                         }
                       )
                     }
-                  )
+                  }
                 }
               )
-            }
-          )
         _ =>
           outcome_rejected(
             value_expr_diagnostic(
