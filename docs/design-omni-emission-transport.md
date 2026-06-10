@@ -8,6 +8,11 @@
 > bidirectional symmetry is a design obligation, not a later wish.
 > Supersedes B3 of the TS-skeleton brief (the TS run routes through a descriptor row, not a
 > fourth hand function).
+>
+> **Endorsed by still-raven-546 (2026-06-10) with rulings on all four escalated questions
+> (§6).** Build sequencing per the endorsement: model + rows + primitive land first, the TS
+> round-trip is proven through the descriptor, and only then does the hand-list deletion
+> (§4 step 4) get its explicit go — it is load-bearing.
 
 ## 1. Problem (measured hand-list, 2026-06-10)
 
@@ -70,9 +75,17 @@ type TransportStep {
 }
 type StepRole = Build | LogicalRun      // exactly one LogicalRun, the last step;
                                         //   its stdout is the runtime-value channel
+                                        //   (Q-T2 RESOLVED: enforced by well_formed —
+                                        //   ordered Build* then one LogicalRun)
 type ProcessInvocation {
-  program: Symbol                       // ^cargo, ^python3, ^go, ^tsc, ^node
+  tool: HostTool                        // modeled identity (Q-T4 ruling), not a path string
   args: List<InvocationArg>
+}
+type HostTool {
+  identity: Symbol                      // ^cargo, ^python3, ^go, ^tsc, ^node — the
+                                        //   descriptor names WHO; the host primitive
+                                        //   resolves it (PATH lookup, env overrides,
+                                        //   version) at the host boundary
 }
 type InvocationArg
   = LiteralArg { text: String }         // "build", "--quiet", "run"
@@ -124,11 +137,17 @@ is itself part of the hand-list and dissolves with it (Q-T1).
 
 ```rust
 pub fn run_host_process(
-    invocation: &ResolvedInvocation,   // program + argv, paths resolved against work_dir
+    invocation: &ResolvedInvocation,   // tool resolved to an executable + argv with
+                                       //   paths resolved against work_dir
     work_dir: &Path,
     bounds: &RunBounds,                // timeout + output truncation caps (today's values)
 ) -> Result<BoundedProcessOutput, HostSetupFailure>
 ```
+
+Tool resolution is the host boundary (Q-T4 ruling): the descriptor carries the modeled
+`HostTool` identity; the primitive resolves it to an executable (PATH lookup, env
+overrides like `GUNBC_PYTHON`, version) and fails closed as `HostSetupFailure` when
+resolution misses. Identity is data; resolution is host.
 
 plus the existing workspace write (`fs::create_dir_all` + file writes, driven by the
 descriptor's `workspace` list) and the existing `host_exit_from_bounded` exit-witness
@@ -161,10 +180,12 @@ No behavior loosens; the change is *where the facts live*.
 3. **Fold the `.dag` side**: `run_emit_host` + `runtime_value_parse` become descriptor
    folds; delete the authority-pin if/else chains and the `runtime_value_parse_python/_go`
    duplicates; receipt assembly unifies on `emit_host_receipt_from_source` (closes T-PB-B).
-4. **Delete the hand-list**: `run_emit_host_rust/python/go` (lib.rs and the fail-closed
-   `.dag` stubs), `try_dispatch_emit_host_rust/_go/_python` + chain, the
-   `emit_host_bridge.rs` per-target `_transport` wrappers (the W3 parity runner takes the
-   generic transport + a language argument instead of three function pointers).
+4. **Delete the hand-list** — **HELD for explicit go (manager ruling 2026-06-10;
+   load-bearing)**: `run_emit_host_rust/python/go` (lib.rs and the fail-closed `.dag`
+   stubs), `try_dispatch_emit_host_rust/_go/_python` + chain, the `emit_host_bridge.rs`
+   per-target `_transport` wrappers (the W3 parity runner takes the generic transport + a
+   language argument instead of three function pointers). Gate: steps 1–3 landed green
+   **and** the TS round-trip proven through the descriptor row, then go.
 5. **Tests**: the surface roster at `v4_emit_host_harness_test.rs:866-900` is a
    declaration-shape mirror of the hand-list — per the white-box-tests-are-2FA policy it is
    **deleted**, not re-pointed. Behavior tests (emit-vs-eval, cross-target parity) re-route
@@ -192,26 +213,30 @@ The descriptor is shared, not emit-private:
   target toolchains (e.g. type-query a foreign project). No `IngestionDescriptor` twin is
   ever declared; the symmetry is one-descriptor-two-directions, or it is a P2 violation.
 
-## 6. Open questions — escalate, don't improvise
+## 6. Rulings (escalated 2026-06-10, ruled by still-raven-546 same day)
 
-- **Q-T1 — descriptor selection key.** Recommended: the language identity already carried
-  by `TargetModel` (the same key the value-emit projection rows use), dissolving the
-  `authority_source_text` pin equality. If `TargetModel` turns out not to carry a stable
-  language identity yet, that field is a prerequisite, not a reason to keep string pins.
-- **Q-T2 — step semantics.** Recommended and assumed above: strict ordering, first
-  non-`Holds` build exit short-circuits to a `Violates` receipt, exactly one `LogicalRun`
-  (last). A descriptor violating the one-LogicalRun shape is rejected at row validation,
-  not at run time (illegal descriptors unrepresentable where the type can enforce it —
-  `StepRole` placement may warrant `steps: List<BuildStep>` + `run: ProcessInvocation`
-  instead; decide at build, cheap pre-consumer).
-- **Q-T3 — bounds ownership.** Timeouts/truncation caps stay host-side in `RunBounds`
-  (one site, today's values), not per-descriptor — until a target measurably needs its own
-  budget; then `RunBounds` becomes an optional descriptor field with the host value as the
-  explicit closed default.
-- **Q-T4 — program identity.** `program: Symbol` (`^cargo`, `^node`) leaves PATH resolution
-  host-side (env overrides like `GUNBC_PYTHON` keep working at the primitive). A branded
-  `ToolIdent` + modeled tool registry is a later refinement with its own consumer
-  (toolchain provisioning), out of scope.
+- **Q-T1 — descriptor selection key: RULED — language identity**, never the
+  `authority_source_text` pin (spelling-as-identity, the same lesson as
+  `binding_id`/brand). The key is the language identity carried by `TargetModel` (the same
+  key the value-emit projection rows use). If `TargetModel` turns out not to carry a
+  stable language identity yet, that field is a prerequisite, not a reason to keep string
+  pins.
+- **Q-T2 — step semantics: RESOLVED (finalized by this doc, ratified)** — strict ordering,
+  first non-`Holds` build exit short-circuits to a `Violates` receipt, **exactly one
+  `LogicalRun`, last**, enforced by `well_formed` at row validation, not at run time. No
+  concrete multi-run case exists; a hypothetical "test then run" is two transports, not
+  one descriptor. If the `StepRole` placement proves awkward, the structurally-stronger
+  `steps: List<BuildStep>` + `run: ProcessInvocation` shape (illegal descriptors
+  unrepresentable) is the sanctioned alternative — decide at build, cheap pre-consumer.
+- **Q-T3 — bounds ownership: RULED — bounds are a separate policy axis**, never descriptor
+  fields. The descriptor says WHAT to run; bounds (timeouts/resource limits) are HOW MUCH —
+  the compute-fabric policy seam (the `MultiplicityPolicy`/`TargetDeclaredPriority`
+  family). Bounds layer on at invocation, host-side in `RunBounds` for now; surfaced to
+  the operator as a fabric-policy touchpoint. Proceed bounds-free.
+- **Q-T4 — tool identity: RULED — modeled identity in the descriptor** (`HostTool`,
+  §3.1), not a bare string; the host primitive resolves it (PATH, env overrides, version)
+  at the host boundary (§3.3). Identity is data; resolution is host. A fuller tool
+  registry (provisioning) remains out of scope until it has a consumer.
 
 ## 7. Non-goals
 
