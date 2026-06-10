@@ -11068,6 +11068,29 @@ pub fn add_type_binding_dependency_closure(
     }
 }
 
+pub fn add_node_dependency_closure(
+    state: Rc<CarrierClosureState>,
+    n: Rc<Node>,
+    dep_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CarrierClosureState> {
+    let stamped = stamp_hidden_dependency_refs(n, dep_env.clone(), source_indices.clone());
+    let deps = node_type_deps(stamped, source_indices.clone());
+    deps.iter()
+        .cloned()
+        .fold(state, |acc: Rc<CarrierClosureState>, dep_name: String| {
+            match lookup_type_binding_by_name_in_env(dep_env.clone(), dep_name.clone()) {
+                Some(dep_binding) => add_type_binding_dependency_closure(
+                    acc.clone(),
+                    dep_binding.clone(),
+                    dep_env.clone(),
+                    source_indices.clone(),
+                ),
+                None => acc.clone(),
+            }
+        })
+}
+
 pub fn collect_import_carrier_bindings_for_import(
     acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>,
     imp: Rc<ResolvedImport>,
@@ -11092,6 +11115,47 @@ pub fn collect_import_carrier_bindings_for_import(
                         binding.clone(),
                         env.clone(),
                         env.source_indices.clone(),
+                    )
+                } else {
+                    state
+                }
+            },
+        );
+    closure_state.carrier_bindings.clone()
+}
+
+pub fn collect_import_carrier_bindings_for_imported_funcs(
+    acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>,
+    imp: Rc<ResolvedImport>,
+    typed_parent: Rc<TypedModule>,
+) -> Rc<HashMap<BindingId, Rc<TypeBinding>>> {
+    let env = typed_parent.type_env.clone();
+    let closure_state = Rc::new(v2_rt::map_values(&typed_parent.func_env.signatures.clone()))
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(CarrierClosureState {
+                carrier_bindings: acc,
+                seen_names: v2_rt::rc_empty_map::<String, bool>(),
+            }),
+            |state: Rc<CarrierClosureState>, sig: Rc<ResolvedFuncSig>| {
+                if import_allows_binding_name(imp.clone(), sig.name.clone()) {
+                    let with_return = add_node_dependency_closure(
+                        state.clone(),
+                        sig.inferred.clone(),
+                        env.clone(),
+                        env.source_indices.clone(),
+                    );
+                    sig.params.clone().iter().cloned().fold(
+                        with_return,
+                        |pacc: Rc<CarrierClosureState>, param: Rc<Node>| {
+                            add_node_dependency_closure(
+                                pacc.clone(),
+                                param_node_type_expr(param.clone()),
+                                env.clone(),
+                                env.source_indices.clone(),
+                            )
+                        },
                     )
                 } else {
                     state
@@ -11566,10 +11630,14 @@ pub fn build_type_env(
             std_import_carrier_bindings,
             |acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| {
                 match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
-                    Some(typed_parent) => collect_import_carrier_bindings_for_import(
-                        acc.clone(),
+                    Some(typed_parent) => collect_import_carrier_bindings_for_imported_funcs(
+                        collect_import_carrier_bindings_for_import(
+                            acc.clone(),
+                            imp.clone(),
+                            typed_parent.type_env.clone(),
+                        ),
                         imp.clone(),
-                        typed_parent.type_env.clone(),
+                        typed_parent.clone(),
                     ),
                     None => acc.clone(),
                 }
@@ -12220,10 +12288,14 @@ pub fn build_type_env_unresolved(
             std_import_carrier_bindings,
             |acc: Rc<HashMap<BindingId, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| {
                 match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
-                    Some(typed_parent) => collect_import_carrier_bindings_for_import(
-                        acc.clone(),
+                    Some(typed_parent) => collect_import_carrier_bindings_for_imported_funcs(
+                        collect_import_carrier_bindings_for_import(
+                            acc.clone(),
+                            imp.clone(),
+                            typed_parent.type_env.clone(),
+                        ),
                         imp.clone(),
-                        typed_parent.type_env.clone(),
+                        typed_parent.clone(),
                     ),
                     None => acc.clone(),
                 }
