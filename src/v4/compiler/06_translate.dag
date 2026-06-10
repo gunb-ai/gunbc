@@ -4566,13 +4566,18 @@ fn translate_node(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<Node> {
-  match target_bundle_child_optional_type_expr_projection(target: target) {
-    Accepted { value: ProjectionPresent, diagnostics: _ } =>
-      translate_node_with_projection(node: node, tree: tree, target: target)
-    Accepted { value: ProjectionAbsent, diagnostics: _ } =>
-      translate_node_mvp1(node: node, tree: tree, target: target)
-    Rejected { diagnostics: r } =>
-      Rejected { diagnostics: r }
+  // Consumer of arrow_has_transform_body (see 06_value_expression.dag disposition receipt).
+  if arrow_has_transform_body(arrow: node) {
+    outcome_accepted(node)
+  } else {
+    match target_bundle_child_optional_type_expr_projection(target: target) {
+      Accepted { value: ProjectionPresent, diagnostics: _ } =>
+        translate_node_with_projection(node: node, tree: tree, target: target)
+      Accepted { value: ProjectionAbsent, diagnostics: _ } =>
+        translate_node_mvp1(node: node, tree: tree, target: target)
+      Rejected { diagnostics: r } =>
+        Rejected { diagnostics: r }
+    }
   }
 }
 // 🟡 gated — coproduct-dissolution interim (docs/modeling-discipline.md Practice 4/9) — feature:sg-2-mvp1-projection-absent-shim — consumer:translate_node — bind PR #3962 / docs/planning/v4-sg2-type-expression-projection-worksheet-2026-05-30.md — owner:Target Realization (SG-2) — lane:extdeps TargetModel row rollout — dissolve-on-arrival: every v4.extdeps.languages.* TargetModel bundle carries target_model_edge_type_expression_projection; delete ProjectionAbsent arm, translate_node_mvp1, and TypeExprProjectionPresence from translate_node — forbidden: steady-state dual translate paths or new ProjectionAbsent match arms outside this gate.
