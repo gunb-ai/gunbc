@@ -541,8 +541,8 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -6290,14 +6290,8 @@ pub fn emit_struct_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        if (name.as_str() == "BindingId".to_string().as_str()) {
-            return v2_rt::concat(
-                v2_rt::concat(
-                    "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]\n".to_string(),
-                    rust_visibility_prefix(),
-                ),
-                "struct BindingId(i64);\n\nimpl BindingId {\n    pub(crate) fn mint(value: i64) -> Self { BindingId(value) }\n    pub(crate) fn raw_for_diagnostic(&self) -> i64 { self.0 }\n}".to_string(),
-            );
+        if (name.clone().as_str() == "BindingId".to_string().as_str()) {
+            return v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]\n".to_string(), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " BindingId(i64);\n\n".to_string()), "impl BindingId {\n".to_string()), "    pub(crate) fn mint(value: i64) -> Self { BindingId(value) }\n".to_string()), "}".to_string());
         }
         let has_fn_fields = match v2_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
             Some(ts) => ts.has_fn_fields.clone(),
@@ -15282,7 +15276,7 @@ pub fn emit_typed_record_lit(
             Some(tn) => {
                 let si = scope.type_env.clone().source_indices.clone();
                 if (tn.clone().as_str() == "BindingId".to_string().as_str()) {
-                    return match Rc::new({
+                    match Rc::new({
                         let mut __result = Vec::new();
                         for f in fields.clone().iter().cloned() {
                             if (field_init_node_name_at(f.clone(), si.clone()).as_str()
@@ -15306,13 +15300,16 @@ pub fn emit_typed_record_lit(
                                 emit_info.clone(),
                                 1024,
                             );
-                            v2_rt::concat(
-                                v2_rt::concat("BindingId::mint(".to_string(), inner),
+                            return v2_rt::concat(
+                                v2_rt::concat("BindingId::mint(".to_string(), inner.clone()),
                                 ")".to_string(),
-                            )
+                            );
                         }
-                        None => "compile_error!(\"BindingId literal missing value\")".to_string(),
-                    };
+                        None => {
+                            return "compile_error!(\"BindingId literal missing value\")"
+                                .to_string()
+                        }
+                    }
                 }
                 let context_lookup = contextual_variant_parent(
                     tn.clone(),
@@ -15369,7 +15366,7 @@ pub fn emit_typed_record_lit(
                                 1024,
                             );
                             v2_rt::concat(
-                                v2_rt::concat("Some(".to_string(), inner),
+                                v2_rt::concat("Some(".to_string(), inner.clone()),
                                 ")".to_string(),
                             )
                         }

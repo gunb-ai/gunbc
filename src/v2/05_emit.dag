@@ -18,7 +18,7 @@
 module v2.compiler.emit
 
 import v2.std.core {
-  Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  BindingId, Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
   param_node_name_at, param_node_type_expr, param_node_default_value,
   NewlineIndex, authored_name_at, empty_intern_table,

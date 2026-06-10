@@ -105,7 +105,7 @@ pub use crate::v2_std_core::{
     unaryop_operand, with_required_cardinality,
 };
 pub use crate::v2_std_core::{
-    Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
+    BindingId, Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
     InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
     UnaryOpKind, VarBindingKind,
 };
@@ -565,7 +565,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: Rc::new(TypeEnv {
             bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            decl_registry: v2_rt::rc_empty_map::<i64, Rc<TypeDeclBinding>>(),
+            decl_registry: v2_rt::rc_empty_map::<BindingId, Rc<TypeDeclBinding>>(),
             duplicate_decl_ids: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),

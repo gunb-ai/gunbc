@@ -627,20 +627,24 @@ fn type_node_is_callable(n: Node) -> Bool {
   n.params |> count > 0
 }
 
-// TRANSITION (A3 / PD-3): compiler substrate (v4.* std + v2.compiler.* self-host)
-// models fn-vs-Callable, witness carriers, and symbolic nominal pairs
-// (Symbol/GeneratorId, ConfigPatchRecord/patch nodes) outside PD-3 brand scope.
-// Bound: prefix match v4.* and v2.compiler.* only — user modules run the hook.
-// Dissolution trigger: ROADMAP.md Active Deferrals row PD-3-DOGFOOD
-// (delete when v4-lens-ci + v4-m1-rust-emit-probe pass without this skip).
+// TRANSITION (A3 / PD-3): no path-based or prefix-based bypass. Direct-call
+// diagnostics must be justified by typed authored forms below, not source
+// location. Kept as a named predicate so stale call sites fail closed.
 fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
-  let is_unknown = module_name == ""
-  let is_v4 = string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v4."
-  let is_compiler_substrate = string_length(s: module_name) >= 13 && substring(s: module_name, start: 0, end: 13) == "v2.compiler."
-  let is_v2_std = string_length(s: module_name) >= 7 && substring(s: module_name, start: 0, end: 7) == "v2.std."
-  let is_std = string_length(s: module_name) >= 4 && substring(s: module_name, start: 0, end: 4) == "std."
-  let is_extdeps = string_length(s: module_name) >= 8 && substring(s: module_name, start: 0, end: 8) == "extdeps."
-  is_unknown || is_v4 || is_compiler_substrate || is_v2_std || is_std || is_extdeps
+  false
+}
+
+fn direct_call_actual_is_none(actual_expr: Node, actual_type: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: actual_expr) == "none"
+    || authored_name_at(source_indices: source_indices, node: actual_type) == "None"
+}
+
+fn direct_call_arg_is_typed_deferral(formal_raw: Node, actual_expr: Node, actual_type: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let formal_is_callable = type_node_is_callable(n: formal_raw) || authored_name_at(source_indices: source_indices, node: formal_raw) == "Callable"
+  let actual_is_callable_literal = is_lambda_expr(e: actual_expr)
+  let formal_is_optional = formal_raw.return_cardinality == CardOptional || authored_name_at(source_indices: source_indices, node: formal_raw) == "Optional"
+  let actual_is_none = direct_call_actual_is_none(actual_expr: actual_expr, actual_type: actual_type, source_indices: source_indices)
+  (formal_is_callable && actual_is_callable_literal) || (formal_is_optional && actual_is_none)
 }
 
 fn direct_call_arg_decl_identity(n: Node, env: TypeEnv) -> Node {
@@ -726,6 +730,26 @@ fn container_element_nominal_brand_mismatch(
   } else { false }
 }
 
+fn direct_call_plain_kernel_name(name: String) -> Bool {
+  name == "Bool" || name == "String" || name == "Int" || name == "Float"
+}
+
+fn direct_call_plain_kernel_leaf_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+  let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+  formal.binding_id == none
+    && actual.binding_id == none
+    && formal.connective == NoConnective
+    && actual.connective == NoConnective
+    && formal.children |> count == 0
+    && actual.children |> count == 0
+    && formal.return_cardinality == Required
+    && actual.return_cardinality == Required
+    && direct_call_plain_kernel_name(name: formal_name)
+    && direct_call_plain_kernel_name(name: actual_name)
+    && formal_name != actual_name
+}
+
 // Direct-call argument gate: compare the resolved formal/actual types through
 // node_type_compatible, whose leaf path carries binding_id brand identity and
 // whose container-alias path keeps List/FreeMonoid transparency.
@@ -738,7 +762,7 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
-    !node_type_compatible(left: formal, right: actual, source_indices: source_indices)
+    direct_call_plain_kernel_leaf_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
@@ -762,11 +786,19 @@ fn direct_call_arg_mismatch_diags(
       let formal = peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name)
       match typed_args |> skip(pair.first) |> first {
         Some { value: ta } =>
-          let actual_raw = resolved_type(n: arg_value(n: ta))
+          let actual_expr = arg_value(n: ta)
+          let actual_raw = resolved_type(n: actual_expr)
           let actual_identity = direct_call_arg_decl_identity(n: actual_raw, env: type_env)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
           let arg_span = arg_value(n: ta).span
-          if direct_call_decl_identity_mismatch(
+          if direct_call_arg_is_typed_deferral(
+            formal_raw: formal_raw,
+            actual_expr: actual_expr,
+            actual_type: actual_raw,
+            source_indices: source_indices
+          ) {
+            []
+          } else if direct_call_decl_identity_mismatch(
             formal_identity: formal_identity,
             actual_identity: actual_identity,
             formal: formal,

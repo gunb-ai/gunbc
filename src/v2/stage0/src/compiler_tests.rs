@@ -918,6 +918,7 @@ mod compiler_tests {
         std::rc::Rc::new(crate::v2_std_core::Node {
             name: name.to_string(),
             ident: None,
+            binding_id: None,
             span: span.clone(),
             ident_span: Some(span),
             children: std::rc::Rc::new(children),
@@ -1748,6 +1749,7 @@ mod compiler_tests {
                         module_index.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        crate::v2_compiler_infer::empty_binding_id_allocator(),
                     );
                     let unres_elapsed = t_unres.elapsed();
                     let rss_after_unres = get_rss_bytes();
@@ -1774,6 +1776,7 @@ mod compiler_tests {
                         module_index.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        crate::v2_compiler_infer::empty_binding_id_allocator(),
                     );
                     let env_elapsed = t_env.elapsed();
                     let rss_after_env = get_rss_bytes();

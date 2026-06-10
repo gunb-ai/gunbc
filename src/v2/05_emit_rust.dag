@@ -2761,7 +2761,6 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
       rust_visibility_prefix(), rust_items().struct_keyword, " BindingId(i64);\n\n",
       "impl BindingId {\n",
       "    pub(crate) fn mint(value: i64) -> Self { BindingId(value) }\n",
-      "    pub(crate) fn raw_for_diagnostic(&self) -> i64 { self.0 }\n",
       "}"
     )
   }
