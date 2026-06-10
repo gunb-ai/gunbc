@@ -9,7 +9,8 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, is_fully_resolved, node_is_keyed_collection, node_type_compatible, resolved_type,
+    bare_map_node, is_fully_resolved, make_container_type, make_map_type,
+    node_is_keyed_collection, node_type_compatible, resolved_type,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::NewlineIndex;
@@ -336,6 +337,92 @@ type AccountId = Refined<String>
     assert!(
         node_type_compatible(user_id.clone(), user_id, result.source_indices.clone()),
         "PD-3: node_type_compatible must accept same-brand UserId-for-UserId"
+    );
+}
+
+#[test]
+fn pd3_kernel_container_shells_are_structural_and_recurse_to_branded_elements() {
+    let source = r#"
+module pd3.kernel_container_brand_relation
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+type AccountId = Refined<String>
+"#;
+
+    let result = crate::helpers::compile_dag_resolved(source);
+    assert!(
+        result.diagnostics.is_empty(),
+        "kernel container brand probe should resolve cleanly, got: {:?}",
+        result
+            .diagnostics
+            .iter()
+            .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect::<Vec<_>>()
+    );
+    let graph = result.graph.as_ref().expect("resolved graph");
+    let module = graph
+        .modules
+        .iter()
+        .find(|m| {
+            v2_compiler::v2_std_core::authored_name_at(
+                result.source_indices.clone(),
+                m.module.clone(),
+            ) == "pd3.kernel_container_brand_relation"
+        })
+        .expect("pd3.kernel_container_brand_relation module");
+
+    let user_id =
+        lookup_type_by_name(module.type_env.clone(), "UserId".to_string()).expect("UserId binding");
+    let account_id = lookup_type_by_name(module.type_env.clone(), "AccountId".to_string())
+        .expect("AccountId binding");
+    assert_ne!(
+        user_id.binding_id, account_id.binding_id,
+        "brand twins must have distinct binding_id before entering kernel containers"
+    );
+
+    let list_user = make_container_type("List".to_string(), user_id.clone()).ty;
+    let list_account = make_container_type("List".to_string(), account_id.clone()).ty;
+    assert_eq!(
+        list_user.binding_id, None,
+        "kernel List shell must stay brand-free; element carries declaration identity"
+    );
+    assert_eq!(
+        list_account.binding_id, None,
+        "kernel List shell must stay brand-free; element carries declaration identity"
+    );
+    assert!(
+        !node_type_compatible(list_user.clone(), list_account, result.source_indices.clone()),
+        "List<UserId> vs List<AccountId> must reject by recursing to branded elements"
+    );
+    assert!(
+        node_type_compatible(list_user.clone(), list_user, result.source_indices.clone()),
+        "same kernel List shell with same branded element must accept"
+    );
+
+    let map_user_key = make_map_type(user_id.clone(), leaf_node("String".to_string())).ty;
+    let map_account_key = make_map_type(account_id.clone(), leaf_node("String".to_string())).ty;
+    assert_eq!(
+        map_user_key.binding_id, None,
+        "kernel Map shell must stay brand-free; key/value children carry declaration identity"
+    );
+    assert_eq!(
+        map_account_key.binding_id, None,
+        "kernel Map shell must stay brand-free; key/value children carry declaration identity"
+    );
+    assert!(
+        !node_type_compatible(
+            map_user_key.clone(),
+            map_account_key,
+            result.source_indices.clone()
+        ),
+        "Map<UserId, String> vs Map<AccountId, String> must reject by recursing to branded keys"
+    );
+    assert!(
+        node_type_compatible(map_user_key.clone(), map_user_key, result.source_indices.clone()),
+        "same kernel Map shell with same branded key/value must accept"
     );
 }
 
