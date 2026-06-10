@@ -5,6 +5,7 @@ use self::PathSegmentTokensResult::*;
 use self::PathTemplateParseResult::*;
 use self::UrlPathToken::*;
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

@@ -8,6 +8,7 @@ pub use crate::v2_compiler_infer_types::{
     node_type_equals, normalize_access_type_node, resolved_type,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
 pub use crate::v2_std_core::{

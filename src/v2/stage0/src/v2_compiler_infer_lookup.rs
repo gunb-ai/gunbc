@@ -25,6 +25,7 @@ pub use crate::v2_compiler_infer_types::{
     nominal_type_ref, normalize_access_type_node,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::FieldAccessStyle::OptionalUnwrap;

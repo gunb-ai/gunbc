@@ -2,6 +2,7 @@
 // Source module: v2.compiler.runtime_go
 
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

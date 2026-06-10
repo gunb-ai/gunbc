@@ -3,6 +3,7 @@
 
 pub use crate::std_types::kernel_type_set;
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::CompilerDiagnostic::{
     CircularDependency, DuplicateModule, MissingExport, UnresolvedImport,
 };

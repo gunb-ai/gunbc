@@ -70,6 +70,7 @@ pub use crate::v2_compiler_languages::{
     VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Arrow, Conj, Disj, NoConnective};

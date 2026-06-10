@@ -74,6 +74,7 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::LiteralValue::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

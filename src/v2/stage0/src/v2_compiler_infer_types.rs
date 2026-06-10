@@ -26,6 +26,7 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra, is_container_type,
 };
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};

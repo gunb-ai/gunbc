@@ -102,6 +102,7 @@ pub use crate::v2_compiler_infer_types::{
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, TypeMismatch, VariantCollision};

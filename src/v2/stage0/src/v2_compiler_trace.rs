@@ -5,6 +5,7 @@ use self::TraceEvent::*;
 use self::TraceFilter::*;
 pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

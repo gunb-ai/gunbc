@@ -20,6 +20,7 @@ use self::Vendor::*;
 pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
 pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction};
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

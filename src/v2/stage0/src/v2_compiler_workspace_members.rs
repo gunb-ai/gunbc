@@ -4,6 +4,7 @@
 pub use crate::v2_compiler_stage0_crates::stage0_crate_plan;
 pub use crate::v2_compiler_stage0_crates::Stage0CrateSpec;
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

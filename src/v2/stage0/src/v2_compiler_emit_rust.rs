@@ -80,6 +80,7 @@ pub use crate::v2_compiler_ownership::{
 pub use crate::v2_compiler_resolve::get_exported_names;
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};

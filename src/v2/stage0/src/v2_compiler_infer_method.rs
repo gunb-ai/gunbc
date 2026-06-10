@@ -4,6 +4,7 @@
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_infer_types::{make_container_type, make_map_type};
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::Connective::NoConnective;
 use crate::v2_std_core::ExprData::NoExprData;

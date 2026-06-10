@@ -38,6 +38,7 @@ pub use crate::std_types::{
 };
 pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

@@ -20,6 +20,7 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
 pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::ParseError;
 use crate::v2_std_core::Connective::{Arrow, Conj, Disj, NoConnective};

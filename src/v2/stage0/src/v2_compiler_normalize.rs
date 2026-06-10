@@ -4,6 +4,7 @@
 pub use crate::std_types::container_expected_arity;
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule};
 use crate::v2_rt;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::CompilerDiagnostic::ArityMismatch;
 use crate::v2_std_core::Connective::NoConnective;
 use crate::v2_std_core::ExprData::NoExprData;
