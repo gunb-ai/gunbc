@@ -34,7 +34,7 @@ import v4.std.grounding {
   Sg5Evidence
 }
 import v4.std.logic { Bool, bool_node }
-import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, substrate_synthetic_occurrence_id }
 import v4.std.runtime { RuntimeValue }
 import v4.std.target_model {
   symbol_kernel_type_node,
@@ -63,7 +63,7 @@ fn ts_g2_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_g2_claim_fail_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

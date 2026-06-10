@@ -22,7 +22,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   arrow_body_edge,
-  node_unanchored,
+  node_synthetic,
   well_formed
 }
 import v4.std.node_query { find_arrow_body_child }
@@ -38,12 +38,12 @@ import v4.std.verification {
 
 fn comprep_bool_node(pass: Bool) -> Node {
   if pass {
-    node_unanchored(
+    node_synthetic(
       kind: TypeNode { connective: Atom { identity: ^comprep_body_producer_pass } },
       children: []
     )
   } else {
-    node_unanchored(
+    node_synthetic(
       kind: TypeNode { connective: Atom { identity: ^comprep_body_producer_fail } },
       children: []
     )
@@ -60,26 +60,26 @@ fn comprep_produce_add_arrow_accepts() -> Bool {
 
 // Discriminating red: swap operand param refs — body subtree changes, well-formedness holds.
 fn comprep_swapped_operand_body() -> Node {
-  node_unanchored(
+  node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
       Edge {
         label: Positional,
-        target: node_unanchored(
+        target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_token_plus } },
           children: []
         )
       },
       Edge {
         label: Positional,
-        target: node_unanchored(
+        target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_param_y } },
           children: []
         )
       },
       Edge {
         label: Positional,
-        target: node_unanchored(
+        target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
           children: []
         )
@@ -95,33 +95,33 @@ fn comprep_body_operand_order_differs() -> Bool {
 }
 
 fn comprep_arrow_with_atom_body_rejects() -> Bool {
-  let arrow = node_unanchored(
+  let arrow = node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
       Edge {
         label: Positional,
-        target: node_unanchored(
+        target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
           children: []
         )
       },
       Edge {
         label: Positional,
-        target: node_unanchored(
+        target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
           children: []
         )
       },
       Edge {
         label: Positional,
-        target: node_unanchored(
+        target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
           children: []
         )
       },
       Edge {
         label: Named { name: arrow_body_edge },
-        target: node_unanchored(
+        target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^comprep_body_producer_fail } },
           children: []
         )

@@ -18,7 +18,7 @@ import v4.std.target_model { TargetModel }
 import v4.std.diagnostic { Accepted, Outcome, PortLocus, Rejected, outcome_rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -34,7 +34,7 @@ data rejecting_lens_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 },
   authority_source_text: Empty
 }
@@ -42,7 +42,7 @@ data rejecting_lens_target_model_stub: TargetModel = TargetModel {
 data rejecting_lens_authority_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^rejecting_lens_claim_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 fn rejecting_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
@@ -71,7 +71,7 @@ fn rejecting_lens_blocks_before_compile_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

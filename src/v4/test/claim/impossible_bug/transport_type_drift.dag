@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, Unanchored }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -37,7 +37,7 @@ import v4.std.verification {
 }
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -48,7 +48,7 @@ data shared_wire_contract_input: Node = Node {
     Edge { label: Named { name: ^client_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
     Edge { label: Named { name: ^server_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 
@@ -58,7 +58,7 @@ data falsification_wire_contract_drift: Node = Node {
     Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
     Edge { label: Named { name: ^server_field }, target: atom_node(s: ^server_field_string_symbol) },
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 
@@ -68,7 +68,7 @@ data falsification_target_contract_drift: Node = Node {
     Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
     Edge { label: Named { name: ^target_field }, target: atom_node(s: ^target_field_bool_symbol) },
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 

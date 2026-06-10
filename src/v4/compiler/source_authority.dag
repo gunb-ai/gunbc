@@ -30,7 +30,7 @@ import v4.std.diagnostic {
   port_locus
 }
 import v4.std.grammar { ParseTree }
-import v4.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v4.std.node { Node, Symbol, node_for_structural_equality }
 import v4.std.target_model { TargetModel }
 import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate { target_serialize_source_from_model }
@@ -229,7 +229,7 @@ fn source_ir_node_artifact_provenance(
 
 
 fn source_authority_node_equal(left: Node, right: Node) -> Bool {
-  canonicalize_node_strip_provenance(n: left) == canonicalize_node_strip_provenance(n: right)
+  node_for_structural_equality(n: left) == node_for_structural_equality(n: right)
 }
 
 fn source_ast_equal_witness(

@@ -19,7 +19,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   loop_bound_edge,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   EqualsClaim,
@@ -34,13 +34,13 @@ import v4.std.witness { Holds }
 data loop_linear_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_linear_body_atom } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data loop_linear_measure_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_linear_measure_atom } },
   children: [],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data loop_linear_body: Node = Node {
@@ -48,7 +48,7 @@ data loop_linear_body: Node = Node {
   children: [
     Edge { label: Positional, target: loop_linear_body_leaf }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 data loop_linear_input: Node = Node {
@@ -57,7 +57,7 @@ data loop_linear_input: Node = Node {
     Edge { label: Positional, target: loop_linear_body },
     Edge { label: Named { name: loop_bound_edge }, target: loop_linear_measure_leaf }
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 fn loop_linear_claim_holds() -> Bool {
@@ -78,7 +78,7 @@ fn loop_linear_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

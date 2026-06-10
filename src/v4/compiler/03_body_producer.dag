@@ -33,7 +33,7 @@ import v4.std.node {
   Value,
   arrow_body_edge,
   node_rebuild,
-  node_unanchored,
+  node_synthetic,
   well_formed
 }
 import v4.std.node_query { find_arrow_body_child }
@@ -50,7 +50,7 @@ fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
 }
 
 fn type_atom_node(identity: Symbol) -> Node {
-  node_unanchored(
+  node_synthetic(
     kind: TypeNode { connective: Atom { identity: identity } },
     children: []
   )
@@ -87,7 +87,7 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
 
 // MVP add body: Transform(+) with positional param references (body-scope resolve follows).
 fn produce_mvp1_add_binary_body() -> Node {
-  node_unanchored(
+  node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
       Edge {
@@ -107,7 +107,7 @@ fn produce_mvp1_add_binary_body() -> Node {
 }
 
 fn produce_mvp1_add_arrow_signature() -> Node {
-  node_unanchored(
+  node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
       Edge {
@@ -152,7 +152,7 @@ fn produce_mvp1_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
     o: produce_mvp1_add_arrow_with_body(),
     f: fn(arrow_with_body) {
       outcome_accepted(
-        value: node_unanchored(
+        value: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: [
             Edge {

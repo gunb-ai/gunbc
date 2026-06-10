@@ -113,7 +113,7 @@ import v4.std.leaf_model_verification {
   target_diagnostic_go_invalid_conversion_arity,
   target_diagnostic_go_runtime_panic
 }
-import v4.std.node { Node, Symbol, Unanchored }
+import v4.std.node { Node, Symbol, substrate_synthetic_occurrence_id }
 import v4.std.text { String }
 
 // Fact anchor: rust.dag declares surface spelling + coercion edge for i32.
@@ -654,7 +654,7 @@ fn go_run_fixture(source: String) -> LeafModelGoRunFixture {
 
 fn go_leaf_model_fact_atom(id: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: id } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

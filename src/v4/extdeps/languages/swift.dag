@@ -102,7 +102,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
@@ -395,7 +395,7 @@ fn swift_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -485,7 +485,7 @@ fn swift_integer_facts_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
         target: swift_overflow_node(overflow: facts.overflow)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -506,7 +506,7 @@ fn swift_float_facts_node(facts: SwiftFloatPrimitiveFacts) -> Node {
         target: swift_atom(id: facts.ieee754_binary)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -536,7 +536,7 @@ fn swift_nonnumeric_facts_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
         target: swift_nonnumeric_representation_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -550,7 +550,7 @@ fn swift_integer_inhabitant_node(id: Symbol, facts: SwiftIntegerPrimitiveFacts) 
         target: swift_integer_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -564,7 +564,7 @@ fn swift_declared_inhabitants_root() -> Node {
     children: [
       swift_named_edge(name: ^swift_inhabitant_field_int32, target: swift_inhabitant_int32_node())
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -580,7 +580,7 @@ fn swift_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: swift_inhabitant_int32_node() },
       Edge { label: Positional, target: swift_inhabitant_int32_node() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -631,7 +631,7 @@ fn swift_mvp1_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: swift_mvp1_serialize_source_children(),
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -687,7 +687,7 @@ fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -700,7 +700,7 @@ fn swift_mvp1_translation_rules_node() -> Node {
         target: swift_grammar_relation_row_node(row: swift_mvp1_grammar_relation_row())
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -725,7 +725,7 @@ fn swift_mvp1_target_model_node() -> Node {
         target: swift_mvp1_serialize_source_node()
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1927,7 +1927,7 @@ fn swift_float_inhabitant_node(id: Symbol, facts: SwiftFloatPrimitiveFacts) -> N
         target: swift_float_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1952,7 +1952,7 @@ fn swift_signed_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) -> N
         target: swift_overflow_node(overflow: facts.overflow)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1977,7 +1977,7 @@ fn swift_unsigned_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) ->
         target: swift_overflow_node(overflow: facts.overflow)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -1998,7 +1998,7 @@ fn swift_float_algebra_witness_node(facts: SwiftFloatPrimitiveFacts) -> Node {
         target: swift_float_width_node(width: facts.width)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2011,7 +2011,7 @@ fn swift_bool_algebra_witness_node() -> Node {
         target: swift_atom(id: ^swift_witness_bool_boolean_algebra)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2028,7 +2028,7 @@ fn swift_string_algebra_witness_node() -> Node {
         target: swift_atom(id: ^swift_tag_string_unicode_text)
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -2142,7 +2142,7 @@ fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLa
         target: swift_atom(id: discriminant(v: key))
       )
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

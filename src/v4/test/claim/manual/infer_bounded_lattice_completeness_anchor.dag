@@ -30,7 +30,7 @@ import v4.std.algebra {
 import v4.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -44,7 +44,7 @@ fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -53,7 +53,7 @@ fn anchor_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -70,7 +70,7 @@ fn anchor_complete_lattice_node() -> Node {
       anchor_named_edge(name: lattice_field_meet, target: anchor_fn_node()),
       anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -81,7 +81,7 @@ fn anchor_lattice_missing_meet_node() -> Node {
     children: [
       anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -93,7 +93,7 @@ data anchor_complete_bounded_lattice_instance: Node = Node {
     anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
     anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 
@@ -104,7 +104,7 @@ data anchor_partial_bounded_lattice_instance: Node = Node {
     anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
     anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 
@@ -114,7 +114,7 @@ data anchor_partial_missing_lattice_field_instance: Node = Node {
     anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
     anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 
@@ -126,7 +126,7 @@ data anchor_consumer_of_partial: Node = Node {
       target: anchor_partial_bounded_lattice_instance
     )
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 
@@ -138,7 +138,7 @@ data anchor_module_with_partial_only: Node = Node {
       target: anchor_partial_bounded_lattice_instance
     )
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 
@@ -154,7 +154,7 @@ data anchor_module_with_partial_and_consumer: Node = Node {
       target: anchor_consumer_of_partial
     )
   ],
-  span: Unanchored
+  occurrence_id: substrate_synthetic_occurrence_id
 }
 
 
@@ -233,7 +233,7 @@ fn sg6_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg6_pass_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -242,7 +242,7 @@ fn sg6_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg6_fail_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

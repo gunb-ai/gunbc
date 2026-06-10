@@ -17,7 +17,7 @@ import v4.std.node {
   TypeNode,
   content_hash,
   loop_bound_edge,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   CompilesClaim,
@@ -32,7 +32,7 @@ fn content_hash_loop_body_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_loop_body_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -40,7 +40,7 @@ fn content_hash_loop_measure_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_loop_measure_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -50,7 +50,7 @@ fn content_hash_loop_body() -> Node {
     children: [
       Edge { label: Positional, target: content_hash_loop_body_leaf() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -61,7 +61,7 @@ fn content_hash_loop_body_two() -> Node {
       Edge { label: Positional, target: content_hash_loop_body_leaf() },
       Edge { label: Positional, target: content_hash_loop_body_leaf() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -75,7 +75,7 @@ fn content_hash_loop_bound_last() -> Node {
         target: content_hash_loop_measure_leaf()
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -89,7 +89,7 @@ fn content_hash_loop_bound_first() -> Node {
       },
       Edge { label: Positional, target: content_hash_loop_body() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -104,7 +104,7 @@ fn content_hash_loop_bound_middle() -> Node {
       },
       Edge { label: Positional, target: content_hash_loop_body_two() }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -119,7 +119,7 @@ fn content_hash_loop_bound_last_two_body() -> Node {
         target: content_hash_loop_measure_leaf()
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -127,7 +127,7 @@ fn content_hash_loop_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_loop_pass_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -135,7 +135,7 @@ fn content_hash_loop_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_loop_fail_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 fn content_hash_loop_with_extra_named() -> Node {
@@ -152,7 +152,7 @@ fn content_hash_loop_with_extra_named() -> Node {
         target: content_hash_loop_body_leaf()
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

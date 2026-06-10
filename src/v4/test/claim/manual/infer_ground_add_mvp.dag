@@ -49,7 +49,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -101,7 +101,7 @@ fn fixture_int_type_node(atom: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: atom } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -110,7 +110,7 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -372,11 +372,11 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
               target: fixture_int_type_node(atom: ^fixture_add_body_int_atom)
             }
           ],
-          span: Unanchored
+          occurrence_id: substrate_synthetic_occurrence_id
 }
       }
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

@@ -7,7 +7,7 @@
 module v4.std.algebra
 
 
-import v4.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 type Magma<T> {
   op: fn(T, T) -> T
 }
@@ -122,7 +122,7 @@ fn fold_list_node<T>(
   fold_list_right(
     xs: xs,
     empty: Node { kind: TypeNode { connective: Conj }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 },
     snoc: fn(tail_node, item) {
       Node {
@@ -131,7 +131,7 @@ fn fold_list_node<T>(
           Edge { label: Named { name: fold_list_node_head }, target: item_node(item) },
           Edge { label: Named { name: fold_list_node_tail }, target: tail_node },
         ],
-        span: Unanchored
+        occurrence_id: substrate_synthetic_occurrence_id
 }
     }
   )
@@ -186,7 +186,7 @@ data free_monoid_type_fixpoint: Symbol = free_monoid_type_fixpoint
 
 fn algebra_empty_conj() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -199,7 +199,7 @@ fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
       children: [
         Edge { label: Named { name: free_monoid_type_fixpoint }, target: algebra_empty_conj() },
       ],
-      span: Unanchored
+      occurrence_id: substrate_synthetic_occurrence_id
 },
     inhabitant: inhabitant,
   )
@@ -222,11 +222,11 @@ fn free_monoid_type_node(inhabitant: Node) -> Node {
               target: free_monoid_tail_type_fixpoint(inhabitant: inhabitant),
             },
           ],
-          span: Unanchored
+          occurrence_id: substrate_synthetic_occurrence_id
 },
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -239,7 +239,7 @@ fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
       Edge { label: Positional, target: domain },
       Edge { label: Positional, target: codomain },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -251,7 +251,7 @@ fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
       Edge { label: Positional, target: domain },
       Edge { label: Positional, target: codomain },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -264,7 +264,7 @@ fn ordering_type_node() -> Node {
       Edge { label: Named { name: ordering_variant_equal }, target: algebra_empty_conj() },
       Edge { label: Named { name: ordering_variant_greater }, target: algebra_empty_conj() },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -278,7 +278,7 @@ fn magma_type_node(inhabitant: Node) -> Node {
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -289,7 +289,7 @@ fn semigroup_type_node(inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: semigroup_field_magma }, target: magma_type_node(inhabitant: inhabitant) },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -301,7 +301,7 @@ fn monoid_type_node(inhabitant: Node) -> Node {
       Edge { label: Named { name: monoid_field_semigroup }, target: semigroup_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: monoid_field_identity }, target: inhabitant },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -312,7 +312,7 @@ fn commutative_monoid_type_node(inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: commutative_monoid_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -327,7 +327,7 @@ fn group_type_node(inhabitant: Node) -> Node {
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -338,7 +338,7 @@ fn abelian_group_type_node(inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: abelian_group_field_group }, target: group_type_node(inhabitant: inhabitant) },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -350,7 +350,7 @@ fn semiring_type_node(inhabitant: Node) -> Node {
       Edge { label: Named { name: semiring_field_add }, target: commutative_monoid_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: semiring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -361,7 +361,7 @@ fn commutative_semiring_type_node(inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: commutative_semiring_field_semiring }, target: semiring_type_node(inhabitant: inhabitant) },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -373,7 +373,7 @@ fn ring_type_node(inhabitant: Node) -> Node {
       Edge { label: Named { name: ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -384,7 +384,7 @@ fn commutative_ring_type_node(inhabitant: Node) -> Node {
     children: [
       Edge { label: Named { name: commutative_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -399,7 +399,7 @@ fn ordered_ring_type_node(inhabitant: Node) -> Node {
         target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -411,20 +411,20 @@ fn field_type_node(inhabitant: Node) -> Node {
       Edge { label: Named { name: field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
 fn field_reciprocal_operation_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_operation } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
 
 fn field_reciprocal_nonzero_precondition_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_nonzero_precondition } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -451,7 +451,7 @@ fn approximate_field_type_node(inhabitant: Node) -> Node {
         target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -469,7 +469,7 @@ fn lattice_type_node(inhabitant: Node) -> Node {
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -482,7 +482,7 @@ fn bounded_lattice_type_node(inhabitant: Node) -> Node {
       Edge { label: Named { name: bounded_lattice_field_top }, target: inhabitant },
       Edge { label: Named { name: bounded_lattice_field_bottom }, target: inhabitant },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -500,7 +500,7 @@ fn boolean_algebra_type_node(inhabitant: Node) -> Node {
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -512,7 +512,7 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
       Edge { label: Named { name: algebra_edge }, target: algebra },
       Edge { label: Named { name: inhabitant_edge }, target: inhabitant },
     ],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 

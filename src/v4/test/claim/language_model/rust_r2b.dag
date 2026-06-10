@@ -25,7 +25,7 @@ import v4.std.leaf_model_verification {
   leaf_model_claim_rust_r2b_release_default_overflow
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
 import v4.std.verdict { verdict_fail }
 import v4.std.verification {
   EqualsClaim,
@@ -39,10 +39,10 @@ import v4.std.verification {
 fn rust_r2b_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^rust_r2b_claim_bool_true } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^rust_r2b_claim_bool_false } }, children: [],
- span: Unanchored
+ occurrence_id: substrate_synthetic_occurrence_id
 }
   }
 }

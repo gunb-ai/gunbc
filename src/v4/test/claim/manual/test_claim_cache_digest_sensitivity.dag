@@ -64,7 +64,7 @@ import v4.std.node {
   byte_offset_cache_key,
   byte_offset_cache_key_fingerprint,
   byte_offset_cache_digest_max_limbs,
-  Unanchored
+  substrate_synthetic_occurrence_id
 }
 import v4.std.verification {
   CompilesClaim,
@@ -82,7 +82,7 @@ fn tcc_cache_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_pass_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
@@ -90,7 +90,7 @@ fn tcc_cache_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_fail_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: substrate_synthetic_occurrence_id
 }
 }
 
