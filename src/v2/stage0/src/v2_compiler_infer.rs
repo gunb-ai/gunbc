@@ -1699,15 +1699,20 @@ pub fn annotate_pattern_parent_enums(
                         node: resolved_scrut_node,
                         ..
                     } => {
+                        let scrutinee_name = authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            resolved_scrut_node.clone(),
+                        );
                         let optional_cardinality_subject =
                             ((resolved_scrut_node.return_cardinality.clone()
                                 == Cardinality::CardOptional)
-                                && (authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    resolved_scrut_node.clone(),
-                                )
-                                .as_str()
+                                && (scrutinee_name.clone().as_str()
                                     != "Optional".to_string().as_str()));
+                        let witness_container_subject = ((scrutinee_name.clone().as_str()
+                            == "Witness".to_string().as_str())
+                            && ((variant_name.clone().as_str() == "Holds".to_string().as_str())
+                                || (variant_name.clone().as_str()
+                                    == "Violates".to_string().as_str())));
                         if (optional_cardinality_subject
                             && ((variant_name.clone().as_str() == "Present".to_string().as_str())
                                 || (variant_name.clone().as_str()
@@ -1715,16 +1720,17 @@ pub fn annotate_pattern_parent_enums(
                         {
                             Some("Optional".to_string())
                         } else {
-                            {
-                                let is_coproduct =
-                                    (resolved_scrut_node.connective.clone() == Connective::Disj);
-                                if is_coproduct {
-                                    Some(authored_name_at(
-                                        scope.type_env.clone().source_indices.clone(),
-                                        resolved_scrut_node.clone(),
-                                    ))
-                                } else {
-                                    None
+                            if witness_container_subject {
+                                Some("Witness".to_string())
+                            } else {
+                                {
+                                    let is_coproduct = (resolved_scrut_node.connective.clone()
+                                        == Connective::Disj);
+                                    if is_coproduct {
+                                        Some(scrutinee_name.clone())
+                                    } else {
+                                        None
+                                    }
                                 }
                             }
                         }
