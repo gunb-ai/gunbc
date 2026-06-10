@@ -107,7 +107,12 @@ type GrammarExprCornerFold {
   nullable: Bool
 }
 
-// Deferred parse walk built by fold_grammar_expr; parse_expr_run_walk interprets with token threading.
+// 🟡 coproduct dissolution — feature: GrammarExpr parse interpreter — bind node://adhoc-2145db6b-69a
+// (Level-1b lane) — parallel representation mirroring GrammarExpr variants (1:1 shape); the
+// fold stage is identity-shaped (GrammarExpr → ParseExprWalk rebox). Dissolve-on-arrival: a
+// higher-order GrammarExprFold algebra whose handlers thread tokens and yield ParseExprResult
+// directly, eliminating ParseExprWalk and parse_expr_run_walk's per-variant match. Trigger:
+// Level-2 parse-walk algebra in std/grammar.dag or T-8 parse-result projection unification.
 type ParseExprWalk
   = ParseExprWalkTerminal { token_class: Symbol }
   | ParseExprWalkNonterminal { production: Symbol }
@@ -448,6 +453,8 @@ fn expr_corner_fold_sequence(
   left_fold: GrammarExprCornerFold,
   right_fold: GrammarExprCornerFold
 ) -> GrammarExprCornerFold {
+  // left_fold.nullable is fold_grammar_expr applied with the Bool nullable algebra over the
+  // left subtree — equivalent to expr_is_nullable_given_set(expr: left, nullable_set).
   GrammarExprCornerFold {
     corners: list_append(
       left: left_fold.corners,
@@ -943,9 +950,11 @@ fn parse_expr_run_walk(
 }
 
 
-// 🟢 substrate catamorphism consumer — feature: GrammarExpr structural morphism substrate —
-// bind node://adhoc-2145db6b-69a — fold_grammar_expr builds ParseExprWalk; parse_expr_run_walk
-// interprets with token threading (Sequence threads remaining; Choice/Optional/Repeat unchanged).
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature: GrammarExpr parse walk substrate — bind node://adhoc-2145db6b-69a — partial
+// migration: fold_grammar_expr dissolves structural recursion over GrammarExpr; token-threading
+// interpretation remains a per-variant match on interim ParseExprWalk (see 🟡 mark on that type).
+// Forbidden: claiming full walker dissolution for parse_expr until the higher-order algebra lands.
 // Nonterminal arm: O(1) ParseTable lookup. Left-recursive grammars rejected pre-parse.
 fn parse_expr(
   expr: GrammarExpr,
