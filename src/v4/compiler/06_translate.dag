@@ -684,17 +684,29 @@ fn grammar_relation_row_for_bodied_arrow_serialize(
   rules: Node,
   emitted: Node
 ) -> Outcome<Node> {
-  match grammar_relation_row_for_emitted(rules: rules, emitted: emitted) {
-    Accepted { value: row, diagnostics: d } =>
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+    f: fn(row) {
       bind_outcome(
         o: bodied_arrow_scaffold_from_grammar_relation_row(row: row),
         f: fn(scaffold) {
-          Accepted { value: row, diagnostics: d }
+          Accepted { value: row, diagnostics: None }
         }
       )
-    Rejected { diagnostics: _ } =>
-      grammar_relation_row_for_bodied_arrow_signature_match(rules: rules, emitted: emitted)
-  }
+    }
+  )
+}
+
+fn grammar_inverse_bodied_arrow_validated(
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    f: fn(rules) {
+      grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted)
+    }
+  )
 }
 fn translate_bodied_arrow_coerce_signature_slots(
   arrow: Node,

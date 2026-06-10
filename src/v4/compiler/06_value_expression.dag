@@ -31,6 +31,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.node {
+  all_edges_positional,
   Atom,
   ComputationNode,
   Conj,
@@ -53,21 +54,17 @@ import v4.std.target_model {
   ConcreteSyntaxToken,
   FixedToken,
   InfixToken,
-  canonical_operation_from_wire_node,
+  canonical_operation_equal,
   canonical_operation_op_add,
-  canonical_operation_wire_matches_operation,
   TargetModel,
   TargetOperatorRealization,
-  TargetOperatorShape,
   TargetValueExpression,
   TargetValueExpressionProjection,
   TargetValueExprPrimitiveApply,
   decode_value_expression_projection_bundle,
   target_model_edge_operator_realizations,
   target_model_edge_value_expression_projection,
-  target_operator_realization_field_operation,
-  target_operator_realization_field_shape,
-  target_operator_shape_field_token,
+  target_operator_realization_from_wire_row,
   target_value_expr_field_binding,
   target_value_expr_field_operation,
   target_value_expr_field_operand,
@@ -149,14 +146,19 @@ fn transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   transform_positional_operand_binding(node: node, index: 0)
 }
 
-fn transform_positional_child_count(node: Node) -> Int {
-  length(xs: node_positional_child_targets(node: node))
+fn transform_primitive_apply_edges_conform(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      all_edges_positional(children: node.children)
+      && length(xs: node_positional_child_targets(node: node)) == 3
+    _ => false
+  }
 }
 
 fn project_transform_primitive_apply(node: Node) -> Outcome<TargetValueExpression> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      if transform_positional_child_count(node: node) != 3 {
+      if !transform_primitive_apply_edges_conform(node: node) {
         outcome_rejected(
           value_expr_diagnostic(
             reason: value_expr_reason_transform_shape_invalid,
@@ -261,124 +263,6 @@ fn value_expression_projection_from_target(
   )
 }
 
-fn operator_realization_shape_from_row(row: Node) -> Outcome<TargetOperatorShape> {
-  match row.kind {
-    TypeNode { connective: Conj } =>
-      match fold(
-        row.children,
-        init: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: value_expr_diagnostic(
-              reason: value_expr_reason_operator_catalog_miss,
-              node: row
-            )
-          )
-        },
-        f: fn(acc, e) {
-          match acc {
-            Accepted { value: _, diagnostics: _ } => acc
-            Rejected { diagnostics: _ } =>
-              match e.label {
-                Named { name: n } =>
-                  if n == target_operator_realization_field_shape {
-                    match e.target.kind {
-                      TypeNode { connective: Atom { identity: id } } =>
-                        if id == discriminant(v: InfixToken {}) {
-                          match fold(
-                            e.target.children,
-                            init: Rejected {
-                              diagnostics: diagnostics_singleton(
-                                d: value_expr_diagnostic(
-                                  reason: value_expr_reason_operator_catalog_miss,
-                                  node: row
-                                )
-                              )
-                            },
-                            f: fn(tok_acc, tok_e) {
-                              match tok_acc {
-                                Accepted { value: _, diagnostics: _ } => tok_acc
-                                Rejected { diagnostics: _ } =>
-                                  match tok_e.label {
-                                    Named { name: tn } =>
-                                      if tn == target_operator_shape_field_token {
-                                        match tok_e.target.kind {
-                                          TypeNode {
-                                            connective: Atom { identity: token }
-                                          } =>
-                                            Accepted {
-                                              value: InfixToken { token: token },
-                                              diagnostics: None
-                                            }
-                                          _ => tok_acc
-                                        }
-                                      } else {
-                                        tok_acc
-                                      }
-                                    Positional => tok_acc
-                                  }
-                              }
-                            }
-                          ) {
-                            Accepted { value: shape, diagnostics: d } =>
-                              Accepted { value: shape, diagnostics: d }
-                            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                          }
-                        } else {
-                          acc
-                        }
-                      _ => acc
-                    }
-                  } else {
-                    acc
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        Accepted { value: shape, diagnostics: d } =>
-          Accepted { value: shape, diagnostics: d }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
-    _ =>
-      outcome_rejected(
-        value_expr_diagnostic(
-          reason: value_expr_reason_operator_catalog_miss,
-          node: row
-        )
-      )
-  }
-}
-
-fn operator_realization_row_matches_operation(
-  row: Node,
-  operation: CanonicalOperation
-) -> Bool {
-  match row.kind {
-    TypeNode { connective: Conj } =>
-      fold(
-        row.children,
-        init: false,
-        f: fn(acc, e) {
-          match e.label {
-            Named { name: n } =>
-              if n == target_operator_realization_field_operation {
-                acc ||
-                  canonical_operation_wire_matches_operation(
-                    wire: e.target,
-                    operation: operation
-                  )
-              } else {
-                acc
-              }
-            Positional => acc
-          }
-        }
-      )
-    _ => false
-  }
-}
-
 type TargetOperatorRealizationLookup
   = TargetOperatorRealizationMissing
   | TargetOperatorRealizationUnique { realization: TargetOperatorRealization }
@@ -389,24 +273,20 @@ fn target_operator_realization_lookup_step(
   row: Node,
   operation: CanonicalOperation
 ) -> TargetOperatorRealizationLookup {
-  if operator_realization_row_matches_operation(row: row, operation: operation) {
-    match acc {
-      TargetOperatorRealizationUnique { realization: _ } => TargetOperatorRealizationAmbiguous
-      TargetOperatorRealizationAmbiguous => TargetOperatorRealizationAmbiguous
-      TargetOperatorRealizationMissing =>
-        match operator_realization_shape_from_row(row: row) {
-          Accepted { value: shape, diagnostics: _ } =>
-            TargetOperatorRealizationUnique {
-              realization: TargetOperatorRealization {
-                operation: operation,
-                shape: shape
-              }
-            }
-          Rejected { diagnostics: _ } => TargetOperatorRealizationMissing
+  match target_operator_realization_from_wire_row(row: row) {
+    Accepted { value: realization, diagnostics: _ } =>
+      if canonical_operation_equal(left: realization.operation, right: operation) {
+        match acc {
+          TargetOperatorRealizationUnique { realization: _ } =>
+            TargetOperatorRealizationAmbiguous
+          TargetOperatorRealizationAmbiguous => TargetOperatorRealizationAmbiguous
+          TargetOperatorRealizationMissing =>
+            TargetOperatorRealizationUnique { realization: realization }
         }
-    }
-  } else {
-    acc
+      } else {
+        acc
+      }
+    Rejected { diagnostics: _ } => acc
   }
 }
 
