@@ -201,7 +201,7 @@ fn parse_render_targets(
         }
         match render_target_from_name(trimmed) {
             Some(render_target) => targets.push((trimmed.to_string(), render_target)),
-            Absent => {
+            None => {
                 eprintln!(
                     "unknown target: {}. supported: rust, python, go, dag, rust+dag",
                     target
