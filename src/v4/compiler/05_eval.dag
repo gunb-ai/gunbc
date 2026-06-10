@@ -73,6 +73,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   Value,
+  Arrow,
   Atom,
   bag_hash_digest,
   combine_hash,
@@ -85,6 +86,7 @@ import v4.std.node {
   is_positional,
   well_formed
 }
+import v4.std.node_query { find_arrow_body_child }
 import v4.std.diagnostic {
   AmbiguousIntent,
   ByteRange,
@@ -934,6 +936,9 @@ data eval_rejected_branch_argument_absent: Symbol = eval_rejected_branch_argumen
 data eval_rejected_bind_key_absent: Symbol = eval_rejected_bind_key_absent
 data eval_rejected_bind_value_absent: Symbol = eval_rejected_bind_value_absent
 data eval_rejected_bind_body_absent: Symbol = eval_rejected_bind_body_absent
+data eval_rejected_callee_absent: Symbol = eval_rejected_callee_absent
+data eval_rejected_argument_bind_absent: Symbol = eval_rejected_argument_bind_absent
+data eval_rejected_unsupported_callee: Symbol = eval_rejected_unsupported_callee
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -1175,6 +1180,195 @@ fn eval_bind_body(node: Node) -> Outcome<Node> {
   )
 }
 
+fn eval_binding_key_node(sym: Symbol) -> Node {
+  symbol_atom_node(sym: sym)
+}
+
+fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  eval_witness_outcome(
+    witness: environment.bindings.lookup(EnvironmentBindingKey { declaration: node })
+  )
+}
+
+// COMPREP wave-1 body-scope bindings: the landed producer emits param refs through the
+// binding_id symbols from the source token model. General arity belongs to the next
+// body-scope resolve slice; this keeps eval's new callee path executable without adding
+// a parallel FunctionRef carrier.
+fn eval_wave1_argument_binding_key(wanted: Int, node: Node) -> Outcome<EnvironmentBindingKey> {
+  if wanted == 0 {
+    Accepted {
+      value: EnvironmentBindingKey {
+        declaration: eval_binding_key_node(sym: ^dag_binding_param_x)
+      },
+      diagnostics: None
+    }
+  } else if wanted == 1 {
+    Accepted {
+      value: EnvironmentBindingKey {
+        declaration: eval_binding_key_node(sym: ^dag_binding_param_y)
+      },
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
+    )
+  }
+}
+
+fn eval_bind_wave1_argument(
+  args: List<RuntimeValue>,
+  wanted: Int,
+  environment: EvaluationEnvironment,
+  bind: BindInterpreter,
+  node: Node
+) -> Outcome<EvaluationEnvironment> {
+  bind_outcome(
+    o: eval_witness_outcome(
+      witness: list_nth(
+        xs: args,
+        wanted: wanted,
+        absent: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
+      )
+    ),
+    f: fn(value) {
+      bind_outcome(
+        o: eval_wave1_argument_binding_key(wanted: wanted, node: node),
+        f: fn(key) {
+          bind.bind_value(key, value, environment)
+        }
+      )
+    }
+  )
+}
+
+fn eval_bind_wave1_arguments(
+  args: List<RuntimeValue>,
+  environment: EvaluationEnvironment,
+  bind: BindInterpreter,
+  node: Node
+) -> Outcome<EvaluationEnvironment> {
+  bind_outcome(
+    o: eval_bind_wave1_argument(
+      args: args,
+      wanted: 0,
+      environment: environment,
+      bind: bind,
+      node: node
+    ),
+    f: fn(env1) {
+      eval_bind_wave1_argument(
+        args: args,
+        wanted: 1,
+        environment: env1,
+        bind: bind,
+        node: node
+      )
+    }
+  )
+}
+
+fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
+  eval_nth_child(
+    node: node,
+    wanted: 0,
+    absent_reason: eval_rejected_callee_absent
+  )
+}
+
+fn eval_node_is_arrow(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Arrow } => true
+    _ => false
+  }
+}
+
+fn eval_node_is_atom(node: Node, sym: Symbol) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == sym
+    _ => false
+  }
+}
+
+fn eval_node_is_callee_reference(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+
+fn eval_positional_child_atom_is(node: Node, wanted: Int, sym: Symbol) -> Bool {
+  match eval_nth_child(
+    node: node,
+    wanted: wanted,
+    absent_reason: eval_rejected_unsupported_callee
+  ) {
+    Accepted { value: e, diagnostics: _ } =>
+      match e.label {
+        Positional => eval_node_is_atom(node: e.target, sym: sym)
+        Named { name: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn eval_wave1_add_signature(arrow: Node) -> Bool {
+  eval_node_is_arrow(node: arrow)
+    && eval_positional_child_atom_is(node: arrow, wanted: 0, sym: ^dag_binding_type_int)
+    && eval_positional_child_atom_is(node: arrow, wanted: 1, sym: ^dag_binding_type_int)
+    && eval_positional_child_atom_is(node: arrow, wanted: 2, sym: ^dag_binding_type_int)
+}
+
+fn eval_wave1_add_body_operand_set(body: Node) -> Bool {
+  (
+    eval_positional_child_atom_is(node: body, wanted: 1, sym: ^dag_binding_param_x)
+      && eval_positional_child_atom_is(node: body, wanted: 2, sym: ^dag_binding_param_y)
+  ) || (
+    eval_positional_child_atom_is(node: body, wanted: 1, sym: ^dag_binding_param_y)
+      && eval_positional_child_atom_is(node: body, wanted: 2, sym: ^dag_binding_param_x)
+  )
+}
+
+fn eval_wave1_add_body(body: Node) -> Bool {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      eval_positional_child_atom_is(node: body, wanted: 0, sym: ^dag_token_plus)
+        && eval_wave1_add_body_operand_set(body: body)
+    _ => false
+  }
+}
+
+fn eval_wave1_add_callee(arrow: Node) -> Bool {
+  if eval_wave1_add_signature(arrow: arrow) {
+    match find_arrow_body_child(root: arrow) {
+      Accepted { value: body, diagnostics: _ } => eval_wave1_add_body(body: body)
+      Rejected { diagnostics: _ } => false
+    }
+  } else {
+    false
+  }
+}
+
+fn eval_transform_has_callee_reference(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      match eval_nth_child(
+        node: node,
+        wanted: 0,
+        absent_reason: eval_rejected_callee_absent
+      ) {
+        Accepted { value: e0, diagnostics: _ } =>
+          match e0.label {
+            Positional => eval_node_is_callee_reference(node: e0.target)
+            Named { name: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    _ => false
+  }
+}
+
 fn eval_value_node(
   node: Node,
   _args: List<RuntimeValue>,
@@ -1195,14 +1389,53 @@ fn eval_transform_node(
   node: Node,
   args: List<RuntimeValue>,
   _facts: InferredFacts,
-  _tree: InferredTree,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
   interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
-  _runtime: V4EvaluatorRuntime
+  runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
   match interpreter {
     TransformRuntimeInterpreter { interpreter: transform } =>
-      transform.call_primitive(node, args, environment)
+      if eval_transform_has_callee_reference(node: node) {
+        bind_outcome(
+          o: eval_transform_callee_edge(node: node),
+          f: fn(callee_edge) {
+            if eval_wave1_add_callee(arrow: callee_edge.target) {
+              bind_outcome(
+                o: find_arrow_body_child(root: callee_edge.target),
+                f: fn(body) {
+                  bind_outcome(
+                    o: eval_bind_wave1_arguments(
+                      args: args,
+                      environment: environment,
+                      bind: interpretation.bind,
+                      node: node
+                    ),
+                    f: fn(call_environment) {
+                      eval_runtime_node(
+                        node: body,
+                        tree: tree,
+                        interpretation: interpretation,
+                        environment: call_environment,
+                        runtime: runtime
+                      )
+                    }
+                  )
+                }
+              )
+            } else if eval_node_is_arrow(node: callee_edge.target) {
+              outcome_rejected(
+                d: eval_diagnostic(reason: eval_rejected_unsupported_callee, node: callee_edge.target)
+              )
+            } else {
+              transform.call_primitive(node, args, environment)
+            }
+          }
+        )
+      } else {
+        transform.call_primitive(node, args, environment)
+      }
     _ => outcome_rejected(d: eval_diagnostic(reason: eval_rejected_type_node, node: node))
   }
 }
@@ -1341,6 +1574,7 @@ fn eval_computation_node(
           args: args,
           facts: facts,
           tree: tree,
+          interpretation: interpretation,
           interpreter: dispatch,
           environment: environment,
           runtime: runtime
@@ -1408,9 +1642,11 @@ fn eval_interpret_node(
             runtime: runtime
           )
         TypeNode { connective: _ } =>
-          outcome_rejected(
-            d: eval_diagnostic(reason: eval_rejected_type_node, node: node)
-          )
+          match eval_runtime_binding_lookup(node: node, environment: environment) {
+            Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+            Rejected { diagnostics: _ } =>
+              interpretation.value.allocate_literal(node, environment)
+          }
       }
     }
   )
@@ -1420,8 +1656,17 @@ fn empty_runtime_values() -> List<RuntimeValue> {
   []
 }
 
-fn eval_edge_is_runtime_argument(edge: Edge) -> Bool {
-  is_positional(e: edge)
+fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edge) -> Bool {
+  if eval_transform_has_callee_reference(node: parent) {
+    match progress {
+      AwaitingChildren { processed: p } =>
+        if p == 0 { false } else { is_positional(e: edge) }
+      ReadyToInterpret => is_positional(e: edge)
+      Interpreted => is_positional(e: edge)
+    }
+  } else {
+    is_positional(e: edge)
+  }
 }
 
 fn eval_fold_state_value(state: EvalFoldState) -> Outcome<RuntimeValue> {
@@ -1526,7 +1771,7 @@ fn eval_fold_step(
   runtime: V4EvaluatorRuntime
 ) -> EvalFoldState {
   let structural = eval_absorb_structural_child(acc: acc.structural, child: child.structural)
-  let next_args = if eval_edge_is_runtime_argument(edge: edge) {
+  let next_args = if eval_edge_is_runtime_argument(parent: acc.node, progress: acc.progress, edge: edge) {
     eval_append_child_value(acc: acc.child_values, child: child.value)
   } else {
     eval_absorb_child_diagnostics(acc: acc.child_values, child: child.structural)
