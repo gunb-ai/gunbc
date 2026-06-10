@@ -2675,9 +2675,7 @@ pub fn infer_expr(
                 ok_infer(make_expr_node(
                     Rc::new(ExprData::ExprLiteral { value: lit.clone() }),
                     Rc::new(vec![]),
-                    Some(Rc::new(InferredNode::Resolved {
-                        node: inferred_lit,
-                    })),
+                    Some(Rc::new(InferredNode::Resolved { node: inferred_lit })),
                     span.clone(),
                 ))
             }
@@ -10884,9 +10882,11 @@ pub fn collect_parent_carrier_bindings(
             Rc::new(v2_rt::map_values(&env.bindings.clone()))
                 .iter()
                 .cloned()
-                .fold(with_existing, |bacc, binding| match binding.resolved.binding_id.clone() {
-                    Some(binding_id) => v2_rt::rc_map_insert(bacc, binding_id, binding.clone()),
-                    None => bacc,
+                .fold(with_existing, |bacc, binding| {
+                    match binding.resolved.binding_id.clone() {
+                        Some(binding_id) => v2_rt::rc_map_insert(bacc, binding_id, binding.clone()),
+                        None => bacc,
+                    }
                 })
         },
     )

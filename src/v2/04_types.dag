@@ -735,6 +735,39 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
         }
       }
     }
+    else if node_is_keyed_collection(n: left, source_indices: source_indices)
+      && node_is_keyed_collection(n: right, source_indices: source_indices) {
+      if authored_name_at(source_indices: source_indices, node: left) != authored_name_at(source_indices: source_indices, node: right) { false }
+      else if (left.children |> count) != 2 || (right.children |> count) != 2 { false }
+      else {
+        match left.children |> first {
+          Some { value: left_key_ch } =>
+            match right.children |> first {
+              Some { value: right_key_ch } =>
+                match left.children |> skip(1) |> first {
+                  Some { value: left_val_ch } =>
+                    match right.children |> skip(1) |> first {
+                      Some { value: right_val_ch } =>
+                        node_type_compatible(
+                          left: child_type_node(ch: left_key_ch),
+                          right: child_type_node(ch: right_key_ch),
+                          source_indices: source_indices
+                        )
+                        && node_type_compatible(
+                          left: child_type_node(ch: left_val_ch),
+                          right: child_type_node(ch: right_val_ch),
+                          source_indices: source_indices
+                        )
+                      None => false
+                    }
+                  None => false
+                }
+              None => false
+            }
+          None => false
+        }
+      }
+    }
     else if (((canonical_template_name(n: left, source_indices: source_indices) == canonical_template_name(n: right, source_indices: source_indices))
       && (authored_name_at(source_indices: source_indices, node: left) != authored_name_at(source_indices: source_indices, node: right)))
       && (left.children |> count == 1)) && (right.children |> count == 1)

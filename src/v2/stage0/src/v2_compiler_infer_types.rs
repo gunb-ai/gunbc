@@ -1839,109 +1839,183 @@ pub fn node_type_compatible(
                                 }
                             }
                         } else {
-                            if (((((canonical_template_name(
-                                left.clone(),
-                                source_indices.clone(),
-                            )
-                            .as_str()
-                                == canonical_template_name(
-                                    right.clone(),
-                                    source_indices.clone(),
-                                )
-                                .as_str())
-                                && (authored_name_at(source_indices.clone(), left.clone())
-                                    .as_str()
-                                    != authored_name_at(source_indices.clone(), right.clone())
-                                        .as_str()))
-                                && ((left.children.clone().len() as i64) == 1))
-                                && ((right.children.clone().len() as i64) == 1))
-                                && (is_declared_container_alias_spelling(authored_name_at(
-                                    source_indices.clone(),
-                                    left.clone(),
-                                )) || is_declared_container_alias_spelling(authored_name_at(
-                                    source_indices.clone(),
-                                    right.clone(),
-                                ))))
+                            if (node_is_keyed_collection(left.clone(), source_indices.clone())
+                                && node_is_keyed_collection(right.clone(), source_indices.clone()))
                             {
-                                match left.children.clone().first().cloned() {
-                                    Some(left_ch) => {
-                                        match right.children.clone().first().cloned() {
-                                            Some(right_ch) => {
-                                                let left_el = child_type_node(left_ch.clone());
-                                                let right_el = child_type_node(right_ch.clone());
-                                                if (is_unit_like(left_el.clone())
-                                                    || is_unit_like(right_el.clone()))
-                                                {
-                                                    break true;
-                                                } else {
-                                                    {
-                                                        let __tco_0 = left_el.clone();
-                                                        let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                            None => {
-                                                break true;
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        break true;
-                                    }
-                                }
-                            } else {
-                                if (left_opt.clone() && right_opt.clone()) {
-                                    let left_inner = with_required_cardinality(left.clone());
-                                    let right_inner = with_required_cardinality(right.clone());
-                                    let left_inner_is_unit = is_unit_like(left_inner.clone());
-                                    let right_inner_is_unit = is_unit_like(right_inner.clone());
-                                    if (left_inner_is_unit || right_inner_is_unit) {
-                                        break true;
-                                    } else {
-                                        {
-                                            let __tco_0 = left_inner.clone();
-                                            let __tco_1 = right_inner.clone();
-                                            left = __tco_0;
-                                            right = __tco_1;
-                                            continue;
-                                        }
-                                    }
+                                if (authored_name_at(source_indices.clone(), left.clone()).as_str()
+                                    != authored_name_at(source_indices.clone(), right.clone())
+                                        .as_str())
+                                {
+                                    break false;
                                 } else {
-                                    if (left_opt.clone() || right_opt.clone()) {
+                                    if (((left.children.clone().len() as i64) != 2)
+                                        || ((right.children.clone().len() as i64) != 2))
+                                    {
                                         break false;
                                     } else {
-                                        match left.binding_id.clone() {
-                                            Some(left_binding_id) => {
-                                                match right.binding_id.clone() {
-                                                    Some(right_binding_id) => {
-                                                        break (left_binding_id.clone()
-                                                            == right_binding_id.clone());
+                                        match left.children.clone().first().cloned() {
+                                            Some(left_key_ch) => {
+                                                match right.children.clone().first().cloned() {
+                                                    Some(right_key_ch) => {
+                                                        match left
+                                                            .children
+                                                            .clone()
+                                                            .iter()
+                                                            .cloned()
+                                                            .into_iter()
+                                                            .skip(1 as usize)
+                                                            .next()
+                                                        {
+                                                            Some(left_val_ch) => {
+                                                                match right
+                                                                    .children
+                                                                    .clone()
+                                                                    .iter()
+                                                                    .cloned()
+                                                                    .into_iter()
+                                                                    .skip(1 as usize)
+                                                                    .next()
+                                                                {
+                                                                    Some(right_val_ch) => {
+                                                                        break (node_type_compatible(
+                                                                            child_type_node(left_key_ch.clone()),
+                                                                            child_type_node(right_key_ch.clone()),
+                                                                            source_indices.clone(),
+                                                                        ) && node_type_compatible(
+                                                                            child_type_node(left_val_ch.clone()),
+                                                                            child_type_node(right_val_ch.clone()),
+                                                                            source_indices.clone(),
+                                                                        ));
+                                                                    }
+                                                                    None => {
+                                                                        break false;
+                                                                    }
+                                                                }
+                                                            }
+                                                            None => {
+                                                                break false;
+                                                            }
+                                                        }
                                                     }
                                                     None => {
                                                         break false;
                                                     }
                                                 }
                                             }
-                                            None => match right.binding_id.clone() {
-                                                Some(_) => {
-                                                    break false;
+                                            None => {
+                                                break false;
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                if (((((canonical_template_name(
+                                    left.clone(),
+                                    source_indices.clone(),
+                                )
+                                .as_str()
+                                    == canonical_template_name(
+                                        right.clone(),
+                                        source_indices.clone(),
+                                    )
+                                    .as_str())
+                                    && (authored_name_at(source_indices.clone(), left.clone())
+                                        .as_str()
+                                        != authored_name_at(
+                                            source_indices.clone(),
+                                            right.clone(),
+                                        )
+                                        .as_str()))
+                                    && ((left.children.clone().len() as i64) == 1))
+                                    && ((right.children.clone().len() as i64) == 1))
+                                    && (is_declared_container_alias_spelling(authored_name_at(
+                                        source_indices.clone(),
+                                        left.clone(),
+                                    )) || is_declared_container_alias_spelling(
+                                        authored_name_at(source_indices.clone(), right.clone()),
+                                    )))
+                                {
+                                    match left.children.clone().first().cloned() {
+                                        Some(left_ch) => {
+                                            match right.children.clone().first().cloned() {
+                                                Some(right_ch) => {
+                                                    let left_el = child_type_node(left_ch.clone());
+                                                    let right_el =
+                                                        child_type_node(right_ch.clone());
+                                                    if (is_unit_like(left_el.clone())
+                                                        || is_unit_like(right_el.clone()))
+                                                    {
+                                                        break true;
+                                                    } else {
+                                                        {
+                                                            let __tco_0 = left_el.clone();
+                                                            let __tco_1 = right_el.clone();
+                                                            left = __tco_0;
+                                                            right = __tco_1;
+                                                            continue;
+                                                        }
+                                                    }
                                                 }
                                                 None => {
-                                                    break (authored_name_at(
-                                                        source_indices.clone(),
-                                                        left.clone(),
-                                                    )
-                                                    .as_str()
-                                                        == authored_name_at(
-                                                            source_indices.clone(),
-                                                            right.clone(),
-                                                        )
-                                                        .as_str());
+                                                    break true;
                                                 }
-                                            },
+                                            }
+                                        }
+                                        None => {
+                                            break true;
+                                        }
+                                    }
+                                } else {
+                                    if (left_opt.clone() && right_opt.clone()) {
+                                        let left_inner = with_required_cardinality(left.clone());
+                                        let right_inner = with_required_cardinality(right.clone());
+                                        let left_inner_is_unit = is_unit_like(left_inner.clone());
+                                        let right_inner_is_unit = is_unit_like(right_inner.clone());
+                                        if (left_inner_is_unit || right_inner_is_unit) {
+                                            break true;
+                                        } else {
+                                            {
+                                                let __tco_0 = left_inner.clone();
+                                                let __tco_1 = right_inner.clone();
+                                                left = __tco_0;
+                                                right = __tco_1;
+                                                continue;
+                                            }
+                                        }
+                                    } else {
+                                        if (left_opt.clone() || right_opt.clone()) {
+                                            break false;
+                                        } else {
+                                            match left.binding_id.clone() {
+                                                Some(left_binding_id) => {
+                                                    match right.binding_id.clone() {
+                                                        Some(right_binding_id) => {
+                                                            break (left_binding_id.clone()
+                                                                == right_binding_id.clone());
+                                                        }
+                                                        None => {
+                                                            break false;
+                                                        }
+                                                    }
+                                                }
+                                                None => match right.binding_id.clone() {
+                                                    Some(_) => {
+                                                        break false;
+                                                    }
+                                                    None => {
+                                                        break (authored_name_at(
+                                                            source_indices.clone(),
+                                                            left.clone(),
+                                                        )
+                                                        .as_str()
+                                                            == authored_name_at(
+                                                                source_indices.clone(),
+                                                                right.clone(),
+                                                            )
+                                                            .as_str());
+                                                    }
+                                                },
+                                            }
                                         }
                                     }
                                 }

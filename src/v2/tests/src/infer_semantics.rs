@@ -383,8 +383,8 @@ type AccountId = Refined<String>
         "brand twins must have distinct binding_id before entering kernel containers"
     );
 
-    let list_user = make_container_type("List".to_string(), user_id.clone()).ty;
-    let list_account = make_container_type("List".to_string(), account_id.clone()).ty;
+    let list_user = make_container_type("List".to_string(), user_id.clone()).ty.clone();
+    let list_account = make_container_type("List".to_string(), account_id.clone()).ty.clone();
     assert_eq!(
         list_user.binding_id, None,
         "kernel List shell must stay brand-free; element carries declaration identity"
@@ -402,8 +402,9 @@ type AccountId = Refined<String>
         "same kernel List shell with same branded element must accept"
     );
 
-    let map_user_key = make_map_type(user_id.clone(), leaf_node("String".to_string())).ty;
-    let map_account_key = make_map_type(account_id.clone(), leaf_node("String".to_string())).ty;
+    let map_user_key = make_map_type(user_id.clone(), leaf_node("String".to_string())).ty.clone();
+    let map_account_key =
+        make_map_type(account_id.clone(), leaf_node("String".to_string())).ty.clone();
     assert_eq!(
         map_user_key.binding_id, None,
         "kernel Map shell must stay brand-free; key/value children carry declaration identity"
