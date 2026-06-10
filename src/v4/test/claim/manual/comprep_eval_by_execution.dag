@@ -496,6 +496,80 @@ fn comprep_swapped_add_arrow() -> Node {
   }
 }
 
+// Oversized signature: a fourth positional Int fact beyond the Int,Int->Int add shape.
+// The exact-arity gate must REFUSE this (it was previously admitted as add, dropping the
+// extra fact) — eval_wave1_add_signature now asserts no child at index 4.
+fn comprep_excess_signature_arrow() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    span: node_span_unanchored(),
+    children: [
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Named { name: arrow_body_edge }, target: comprep_eval_canonical_body() }
+    ]
+  }
+}
+
+// Canonical add body [+, x, y] — exactly three children.
+fn comprep_eval_canonical_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    span: node_span_unanchored(),
+    children: [
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) }
+    ]
+  }
+}
+
+// Oversized body: a fourth operand beyond [+, x, y]. The exact-arity gate must REFUSE this
+// (eval_wave1_add_body now asserts no child at index 3).
+fn comprep_excess_body_arrow() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    span: node_span_unanchored(),
+    children: [
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Named { name: arrow_body_edge }, target: comprep_excess_body() }
+    ]
+  }
+}
+
+fn comprep_excess_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    span: node_span_unanchored(),
+    children: [
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
+      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) }
+    ]
+  }
+}
+
+// Oversized actuals: a third operand on the add call. The exact-arity gate must REFUSE this
+// (eval_bind_wave1_arguments now fails closed with eval_rejected_argument_arity_excess
+// rather than binding [0],[1] and silently dropping the third).
+fn comprep_excess_actual_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    span: node_span_unanchored(),
+    children: [
+      Edge { label: Positional, target: callee },
+      Edge { label: Positional, target: comprep_eval_literal_two_node() },
+      Edge { label: Positional, target: comprep_eval_literal_three_node() },
+      Edge { label: Positional, target: comprep_eval_literal_two_node() }
+    ]
+  }
+}
+
 fn comprep_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   match run {
     Accepted { value: r, diagnostics: _ } =>
@@ -585,6 +659,53 @@ fn comprep_eval_swapped_operands_claim_passes() -> Bool {
   )
 }
 
+// Exact-arity discriminating reds (P3/P5 / Facts Flow Forward): each presents an input that
+// prefix-matching would have admitted while silently dropping a beyond-shape fact. With the
+// exact-arity gates, every one must FAIL the run rather than execute to 5.
+fn comprep_excess_signature_red_holds() -> Bool {
+  comprep_eval_run_passes(
+    run: comprep_eval_run(
+      callee: comprep_excess_signature_arrow(),
+      expected: comprep_eval_literal_five_node()
+    )
+  ) == false
+}
+
+fn comprep_excess_body_red_holds() -> Bool {
+  comprep_eval_run_passes(
+    run: comprep_eval_run(
+      callee: comprep_excess_body_arrow(),
+      expected: comprep_eval_literal_five_node()
+    )
+  ) == false
+}
+
+fn comprep_excess_actual_executes_to_five() -> Bool {
+  match produce_mvp1_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } => {
+      let input = comprep_excess_actual_call(callee: arrow)
+      match comprep_eval_inferred_run_tree(callee: arrow, expected: comprep_eval_literal_five_node()) {
+        Accepted { value: tree, diagnostics: _ } =>
+          match eval(
+            tree: tree,
+            interpretation: comprep_eval_interpretation(),
+            inputs: inputs_root_only(root: input)
+          ) {
+            Accepted { value: actual, diagnostics: None } =>
+              comprep_eval_runtime_value_is_five(value: actual)
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn comprep_excess_actual_red_holds() -> Bool {
+  comprep_excess_actual_executes_to_five() == false
+}
+
 // COMPREP wave-1 runtime keystone, single Bool witness. Three honest conjuncts:
 //   1. produced-body-executes — the #4608 COMPREP-produced add Arrow.body executes through
 //      eval callee dispatch to result == 5 BY EXECUTION (retiring call_primitive-as-only-arm);
@@ -599,6 +720,11 @@ fn comprep_eval_by_execution_keystone_holds() -> Bool {
     && comprep_eval_direct_runtime_holds()
     && comprep_eval_source_pipeline_admits_add_holds()
     && comprep_eval_swapped_operands_red_holds()
+    // Exact-arity fail-closed reds: oversized signature / body / actuals each refuse rather
+    // than dropping the extra fact (P3/P5 / Facts Flow Forward).
+    && comprep_excess_signature_red_holds()
+    && comprep_excess_body_red_holds()
+    && comprep_excess_actual_red_holds()
 }
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
