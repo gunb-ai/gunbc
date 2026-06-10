@@ -612,22 +612,14 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: Cache gunbc + claim_batch binaries (v4 lens CI)
+    - name: Cache gunbc binary (v4 lens CI)
       id: v4-v2-bin
       uses: actions/cache@v5
       with:
-        # This job runs the node-frontier gate, which needs BOTH gunbc and the
-        # claim_batch batch runner. Distinct key namespace ('gunbc-lens-bin-')
-        # from the gunbc-only jobs (ci_floor / ci_floor_emit, key 'gunbc-bin-')
-        # so we never restore a gunbc-only cache and skip the build with
-        # claim_batch absent — both binaries are produced by the same
-        # `cargo build -p v2-compiler --release` and cached together.
-        path: |
-          target/release/gunbc
-          target/release/claim_batch
-        key: gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        path: target/release/gunbc
+        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
     - name: Build v2 compiler (v4 lens CI)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
@@ -679,14 +671,22 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: Cache gunbc binary (v4 lens CI)
+    - name: Cache gunbc + claim_batch binaries (v4 lens CI)
       id: v4-v2-bin
       uses: actions/cache@v5
       with:
-        path: target/release/gunbc
-        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        # This job runs the node-frontier gate, which needs BOTH gunbc and the
+        # claim_batch batch runner. Distinct key namespace ('gunbc-lens-bin-')
+        # from the gunbc-only jobs (ci_floor / ci_floor_emit / v4_lens_gate,
+        # key 'gunbc-bin-') so we never restore a gunbc-only cache and skip the
+        # build with claim_batch absent — both binaries are produced by the same
+        # `cargo build -p v2-compiler --release` and cached together.
+        path: |
+          target/release/gunbc
+          target/release/claim_batch
+        key: gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+          gunbc-lens-bin-${{ runner.os }}-${{ runner.arch }}-
     - name: Build v2 compiler (v4 lens CI)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
