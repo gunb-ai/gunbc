@@ -10,20 +10,24 @@ module v4.compiler.resolve
 import v4.compiler.normalize { NormalizedTree }
 import v4.extdeps.languages.dag {
   DagLanguageModel,
-  dag_language_model_canonical_symbols
+  dag_language_model_canonical_symbols,
+  dag_surface_operator_canonicalization_lookup
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v4.std.collection {
   Absent,
   Map,
+  Optional,
   Present,
   Set,
   empty_map,
+  list_at_optional,
   map_get,
   map_insert,
   optional_absent,
   optional_present
 }
+import v4.std.target_model { target_model_canonical_operation_wire_node }
 import v4.std.diagnostic {
   Diagnostic,
   node_locus,
@@ -45,9 +49,12 @@ import v4.std.node {
   Node,
   NodeFold,
   OccurrenceId,
+  Positional,
   Symbol,
+  Transform,
   TypeNode,
   fold_node,
+  node_positional_child_targets,
   node_with_occurrence_id,
   well_formed
 }
@@ -313,7 +320,107 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
 }
 
 
-fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
+fn resolve_surface_operator_atom(
+  n: Node,
+  scope: Scope,
+  lm: DagLanguageModel,
+  identity: Symbol
+) -> Outcome<Node> {
+  match dag_surface_operator_canonicalization_lookup(lm: lm, surface_token: identity) {
+    Present { value: canonical_op } => {
+      let wire = target_model_canonical_operation_wire_node(operation: canonical_op)
+      Accepted {
+        value: node_with_occurrence_id(
+          kind: wire.kind,
+          children: wire.children,
+          occurrence_id: n.occurrence_id
+        ),
+        diagnostics: None
+      }
+    }
+    Absent => resolve_atom(n: n, scope: scope, identity: identity)
+  }
+}
+
+fn resolve_transform_operator_child(
+  n: Node,
+  scope: Scope,
+  lm: DagLanguageModel
+) -> Outcome<Node> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      resolve_surface_operator_atom(n: n, scope: scope, lm: lm, identity: id)
+    _ => resolve_node(n: n, scope: scope, lm: lm)
+  }
+}
+
+fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
+  match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostics: r } =>
+        Rejected { diagnostics: r }
+      Accepted { value: done, diagnostics: ad } =>
+        match e.label {
+          Positional =>
+            if length(xs: done) == 0 {
+              match resolve_transform_operator_child(n: e.target, scope: scope, lm: lm) {
+                Rejected { diagnostics: r } =>
+                  Rejected {
+                    diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                  }
+                Accepted { value: resolved_target, diagnostics: ed } =>
+                  Accepted {
+                    value: list_snoc_item(xs: done, item: Edge {
+                      label: e.label,
+                      target: resolved_target
+                    }),
+                    diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                  }
+              }
+            } else {
+              match resolve_node(n: e.target, scope: scope, lm: lm) {
+                Rejected { diagnostics: r } =>
+                  Rejected {
+                    diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                  }
+                Accepted { value: resolved_target, diagnostics: ed } =>
+                  Accepted {
+                    value: list_snoc_item(xs: done, item: Edge {
+                      label: e.label,
+                      target: resolved_target
+                    }),
+                    diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                  }
+              }
+            }
+          _ =>
+            match resolve_node(n: e.target, scope: scope, lm: lm) {
+              Rejected { diagnostics: r } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                }
+              Accepted { value: resolved_target, diagnostics: ed } =>
+                Accepted {
+                  value: list_snoc_item(xs: done, item: Edge {
+                    label: e.label,
+                    target: resolved_target
+                  }),
+                  diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                }
+            }
+        }
+    }
+  }) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: resolved_children, diagnostics: d } =>
+      Accepted {
+        value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
+        diagnostics: d
+      }
+  }
+}
+
+fn resolve_node(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       resolve_atom(n: n, scope: scope, identity: id)
@@ -324,7 +431,8 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
         scope_inner: ScopeFrame {
           locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
           outer: scope
-        }
+        },
+        lm: lm
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: resolved_children, diagnostics: d } =>
@@ -334,22 +442,24 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
           }
       }
     ComputationNode { behavior: Bind } =>
-      resolve_bind_node(n: n, scope: scope)
+      resolve_bind_node(n: n, scope: scope, lm: lm)
+    ComputationNode { behavior: Transform } =>
+      resolve_transform_children(n: n, scope: scope, lm: lm)
     TypeNode { connective: _ } =>
-      resolve_children_homogeneous_scope(n: n, scope: scope)
+      resolve_children_homogeneous_scope(n: n, scope: scope, lm: lm)
     ComputationNode { behavior: _ } =>
-      resolve_children_homogeneous_scope(n: n, scope: scope)
+      resolve_children_homogeneous_scope(n: n, scope: scope, lm: lm)
   }
 }
 
 
-fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
+fn resolve_children_homogeneous_scope(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
         Rejected { diagnostics: r }
       Accepted { value: done, diagnostics: ad } =>
-        match resolve_node(n: e.target, scope: scope) {
+        match resolve_node(n: e.target, scope: scope, lm: lm) {
           Rejected { diagnostics: r } =>
             Rejected {
               diagnostics: rejected_with_pending(pending: ad, rejected: r)

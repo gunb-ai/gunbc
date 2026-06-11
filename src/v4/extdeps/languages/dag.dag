@@ -64,10 +64,12 @@ import v4.std.lexing {
 import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.node_query { find_named_child }
 import v4.std.target_model {
+  CanonicalOperation,
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
   TargetModel,
+  canonical_operation_op_add,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
   grammar_relation_field_emitted,
@@ -81,6 +83,7 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_fidelity_quotient
 }
+import v4.std.collection { Optional, optional_absent, optional_present }
 import v4.std.logic { Bool }
 import v4.std.algebra { Cons, Empty, fold_list, for_all, list_append, list_snoc_item }
 import v4.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus, outcome_accepted, outcome_rejected }
@@ -128,6 +131,22 @@ type DagLanguageModel {
   grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
+}
+
+// Wave-1 surface infix operator → substrate CanonicalOperation rows (design-value-emit-schema.md §7 Q-V1).
+fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Optional<CanonicalOperation> {
+  if surface_token == ^dag_token_plus {
+    optional_present(canonical_operation_op_add())
+  } else {
+    optional_absent()
+  }
+}
+
+fn dag_surface_operator_canonicalization_lookup(
+  lm: DagLanguageModel,
+  surface_token: Symbol
+) -> Optional<CanonicalOperation> {
+  dag_surface_operator_canonicalization_member(surface_token: surface_token)
 }
 
 fn dag_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
