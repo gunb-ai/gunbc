@@ -9,10 +9,11 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  eval,
+  effect_io_roundtrip_transform,
   eval_context_with_effect_io,
   eval_context_with_semantics,
   eval_diagnostic,
+  eval_rejected_effect_io_unbound,
   eval_test_claim_subject,
   eval_with_context,
   inputs_root_only,
@@ -110,12 +111,6 @@ fn effect_io_eval_unit_value() -> RuntimeValue {
   }
 }
 
-data effect_io_eval_marker_leaf: Node = Node {
-  kind: ComputationNode { behavior: Value },
-  children: [],
-  occurrence_id: SyntheticOccurrence
-}
-
 data effect_io_eval_locator_literal: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],
@@ -128,18 +123,10 @@ data effect_io_eval_payload_literal: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data effect_io_eval_roundtrip_node: Node = Node {
-  kind: ComputationNode { behavior: Transform },
-  children: [
-    Edge {
-      label: Named { name: ^effect_io_roundtrip_marker },
-      target: effect_io_eval_marker_leaf
-    },
-    Edge { label: Positional, target: effect_io_eval_locator_literal },
-    Edge { label: Positional, target: effect_io_eval_payload_literal }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
+data effect_io_eval_roundtrip_node: Node = effect_io_roundtrip_transform(
+  locator: effect_io_eval_locator_literal,
+  payload: effect_io_eval_payload_literal
+)
 
 fn effect_io_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   Accepted { value: effect_io_eval_unit_value(), diagnostics: None }
@@ -226,7 +213,7 @@ fn effect_io_eval_context_unbound() -> EvalContext {
 fn effect_io_eval_facts_for(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
-    algebra: effect_io_eval_algebra_node(),
+    algebra: effect_io_pure_unit_type_node(),
     descent: Holds { value: effect_io_eval_termination_proof() }
   )
 }
@@ -234,8 +221,6 @@ fn effect_io_eval_facts_for(node: Node) -> InferredFacts {
 fn effect_io_eval_fact_lookup(node: Node) -> Witness<InferredFacts> {
   if node == effect_io_eval_roundtrip_node {
     Holds { value: effect_io_eval_facts_for(node: effect_io_eval_roundtrip_node) }
-  } else if node == effect_io_eval_marker_leaf {
-    Holds { value: effect_io_eval_facts_for(node: effect_io_eval_marker_leaf) }
   } else if node == effect_io_eval_locator_literal {
     Holds { value: effect_io_eval_facts_for(node: effect_io_eval_locator_literal) }
   } else if node == effect_io_eval_payload_literal {
@@ -271,7 +256,7 @@ fn effect_io_eval_unbound_fail_closed_holds() -> Bool {
     context: effect_io_eval_context_unbound(),
     inputs: inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: d } => d.head.reason == eval_rejected_effect_io_unbound
     Accepted { value: _, diagnostics: _ } => false
   }
 }

@@ -1449,22 +1449,26 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
   }
 }
 
-// Wave-2 effect-IO consumer: marker-gated Transform that eval yields through EffectHandlerBinding (never inline).
+// Canonical roundtrip Transform input (declare-per-claim locator/payload leaves; wave-1 gate uses a
+// callee-free 2-argument Transform — detected only when EffectIoEvalPresent is injected per run).
+fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: locator },
+      Edge { label: Positional, target: payload }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// Wave-2 effect-IO consumer: callee-free 2-arg Transform under EffectIoEvalPresent (never inline).
+// Exported for claim witnesses (E-10 gate). Wave-1 gate claims pair this with an interpretation
+// that has no other non-callee 2-arg transforms.
 fn eval_node_is_effect_io_roundtrip(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      match eval_nth_child(
-        node: node,
-        wanted: 0,
-        absent_reason: eval_rejected_effect_io_roundtrip_marker_absent
-      ) {
-        Accepted { value: e0, diagnostics: _ } =>
-          match e0.label {
-            Named { name: marker } => marker == ^effect_io_roundtrip_marker
-            Positional => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
+      !eval_transform_has_callee_reference(node: node) && count(node.children) == 2
     _ => false
   }
 }
@@ -1491,6 +1495,7 @@ fn eval_effect_io_roundtrip_args_present(args: List<RuntimeValue>) -> Bool {
 }
 
 // ReadResource→WriteResource round-trip observed by eval: yield write, apply store, rebind handlers, yield read, resume with value.
+// Exported for E-10 direct-orchestration witnesses (bypasses fold when isolating handler resume).
 fn eval_effect_io_roundtrip(
   bundle: EffectIoEvalBundle,
   args: List<RuntimeValue>,
