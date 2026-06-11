@@ -12,7 +12,7 @@ import v4.compiler.infer {
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
-import v4.std.algebra { fold_list }
+import v4.std.algebra { fold_list, length }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection {
   List,
@@ -87,7 +87,7 @@ import v4.std.node {
   well_formed,
   Unanchored
 }
-import v4.std.node_query { find_arrow_body_child }
+import v4.std.node_query { arrow_domain_named_param_bindings, find_arrow_body_child }
 import v4.std.diagnostic {
   AmbiguousIntent,
   ByteRange,
@@ -1196,39 +1196,10 @@ fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -
   )
 }
 
-// 🟡 gated — COMPREP wave-1 fixed-arity interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:eval_bind_wave1_arguments (executed
-// by comprep_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on:
-// source-driven callee dispatch binds params by the resolved Arrow's declared binding_ids
-// (general arity) instead of the hard-coded x/y positions; owner/lane: Mgr-RUNTIME
-// (valiant-cat-890), routed to still-raven-546 — trigger: the resolve->body_producer bridge
-// lands; forbidden: extending this past 2 positional params or adding a parallel FunctionRef
-// carrier in 05_eval.
-fn eval_wave1_argument_binding_key(wanted: Int, node: Node) -> Outcome<EnvironmentBindingKey> {
-  if wanted == 0 {
-    Accepted {
-      value: EnvironmentBindingKey {
-        declaration: eval_binding_key_node(sym: ^dag_binding_param_x)
-      },
-      diagnostics: None
-    }
-  } else if wanted == 1 {
-    Accepted {
-      value: EnvironmentBindingKey {
-        declaration: eval_binding_key_node(sym: ^dag_binding_param_y)
-      },
-      diagnostics: None
-    }
-  } else {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
-    )
-  }
-}
-
 fn eval_bind_wave1_argument(
   args: List<RuntimeValue>,
   wanted: Int,
+  param_names: List<Symbol>,
   environment: EvaluationEnvironment,
   bind: BindInterpreter,
   node: Node
@@ -1243,9 +1214,19 @@ fn eval_bind_wave1_argument(
     ),
     f: fn(value) {
       bind_outcome(
-        o: eval_wave1_argument_binding_key(wanted: wanted, node: node),
-        f: fn(key) {
-          bind.bind_value(key, value, environment)
+        o: eval_witness_outcome(
+          witness: list_nth(
+            xs: param_names,
+            wanted: wanted,
+            absent: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
+          )
+        ),
+        f: fn(name) {
+          bind.bind_value(
+            EnvironmentBindingKey { declaration: eval_binding_key_node(sym: name) },
+            value,
+            environment
+          )
         }
       )
     }
