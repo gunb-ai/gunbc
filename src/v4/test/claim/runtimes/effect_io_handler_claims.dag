@@ -76,6 +76,7 @@ fn effect_io_pure_http_roundtrip_holds() -> Bool {
   )
 }
 
+// Wave-2: one default locator — proves storage-backend binding dispatch round-trip.
 fn effect_io_pure_storage_roundtrip_holds() -> Bool {
   effect_io_pure_read_write_roundtrip(
     backend: StorageResourceBackend,
