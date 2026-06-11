@@ -46,12 +46,6 @@ import v4.std.node {
   TypeNode,
   well_formed
 }
-import v4.std.find_witness {
-  ManyPassingCandidates,
-  NoPassingCandidate,
-  OnePassingCandidate,
-  PassingCandidateFold
-}
 import v4.std.qualified_name {
   QualifiedName,
   qualified_name_eq
@@ -109,6 +103,13 @@ type ModuleRootNameFindState
   = ModuleRootNameNotFound
   | ModuleRootNameFoundOnce
   | ModuleRootNameFoundDuplicate
+
+
+// 🟢 coproduct dissolution — C4 module-root find accumulator: local mirror of find_witness.PassingCandidateFold; import avoided to prevent transitive predicate-module pull into C9 discovery analysis.
+type PassingCandidateFold
+  = NoPassingCandidate
+  | OnePassingCandidate { candidate: Node }
+  | ManyPassingCandidates
 
 
 data resolve_import_not_visible: Symbol = resolve_import_not_visible
