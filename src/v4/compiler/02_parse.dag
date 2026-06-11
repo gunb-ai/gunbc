@@ -145,19 +145,11 @@ type GrammarExprCornerFold {
   nullable: Bool
 }
 
-// 🟡 coproduct dissolution — feature: GrammarExpr parse interpreter — bind node://adhoc-2145db6b-69a
-// (Level-1b lane) — parallel representation mirroring GrammarExpr variants (1:1 shape); the
-// fold stage is identity-shaped (GrammarExpr → ParseExprWalk rebox). Dissolve-on-arrival: a
-// higher-order GrammarExprFold algebra whose handlers thread tokens and yield ParseExprResult
-// directly, eliminating ParseExprWalk and parse_expr_run_walk's per-variant match. Trigger:
-// Level-2 parse-walk algebra in std/grammar.dag or T-8 parse-result projection unification.
-type ParseExprWalk
-  = ParseExprWalkTerminal { token_class: Symbol }
-  | ParseExprWalkNonterminal { production: Symbol }
-  | ParseExprWalkSequence { left: ParseExprWalk, right: ParseExprWalk }
-  | ParseExprWalkChoice { left: ParseExprWalk, right: ParseExprWalk }
-  | ParseExprWalkOptional { element: ParseExprWalk }
-  | ParseExprWalkRepeat { element: ParseExprWalk }
+// 🟢 coproduct dissolved — feature: GrammarExpr parse interpreter — bind node://adhoc-2145db6b-69a
+// ParseExprWalk (1:1 GrammarExpr mirror) deleted; parse_expr_run_walk deleted. parse_expr now
+// uses fold_grammar_expr<fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult>: each
+// algebra handler returns a parse thunk; sequence/choice/optional/repeat compose thunks with
+// correct token threading; Nonterminal delegates to parse_nonterminal_from_table (leaf).
 
 // Memo key for parse table: token offset × production name.
 type ParsePositionKey {
@@ -851,207 +843,16 @@ fn parse_token_first(tokens: List<Token>) -> Optional<Token> {
 }
 
 
-fn parse_expr_fold_sequence(left: ParseExprWalk, right: ParseExprWalk) -> ParseExprWalk {
-  ParseExprWalkSequence { left: left, right: right }
-}
 
 
-fn parse_expr_fold_choice(left: ParseExprWalk, right: ParseExprWalk) -> ParseExprWalk {
-  ParseExprWalkChoice { left: left, right: right }
-}
-
-
-fn parse_expr_fold_optional(element: ParseExprWalk) -> ParseExprWalk {
-  ParseExprWalkOptional { element: element }
-}
-
-
-fn parse_expr_fold_repeat(element: ParseExprWalk) -> ParseExprWalk {
-  ParseExprWalkRepeat { element: element }
-}
-
-
-fn parse_expr_run_walk(
-  walk: ParseExprWalk,
-  tokens: List<Token>,
-  all_tokens: List<Token>,
-  root: GrammarRoot,
-  table: ParseTable,
-  prov: ParseProvenanceState
-) -> ParseExprResult {
-  match walk {
-    ParseExprWalkTerminal { token_class: class } =>
-      match parse_token_first(tokens: tokens) {
-        Absent => ParseExprRejected { diagnostics: [] }
-        Present { value: tok } =>
-          match tok.class == class {
-            true =>
-              match list_tail(xs: tokens) {
-                TailFound { tail: remaining } =>
-                  let stamped = parse_stamp_atom_terminal(tok: tok, prov: prov)
-                  ParseExprAccepted {
-                    remaining: remaining,
-                    captured: stamped.node,
-                    diagnostics: [],
-                    prov: stamped.prov
-                  }
-                TailAbsent => ParseExprRejected { diagnostics: [] }
-              }
-            false => ParseExprRejected { diagnostics: [] }
-          }
-      }
-    ParseExprWalkNonterminal { production: prod_name } =>
-      parse_nonterminal_from_table(
-        table: table,
-        all_tokens: all_tokens,
-        tokens: tokens,
-        root: root,
-        prod_name: prod_name,
-        prov: prov
-      )
-    ParseExprWalkSequence { left: left, right: right } =>
-      match parse_expr_run_walk(
-        walk: left,
-        tokens: tokens,
-        all_tokens: all_tokens,
-        root: root,
-        table: table,
-        prov: prov
-      ) {
-        ParseExprRejected { diagnostics: diags } =>
-          ParseExprRejected { diagnostics: diags }
-        ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1 } =>
-          match parse_expr_run_walk(
-            walk: right,
-            tokens: rest1,
-            all_tokens: all_tokens,
-            root: root,
-            table: table,
-            prov: prov1
-          ) {
-            ParseExprRejected { diagnostics: diags2 } =>
-              ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
-            ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2 } =>
-              let stamped = parse_stamp_derived_conj(cap1: cap1, cap2: cap2, prov: prov2)
-              ParseExprAccepted {
-                remaining: rest2,
-                captured: stamped.node,
-                diagnostics: list_append(left: diags1, right: diags2),
-                prov: stamped.prov
-              }
-          }
-      }
-    ParseExprWalkChoice { left: left, right: right } =>
-      match parse_expr_run_walk(
-        walk: left,
-        tokens: tokens,
-        all_tokens: all_tokens,
-        root: root,
-        table: table,
-        prov: prov
-      ) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
-        ParseExprRejected { diagnostics: _ } =>
-          parse_expr_run_walk(
-            walk: right,
-            tokens: tokens,
-            all_tokens: all_tokens,
-            root: root,
-            table: table,
-            prov: prov
-          )
-      }
-    ParseExprWalkOptional { element: element } =>
-      match parse_expr_run_walk(
-        walk: element,
-        tokens: tokens,
-        all_tokens: all_tokens,
-        root: root,
-        table: table,
-        prov: prov
-      ) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
-        ParseExprRejected { diagnostics: _ } =>
-          ParseExprAccepted {
-            remaining: tokens,
-            captured: grammar_empty_node(),
-            diagnostics: [],
-            prov: prov
-          }
-      }
-    ParseExprWalkRepeat { element: element } =>
-      let init = ParseRepeatAcc {
-        remaining: tokens,
-        acc_nodes: [],
-        acc_diags: [],
-        done: false,
-        prov: prov
-      }
-      let result = fold_list(
-        xs: tokens,
-        empty: init,
-        cons: fn(acc, _) {
-          match acc.done {
-            true => acc
-            false =>
-              match parse_expr_run_walk(
-                walk: element,
-                tokens: acc.remaining,
-                all_tokens: all_tokens,
-                root: root,
-                table: table,
-                prov: acc.prov
-              ) {
-                ParseExprRejected { diagnostics: _ } =>
-                  ParseRepeatAcc {
-                    remaining: acc.remaining,
-                    acc_nodes: acc.acc_nodes,
-                    acc_diags: acc.acc_diags,
-                    done: true,
-                    prov: acc.prov
-                  }
-                ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
-                  match length(xs: rest) != length(xs: acc.remaining) {
-                    true =>
-                      ParseRepeatAcc {
-                        remaining: rest,
-                        acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
-                        acc_diags: list_append(left: acc.acc_diags, right: diags),
-                        done: false,
-                        prov: prov1
-                      }
-                    false =>
-                      ParseRepeatAcc {
-                        remaining: acc.remaining,
-                        acc_nodes: acc.acc_nodes,
-                        acc_diags: acc.acc_diags,
-                        done: true,
-                        prov: acc.prov
-                      }
-                  }
-              }
-          }
-        }
-      )
-      let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes, prov: result.prov)
-      ParseExprAccepted {
-        remaining: result.remaining,
-        captured: stamped.node,
-        diagnostics: result.acc_diags,
-        prov: stamped.prov
-      }
-  }
-}
-
-
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
-// feature: GrammarExpr parse walk substrate — bind node://adhoc-2145db6b-69a — partial
-// migration: fold_grammar_expr dissolves structural recursion over GrammarExpr; token-threading
-// interpretation remains a per-variant match on interim ParseExprWalk (see 🟡 mark on that type).
-// Forbidden: claiming full walker dissolution for parse_expr until the higher-order algebra lands.
-// Nonterminal arm: O(1) ParseTable lookup. Left-recursive grammars rejected pre-parse.
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr parse interpreter —
+// bind node://adhoc-2145db6b-69a — full dissolution: one fold_grammar_expr<R> call where
+// R = fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult (parse combinator).
+// fold_grammar_expr reduces children to R (closes over their sub-expression parse logic) before
+// passing them to each handler — so Choice/Optional thunks receive pre-built closures, not
+// eagerly-evaluated results; no parsing runs during construction, only when the top thunk fires.
+// Nonterminal arm: O(1) ParseTable lookup via parse_nonterminal_from_table (table-boundary leaf).
+// Repeat terminates via the no-progress guard length(rest) != length(acc.remaining).
 fn parse_expr(
   expr: GrammarExpr,
   tokens: List<Token>,
@@ -1060,24 +861,150 @@ fn parse_expr(
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  parse_expr_run_walk(
-    walk: fold_grammar_expr(
-      expr: expr,
-      algebra: GrammarExprFold {
-        terminal: fn(token_class) { ParseExprWalkTerminal { token_class: token_class } },
-        nonterminal: fn(prod_name) { ParseExprWalkNonterminal { production: prod_name } },
-        sequence: parse_expr_fold_sequence,
-        choice: parse_expr_fold_choice,
-        optional: parse_expr_fold_optional,
-        repeat: parse_expr_fold_repeat
+  let thunk = fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class) {
+        fn(tok_in, _all_toks, _root_in, _table_in, prov_in) {
+          match parse_token_first(tokens: tok_in) {
+            Absent => ParseExprRejected { diagnostics: [] }
+            Present { value: tok } =>
+              match tok.class == token_class {
+                true =>
+                  match list_tail(xs: tok_in) {
+                    TailFound { tail: remaining } =>
+                      let stamped = parse_stamp_atom_terminal(tok: tok, prov: prov_in)
+                      ParseExprAccepted {
+                        remaining: remaining,
+                        captured: stamped.node,
+                        diagnostics: [],
+                        prov: stamped.prov
+                      }
+                    TailAbsent => ParseExprRejected { diagnostics: [] }
+                  }
+                false => ParseExprRejected { diagnostics: [] }
+              }
+          }
+        }
+      },
+      nonterminal: fn(prod_name) {
+        fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          parse_nonterminal_from_table(
+            table: table_in,
+            all_tokens: all_toks,
+            tokens: tok_in,
+            root: root_in,
+            prod_name: prod_name,
+            prov: prov_in
+          )
+        }
+      },
+      sequence: fn(left_thunk, right_thunk) {
+        fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          match left_thunk(tok_in, all_toks, root_in, table_in, prov_in) {
+            ParseExprRejected { diagnostics: diags } =>
+              ParseExprRejected { diagnostics: diags }
+            ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1 } =>
+              match right_thunk(rest1, all_toks, root_in, table_in, prov1) {
+                ParseExprRejected { diagnostics: diags2 } =>
+                  ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
+                ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2 } =>
+                  let stamped = parse_stamp_derived_conj(cap1: cap1, cap2: cap2, prov: prov2)
+                  ParseExprAccepted {
+                    remaining: rest2,
+                    captured: stamped.node,
+                    diagnostics: list_append(left: diags1, right: diags2),
+                    prov: stamped.prov
+                  }
+              }
+          }
+        }
+      },
+      choice: fn(left_thunk, right_thunk) {
+        fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          match left_thunk(tok_in, all_toks, root_in, table_in, prov_in) {
+            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
+            ParseExprRejected { diagnostics: _ } =>
+              right_thunk(tok_in, all_toks, root_in, table_in, prov_in)
+          }
+        }
+      },
+      optional: fn(element_thunk) {
+        fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          match element_thunk(tok_in, all_toks, root_in, table_in, prov_in) {
+            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
+            ParseExprRejected { diagnostics: _ } =>
+              ParseExprAccepted {
+                remaining: tok_in,
+                captured: grammar_empty_node(),
+                diagnostics: [],
+                prov: prov_in
+              }
+          }
+        }
+      },
+      repeat: fn(element_thunk) {
+        fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          let init = ParseRepeatAcc {
+            remaining: tok_in,
+            acc_nodes: [],
+            acc_diags: [],
+            done: false,
+            prov: prov_in
+          }
+          let result = fold_list(
+            xs: tok_in,
+            empty: init,
+            cons: fn(acc, _) {
+              match acc.done {
+                true => acc
+                false =>
+                  match element_thunk(acc.remaining, all_toks, root_in, table_in, acc.prov) {
+                    ParseExprRejected { diagnostics: _ } =>
+                      ParseRepeatAcc {
+                        remaining: acc.remaining,
+                        acc_nodes: acc.acc_nodes,
+                        acc_diags: acc.acc_diags,
+                        done: true,
+                        prov: acc.prov
+                      }
+                    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+                      match length(xs: rest) != length(xs: acc.remaining) {
+                        true =>
+                          ParseRepeatAcc {
+                            remaining: rest,
+                            acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
+                            acc_diags: list_append(left: acc.acc_diags, right: diags),
+                            done: false,
+                            prov: prov1
+                          }
+                        false =>
+                          ParseRepeatAcc {
+                            remaining: acc.remaining,
+                            acc_nodes: acc.acc_nodes,
+                            acc_diags: acc.acc_diags,
+                            done: true,
+                            prov: acc.prov
+                          }
+                      }
+                  }
+              }
+            }
+          )
+          let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes, prov: result.prov)
+          ParseExprAccepted {
+            remaining: result.remaining,
+            captured: stamped.node,
+            diagnostics: result.acc_diags,
+            prov: stamped.prov
+          }
+        }
       }
-    ),
-    tokens: tokens,
-    all_tokens: all_tokens,
-    root: root,
-    table: table,
-    prov: prov
+    }
   )
+  thunk(tokens, all_tokens, root, table, prov)
 }
 
 
