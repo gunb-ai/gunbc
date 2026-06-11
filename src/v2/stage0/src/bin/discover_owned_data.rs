@@ -124,6 +124,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                 "discover_owned_data: {} graph resolve(s) exceed --max-resolves {} -- a top-level decl-name collision between entry closures forced a resolve split; rename the colliding decl (latency ratchet, not a budget to raise)",
                 discovery.graph_resolves, ceiling
             );
+            for collision in &discovery.group_split_collisions {
+                eprintln!("discover_owned_data:   {}", collision);
+            }
             return Err(ExitCode::from(1));
         }
     }

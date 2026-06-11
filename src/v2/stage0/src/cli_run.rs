@@ -1021,11 +1021,13 @@ struct DiscoveryResolveGroup {
     decl_names: HashMap<String, String>,
 }
 
-fn closure_fits_group(
+/// `None` if the closure can merge into the group; otherwise the first
+/// top-level decl-name collision, as `(name, file already in group, new file)`.
+fn closure_group_conflict(
     group: &DiscoveryResolveGroup,
     closure: &[Rc<v2_compiler_compile::SourceFile>],
     names_by_file: &HashMap<String, Rc<Vec<String>>>,
-) -> bool {
+) -> Option<(String, String, String)> {
     for source in closure {
         if group.sources.contains_key(&source.path) {
             continue;
@@ -1033,12 +1035,12 @@ fn closure_fits_group(
         for name in names_by_file[&source.path].iter() {
             if let Some(existing) = group.decl_names.get(name) {
                 if existing != &source.path {
-                    return false;
+                    return Some((name.clone(), existing.clone(), source.path.clone()));
                 }
             }
         }
     }
-    true
+    None
 }
 
 fn add_closure_to_group(
@@ -1065,6 +1067,9 @@ pub struct OwnedDataDiscovery {
     /// Number of `compile_to_resolved` graph resolves performed. 1 unless a
     /// top-level decl-name collision between entry closures forces a split.
     pub graph_resolves: usize,
+    /// One line per forced group split: the decl-name collision (name, file
+    /// already in the group, new file) that made the entry start a new group.
+    pub group_split_collisions: Vec<String>,
 }
 
 /// Glob claim corpus files, resolve fail-closed, expose owned `data` facts.
@@ -1093,6 +1098,7 @@ pub fn discover_owned_data_decls(
 
     let mut names_by_file: HashMap<String, Rc<Vec<String>>> = HashMap::new();
     let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
+    let mut group_split_collisions: Vec<String> = Vec::new();
     let mut entry_count = 0usize;
     for path in files {
         let entry = path.to_string_lossy().to_string();
@@ -1121,15 +1127,27 @@ pub fn discover_owned_data_decls(
         }
 
         let member = (entry, entry_module, marker_count);
-        match groups
-            .iter_mut()
-            .find(|g| closure_fits_group(g, &closure, &names_by_file))
-        {
+        let mut first_conflict: Option<(String, String, String)> = None;
+        match groups.iter_mut().find(|g| {
+            match closure_group_conflict(g, &closure, &names_by_file) {
+                None => true,
+                Some(conflict) => {
+                    first_conflict.get_or_insert(conflict);
+                    false
+                }
+            }
+        }) {
             Some(group) => {
                 group.entries.push(member);
                 add_closure_to_group(group, closure, &names_by_file);
             }
             None => {
+                if let Some((name, existing_file, new_file)) = first_conflict {
+                    group_split_collisions.push(format!(
+                        "entry {} split off over decl `{}` ({} vs {})",
+                        member.0, name, existing_file, new_file
+                    ));
+                }
                 let mut group = DiscoveryResolveGroup {
                     entries: vec![member],
                     sources: HashMap::new(),
@@ -1179,6 +1197,7 @@ pub fn discover_owned_data_decls(
         records: all_records,
         entry_count,
         graph_resolves,
+        group_split_collisions,
     })
 }
 
