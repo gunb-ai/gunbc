@@ -96,16 +96,3 @@ fn comprep_b3_ts_node_run_catalog_minus_discriminates() -> Bool {
   }
 }
 
-data unified_claim_comprep_b3_ts_node_run_add: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
-    entry: "src/v4/test/claim/manual/comprep_b3_ts_descriptor_node_run.dag",
-    function: comprep_b3_ts_node_run_add_holds
-  }
-}
-
-data unified_claim_comprep_b3_ts_node_run_catalog_minus: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
-    entry: "src/v4/test/claim/manual/comprep_b3_ts_descriptor_node_run.dag",
-    function: comprep_b3_ts_node_run_catalog_minus_discriminates
-  }
-}

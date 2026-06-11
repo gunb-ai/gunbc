@@ -2203,4 +2203,181 @@ mod tests {
             "run_emit_host_rust must stay on the Rust dispatch hook"
         );
     }
+
+    fn substrate_arrow_fn_decl(
+        dag: &mut Dag,
+        name: &str,
+        inputs: Vec<DeclarationId>,
+        file: &str,
+    ) -> DeclarationId {
+        let output = atom_decl(dag, "OutcomeStub", file);
+        let body_value = dag.push_value(LiteralBits::Bool(false), span(file));
+        let bind = dag.push_bind(
+            "transport_not_wired_body",
+            body_value,
+            Vec::new(),
+            span(file),
+        );
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective: TypeConnective::Arrow {
+                inputs,
+                output,
+                body: ArrowBody::UserDefined(
+                    BindNodeId::from_bind_node(dag, bind).expect("bind body"),
+                ),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn run_host_process_decl(dag: &mut Dag, file: &str) -> DeclarationId {
+        let descriptor = atom_decl(dag, "HostTransportDescriptor", file);
+        let target = atom_decl(dag, "TargetModel", file);
+        let source = atom_decl(dag, "TargetSource", file);
+        let inputs = atom_decl(dag, "Inputs", file);
+        substrate_arrow_fn_decl(
+            dag,
+            "run_host_process",
+            vec![descriptor, target, source, inputs],
+            file,
+        )
+    }
+
+    fn runtime_value_signed_i32_le_as_int_decl(dag: &mut Dag, file: &str) -> DeclarationId {
+        let runtime_value = atom_decl(dag, "RuntimeValue", file);
+        substrate_arrow_fn_decl(
+            dag,
+            "runtime_value_signed_i32_le_as_int",
+            vec![runtime_value],
+            file,
+        )
+    }
+
+    fn signed_i32_le_runtime_value_operand(dag: &Dag, n: i32) -> Value {
+        let bytes = byte_string_value(dag, &n.to_le_bytes()).expect("byte string");
+        let prim_value = Value::RecordValue(vec![
+            NamedField {
+                label: "primitive_type".to_string(),
+                value: Value::RecordValue(vec![]),
+            },
+            NamedField {
+                label: "bytes".to_string(),
+                value: bytes,
+            },
+        ]);
+        Value::VariantValue {
+            tag: DeclarationId::test_raw(99),
+            payload: Box::new(Value::RecordValue(vec![NamedField {
+                label: "value".to_string(),
+                value: prim_value,
+            }])),
+        }
+    }
+
+    #[test]
+    fn b3_run_host_process_eval_dispatch_claims_only_emit_host_authority() {
+        let mut dag = Dag::new();
+        let proc_decl = run_host_process_decl(&mut dag, "src/v4/compiler/emit_host.dag");
+        let lookalike_decl = run_host_process_decl(&mut dag, "src/v4/compiler/other.dag");
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+
+        let claimed = try_dispatch_run_host_process(&dag, proc_decl, &[], &mut state, &strategy)
+            .expect("run_host_process hook must claim emit_host.dag row");
+        assert_eq!(
+            claimed,
+            Err(EvalError::TransformArityMismatch {
+                expected: 4,
+                got: 0
+            }),
+            "hook must claim before arity validation"
+        );
+        assert!(
+            try_dispatch_run_host_process(&dag, lookalike_decl, &[], &mut state, &strategy)
+                .is_none(),
+            "same-name declarations outside emit_host.dag must not be intercepted"
+        );
+    }
+
+    #[test]
+    fn b3_runtime_value_signed_i32_le_as_int_eval_dispatch_reifies_five() {
+        let mut dag = dag_with_hermetic_v4_emit_host_carriers();
+        let callee_decl =
+            runtime_value_signed_i32_le_as_int_decl(&mut dag, "src/v4/compiler/emit_host.dag");
+        let operand = signed_i32_le_runtime_value_operand(&dag, 5);
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+
+        let result = try_dispatch_runtime_value_signed_i32_le_as_int(
+            &dag,
+            callee_decl,
+            &[operand],
+            &mut state,
+            &strategy,
+        )
+        .expect("SignedI32Le hook must claim emit_host.dag row")
+        .expect("four-byte LE payload must reify");
+
+        let Value::VariantValue { tag, payload } = &result else {
+            panic!("expected Outcome variant, got {result:?}");
+        };
+        assert_eq!(
+            v4_carrier_variant_tag(&dag, V4_STD_DIAGNOSTIC_AUTHORITY, "Outcome", "Accepted")
+                .expect("Accepted tag"),
+            *tag
+        );
+        let Value::RecordValue(outcome_fields) = &**payload else {
+            panic!("expected Accepted payload record");
+        };
+        let value_field = outcome_fields
+            .iter()
+            .find(|field| field.label == "value")
+            .expect("Accepted.value");
+        assert_eq!(
+            value_field.value,
+            Value::LiteralValue(LiteralBits::Int("5".to_string()))
+        );
+    }
+
+    #[test]
+    fn b3_runtime_value_signed_i32_le_as_int_claims_only_emit_host_authority() {
+        let mut dag = Dag::new();
+        let decl =
+            runtime_value_signed_i32_le_as_int_decl(&mut dag, "src/v4/compiler/emit_host.dag");
+        let lookalike =
+            runtime_value_signed_i32_le_as_int_decl(&mut dag, "src/v4/compiler/other.dag");
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+
+        let claimed =
+            try_dispatch_runtime_value_signed_i32_le_as_int(&dag, decl, &[], &mut state, &strategy)
+                .expect("hook must claim emit_host.dag row");
+        assert_eq!(
+            claimed,
+            Err(EvalError::TransformArityMismatch {
+                expected: 1,
+                got: 0
+            })
+        );
+        assert!(try_dispatch_runtime_value_signed_i32_le_as_int(
+            &dag,
+            lookalike,
+            &[],
+            &mut state,
+            &strategy
+        )
+        .is_none());
+    }
 }
