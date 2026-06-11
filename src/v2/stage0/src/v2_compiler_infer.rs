@@ -14511,10 +14511,18 @@ pub fn typecheck_modules(
                 });
             }
             Some(resolved) => {
+                eprintln!(
+                    "DEBUG typecheck_modules: start {}",
+                    authored_name_at(source_indices.clone(), resolved.module.clone())
+                );
                 let parent_result = collect_parent_envs(
                     resolved.clone(),
                     module_index.clone(),
                     source_indices.clone(),
+                );
+                eprintln!(
+                    "DEBUG typecheck_modules: parent envs done {}",
+                    authored_name_at(source_indices.clone(), resolved.module.clone())
                 );
                 let tc_result = typecheck_module(
                     resolved.clone(),
@@ -14522,6 +14530,10 @@ pub fn typecheck_modules(
                     source_indices.clone(),
                     intern_table.clone(),
                     allocator.clone(),
+                );
+                eprintln!(
+                    "DEBUG typecheck_modules: typecheck done {}",
+                    authored_name_at(source_indices.clone(), resolved.module.clone())
                 );
                 let typed = tc_result.typed.clone();
                 let tc_diags = tc_result.diagnostics.clone();
@@ -14563,8 +14575,12 @@ pub fn reconcile(
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
     {
+        eprintln!("DEBUG reconcile: typecheck start");
         let typed = typecheck(graph, source_indices, intern_table);
+        eprintln!("DEBUG reconcile: typecheck done");
+        eprintln!("DEBUG reconcile: emit-info start");
         let emit_info = build_emit_graph_info(typed.modules.clone());
+        eprintln!("DEBUG reconcile: emit-info done");
         Rc::new(ResolvedGraph {
             modules: typed.modules.clone(),
             item_registry: typed.item_registry.clone(),

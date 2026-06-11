@@ -2357,7 +2357,9 @@ pub fn compile_to_resolved_with_options(
     options: CompilePipelineOptions,
 ) -> Rc<ResolvedPipelineResult> {
     {
+        eprintln!("DEBUG compile_to_resolved: start");
         let frontend = front_end_sources(sources);
+        eprintln!("DEBUG compile_to_resolved: frontend done");
         let newline_indices = frontend.newline_indices.clone();
         match frontend.graph.clone() {
             None => Rc::new(ResolvedPipelineResult {
@@ -2395,7 +2397,9 @@ pub fn compile_to_resolved_with_options(
                         v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
+                eprintln!("DEBUG compile_to_resolved: normalize start");
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
+                eprintln!("DEBUG compile_to_resolved: normalize done");
                 let norm_diags = norm.diagnostics.clone();
                 let norm_errors = Rc::new({
                     let mut __result = Vec::new();
@@ -2419,17 +2423,21 @@ pub fn compile_to_resolved_with_options(
                         newline_indices: newline_indices.clone(),
                     });
                 }
+                eprintln!("DEBUG compile_to_resolved: reconcile start");
                 let typed = reconcile(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
                 );
+                eprintln!("DEBUG compile_to_resolved: reconcile done");
                 let typed_diags = typed.diagnostics.clone();
+                eprintln!("DEBUG compile_to_resolved: complexity start");
                 let complexity = if options.analyze_complexity.clone() {
                     run_complexity_analysis(typed.clone(), source_indices.clone())
                 } else {
                     empty_complexity_report()
                 };
+                eprintln!("DEBUG compile_to_resolved: complexity done");
                 let complexity_diags = if options.analyze_complexity.clone() {
                     complexity_diagnostics(complexity.clone())
                 } else {
@@ -2458,8 +2466,10 @@ pub fn compile_to_resolved_with_options(
                         newline_indices: newline_indices.clone(),
                     });
                 }
+                eprintln!("DEBUG compile_to_resolved: ownership start");
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
+                eprintln!("DEBUG compile_to_resolved: ownership done");
                 let ownership_errors = Rc::new({
                     let mut __result = Vec::new();
                     for d in ownership_diags.clone().iter().cloned() {
