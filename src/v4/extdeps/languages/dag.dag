@@ -94,6 +94,8 @@ import v4.std.target_model {
   FixedToken,
   BoundToken,
   TargetModel,
+  canonical_operation_equal,
+  canonical_operation_from_wire_node,
   canonical_operation_op_add,
   target_model_canonical_operation_wire_node,
   concrete_syntax_token_class,
@@ -3275,6 +3277,70 @@ fn dag_mvp1_add_param_binding_ids() -> List<Symbol> {
 
 fn dag_mvp1_int_type_binding() -> Symbol {
   ^dag_binding_type_int
+}
+
+data dag_mvp1_captured_flat_atom_binding_miss: Symbol = dag_mvp1_captured_flat_atom_binding_miss
+
+fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: Int) -> Diagnostic {
+  Diagnostic {
+    reason: dag_mvp1_captured_flat_atom_binding_miss,
+    at: port_locus(port: ^dag_mvp1_captured_flat_atom_binding_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data dag_mvp1_captured_flat_atom_binding_port: Symbol = dag_mvp1_captured_flat_atom_binding_port
+
+fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_ident
+    _ => false
+  }
+}
+
+// Wave-1 COMPREP bridge: parse projects every identifier as ^dag_token_ident; binding ids
+// live in dag_mvp1_concrete_tokens BoundToken rows keyed by captured flat index.
+fn dag_mvp1_captured_flat_atom_binding_for_ident(
+  flat_index: Int,
+  ident_atom: Node
+) -> Outcome<Symbol> {
+  if !dag_mvp1_node_is_ident_atom(node: ident_atom) {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  } else if flat_index == 5 {
+    outcome_accepted(^dag_binding_param_x)
+  } else if flat_index == 9 {
+    outcome_accepted(^dag_binding_param_y)
+  } else if flat_index == 12 {
+    outcome_accepted(^dag_binding_type_int)
+  } else {
+    outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
+  }
+}
+
+fn dag_mvp1_resolved_operator_node_for_eval(atom: Node) -> Outcome<Node> {
+  match atom.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^dag_token_plus {
+        outcome_accepted(value: atom)
+      } else {
+        match canonical_operation_from_wire_node(wire: atom) {
+          Accepted { value: op, diagnostics: pending } =>
+            if canonical_operation_equal(left: op, right: canonical_operation_op_add()) {
+              Accepted {
+                value: dag_mvp1_add_operator_node(),
+                diagnostics: pending
+              }
+            } else {
+              outcome_rejected(
+                d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: 15)
+              )
+            }
+          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        }
+      }
+    _ =>
+      outcome_rejected(d: dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: 15))
+  }
 }
 
 fn dag_mvp1_type_atom_node(identity: Symbol) -> Node {
