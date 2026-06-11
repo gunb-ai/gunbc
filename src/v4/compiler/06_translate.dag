@@ -2393,126 +2393,24 @@ fn project_type_expression_children(
     acc: Empty
   )
 }
-// translate_algebra — Conj arm accumulator (W1-Conj; dep-graph §1 fold_node dissolution).
 type TypeExprTranslateAcc
-  = TypeExprTranslateFieldSlots { slots: List<TargetTypeExprFieldSlot> }
-  | TypeExprTranslateEmitted { node: Node }
+  = TypeExprTranslateSlots { slots: List<TargetTypeExprFieldSlot> }
+  | TypeExprTranslateDone { node: Node }
 
-fn translate_algebra_type_expr_fold_init(
-  n: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<TypeExprTranslateAcc> {
-  match n.kind {
-    TypeNode { connective: Conj } =>
-      Accepted {
-        value: TypeExprTranslateFieldSlots { slots: Empty },
-        diagnostics: None
-      }
-    TypeNode { connective: c } =>
-      bind_outcome(
-        o: project_type_expression_connective_bounded(
-          remaining: node_subtree_count(n: n),
-          node: n,
-          connective: c,
-          target: target,
-          projection: projection
-        ),
-        f: fn(emitted) {
-          Accepted {
-            value: TypeExprTranslateEmitted { node: emitted },
-            diagnostics: None
-          }
-        }
-      )
-    ComputationNode { behavior: _ } =>
-      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
-  }
-}
-
-fn translate_algebra_acc_to_emitted(
+fn translate_algebra_conj_finalize(
   acc: TypeExprTranslateAcc,
   anchor: Node,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match acc {
-    TypeExprTranslateEmitted { node: emitted } =>
-      outcome_accepted(emitted)
-    TypeExprTranslateFieldSlots { slots: fields } =>
-      if is_empty(xs: fields) {
-        if is_empty(xs: anchor.children) {
-          outcome_accepted(
-            target_type_expr_record_emitted(form: projection.conj_form, fields: fields)
-          )
-        } else {
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
-        }
+    TypeExprTranslateDone { node: n } => outcome_accepted(n)
+    TypeExprTranslateSlots { slots: fields } =>
+      if is_empty(xs: fields) && !is_empty(xs: anchor.children) {
+        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
       } else {
         outcome_accepted(
           target_type_expr_record_emitted(form: projection.conj_form, fields: fields)
         )
-      }
-  }
-}
-
-fn translate_algebra_type_expr_fold_step(
-  acc: Outcome<TypeExprTranslateAcc>,
-  edge: Edge,
-  child: Outcome<TypeExprTranslateAcc>,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<TypeExprTranslateAcc> {
-  match acc {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: acc_v, diagnostics: ad } =>
-      match acc_v {
-        TypeExprTranslateEmitted { node: _ } =>
-          Accepted { value: acc_v, diagnostics: ad }
-        TypeExprTranslateFieldSlots { slots: slots } =>
-          match edge.label {
-            Named { name: label } =>
-              match child {
-                Rejected { diagnostics: cr } =>
-                  Rejected {
-                    diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-                  }
-                Accepted { value: child_acc, diagnostics: cd } =>
-                  bind_outcome(
-                    o: translate_algebra_acc_to_emitted(
-                      acc: child_acc,
-                      anchor: edge.target,
-                      projection: projection
-                    ),
-                    f: fn(projected) {
-                      bind_outcome(
-                        o: translate_apply_use_site_ownership_to_projected_boundary(
-                          projected: projected,
-                          source_for_binding: edge.target,
-                          target: target,
-                          projection: projection,
-                          use_site: OwnershipAtStructField
-                        ),
-                        f: fn(wrapped) {
-                          Accepted {
-                            value: TypeExprTranslateFieldSlots {
-                              slots: list_snoc_item(
-                                xs: slots,
-                                item: TargetTypeExprFieldSlot {
-                                  label: label,
-                                  type_expr: wrapped
-                                }
-                              )
-                            },
-                            diagnostics: diagnostics_merge(outer: ad, inner: cd)
-                          }
-                        }
-                      )
-                    }
-                  )
-              }
-            Positional =>
-              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
-          }
       }
   }
 }
@@ -2523,51 +2421,84 @@ fn translate_algebra(
 ) -> NodeFold<Outcome<TypeExprTranslateAcc>> {
   NodeFold {
     init: fn(n) {
-      translate_algebra_type_expr_fold_init(
-        n: n,
-        target: target,
-        projection: projection
-      )
+      match n.kind {
+        TypeNode { connective: Conj } =>
+          Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
+        TypeNode { connective: c } =>
+          bind_outcome(
+            o: project_type_expression_connective_bounded(
+              remaining: node_subtree_count(n: n),
+              node: n,
+              connective: c,
+              target: target,
+              projection: projection
+            ),
+            f: fn(emitted) {
+              Accepted {
+                value: TypeExprTranslateDone { node: emitted },
+                diagnostics: None
+              }
+            }
+          )
+        ComputationNode { behavior: _ } =>
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
+      }
     },
     step: fn(acc, e, child) {
-      translate_algebra_type_expr_fold_step(
-        acc: acc,
-        edge: e,
-        child: child,
-        target: target,
-        projection: projection
-      )
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: done, diagnostics: d } =>
+          match done {
+            TypeExprTranslateDone { node: _ } => Accepted { value: done, diagnostics: d }
+            TypeExprTranslateSlots { slots: slots } =>
+              match e.label {
+                Named { name: label } =>
+                  match child {
+                    Rejected { diagnostics: cr } =>
+                      Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                    Accepted { value: child_acc, diagnostics: cd } =>
+                      bind_outcome(
+                        o: translate_algebra_conj_finalize(
+                          acc: child_acc,
+                          anchor: e.target,
+                          projection: projection
+                        ),
+                        f: fn(projected) {
+                          bind_outcome(
+                            o: translate_apply_use_site_ownership_to_projected_boundary(
+                              projected: projected,
+                              source_for_binding: e.target,
+                              target: target,
+                              projection: projection,
+                              use_site: OwnershipAtStructField
+                            ),
+                            f: fn(wrapped) {
+                              Accepted {
+                                value: TypeExprTranslateSlots {
+                                  slots: list_snoc_item(
+                                    xs: slots,
+                                    item: TargetTypeExprFieldSlot {
+                                      label: label,
+                                      type_expr: wrapped
+                                    }
+                                  )
+                                },
+                                diagnostics: diagnostics_merge(outer: d, inner: cd)
+                              }
+                            }
+                          )
+                        }
+                      )
+                  }
+                Positional =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
+              }
+          }
+      }
     }
   }
-}
-
-fn translate_algebra_conj_project(
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<Node> {
-  bind_outcome(
-    o: type_expr_projection_row_closedness_from_target(
-      target: target,
-      projection: projection,
-      connective: Conj
-    ),
-    f: fn(_) {
-      bind_outcome(
-        o: fold_node(
-          n: node,
-          algebra: translate_algebra(target: target, projection: projection)
-        ),
-        f: fn(acc) {
-          translate_algebra_acc_to_emitted(
-            acc: acc,
-            anchor: node,
-            projection: projection
-          )
-        }
-      )
-    }
-  )
 }
 
 fn project_type_expression_variant_slots_go(
@@ -2736,10 +2667,11 @@ fn project_type_expression_connective_bounded(
             )
           }
         Conj =>
-          translate_algebra_conj_project(
-            node: node,
-            target: target,
-            projection: projection
+          bind_outcome(
+            o: fold_node(n: node, algebra: translate_algebra(target: target, projection: projection)),
+            f: fn(acc) {
+              translate_algebra_conj_finalize(acc: acc, anchor: node, projection: projection)
+            }
           )
         Disj =>
           bind_outcome(
