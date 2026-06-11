@@ -44,7 +44,7 @@ import v4.std.node {
   TypeNode,
   name_occurrences,
   node_rebuild,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.node_query {
   find_named_child

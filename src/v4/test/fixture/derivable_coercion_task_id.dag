@@ -10,7 +10,7 @@ import v4.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSurfaceSpelling
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { StructuralPropertyWitness }
 
 // Layer nicknames — distinct surface spellings (API TaskId, DB TEXT/CLOB, wire string).
@@ -37,7 +37,7 @@ fn task_id_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -53,7 +53,7 @@ fn task_id_semantic_core_node() -> Node {
         )
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -70,7 +70,7 @@ fn task_id_encoding_core_node(representation: Symbol, carrier: Symbol) -> Node {
         target: task_id_inhabitant_atom(id: carrier)
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -90,7 +90,7 @@ fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
         target: task_id_inhabitant_atom(id: surface_nickname)
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -125,7 +125,7 @@ fn account_id_wrong_inhabitant_node() -> Node {
         target: task_id_inhabitant_atom(id: account_id_nickname_surface)
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

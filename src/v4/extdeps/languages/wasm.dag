@@ -100,7 +100,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.logic { Bool }
 import v4.std.algebra {
@@ -225,7 +225,7 @@ fn wasm_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -254,7 +254,7 @@ fn wasm_scalar_node(scalar: WasmScalar) -> Node {
         ),
         wasm_named_edge(name: ^wasm_scalar_field_width, target: wasm_int_width_node(width: width))
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
     FloatScalar { width } => Node {
       kind: TypeNode { connective: Conj },
@@ -265,7 +265,7 @@ fn wasm_scalar_node(scalar: WasmScalar) -> Node {
         ),
         wasm_named_edge(name: ^wasm_scalar_field_width, target: wasm_float_width_node(width: width))
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -291,7 +291,7 @@ fn wasm_integer_facts_node(facts: WasmIntegerPrimitiveFacts) -> Node {
         target: wasm_scalar_node(scalar: IntScalar { width: facts.width })
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -317,7 +317,7 @@ fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
         target: wasm_scalar_node(scalar: FloatScalar { width: facts.width })
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -331,7 +331,7 @@ fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) ->
         target: wasm_integer_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -345,7 +345,7 @@ fn wasm_float_inhabitant_node(id: Symbol, facts: WasmFloatPrimitiveFacts) -> Nod
         target: wasm_float_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -413,7 +413,7 @@ fn wasm_int_numeric_immediate_node(
         target: wasm_inhabitant_atom(id: validation)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -439,7 +439,7 @@ fn wasm_float_numeric_immediate_node(
         target: wasm_inhabitant_atom(id: validation)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -496,7 +496,7 @@ fn wasm_localidx_node(token_class: Symbol) -> Node {
         target: wasm_inhabitant_atom(id: ^wasm_localidx_validation_u32_range)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -513,7 +513,7 @@ fn wasm_declared_inhabitants_root() -> Node {
       wasm_named_edge(name: ^wasm_inhabitant_field_f32, target: wasm_inhabitant_f32_node()),
       wasm_named_edge(name: ^wasm_inhabitant_field_f64, target: wasm_inhabitant_f64_node()),
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -529,7 +529,7 @@ fn wasm_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: wasm_inhabitant_i32_node() },
       Edge { label: Positional, target: wasm_inhabitant_i32_node() }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -580,7 +580,7 @@ fn wasm_mvp1_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: wasm_mvp1_serialize_source_children(),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -669,7 +669,7 @@ fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -682,7 +682,7 @@ fn wasm_mvp1_translation_rules_node() -> Node {
         target: wasm_grammar_relation_row_node(row: wasm_mvp1_grammar_relation_row())
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -707,7 +707,7 @@ fn wasm_mvp1_target_model_node() -> Node {
         target: wasm_mvp1_serialize_source_node()
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1797,7 +1797,7 @@ fn wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
         target: wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1818,7 +1818,7 @@ fn wasm_float_algebra_witness_node(facts: WasmFloatPrimitiveFacts) -> Node {
         target: wasm_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1878,7 +1878,7 @@ fn wasm_model_core_law_node(witness: Node, algebra: Node, key: WasmModelCoreLawK
         target: wasm_inhabitant_atom(id: discriminant(v: key))
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

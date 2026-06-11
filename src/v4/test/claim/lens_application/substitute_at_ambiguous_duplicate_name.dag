@@ -7,7 +7,7 @@ module v4.test.claim.lens_application.substitute_at_ambiguous_duplicate_name
 import v4.lens.application { substitute_at }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -20,19 +20,19 @@ import v4.std.verification {
 data substitute_ambiguous_leaf_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_leaf_a_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_ambiguous_leaf_b: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_leaf_b_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_ambiguous_replacement: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_replacement_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_ambiguous_duplicate_name_root: Node = Node {
@@ -47,7 +47,7 @@ data substitute_ambiguous_duplicate_name_root: Node = Node {
       target: substitute_ambiguous_leaf_b
     }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 fn substitute_at_ambiguous_duplicate_name_claim_holds() -> Bool {

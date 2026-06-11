@@ -34,7 +34,7 @@ import v4.std.node {
   Node,
   Symbol,
   TypeNode,
-  Unanchored
+  SyntheticOccurrence
 }
 type ComplexityProjectionClaim {
   input_cost: SymbolicCost
@@ -52,13 +52,13 @@ type ComplexityDominanceClaim {
 data algebra_receipts_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^algebra_receipts_x_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data algebra_receipts_y: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^algebra_receipts_y_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data polynomial_degree_two_receipt: PolynomialDegree = PolynomialDegree {

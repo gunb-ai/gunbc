@@ -29,7 +29,7 @@ import v4.std.leaf_model_verification {
   target_diagnostic_go_undefined_method
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verdict { verdict_fail }
 import v4.std.verification {
   EqualsClaim,
@@ -43,10 +43,10 @@ import v4.std.verification {
 fn go_r2a_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^go_r2a_claim_bool_true } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^go_r2a_claim_bool_false } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
   }
 }

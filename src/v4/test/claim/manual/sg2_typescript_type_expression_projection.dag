@@ -34,7 +34,7 @@ import v4.std.target_model {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
 import v4.std.text { String }
 import v4.std.verification {
   CompilesClaim,
@@ -57,7 +57,7 @@ fn ts_sg2_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_sg2_pass_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -65,7 +65,7 @@ fn ts_sg2_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_sg2_fail_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

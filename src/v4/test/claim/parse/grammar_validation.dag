@@ -33,7 +33,7 @@ import v4.compiler.parse {
 import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
 import v4.std.algebra { Cons, Empty }
 import v4.std.collection { List }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.logic { Bool }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -47,10 +47,10 @@ import v4.std.verification {
 fn validation_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_true } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_false } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
   }
 }

@@ -31,7 +31,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, Unanchored }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -48,7 +48,7 @@ import v4.std.verification {
 }
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -60,7 +60,7 @@ fn idempotency_contract(body: Node) -> Node {
       Edge { label: Named { name: ^idempotency_position_field }, target: atom_node(s: ^idempotent_position_symbol) },
       Edge { label: Named { name: ^idempotency_body_field }, target: body },
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

@@ -14,7 +14,7 @@ import v4.compiler.compile {
 import v4.compiler.infer { InferredTree }
 import v4.std.diagnostic { Accepted, Outcome, PortLocus, Rejected, outcome_rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -65,7 +65,7 @@ fn enforce_rejecting_gate_fires_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

@@ -19,7 +19,7 @@ import v4.std.find_witness {
   OnePassingCandidate
 }
 import v4.std.logic { Bool, bool_node }
-import v4.std.node { Atom, Conj, Edge, Node, Positional, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
 import v4.std.target_model {
   symbol_kernel_type_node,
   target_atom_realization_catalog_row_decode_invalid,
@@ -41,7 +41,7 @@ fn atom_lookup_dissolution_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^atom_lookup_dissolution_probe } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -49,7 +49,7 @@ fn atom_lookup_dissolution_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^atom_lookup_dissolution_pass } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -57,7 +57,7 @@ fn atom_lookup_dissolution_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^atom_lookup_dissolution_fail } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -146,7 +146,7 @@ fn atom_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
           )
         }
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
     },
     source_carrier: bool_node(),
     host_target_model: ts_sg2_type_expr_target_model()
