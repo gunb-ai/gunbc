@@ -138,6 +138,8 @@ fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
 }
 
 // design-node-identity-channels.md: occurrence_id excluded from structural equality / content hash.
+// Root-only strip — children passed through unchanged. For tree equality use
+// exact_structural_equality_zip_fold (never compose nfse(l) == nfse(r)).
 fn node_for_structural_equality(n: Node) -> Node {
   node_with_occurrence_id(
     kind: n.kind,
