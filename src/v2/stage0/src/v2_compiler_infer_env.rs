@@ -229,32 +229,8 @@ pub fn lookup_binding_id_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc
                         Some(resolved.clone())
                     } else {
                         match lookup_carrier_type_for(env.clone(), node.clone()) {
-                            Some(carrier) => {
-                                if decl.name.as_str() == "ParseTree" || decl.name.as_str() == "Node"
-                                {
-                                    eprintln!(
-                                        "DBG lookup decl={} bid={:?} resolved_bid={:?} carrier_name={} carrier_bid={:?}",
-                                        decl.name,
-                                        binding_id,
-                                        resolved.binding_id,
-                                        authored_name_at(env.source_indices.clone(), carrier.clone()),
-                                        carrier.binding_id
-                                    );
-                                }
-                                Some(carrier.clone())
-                            }
-                            None => {
-                                if decl.name.as_str() == "ParseTree" || decl.name.as_str() == "Node"
-                                {
-                                    eprintln!(
-                                        "DBG lookup missing carrier decl={} bid={:?} resolved_bid={:?}",
-                                        decl.name,
-                                        binding_id,
-                                        resolved.binding_id
-                                    );
-                                }
-                                Some(error_type())
-                            }
+                            Some(carrier) => Some(carrier.clone()),
+                            None => Some(error_type()),
                         }
                     }
                 }
