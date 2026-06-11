@@ -857,19 +857,25 @@ fn direct_call_carrier_transparent_alias_to(env: TypeEnv, alias_node: Node, targ
     Present { value: alias_binding_id } =>
       match map_get(env.carrier_bindings, alias_binding_id) {
         Present { value: carrier } =>
-          let carrier_name = authored_name_at(source_indices: env.source_indices, node: carrier.resolved)
-          let alias_decl_name = match map_get(env.decl_registry, alias_binding_id) {
-            Present { value: decl } => decl.name
-            Absent => carrier.name
-          }
-          let transparent_alias_carrier = alias_decl_name != carrier_name
-          let carrier_target = if transparent_alias_carrier {
-            match lookup_type_by_name(env: env, name: carrier_name) {
-              Present { value: resolved_target } => resolved_target
-              Absent => carrier.resolved
-            }
-          } else {
-            carrier.resolved
+          let carrier_target = match direct_call_bare_alias_target_node(binding: carrier) {
+            Present { value: target } => target
+            Absent =>
+              let carrier_is_structural_shell = carrier.resolved.connective != NoConnective
+                || carrier.resolved.children |> count > 0
+                || carrier.resolved.params |> count > 0
+              let carrier_has_alias_id = match carrier.resolved.binding_id {
+                Present { value: carrier_binding_id } => carrier_binding_id == alias_binding_id
+                Absent => false
+              }
+              if carrier_is_structural_shell && carrier_has_alias_id {
+                let carrier_name = authored_name_at(source_indices: env.source_indices, node: carrier.resolved)
+                match lookup_type_by_name(env: env, name: carrier_name) {
+                  Present { value: resolved_target } => resolved_target
+                  Absent => carrier.resolved
+                }
+              } else {
+                carrier.resolved
+              }
           }
           match carrier_target.binding_id {
             Present { value: carrier_target_binding_id } =>
