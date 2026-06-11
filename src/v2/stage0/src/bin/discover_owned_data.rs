@@ -9,7 +9,13 @@
 //!       [--scan-dir src/v4/test/claim] \
 //!       [--exclude-subpath impossible_bug] \
 //!       [--format json|transport-tsv] \
-//!       [--emit-dag-manifest target/v4-discovered-owned-data-manifest.dag]
+//!       [--emit-dag-manifest target/v4-discovered-owned-data-manifest.dag] \
+//!       [--max-resolves 1]
+//!
+//! `--max-resolves N` is the CI latency ratchet: discovery batches all entry
+//! closures into collision-free merged resolves (1 expected); exceeding N means
+//! a top-level decl-name collision forced a split — rename the colliding decl
+//! rather than raising N.
 //!
 //! Exit codes: 0 = success; 1 = discovery/resolve failure; 2 = usage error.
 
@@ -48,6 +54,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     ];
     let mut format = "json".to_string();
     let mut manifest_path: Option<PathBuf> = None;
+    let mut max_resolves: Option<usize> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -76,6 +83,17 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "--emit-dag-manifest",
                 )?));
             }
+            "--max-resolves" => {
+                i += 1;
+                let raw = require_value(&args, i, "--max-resolves")?;
+                max_resolves = Some(raw.parse::<usize>().map_err(|_| {
+                    eprintln!(
+                        "discover_owned_data: --max-resolves expects a non-negative integer, got '{}'",
+                        raw
+                    );
+                    ExitCode::from(2)
+                })?);
+            }
             other => {
                 eprintln!("discover_owned_data: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -89,13 +107,27 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
-    let records = match discover_owned_data_decls(&source_roots, &scan_dir, &exclude_subpaths) {
-        Ok(records) => records,
+    let discovery = match discover_owned_data_decls(&source_roots, &scan_dir, &exclude_subpaths) {
+        Ok(discovery) => discovery,
         Err(msg) => {
             eprintln!("discover_owned_data: {}", msg);
             return Err(ExitCode::from(1));
         }
     };
+    eprintln!(
+        "discover_owned_data: {} graph resolve(s) covered {} entry file(s)",
+        discovery.graph_resolves, discovery.entry_count
+    );
+    if let Some(ceiling) = max_resolves {
+        if discovery.graph_resolves > ceiling {
+            eprintln!(
+                "discover_owned_data: {} graph resolve(s) exceed --max-resolves {} -- a top-level decl-name collision between entry closures forced a resolve split; rename the colliding decl (latency ratchet, not a budget to raise)",
+                discovery.graph_resolves, ceiling
+            );
+            return Err(ExitCode::from(1));
+        }
+    }
+    let records = discovery.records;
 
     if let Some(path) = manifest_path {
         if let Err(msg) = emit_owned_data_manifest(&path, &records) {

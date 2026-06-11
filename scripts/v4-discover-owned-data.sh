@@ -24,10 +24,14 @@ if [[ ! -x "$discover_bin" ]]; then
   exit 2
 fi
 
+# --max-resolves 1 is the discovery latency ratchet: batched discovery merges
+# all entry closures into ONE compile; a decl-name collision that forces a
+# split fails here loudly instead of silently re-inflating CI wall-time.
 "$discover_bin" \
   --source-root "$source_root" \
   --scan-dir "$scan_dir" \
   --emit-dag-manifest "$manifest" \
+  --max-resolves 1 \
   --format transport-tsv >"$transport_tsv"
 
 if git ls-files --error-unmatch "$manifest" >/dev/null 2>&1; then
