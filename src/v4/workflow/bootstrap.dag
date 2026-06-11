@@ -506,7 +506,7 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
       },
       Edge {
         label: Named { name: ^bootstrap_projection_snapshot_language_model_edge },
-        target: inputs.snapshot.language_model
+        target: language_model_to_node(lm: inputs.snapshot.language_model)
       },
       Edge {
         label: Named { name: ^bootstrap_projection_snapshot_content_hash_edge },

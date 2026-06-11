@@ -11,7 +11,7 @@ import v4.std.language_model { LanguageModel }
 import v4.std.target_model { TargetModel }
 import v4.std.text { String }
 
-// Hub route only — LanguageModel authority is v4.std.language_model (P2); no local redeclare.
-// Hub route only — TargetModel authority is v4.std.target_model (P2); no local redeclare.
+// Hub route only — LanguageModel authority is v4.std.language_model (P2);
+// TargetModel authority is v4.std.target_model (P2); no local redeclare.
 
 type TargetSource = String
