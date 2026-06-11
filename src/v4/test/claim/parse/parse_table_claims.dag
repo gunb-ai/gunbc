@@ -22,7 +22,12 @@ import v4.std.collection { List, Set }
 import v4.std.algebra { Cons, Empty, length }
 import v4.std.lexing { Token }
 import v4.std.diagnostic { Accepted, Rejected }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node {
+  Atom,
+  Node,
+  Symbol,
+  TypeNode
+}
 import v4.std.grammar {
   Choice,
   GrammarExpr,

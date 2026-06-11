@@ -13,7 +13,7 @@ import v4.compiler.body_producer {
 import v4.compiler.normalize { normalize }
 import v4.compiler.parse {
   grammar_validate_for_parse,
-  parse_production,
+  parse_production_tree,
   parse_stage_locus_port
 }
 import v4.compiler.resolve { resolve }
@@ -170,7 +170,7 @@ fn comprep_parse_mvp1_add_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
   let root = comprep_mvp1_add_parse_root()
   match grammar_validate_for_parse(root: root, at: port_locus(port: parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
-      parse_production(
+      parse_production_tree(
         tokens: tokens,
         validated: validated,
         production_name: ^dag_production_mvp1_fn_add

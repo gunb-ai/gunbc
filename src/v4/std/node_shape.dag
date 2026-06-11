@@ -55,23 +55,6 @@ fn computation_shape(behavior: Behavior, children: List<EdgeShape>) -> NodeShape
   node_shape(kind: ComputationNode { behavior: behavior }, children: children)
 }
 
-fn edge_to_shape(e: Edge) -> EdgeShape {
-  EdgeShape { label: e.label, target: node_to_shape(n: e.target) }
-}
-
-fn node_to_shape(n: Node) -> NodeShape {
-  NodeShape {
-    kind: n.kind,
-    children: fold_list(
-      xs: n.children,
-      empty: Empty,
-      cons: fn(acc, e) {
-        list_snoc_item(xs: acc, item: edge_to_shape(e: e))
-      }
-    )
-  }
-}
-
 fn stamp_edge_shape(e: EdgeShape) -> Edge {
   Edge { label: e.label, target: stamp_node_shape_synthetic(shape: e.target) }
 }
