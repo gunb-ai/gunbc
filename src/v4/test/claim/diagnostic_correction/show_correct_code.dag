@@ -23,7 +23,7 @@ import v4.std.diagnostic {
   WholeFile,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, Unanchored }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
 import v4.std.verification {ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -37,7 +37,7 @@ import v4.std.verification {ManualAnchorAbsent,
 }
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -49,7 +49,7 @@ fn pair_node(left: Symbol, right: Symbol) -> Node {
       Edge { label: Named { name: ^correction_left }, target: atom_node(s: left) },
       Edge { label: Named { name: ^correction_right }, target: atom_node(s: right) },
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

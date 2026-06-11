@@ -21,17 +21,17 @@ import v4.std.dependency {
   topological_layers
 }
 import v4.std.diagnostic { Accepted, None }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 data refinement_subject_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data refinement_new_field_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_new_field_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data refinement_after_node: Node = Node {
@@ -42,25 +42,25 @@ data refinement_after_node: Node = Node {
       target: refinement_new_field_node
     }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data testclaim_lens_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^testclaim_lens_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data boundary_test_lens_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^boundary_test_lens_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data target_test_projection_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^target_test_projection_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data dependency_projection_subgraph: Node = Node {
@@ -79,7 +79,7 @@ data dependency_projection_subgraph: Node = Node {
       target: target_test_projection_node
     }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data refinement_change_path: Path = Path {

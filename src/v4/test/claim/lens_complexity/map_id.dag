@@ -23,7 +23,7 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.witness { Witness }
 type LensComplexityClaim {
@@ -35,7 +35,7 @@ type LensComplexityClaim {
 data map_id_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^map_id_body_atom } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data map_id_body: Node = Node {
@@ -43,7 +43,7 @@ data map_id_body: Node = Node {
   children: [
     Edge { label: Positional, target: map_id_body_leaf }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data map_id_input: Node = Node {
@@ -51,7 +51,7 @@ data map_id_input: Node = Node {
   children: [
     Edge { label: Positional, target: map_id_body }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data map_id_claim: LensComplexityClaim = LensComplexityClaim {

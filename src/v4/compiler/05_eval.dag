@@ -5,6 +5,7 @@
 
 module v4.compiler.eval
 
+import v4.compiler.body_producer { arrow_has_body_edge }
 import v4.compiler.infer {
   InferredFacts,
   InferredTree,
@@ -85,7 +86,7 @@ import v4.std.node {
   fold_node,
   is_positional,
   well_formed,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.node_query { arrow_domain_named_param_bindings, find_arrow_body_child }
 import v4.std.diagnostic {
@@ -183,7 +184,7 @@ fn symbol_atom_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -548,7 +549,7 @@ fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: tag } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1295,23 +1296,15 @@ fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
 }
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P1) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_has_callee_reference /
-// eval_wave1_add_signature (executed by comprep_eval_by_execution keystone) —
+// INVARIANTS P1) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node fail-closed
+// unsupported-callee arm (executed by comprep_eval_by_execution keystone) —
 // bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
-// node_query dispatch surface (Node-projectable connective dispatch) instead of inline
-// Node.kind/TypeNode shape matches; owner/lane: Mgr-RUNTIME (valiant-cat-890), routed to
-// still-raven-546 — trigger: the source-driven callee-dispatch wave lands; forbidden:
-// permanent untagged Bool substrate-shape predicates in 05_eval (mirrors the L306 clause).
+// node_query connective dispatch surface instead of inline Node.kind/TypeNode shape matches;
+// owner/lane: Mgr-RUNTIME (neat-bat-593) — trigger: the source-driven callee-dispatch wave
+// lands; forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
 fn eval_node_is_arrow(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
-    _ => false
-  }
-}
-
-fn eval_node_is_atom(node: Node, sym: Symbol) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == sym
     _ => false
   }
 }
@@ -1324,25 +1317,7 @@ fn eval_node_is_callee_reference(node: Node) -> Bool {
   }
 }
 
-fn eval_positional_child_atom_is(node: Node, wanted: Int, sym: Symbol) -> Bool {
-  match eval_nth_child(
-    node: node,
-    wanted: wanted,
-    absent_reason: eval_rejected_unsupported_callee
-  ) {
-    Accepted { value: e, diagnostics: _ } =>
-      match e.label {
-        Positional => eval_node_is_atom(node: e.target, sym: sym)
-        Named { name: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// Exact-arity gate (P3/P5): true iff `node` has NO child at index `wanted`. The wave-1
-// shape predicates are fixed-arity, so they must assert the absence of the first
-// beyond-shape child — prefix matching alone admits oversized inputs and silently drops
-// the extras (Facts Flow Forward). Pairs with the eval_positional_child_atom_is reads.
+// Exact-arity gate (P3/P5): true iff `node` has NO child at index `wanted`.
 fn eval_child_absent(node: Node, wanted: Int) -> Bool {
   match eval_nth_child(
     node: node,
@@ -1354,54 +1329,23 @@ fn eval_child_absent(node: Node, wanted: Int) -> Bool {
   }
 }
 
-// 🟡 gated — COMPREP wave-1 hard-coded callee-shape gate (docs/modeling-discipline.md
-// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node
-// (executed by comprep_eval_by_execution keystone; fail-closed on any non-matching arrow via
-// eval_rejected_unsupported_callee) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: callee
-// admission/dispatch derives from the resolved Arrow's declared signature+body carriers
-// (real callee dispatch) rather than recognizing the fixed Int,Int->Int add shape by literal
-// token/param symbols; owner/lane: Mgr-RUNTIME (valiant-cat-890), routed to still-raven-546 —
-// trigger: the resolve->body_producer bridge lands; forbidden: adding a second hard-coded
-// callee shape here (a third would mean building the dispatch surface, not another literal).
-fn eval_wave1_add_signature(arrow: Node) -> Bool {
-  eval_node_is_arrow(node: arrow)
-    // domain: Conj with Named binding_id edges; arity check via param name count.
-    && match arrow_domain_named_param_bindings(arrow: arrow) {
-      Accepted { value: names, diagnostics: _ } => length(names) == 2
-      Rejected { diagnostics: _ } => false
-    }
-    // codomain at positional-1 must be Int.
-    && eval_positional_child_atom_is(node: arrow, wanted: 1, sym: ^dag_binding_type_int)
-    // Exact arity: Arrow is [domain-Conj, codomain-Int, body] — no positional-2+.
-    && eval_child_absent(node: arrow, wanted: 2)
-}
-
-fn eval_wave1_add_body_operand_set(body: Node) -> Bool {
-  (
-    eval_positional_child_atom_is(node: body, wanted: 1, sym: ^dag_binding_param_x)
-      && eval_positional_child_atom_is(node: body, wanted: 2, sym: ^dag_binding_param_y)
-  ) || (
-    eval_positional_child_atom_is(node: body, wanted: 1, sym: ^dag_binding_param_y)
-      && eval_positional_child_atom_is(node: body, wanted: 2, sym: ^dag_binding_param_x)
-  )
-}
-
-fn eval_wave1_add_body(body: Node) -> Bool {
-  match body.kind {
-    ComputationNode { behavior: Transform } =>
-      eval_positional_child_atom_is(node: body, wanted: 0, sym: ^dag_token_plus)
-        && eval_wave1_add_body_operand_set(body: body)
-        // Exact arity: the body is [+, x, y] — exactly three children. Reject any extra
-        // operand (index 3+) rather than dropping it (Facts Flow Forward/P5).
-        && eval_child_absent(node: body, wanted: 3)
-    _ => false
-  }
-}
-
-fn eval_wave1_add_callee(arrow: Node) -> Bool {
-  if eval_wave1_add_signature(arrow: arrow) {
+// 🟡 gated — COMPREP wave-1 callee admission interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node (executed by
+// comprep_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's
+// callee path consumes the canonical node_query dispatch surface (Arrow.body + declared arity)
+// instead of hand-rolled child-index absence checks; owner/lane: Mgr-RUNTIME (neat-bat-593) —
+// trigger: the resolve→body_producer bridge lands; forbidden: permanent untagged Bool
+// callee-admission predicates in 05_eval.
+fn eval_callee_admits_body_dispatch(arrow: Node) -> Bool {
+  if arrow_has_body_edge(arrow: arrow) {
     match find_arrow_body_child(root: arrow) {
-      Accepted { value: body, diagnostics: _ } => eval_wave1_add_body(body: body)
+      Accepted { value: body, diagnostics: _ } =>
+        eval_child_absent(node: arrow, wanted: 4)
+          && match body.kind {
+            ComputationNode { behavior: Transform } =>
+              eval_child_absent(node: body, wanted: 3)
+            _ => false
+          }
       Rejected { diagnostics: _ } => false
     }
   } else {
@@ -1460,7 +1404,7 @@ fn eval_transform_node(
         bind_outcome(
           o: eval_transform_callee_edge(node: node),
           f: fn(callee_edge) {
-            if eval_wave1_add_callee(arrow: callee_edge.target) {
+            if eval_callee_admits_body_dispatch(arrow: callee_edge.target) {
               bind_outcome(
                 o: find_arrow_body_child(root: callee_edge.target),
                 f: fn(body) {

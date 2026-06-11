@@ -91,7 +91,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
@@ -318,7 +318,7 @@ fn java_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -364,7 +364,7 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
         java_named_edge(name: ^java_scalar_field_kind, target: java_int_kind_node(kind: kind)),
         java_named_edge(name: ^java_scalar_field_width, target: java_int_width_node(width: width))
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
     FloatScalar { width } => Node {
       kind: TypeNode { connective: Conj },
@@ -375,7 +375,7 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
         ),
         java_named_edge(name: ^java_scalar_field_width, target: java_float_width_node(width: width))
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
     BoolScalar => java_inhabitant_atom(id: ^java_tag_scalar_bool)
     VoidScalar => java_inhabitant_atom(id: ^java_tag_scalar_void)
@@ -427,7 +427,7 @@ fn java_integer_facts_node(facts: JavaIntegerPrimitiveFacts) -> Node {
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -453,7 +453,7 @@ fn java_float_facts_node(facts: JavaFloatPrimitiveFacts) -> Node {
         target: java_scalar_node(scalar: FloatScalar { width: facts.width })
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -480,7 +480,7 @@ fn java_noninteger_facts_node(facts: JavaNonIntegerPrimitiveFacts) -> Node {
         target: java_inhabitant_atom(id: facts.representation)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -494,7 +494,7 @@ fn java_integer_inhabitant_node(id: Symbol, facts: JavaIntegerPrimitiveFacts) ->
         target: java_integer_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -508,7 +508,7 @@ fn java_float_inhabitant_node(id: Symbol, facts: JavaFloatPrimitiveFacts) -> Nod
         target: java_float_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -522,7 +522,7 @@ fn java_noninteger_inhabitant_node(id: Symbol, facts: JavaNonIntegerPrimitiveFac
         target: java_noninteger_facts_node(facts: facts)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -544,7 +544,7 @@ fn java_void_declared_inhabitant_node() -> Node {
         target: java_scalar_node(scalar: VoidScalar)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -571,7 +571,7 @@ fn java_declared_inhabitants_root() -> Node {
       java_named_edge(name: ^java_inhabitant_field_char, target: java_inhabitant_char_node()),
       java_named_edge(name: ^java_inhabitant_field_void, target: java_void_declared_inhabitant_node()),
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -587,7 +587,7 @@ fn java_mvp1_emitted_add_method_node() -> Node {
       Edge { label: Positional, target: java_inhabitant_int_node() },
       Edge { label: Positional, target: java_inhabitant_int_node() }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -639,7 +639,7 @@ fn java_mvp1_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: java_mvp1_serialize_source_children(),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -735,7 +735,7 @@ fn java_grammar_relation_row_node(row: JavaGrammarRelationRow) -> Node {
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -748,7 +748,7 @@ fn java_mvp1_translation_rules_node() -> Node {
         target: java_grammar_relation_row_node(row: java_mvp1_grammar_relation_row())
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -773,7 +773,7 @@ fn java_mvp1_target_model_node() -> Node {
         target: java_mvp1_serialize_source_node()
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1829,7 +1829,7 @@ fn java_wrapping_integer_algebra_witness_node(facts: JavaIntegerPrimitiveFacts) 
         target: java_overflow_node(overflow: facts.overflow_release)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1846,7 +1846,7 @@ fn java_bool_algebra_witness_node() -> Node {
         target: java_symbol_node(id: java_facts_boolean.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1902,7 +1902,7 @@ fn java_model_core_law_node(witness: Node, algebra: Node, key: JavaModelCoreLawK
         target: java_inhabitant_atom(id: discriminant(v: key))
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

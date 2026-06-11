@@ -26,7 +26,7 @@ import v4.std.algebra {
 }
 import v4.std.collection { List }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable}
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.machine {
   MachineWidth,
   PointerWidth,
@@ -577,7 +577,7 @@ fn integer_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -671,7 +671,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
           target: integer_inhabitant_atom(id: ^integer_tag_bound_zero)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
     IntegerConcreteBound { sign, magnitude } => Node {
       kind: TypeNode { connective: Conj },
@@ -689,7 +689,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
           target: integer_decimal_nonzero_node(magnitude: magnitude)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
     IntegerPointerWidthBound { signedness, endpoint } => Node {
       kind: TypeNode { connective: Conj },
@@ -707,7 +707,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
           target: integer_range_endpoint_node(endpoint: endpoint)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -725,7 +725,7 @@ fn integer_interval_spec_node(spec: IntegerIntervalSpec) -> Node {
         target: integer_interval_bound_node(bound: spec.inclusive_max)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 fn int_add(a: Int, b: Int) -> Int {
