@@ -90,6 +90,7 @@ Mapping:
 - Practice 9 (No-prose discipline) — implements **P2: Boundary Discipline**
 - Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** and the *Do not hand-roll a derived operation* invariant.
 - Practice 11 (Parameterize, don't duplicate; respect concept-home boundaries) — implements **P2: Boundary Discipline** + M2 (no duplicate type authorities). The design-time meta-practice that catches duplication and boundary-crossing *before* a downstream worker authors them; upstream of Practice 4 / 5 / 10.
+- Practice 12 (A finished stage is a fold; non-fold residue measures unmodeled decision) — implements **P1: Modeling Faithfulness** at **stage scale**; the whole-stage lift of Practice 10. Home of record MODELING.md M11.
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -1123,9 +1124,10 @@ reading of Practice 10 (*don't hand-roll a derived operation*). Practice
 10 is function-scale — it flags one hand-rolled catamorphism in a diff.
 Practice 12 is the same finding lifted to the **whole stage**: a compiler
 stage's finished shape is one fold over its model,
-`stage(x) = fold_carrier(x, algebra(model))`, and the *volume of non-fold
-control-flow in the stage* is a measurable proxy for how much of its
-decision-making still lives in code instead of the model. (See
+`stage(x) = fold_carrier(x, algebra(model))` — or a thin zero-residue
+composition of such folds (e.g. `serialize_target ∘ translate`) — and the
+*volume of non-fold control-flow in the stage* is a measurable proxy for
+how much of its decision-making still lives in code instead of the model. (See
 [MODELING.md](../MODELING.md) M11 — home of record; THESIS.md "Modeling
 discipline"; the frontloaded collapse program
 `gunbc-planning/stage-fold-collapse-plan-2026-06-11.md`.)
@@ -1150,18 +1152,31 @@ fine to keep as control-flow" is not a disposition:
   missing primitive (gate + owning task + dissolve-on-arrival, per
   Practice 4).
 
-**What to check.** For a stage file (`src/v4/compiler/*`): is the stage
-body one `fold_carrier(x, algebra(...))` call, or does it hand-walk its
-input? Count the residue signals — `_go` accumulators, `_bounded` fuel
-sites, per-connective `match` arms in the stage (vs rows in the algebra).
-Each non-zero count is either a named kernel (🟢, justified by call-graph
-≠ data-graph) or modeling debt (🔴/🟡). A stage that grows its arm count,
-or grafts a fold *beside* surviving arms without deleting them, is the
-**cementation anti-pattern** — the deletion ratchet (the target file must
-shrink, `_go`/`_bounded` strictly down) is its mechanical enforcement.
-The exit certificate is numeric: stage body is one fold, `_go`=0,
-`_bounded`=0, every former arm is one algebra row. `05_emit`
-(`serialize ∘ translate`, 43 lines) is the landed existence proof.
+**What to check.** For a stage file (`src/v4/compiler/*`): does the stage
+body hand-walk its input, or is every decision pushed into the model? The
+finished shape is **zero decision-residue**, realized in one of two forms
+— both pass:
+
+- a single `fold_carrier(x, algebra(model))` call (the archetype: one
+  traversal, every former arm is an algebra row); or
+- a **thin composition of fold-backed stages** whose only glue is monadic
+  sequencing (`bind_outcome` / `∘`) and which adds no `match`, `if`, `_go`,
+  or `_bounded` of its own. The composition is plumbing, not a decision —
+  each composed stage carries its own fold.
+
+Count the residue signals — `_go` accumulators, `_bounded` fuel sites,
+per-connective `match` arms *in the stage* (vs rows in the algebra; a
+`bind_outcome` chain is not an arm). Each non-zero count is either a named
+kernel (🟢, justified by call-graph ≠ data-graph) or modeling debt
+(🔴/🟡). A stage that grows its arm count, or grafts a fold *beside*
+surviving arms without deleting them, is the **cementation anti-pattern** —
+the deletion ratchet (the target file must shrink, `_go`/`_bounded`
+strictly down) is its mechanical enforcement. The exit certificate is
+numeric: `_go`=0, `_bounded`=0, no per-case `match` in the stage, every
+former arm is one algebra row. `05_emit` (`emit = serialize_target ∘
+translate`, i.e. `bind_outcome(translate, serialize_target)`, 43 lines) is
+the landed existence proof of the **composition** form — zero residue, no
+hand-walk, both halves fold-backed.
 
 **Disposition.** Standard 🔴/🟡/🟢 per the shared dispositions
 (Practice 4). A 🟢 stage-kernel claim must substantiate call-graph ≠
@@ -1299,8 +1314,10 @@ For each relevant principle and its implementing practices:
     Practice 11 findings are BLOCKING at the design-PR layer even when
     no implementation hunks exist (Calibration section above).
 12. For any **compiler stage file** (`src/v4/compiler/*`) in the diff
-    (Practice 12): is the stage body one `fold_carrier(x, algebra(...))`,
-    or does it hand-walk its input? Count the residue — `_go`
+    (Practice 12): is the stage body one `fold_carrier(x, algebra(...))`
+    call — or a thin zero-residue composition of fold-backed stages
+    (`∘` / `bind_outcome` glue, no added control-flow) — or does it
+    hand-walk its input? Count the residue — `_go`
     accumulators, `_bounded` fuel, per-connective `match` arms in the
     stage. Each is a 🟢 named kernel (substantiate call-graph ≠
     data-graph) or 🔴/🟡 un-migrated modeling. A stage whose arm count or
