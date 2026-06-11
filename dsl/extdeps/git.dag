@@ -48,6 +48,24 @@ type GitRemote {
   fetch_refspec: String
 }
 
+// -- Worktrees -------------------------------------------------------
+// A worktree is a checkout of the repository at a path: the main
+// worktree plus zero or more linked worktrees (`git worktree add`),
+// all sharing one object store and refs. Each non-bare worktree has
+// exactly one checked-out HEAD; a branch may be checked out in at
+// most one worktree at a time.
+
+type GitWorktreeHead
+  = WorktreeOnBranch { branch: GitBranch }
+  | WorktreeDetached { sha: CommitSha }
+
+type GitWorktree {
+  path: FilePath
+  head: GitWorktreeHead
+  is_main: Bool             // the original checkout vs a linked worktree
+  locked: Bool              // `git worktree lock` -- protected from prune
+}
+
 // -- Merge strategies ----------------------------------------------
 
 type GitMergeStrategy = GitMerge | GitSquash | GitRebase | GitFastForward

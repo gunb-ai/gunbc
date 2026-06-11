@@ -1,0 +1,33 @@
+// extdeps/docker.dag -- "What is Docker?" (the container-runtime surface
+// we consume: images, mounts).
+//
+// Facts about Docker's data model, not how we invoke it. CLI encodings
+// ("-v host:ctr:ro", "--mount type=bind,...", "256m" size strings) are
+// boundary syntax: parsed into these facts at ingress, re-encoded at
+// egress, never stored (units discipline -- quantities are bare standard
+// units; std/compute_fabric.dag models the hardware the runtime sits on).
+//
+// Consumers:
+//   gunb-ai/ctrl plans/models/session_contract -- session bind mounts
+
+module extdeps.docker
+
+import std.types { FilePath, NonEmptyStr }
+
+// -- Images ----------------------------------------------------------
+
+type DockerImage {
+  repository: NonEmptyStr   // e.g. "ctrl-session"
+  tag: NonEmptyStr          // e.g. "latest"
+  digest: String            // "sha256:..." when pinned; "" when by-tag only
+}
+
+// -- Mounts ----------------------------------------------------------
+// Docker's three mount kinds. A bind mount maps a host path into the
+// container; a volume mount attaches a daemon-managed named volume; a
+// tmpfs mount is container-private memory-backed scratch.
+
+type DockerMount
+  = BindMount { host_path: FilePath, container_path: FilePath, readonly: Bool }
+  | VolumeMount { volume: NonEmptyStr, container_path: FilePath, readonly: Bool }
+  | TmpfsMount { container_path: FilePath, size_bytes: Int }
