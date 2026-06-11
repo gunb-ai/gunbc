@@ -21,7 +21,17 @@ import v4.std.logic { Bool }
 import v4.std.collection { List, Set }
 import v4.std.algebra { Cons, Empty, length }
 import v4.std.lexing { Token }
-import v4.std.node { Symbol }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.node {
+  Anchored,
+  Atom,
+  Node,
+  NodeSpan,
+  SourceSpan,
+  Symbol,
+  TypeNode,
+  Unanchored
+}
 import v4.std.grammar {
   Choice,
   GrammarExpr,
@@ -42,6 +52,8 @@ import v4.compiler.parse {
   expr_direct_left_corner_list,
   expr_has_undefined_nonterminal,
   expr_is_nullable_given_set,
+  parse_repeat_captured_span,
+  parse_sequence_captured_span,
   token_position_indices
 }
 
@@ -345,5 +357,76 @@ data unified_claim_parse_table_undefined_nonterminal_morphism: UnifiedTestClaim 
   witness: BoolWitness {
     entry: "src/v4/test/claim/parse/parse_table_claims.dag",
     function: parse_table_undefined_nonterminal_morphism_holds
+  }
+}
+
+
+fn parse_table_span_fixture_node(class: Symbol, file: Symbol, start: Int, end: Int) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: class } },
+    children: [],
+    span: Anchored { span: SourceSpan { file: file, start: start, end: end } }
+  }
+}
+
+
+fn parse_table_node_span_is_anchored_extent(span: NodeSpan, file: Symbol, start: Int, end: Int) -> Bool {
+  match span {
+    Unanchored => false
+    Anchored { span: s } => (s.file == file) && (s.start == start) && (s.end == end)
+  }
+}
+
+
+// Receipt F (parse_sequence_captured_span / parse_repeat_captured_span are correct
+// fold_node_tree_span consumers): EXECUTES the substrate tree-span catamorphism over Conj-wrapped
+// capture fixtures and discriminates:
+//   - Sequence same-file: merged byte extent [0, 10)
+//   - Sequence cross-file: fail-closed Rejected
+//   - Repeat two same-file nodes: merged [2, 12)
+//   - Repeat empty: Unanchored
+// Mutating fold_node_tree_span's merge algebra flips at least one conjunct → red.
+fn parse_table_captured_tree_span_morphism_holds() -> Bool {
+  let file_a = ^pt_span_fixture_file_a
+  let file_b = ^pt_span_fixture_file_b
+  let cap1 = parse_table_span_fixture_node(class: ^pt_span_tok_a, file: file_a, start: 0, end: 5)
+  let cap2 = parse_table_span_fixture_node(class: ^pt_span_tok_b, file: file_a, start: 5, end: 10)
+  let cap3 = parse_table_span_fixture_node(class: ^pt_span_tok_c, file: file_b, start: 0, end: 5)
+  let rep0 = parse_table_span_fixture_node(class: ^pt_span_tok_d, file: file_a, start: 2, end: 7)
+  let rep1 = parse_table_span_fixture_node(class: ^pt_span_tok_e, file: file_a, start: 7, end: 12)
+  (
+    match parse_sequence_captured_span(cap1: cap1, cap2: cap2) {
+      Accepted { value: span, diagnostics: _ } =>
+        parse_table_node_span_is_anchored_extent(span: span, file: file_a, start: 0, end: 10)
+      Rejected { diagnostics: _ } => false
+    }
+  )
+    && (
+      match parse_sequence_captured_span(cap1: cap1, cap2: cap3) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    )
+    && (
+      match parse_repeat_captured_span(acc_nodes: Cons { head: rep0, tail: Cons { head: rep1, tail: Empty } }) {
+        Accepted { value: span, diagnostics: _ } =>
+          parse_table_node_span_is_anchored_extent(span: span, file: file_a, start: 2, end: 12)
+        Rejected { diagnostics: _ } => false
+      }
+    )
+    && (
+      match parse_repeat_captured_span(acc_nodes: Empty) {
+        Accepted { value: span, diagnostics: _ } => span == Unanchored
+        Rejected { diagnostics: _ } => false
+      }
+    )
+}
+
+
+// Co-located BoolWitnessClaim for fold_node_tree_span capture-span migration (Level-1c).
+data unified_claim_parse_table_captured_tree_span_morphism: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/parse/parse_table_claims.dag",
+    function: parse_table_captured_tree_span_morphism_holds
   }
 }
