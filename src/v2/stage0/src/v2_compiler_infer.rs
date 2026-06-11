@@ -1335,11 +1335,9 @@ pub fn direct_call_bare_alias_target_name(
         {
             match resolved.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
-                    if (((target.connective.clone() == Connective::NoConnective)
-                        && ((target.children.clone().len() as i64) == 0))
-                        && ((target.params.clone().len() as i64) == 0))
-                    {
-                        Some(authored_name_at(source_indices, target.clone()))
+                    let target_name = authored_name_at(source_indices, target.clone());
+                    if target_name.clone().as_str() != "".to_string().as_str() {
+                        Some(target_name.clone())
                     } else {
                         None
                     }
@@ -1360,7 +1358,21 @@ pub fn direct_call_transparent_alias_to(
     match direct_call_node_binding(env.clone(), alias_node.clone()) {
         Some(binding) => {
             match direct_call_bare_alias_target_name(binding.clone(), env.source_indices.clone()) {
-                Some(alias_target) => (alias_target.clone().as_str() == target_name.as_str()),
+                Some(alias_target) => {
+                    if target_name == "Node" || binding.name == "ParseTree" {
+                        eprintln!(
+                            "DBG alias Some binding={} alias_node={} bid={:?} resolved_name={} resolved_conn={:?} alias_target={} target={}",
+                            binding.name,
+                            authored_name_at(env.source_indices.clone(), alias_node.clone()),
+                            alias_node.binding_id,
+                            authored_name_at(env.source_indices.clone(), binding.resolved.clone()),
+                            binding.resolved.connective,
+                            alias_target,
+                            target_name
+                        );
+                    }
+                    (alias_target.clone().as_str() == target_name.as_str())
+                }
                 None => {
                     let resolved_name =
                         authored_name_at(env.source_indices.clone(), binding.resolved.clone());
@@ -1373,6 +1385,18 @@ pub fn direct_call_transparent_alias_to(
                         }
                         None => binding.name.clone(),
                     };
+                    if target_name == "Node" || binding.name == "ParseTree" {
+                        eprintln!(
+                            "DBG alias None binding={} alias_node={} bid={:?} resolved_name={} resolved_conn={:?} alias_decl={} target={}",
+                            binding.name,
+                            authored_name_at(env.source_indices.clone(), alias_node.clone()),
+                            alias_node.binding_id,
+                            resolved_name,
+                            binding.resolved.connective,
+                            alias_decl_name,
+                            target_name
+                        );
+                    }
                     ((alias_decl_name.clone().as_str() != target_name.as_str())
                         && (resolved_name.clone().as_str() == target_name.as_str()))
                 }
@@ -1833,6 +1857,31 @@ pub fn direct_call_arg_mismatch_diags(
                                                 module_name.clone(),
                                                 source_indices.clone(),
                                             )) {
+                                                if node_type_shape(
+                                                    formal.clone(),
+                                                    source_indices.clone(),
+                                                ) == "Product(Node)"
+                                                    && node_type_shape(
+                                                        actual.clone(),
+                                                        source_indices.clone(),
+                                                    ) == "Product(Node)"
+                                                {
+                                                    eprintln!(
+                                                        "DBG type_mismatch formal={} bid={:?} actual={} bid={:?} formal_id={} fid={:?} actual_id={} aid={:?} transparent_id={} transparent_stamped={} decl_mismatch={} type_mismatch={}",
+                                                        authored_name_at(source_indices.clone(), formal.clone()),
+                                                        formal.binding_id,
+                                                        authored_name_at(source_indices.clone(), actual.clone()),
+                                                        actual.binding_id,
+                                                        authored_name_at(source_indices.clone(), formal_identity.clone()),
+                                                        formal_identity.binding_id,
+                                                        authored_name_at(source_indices.clone(), actual_identity.clone()),
+                                                        actual_identity.binding_id,
+                                                        direct_call_transparent_alias_pair(type_env.clone(), formal_identity.clone(), actual_identity.clone(), source_indices.clone()),
+                                                        direct_call_transparent_alias_pair(type_env.clone(), formal.clone(), actual.clone(), source_indices.clone()),
+                                                        direct_call_decl_identity_mismatch(formal_identity.clone(), actual_identity.clone(), formal.clone(), actual.clone(), type_env.clone(), source_indices.clone()),
+                                                        direct_call_arg_type_mismatch(formal.clone(), actual.clone(), type_env.clone(), module_name.clone(), source_indices.clone())
+                                                    );
+                                                }
                                                 Rc::new(vec![type_mismatch_error(
                                                     node_type_shape(
                                                         formal.clone(),

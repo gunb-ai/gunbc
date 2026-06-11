@@ -814,9 +814,8 @@ fn direct_call_bare_alias_target_name(binding: TypeBinding, source_indices: Map<
   if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.params |> count == 0 {
     match resolved.inferred {
       Present { value: Resolved { node: target } } =>
-        if target.connective == NoConnective && target.children |> count == 0 && target.params |> count == 0 {
-          Present { value: authored_name_at(source_indices: source_indices, node: target) }
-        } else { none }
+        let target_name = authored_name_at(source_indices: source_indices, node: target)
+        if target_name != "" { Present { value: target_name } } else { none }
       _ => none
     }
   } else { none }
