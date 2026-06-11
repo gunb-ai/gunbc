@@ -5,9 +5,6 @@
 module v4.test.claim.provenance.occurrence_id_model
 
 import v4.std.diagnostic { ByteRange, NodeLocus, PortLocus, Textual, WholeFile }
-<<<<<<< HEAD
-import v4.std.node { OccurrenceId, Symbol }
-=======
 import v4.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }
@@ -16,6 +13,7 @@ import v4.std.node {
   Conj,
   Edge,
   Node,
+  OccurrenceId,
   Positional,
   Symbol,
   TypeNode,
@@ -24,7 +22,6 @@ import v4.std.node {
   node_synthetic,
   node_with_occurrence_id
 }
->>>>>>> origin/main
 import v4.std.occurrence_id {
   alloc_occurrence_id,
   occurrence_id_allocator_initial,

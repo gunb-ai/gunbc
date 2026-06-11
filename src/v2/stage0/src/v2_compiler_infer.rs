@@ -2001,23 +2001,6 @@ pub fn direct_call_arg_mismatch_diags(
                                                 module_name.clone(),
                                                 source_indices.clone(),
                                             )) {
-                                                eprintln!(
-                                                    "DBG mismatch formal={} {:?} actual={} {:?}",
-                                                    authored_name_at(source_indices.clone(), formal.clone()),
-                                                    formal.binding_id.clone(),
-                                                    authored_name_at(source_indices.clone(), actual.clone()),
-                                                    actual.binding_id.clone()
-                                                );
-                                                for decl in v2_rt::map_values(&type_env.decl_registry.clone()) {
-                                                    if decl.name.as_str() == "ParseTree" || decl.name.as_str() == "Node" || decl.binding_id == actual.binding_id.unwrap_or(crate::v2_std_core::BindingId::mint(-1)) {
-                                                        eprintln!("DBG decl {} {:?} key={}", decl.name, decl.binding_id, decl.binding_key);
-                                                    }
-                                                }
-                                                for binding in v2_rt::map_values(&type_env.carrier_bindings.clone()) {
-                                                    if binding.name.as_str() == "ParseTree" || binding.name.as_str() == "Node" {
-                                                        eprintln!("DBG carrier {} {:?}", binding.name, binding.resolved.binding_id);
-                                                    }
-                                                }
                                                 Rc::new(vec![type_mismatch_error(
                                                     node_type_shape(
                                                         formal.clone(),
