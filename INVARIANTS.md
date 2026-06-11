@@ -177,7 +177,7 @@ In the compiler especially, nicknames compound: consumers read the name and buil
 
 **Enforcement:** New substrate type names corresponding to recognized CS concepts must cite the grounding source in the file's module header comment using Practice 9's per-carrier anchor form (e.g. `// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis`). Reviewers should ask "does this concept have a canonical name in the field?" before approving new type declarations in `compiler/` or `extdeps/`.
 
-**Receipt (partial dissolution):** `src/v4/std/lexing.dag` and `src/v4/std/grammar.dag` are now landed — canonical lexical and grammar carriers grounded in Wikipedia *Lexical Analysis* and *Formal Grammar*. `v4.compiler.tokenize` and `v4.compiler.parse` still define the implementation-internal forms (`LexRule`, `GrammarProduction`, etc.); the remaining dissolution step is migrating those definitions into `std/` and updating all consumers. **Remaining dissolution target:** migrate `LexRule`/`LexRuleSet`/`LexPattern` from `v4.compiler.tokenize` and `GrammarProduction`/`GrammarExpr`/`GrammarSchema` from `v4.compiler.parse` into the landed std carriers; update all consumers to import from `std/`.
+**Receipt:** `src/v4/std/lexing.dag` and `src/v4/std/grammar.dag` are landed — canonical lexical and grammar carriers grounded in Wikipedia *Lexical Analysis* and *Formal Grammar*. `LexRule`/`LexRuleSet`/`LexPattern` and `GrammarProduction`/`GrammarExpr`/`GrammarSchema` are defined in `std/` only; `v4.compiler.tokenize` and `v4.compiler.parse` import from `std/` (zero redefinitions in compiler/). All `extdeps/` consumers import from `std/` (0/45 verified on `main`).
 
 ### Problem shape: Existing implementations are not automatically correct
 
