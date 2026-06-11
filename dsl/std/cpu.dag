@@ -1,0 +1,27 @@
+// std/cpu.dag — CPU silicon vendor and product-line taxonomy.
+//
+// Authority: physical CPU identity on compute hosts. Orthogonal to
+// std.types.TargetTriple.vendor (toolchain triple vocabulary: pc, apple,
+// w64) and std.compute_fabric.CpuArchitecture (ISA surface for demand
+// matching).
+//
+// M4: vendor and model are closed coproducts — not NonEmptyStr proxies.
+
+module std.cpu
+
+// --- Vendor axis (closed set; extend as fleet rows land) ---------------------
+
+type CpuVendor = Intel | Amd | Ampere | Apple | Arm | Qualcomm
+
+// --- Per-vendor product lines ------------------------------------------------
+
+type AmpereCpuModel = AltraMax | Altra
+
+// Joint identity: vendor tag determines which model enum applies.
+type CpuIdentity = Ampere { model: AmpereCpuModel }
+
+fn cpu_vendor(identity: CpuIdentity) -> CpuVendor {
+  match identity {
+    Ampere { model: _ } => Ampere
+  }
+}
