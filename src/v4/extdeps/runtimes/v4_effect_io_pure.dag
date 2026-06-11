@@ -64,9 +64,16 @@ type EffectIoFixtureStore {
   entries: Map<Symbol, RuntimeValue>
 }
 
+// Co-located inject-per-run authority: fixture store and handler binding are constructed together.
+type EffectIoPureHandlerBundle {
+  fixture_store: EffectIoFixtureStore
+  handlers: EffectHandlerBinding
+}
+
 type V4EffectIoPureRuntime {
   bundle_identity: Symbol
   declared_backend: EffectIoResourceBackend
+  fixture_store: EffectIoFixtureStore
   handlers: EffectHandlerBinding
 }
 
@@ -252,25 +259,32 @@ fn effect_io_pure_handle_write(
   }
 }
 
-// Declare-per-claim default fixture (empty); inject-per-run overwrites via binding construction.
-data effect_io_pure_declared_fixture: EffectIoFixtureStore = EffectIoFixtureStore {
-  backend: FileResourceBackend,
-  entries: empty_map()
+// Invoke a bound handler (avoids `.handle` field-access inference pitfall in the v3 parse surface).
+fn effect_io_pure_invoke_handler(
+  handler: EffectHandler,
+  request: EffectRequest
+) -> Outcome<RuntimeValue> {
+  match handler {
+    EffectHandler { handle: h } => h(request: request)
+  }
 }
 
-fn effect_io_pure_read_handler(request: EffectRequest) -> Outcome<RuntimeValue> {
-  effect_io_pure_handle_read(store: effect_io_pure_declared_fixture, request: request)
-}
-
-fn effect_io_pure_write_handler(request: EffectRequest) -> Outcome<RuntimeValue> {
-  effect_io_pure_handle_write(store: effect_io_pure_declared_fixture, request: request)
-}
-
-// Inject-per-run: construct a flat binding over the run's declared fixture store.
-fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectHandlerBinding {
-  EffectHandlerBinding {
-    read_resource: EffectHandler { handle: effect_io_pure_read_handler },
-    write_resource: EffectHandler { handle: effect_io_pure_write_handler }
+// Inject-per-run: handlers close over the declared fixture store at binding construction (Q-R3).
+fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectIoPureHandlerBundle {
+  EffectIoPureHandlerBundle {
+    fixture_store: store,
+    handlers: EffectHandlerBinding {
+      read_resource: EffectHandler {
+        handle: fn(request) {
+          effect_io_pure_handle_read(store: store, request: request)
+        }
+      },
+      write_resource: EffectHandler {
+        handle: fn(request) {
+          effect_io_pure_handle_write(store: store, request: request)
+        }
+      }
+    }
   }
 }
 
@@ -325,10 +339,12 @@ fn effect_io_pure_runtime(
   backend: EffectIoResourceBackend,
   store: EffectIoFixtureStore
 ) -> V4EffectIoPureRuntime {
+  let bundle = effect_io_pure_handler_binding(store: store)
   V4EffectIoPureRuntime {
     bundle_identity: ^v4_effect_io_pure_runtime_id,
     declared_backend: backend,
-    handlers: effect_io_pure_handler_binding(store: store)
+    fixture_store: bundle.fixture_store,
+    handlers: bundle.handlers
   }
 }
 
@@ -351,7 +367,7 @@ fn effect_io_pure_apply_write(
   }
 }
 
-// Orchestrate ReadResource→WriteResource round-trip through real handler bodies (gate consumer).
+// Orchestrate ReadResource→WriteResource round-trip through EffectHandlerBinding dispatch.
 fn effect_io_pure_read_write_roundtrip(
   backend: EffectIoResourceBackend,
   locator: EffectIoResourceLocator,
@@ -359,9 +375,11 @@ fn effect_io_pure_read_write_roundtrip(
   locator_arg: RuntimeValue
 ) -> Bool {
   let store0 = effect_io_pure_empty_fixture_store(backend: backend)
+  let bundle0 = effect_io_pure_handler_binding(store: store0)
   let write_args = Cons { head: locator_arg, tail: Cons { head: payload, tail: Empty } }
   let write_request = effect_io_pure_write_request(args: write_args)
-  match effect_io_pure_handle_write(store: store0, request: write_request) {
+  let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
+  match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
     Accepted { value: written, diagnostics: None } =>
       if written == payload {
         let store1 = effect_io_pure_apply_write(
@@ -369,9 +387,11 @@ fn effect_io_pure_read_write_roundtrip(
           locator: locator,
           payload: written
         )
+        let bundle1 = effect_io_pure_handler_binding(store: store1)
         let read_args = Cons { head: locator_arg, tail: Empty }
         let read_request = effect_io_pure_read_request(args: read_args)
-        match effect_io_pure_handle_read(store: store1, request: read_request) {
+        let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
+        match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {
           Accepted { value: read_back, diagnostics: None } => read_back == written
           _ => false
         }
