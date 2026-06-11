@@ -47,23 +47,25 @@ import v4.std.runtime {
 }
 import v4.std.witness { Holds, Violates, Witness }
 
-// Resource transport backends (file → HTTP → storage) share one handler contract; the backend
-// arm is declared per claim and threaded into locator construction at inject-per-run time.
-// 🟡 gated — predicate-dissolution interim — feature:effect-io-backend-parameterized-store —
-// consumer: effect_io_pure_backends_match — dual backend tags on store + locator require a runtime
-// equality guard until the fixture store is parameterized by backend (Practice 2 illegal-states) or
-// eq/tag substrate makes mismatch unrepresentable. dissolve-on-arrival: backend-indexed store type
-// or structural backend equality in std/; forbidden: silent backend-tag drift without disposition.
+// 🟢 coproduct dissolution — resource transport backend axis (Practice 4); wave-2 gate exercises
+// FileResourceBackend; Http/Storage arms are declared honest stubs until host_run receipts land.
 type EffectIoResourceBackend
   = FileResourceBackend
   | HttpResourceBackend
   | StorageResourceBackend
 
+// 🟡 gated — illegal-states interim (Practice 2) — feature:effect-io-backend-parameterized-store —
+// consumer: effect_io_pure_backends_match — locator carries backend tag alongside store.backend;
+// mismatch unrepresentable once fixture store is parameterized by backend. dissolve-on-arrival:
+// backend-indexed store type or eq/tag substrate in std/; forbidden: silent dual-tag drift.
 type EffectIoResourceLocator {
   backend: EffectIoResourceBackend
   identity: Symbol
 }
 
+// 🟡 gated — illegal-states interim (Practice 2) — feature:effect-io-backend-parameterized-store —
+// consumer: effect_io_pure_backends_match — store carries backend tag alongside locator.backend;
+// dissolve-on-arrival: backend-indexed store type makes cross-backend lookup unrepresentable.
 type EffectIoFixtureStore {
   backend: EffectIoResourceBackend
   entries: Map<Symbol, RuntimeValue>
@@ -178,6 +180,9 @@ fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<R
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature:effect-io-backend-match — dissolve-on-arrival: backend equality via declared carrier
+// projection instead of nested match; forbidden: permanent untagged Bool backend-alignment predicates.
 fn effect_io_pure_backends_match(
   left: EffectIoResourceBackend,
   right: EffectIoResourceBackend
