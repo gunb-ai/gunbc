@@ -28,6 +28,13 @@ import v4.std.node { Symbol }
 // Distinct concept from std.compute_fabric.PersistenceKind (storage
 // durability across restarts): same word, different DAG-ancestor — this one
 // hangs off value-update semantics, not infrastructure lifecycle.
+// 🟢 terminal — Practice 4 (docs/modeling-discipline.md §4) — the distinction
+// is grounded in external authority (Driscoll–Sarnak–Sleator–Tarjan 1989's
+// definition of a persistent structure), not an interim of ours. Step-2: the
+// arms are mutually exclusive properties of one carrier under update, not
+// coordinates over another axis. Patterns 1–5 N/A: no payloads to unify, no
+// richer named source; the carrier itself is an external structure referenced
+// by Symbol, so there is nothing here to dissolve into.
 type PersistenceKind = Ephemeral | Persistent
 
 // Symbolic work bounds in the std.primitives PrimitiveContract `work`
@@ -76,11 +83,12 @@ data list_carrier: CarrierDeclaration = {
 // structurally equal values occupy one allocation or two changes cost, never
 // meaning. This law is what makes a carrier swap behavior-preserving by
 // construction, and it is the claim the ctrl#1533 phase-2 verification must
-// keep green (witnesses: v4.test.claim.std_grounding.value_carrier_laws).
-// Host values are thread-confined (Rc-discipline): sharing never introduces
-// concurrent observation, so the law has no hidden synchronization premise.
-type SharingEvidence {
-  left: Symbol
-  right: Symbol
-  observation_is_structural: Bool
-}
+// keep green. Host values are thread-confined (Rc-discipline): sharing never
+// introduces concurrent observation, so the law has no hidden
+// synchronization premise.
+//
+// The law is declared as EXECUTABLE WITNESSES, not a data type
+// (v4.test.claim.std_grounding.value_carrier_laws): a sharing-receipt type
+// would have no constructor until the phase-2 swap lands, and dead vocabulary
+// is the Practice-4 failure mode. If phase 2 needs a receipt, it lands with
+// its first producer.

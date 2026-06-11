@@ -97,10 +97,27 @@ type RuntimeValueNodeProjection
 //   (hash_fields_commutative in the v2 host implements this).
 // Executable witnesses: v4.test.claim.std_grounding.value_carrier_laws —
 // these must stay green across any carrier swap (ctrl#1533 phase-2 gate).
+//
+// 🟢 terminal — Practice 4 (docs/modeling-discipline.md §4) — variant-is-data
+// (pattern 3) already applied: a three-arm sum (ReferenceIdentical /
+// StructurallyEqual / StructurallyDistinct) would let an inhabitant claim
+// reference identity WITHOUT structural equality; folding the structural
+// verdict into a Bool payload makes Law 1 hold by construction —
+// ReferenceIdentical carries no equal:false arm to violate it. Remaining
+// arms are mutually exclusive observations (how identity was established),
+// not coordinates. Patterns 1,2,4,5 N/A.
 type IdentityEvidence
   = ReferenceIdentical
-  | StructurallyEqual
-  | StructurallyDistinct
+  | StructurallyCompared { equal: Bool }
+
+// Law-1 projection: the equality verdict an IdentityEvidence licenses.
+// Reference identity short-circuits to true — that IS Law 1.
+fn identity_evidence_equal(evidence: IdentityEvidence) -> Bool {
+  match evidence {
+    ReferenceIdentical => true
+    StructurallyCompared { equal: eq } => eq
+  }
+}
 
 fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
   match value {

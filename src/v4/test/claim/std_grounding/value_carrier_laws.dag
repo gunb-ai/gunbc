@@ -8,7 +8,9 @@
 
 module v4.test.claim.std_grounding.value_carrier_laws
 
-import v4.std.value_carrier { CarrierDeclaration, PersistenceKind, Persistent, list_carrier, map_carrier }
+import v4.std.runtime { ReferenceIdentical, StructurallyCompared, identity_evidence_equal }
+import v4.std.value_carrier { Ephemeral, Persistent, list_carrier, map_carrier }
+import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
 // ── Sharing law (M-A): sharing is unobservable ────────────────────────────
 // An aliased value (one allocation reachable twice) and a freshly built
@@ -56,6 +58,16 @@ fn freemonoid_association_unobservable_holds() -> Bool {
   (left_assoc == flat) && (right_assoc == flat)
 }
 
+// ── Identity law 1 (M-C): reference-identical ⇒ structurally equal ───────
+// By the variant-is-data shape of IdentityEvidence, ReferenceIdentical has no
+// equal:false arm; the projection makes the short-circuit explicit.
+fn identity_law1_projection_holds() -> Bool {
+  let ref_identical = identity_evidence_equal(evidence: ReferenceIdentical)
+  let compared_equal = identity_evidence_equal(evidence: StructurallyCompared { equal: true })
+  let compared_distinct = identity_evidence_equal(evidence: StructurallyCompared { equal: false })
+  ref_identical && compared_equal && !compared_distinct
+}
+
 // ── Carrier declarations are persistent (M-A data values resolve) ────────
 fn declared_carriers_are_persistent_holds() -> Bool {
   let map_persistent = match map_carrier.persistence {
@@ -67,4 +79,57 @@ fn declared_carriers_are_persistent_holds() -> Bool {
     Ephemeral => false
   }
   map_persistent && list_persistent
+}
+
+// ── Glob-discovery registrations (consolidation #4553 Phase 2) ────────────
+// Co-located BoolWitnessClaim markers so discovery finds each witness
+// without a central roster.
+
+data unified_claim_sharing_unobservable_list: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: sharing_unobservable_list_holds
+  }
+}
+
+data unified_claim_sharing_unobservable_map: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: sharing_unobservable_map_holds
+  }
+}
+
+data unified_claim_map_equality_insert_order_independent: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: map_equality_insert_order_independent_holds
+  }
+}
+
+data unified_claim_map_equality_overwrite_path_independent: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: map_equality_overwrite_path_independent_holds
+  }
+}
+
+data unified_claim_freemonoid_association_unobservable: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: freemonoid_association_unobservable_holds
+  }
+}
+
+data unified_claim_identity_law1_projection: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: identity_law1_projection_holds
+  }
+}
+
+data unified_claim_declared_carriers_are_persistent: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: declared_carriers_are_persistent_holds
+  }
 }
