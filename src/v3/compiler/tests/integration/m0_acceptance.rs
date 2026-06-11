@@ -11,14 +11,15 @@
 //! - compile-boundary fail-closed behavior
 //! - post-sweep port-state invariants
 
-use crate::common::cached_compile_to_dag;
-use v3_compiler::compile_to_dag;
+use crate::common::{
+    cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
+};
 use v3_compiler::dag::{
     literal_bits_int, AtomPayload, Behavior, Dag, LoopBound, PortId, PortState, TransformTarget,
     TypeConnective,
 };
 use v3_compiler::types::TypeShape;
-use v3_compiler::{CompileError, Diagnostic};
+use v3_compiler::Diagnostic;
 
 fn primitive_shape(dag: &Dag, name: &str) -> TypeShape {
     TypeShape::new(
@@ -49,11 +50,7 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
 }
 
 fn compile_any(src: &str, file: &str) -> Dag {
-    match compile_to_dag(src, file) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => dag,
-        Err(other) => panic!("unexpected structural error: {other:?}"),
-    }
+    cached_compile_any(src, file)
 }
 
 fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {
@@ -226,18 +223,18 @@ fn type_annotation_does_not_resurrect_an_unresolved_port() {
 
 #[test]
 fn compile_boundary_is_fail_closed() {
-    assert!(compile_to_dag("let x = 1 + 2", "m0_ok.v3").is_ok());
+    assert!(cached_compile_outcome("let x = 1 + 2", "m0_ok.v3").is_clean());
     assert!(matches!(
-        compile_to_dag("let x: Bool = 1", "m0_type_mismatch.v3"),
-        Err(CompileError::Semantic(_))
+        cached_compile_outcome("let x: Bool = 1", "m0_type_mismatch.v3"),
+        CachedCompileOutcome::Semantic(_)
     ));
     assert!(matches!(
-        compile_to_dag("let y = x\nlet x = 1", "m0_forward_ref.v3"),
-        Err(CompileError::Semantic(_))
+        cached_compile_outcome("let y = x\nlet x = 1", "m0_forward_ref.v3"),
+        CachedCompileOutcome::Semantic(_)
     ));
     assert!(matches!(
-        compile_to_dag("fn f(a: Int) -> Int = a\nlet x = f(1, 2)", "m0_arity.v3"),
-        Err(CompileError::Semantic(_))
+        cached_compile_outcome("fn f(a: Int) -> Int = a\nlet x = f(1, 2)", "m0_arity.v3"),
+        CachedCompileOutcome::Semantic(_)
     ));
 }
 

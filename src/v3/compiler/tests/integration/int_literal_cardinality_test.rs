@@ -7,7 +7,16 @@ use v3_compiler::dag::{
     TypeConnective, ValueBody,
 };
 use v3_compiler::emit_rust;
-use v3_compiler::{compile_to_dag, integer_literal_routing_witness, CompileError};
+use v3_compiler::integer_literal_routing_witness;
+
+use crate::common::{cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome};
+
+fn compile_semantic_fixture(source: &str, file: &str) -> v3_compiler::dag::Dag {
+    match cached_compile_outcome(source, file) {
+        CachedCompileOutcome::Semantic(dag) => dag,
+        other => panic!("expected semantic failure for {file}, got {other:?}"),
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct IntegerOverflowCase {
@@ -20,12 +29,11 @@ struct IntegerOverflowCase {
 }
 
 fn assert_magnitude_out_of_range(source: String, file: &str, case: IntegerOverflowCase) {
-    let err = match compile_to_dag(&source, file) {
-        Ok(_) => panic!("{file}: `{}` overflow must fail closed", case.ty),
-        Err(err) => err,
-    };
-    let CompileError::Semantic(dag) = err else {
-        panic!("{file}: expected semantic diagnostic, got {err:?}");
+    let dag = match cached_compile_outcome(&source, file) {
+        CachedCompileOutcome::Semantic(dag) => dag,
+        CachedCompileOutcome::Clean(_) => {
+            panic!("{file}: `{}` overflow must fail closed", case.ty)
+        }
     };
     assert_eq!(
         dag.diagnostics().len(),
@@ -127,10 +135,7 @@ fn assert_int_value_port_resolves_to_uint8_in_file(
 /// out-of-range literal vs fixed `ExactInterval` bounds surfaces [`Diagnostic::MagnitudeOutOfRange`].
 #[test]
 fn int_lit_magnitude_overflow_compile_error() {
-    let err = compile_to_dag("data x: UInt8 = 256", "int_lit_gate_u8_oob.v3").expect_err("OOB");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic failure, got {err:?}");
-    };
+    let dag = compile_semantic_fixture("data x: UInt8 = 256", "int_lit_gate_u8_oob.v3");
     assert!(
         dag.diagnostics().iter().any(|(_, d)| {
             matches!(
@@ -158,7 +163,7 @@ data u16_max: UInt16 = 65535
 data u32_max: UInt32 = 4294967295
 "#;
 
-    let dag = compile_to_dag(source, "int_literal_ranges.v3").expect("range literals compile");
+    let dag = cached_compile_to_dag(source, "int_literal_ranges.v3");
     for name in [
         "i8_max",
         "i16_max",
@@ -182,7 +187,7 @@ data u32_max: UInt32 = 4294967295
 
 #[test]
 fn unconstrained_int_literal_still_defaults_to_int64() {
-    let dag = compile_to_dag("let x = 5", "int_literal_default.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = 5", "int_literal_default.v3");
     let value = dag
         .nodes()
         .iter()
@@ -212,8 +217,7 @@ fn unconstrained_int_literal_still_defaults_to_int64() {
 /// reconcile (in-range) or `MagnitudeOutOfRange` (OOB) — not a `TypeMismatch`.
 #[test]
 fn let_annotated_uint8_in_range_literal_narrows_against_preseed() {
-    let dag = compile_to_dag("let x: UInt8 = 5", "let_u8_in_range.v3")
-        .expect("in-range annotated u8 `let` must not spuriously report Int vs narrow mismatch");
+    let dag = cached_compile_to_dag("let x: UInt8 = 5", "let_u8_in_range.v3");
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
     // Filter to the user-source span — registry-driven `range` body
     // synthesis adds Int(5) literal nodes from `dsl/std/types.dag`
@@ -228,8 +232,7 @@ fn let_annotated_uint8_in_range_literal_narrows_against_preseed() {
 
 #[test]
 fn data_annotated_uint8_in_range_literal_narrows_against_preseed() {
-    let dag = compile_to_dag("data d: UInt8 = 5", "data_u8_in_range.v3")
-        .expect("in-range annotated u8 `data` must not spuriously report Int vs narrow mismatch");
+    let dag = cached_compile_to_dag("data d: UInt8 = 5", "data_u8_in_range.v3");
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
     // Data bodies use declaration `value` nodes / `inhabits` edges — not always a
     // top-level `Behavior::Value` with the same wiring as `let`.
@@ -241,12 +244,11 @@ fn data_annotated_uint8_in_range_literal_narrows_against_preseed() {
 #[test]
 fn call_site_u8_literal_narrows_against_uint8_parameter() {
     // Avoid `id8` / `id_u8` name collisions with std/bootstrap templates.
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "fn u8_id_for_call_site_test(x: UInt8) -> UInt8 = x\n\
          let r: UInt8 = u8_id_for_call_site_test(7)\n",
         "call_u8_narrow.v3",
-    )
-    .expect("call with u8-sized literal at UInt8 parameter should compile");
+    );
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
     assert_int_value_port_resolves_to_uint8_in_file(
         &dag,
@@ -260,8 +262,7 @@ fn call_site_u8_literal_narrows_against_uint8_parameter() {
 /// `TypeConnective::Cardinality` + rust primitive bridge without a full `rustc` roundtrip.
 #[test]
 fn emit_rust_uint8_let_mentions_rust_u8() {
-    let dag =
-        compile_to_dag("let x: UInt8 = 5", "emit_rust_u8_let.v3").expect("emit u8: let compiles");
+    let dag = cached_compile_to_dag("let x: UInt8 = 5", "emit_rust_u8_let.v3");
     let out = emit_rust::emit_rust(&dag).expect("emit");
     assert!(
         out.contains("u8") || out.contains("UInt8"),
@@ -272,7 +273,7 @@ fn emit_rust_uint8_let_mentions_rust_u8() {
 
 #[test]
 fn let_annotated_uint8_literal_resolves_to_narrow_type() {
-    let dag = compile_to_dag("let x: UInt8 = 5\n", "let_u8_narrow.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x: UInt8 = 5\n", "let_u8_narrow.v3");
     // S9 Slice 2.5: synthesized `range(max: 5)` predicate bodies in
     // `dsl/std/types.dag` (e.g. `RetryCount`) also create `Int(5)` literal
     // nodes; filter by the user-source file to find the right one.
@@ -301,11 +302,7 @@ fn let_annotated_uint8_literal_resolves_to_narrow_type() {
 
 #[test]
 fn let_annotated_uint8_out_of_range_emits_magnitude_diagnostic() {
-    let err = compile_to_dag("let x: UInt8 = 256\n", "let_u8_oob.v3")
-        .expect_err("annotated let UInt8 overflow must fail closed");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
-    };
+    let dag = compile_semantic_fixture("let x: UInt8 = 256\n", "let_u8_oob.v3");
     assert!(
         dag.diagnostics().iter().any(|(_, diagnostic)| {
             matches!(
@@ -330,7 +327,7 @@ fn let_annotated_uint8_out_of_range_emits_magnitude_diagnostic() {
 #[test]
 fn call_site_uint8_literal_narrows() {
     let source = "fn id_u8(p: UInt8) -> UInt8 = p\nlet y: UInt8 = id_u8(7)\n";
-    let dag = compile_to_dag(source, "call_u8_narrow.v3").expect("compiles");
+    let dag = cached_compile_to_dag(source, "call_u8_narrow.v3");
     let value = dag
         .nodes()
         .iter()
@@ -356,7 +353,7 @@ fn call_site_uint8_literal_narrows() {
 #[test]
 fn emit_let_uint8_uses_narrow_rust_type() {
     use v3_compiler::emit_rust::emit_rust;
-    let dag = compile_to_dag("let x: UInt8 = 5\n", "emit_let_u8.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x: UInt8 = 5\n", "emit_let_u8.v3");
     let out = emit_rust(&dag).expect("emits");
     assert!(
         out.contains("u8") && out.contains("x") && out.contains("5"),
@@ -368,11 +365,10 @@ fn emit_let_uint8_uses_narrow_rust_type() {
 fn uint64_upper_half_literal_tokenizes_and_narrows() {
     // R3 gate #22: `IntLit` carries full decimal magnitude (`String`), so literals
     // above `i64::MAX` remain representable and can narrow to `UInt64` when in range.
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "data x: UInt64 = 9223372036854775808",
         "uint64_upper_half_literal.v3",
-    )
-    .expect("2^63 must compile for UInt64 under full-magnitude literal carrier");
+    );
     let decl = dag.declaration_by_name("x").expect("data `x` declaration");
     let ty = decl
         .meta_tag
@@ -397,11 +393,10 @@ fn uint128_full_magnitude_literal_tokenizes_and_narrows() {
     // R3 gate #22: the literal carrier stores the full decimal magnitude, so
     // the maximum UInt128 value is accepted without truncating through i128.
     let max_u128 = "340282366920938463463374607431768211455";
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         &format!("data x: UInt128 = {max_u128}"),
         "uint128_full_magnitude_literal.v3",
-    )
-    .expect("u128::MAX must compile for UInt128 under full-magnitude literal carrier");
+    );
     let decl = dag.declaration_by_name("x").expect("data `x` declaration");
     let ty = decl
         .meta_tag
@@ -426,11 +421,10 @@ fn int128_max_literal_tokenizes_and_narrows() {
     // R3 gate #22: signed positive endpoint must narrow without truncating through a
     // narrower host intermediate (same decimal-string carrier as `UInt128` / `UInt64` cases).
     let max_i128 = "170141183460469231731687303715884105727";
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         &format!("data x: Int128 = {max_i128}"),
         "int128_max_literal.v3",
-    )
-    .expect("i128::MAX must compile for Int128 under full-magnitude literal carrier");
+    );
     let decl = dag.declaration_by_name("x").expect("data `x` declaration");
     let ty = decl
         .meta_tag
@@ -455,11 +449,10 @@ fn int128_min_literal_tokenizes_and_narrows() {
     // R3 gate #22: substrate documents unary `-` through `i128::MIN` as in-range for the
     // signed decimal literal carrier (no magnitude clamp at `i64::MAX`).
     let min_i128 = "-170141183460469231731687303715884105728";
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         &format!("data x: Int128 = {min_i128}"),
         "int128_min_literal.v3",
-    )
-    .expect("i128::MIN must compile for Int128 under full-magnitude literal carrier");
+    );
     let decl = dag.declaration_by_name("x").expect("data `x` declaration");
     let ty = decl
         .meta_tag
@@ -495,12 +488,11 @@ fn int_literal_full_magnitude_carrier_rejects_beyond_documented_boundary() {
     ];
 
     for (source, expected) in cases {
-        let err = compile_to_dag(source, "int_literal_full_magnitude_boundary.v3")
+        let err = v3_compiler::compile_to_dag(source, "int_literal_full_magnitude_boundary.v3")
             .expect_err("literal just beyond the full-magnitude carrier must fail closed");
-        let CompileError::Tokenize(v3_compiler::diagnostics::Diagnostic::TokenizerError {
-            message,
-            ..
-        }) = err
+        let v3_compiler::CompileError::Tokenize(
+            v3_compiler::diagnostics::Diagnostic::TokenizerError { message, .. },
+        ) = err
         else {
             panic!("expected tokenizer diagnostic for `{source}`, got {err:?}");
         };
@@ -513,11 +505,7 @@ fn int_literal_full_magnitude_carrier_rejects_beyond_documented_boundary() {
 
 #[test]
 fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
-    let err = compile_to_dag("data x: UInt8 = 256", "int_literal_u8_oob.v3")
-        .expect_err("UInt8 overflow must fail closed");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
-    };
+    let dag = compile_semantic_fixture("data x: UInt8 = 256", "int_literal_u8_oob.v3");
     assert_eq!(
         dag.diagnostics().len(),
         1,
@@ -695,14 +683,10 @@ fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
 
 #[test]
 fn int_literal_ranges_follow_type_aliases() {
-    let err = compile_to_dag(
+    let dag = compile_semantic_fixture(
         "type ByteAlias = UInt8\ndata x: ByteAlias = 256",
         "int_literal_alias_u8_oob.v3",
-    )
-    .expect_err("UInt8 alias overflow must fail closed through the alias chain");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
-    };
+    );
     assert_eq!(
         dag.diagnostics().len(),
         1,
@@ -796,7 +780,7 @@ fn rust_pilot_primitives_integer_witnesses_are_unique() {
 
 #[test]
 fn int_literal_range_routing_matches_std_type_witness() {
-    let dag = compile_to_dag("data x: UInt8 = 5", "int_literal_witness_u8.v3").expect("compiles");
+    let dag = cached_compile_to_dag("data x: UInt8 = 5", "int_literal_witness_u8.v3");
     let uint8 = dag.declaration_by_name("UInt8").expect("UInt8").id;
     let std_witness = integer_literal_routing_witness(&dag, uint8).expect("UInt8 routing witness");
     let pilot = dag.rust_pilot_primitives().expect("pilot");
@@ -844,16 +828,12 @@ fn int_literal_range_routing_matches_std_type_witness() {
 
 #[test]
 fn int_literal_range_narrowing_does_not_bypass_refinement_discharge() {
-    let err = compile_to_dag(
+    let dag = compile_semantic_fixture(
         "type PositiveInt = Int where PositiveInt > 0\n\
          fn requires_positive(x: PositiveInt) -> Int = x\n\
          fn bad() -> Int = requires_positive(1)",
         "int_literal_refinement_discharge.v3",
-    )
-    .expect_err("range-compatible literal must still fail missing refinement discharge");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
-    };
+    );
     let messages: Vec<String> = dag
         .diagnostics()
         .iter()
@@ -882,12 +862,7 @@ fn data_int_literal_range_narrowing_does_not_bypass_refinement() {
             "data_int_literal_refined_alias_discharge.v3",
         ),
     ] {
-        let err = compile_to_dag(source, file).expect_err(
-            "range-compatible data literal must still fail missing refinement evidence",
-        );
-        let CompileError::Semantic(dag) = err else {
-            panic!("expected semantic diagnostic, got {err:?}");
-        };
+        let dag = compile_semantic_fixture(source, file);
         let messages: Vec<String> = dag
             .diagnostics()
             .iter()
@@ -916,11 +891,7 @@ fn data_bool_string_scalar_literals_do_not_bypass_refinement() {
             "data_string_literal_refinement_discharge.v3",
         ),
     ] {
-        let err = compile_to_dag(source, file)
-            .expect_err("scalar data literal must fail missing refinement evidence");
-        let CompileError::Semantic(dag) = err else {
-            panic!("expected semantic diagnostic, got {err:?}");
-        };
+        let dag = compile_semantic_fixture(source, file);
         let messages: Vec<String> = dag
             .diagnostics()
             .iter()
@@ -967,8 +938,7 @@ fn assert_no_nested_at_most_one(dag: &v3_compiler::dag::Dag, context: &str) {
 
 #[test]
 fn nested_optional_flatten_holds_in_bootstrap_dag() {
-    let dag = compile_to_dag("data probe: Int = 0\n", "nested_optional_bootstrap.v3")
-        .expect("trivial program compiles");
+    let dag = cached_compile_to_dag("data probe: Int = 0\n", "nested_optional_bootstrap.v3");
     assert_no_nested_at_most_one(&dag, "bootstrap");
 }
 
@@ -977,8 +947,7 @@ fn nested_optional_flatten_holds_for_surface_double_question() {
     let src = "\
 fn flatten_probe(x: Int??) -> Int? = x
 ";
-    let dag = compile_to_dag(src, "nested_optional_surface_double_question.v3")
-        .expect("surface Int?? should silently normalize to Int?");
+    let dag = cached_compile_to_dag(src, "nested_optional_surface_double_question.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "surface nested optional should be diagnostic-free, got: {:?}",
@@ -999,7 +968,7 @@ fn nested_optional_flatten_via_generic_specialization() {
 fn unwrap_id<T>(x: T?) -> T? = x
 fn use_it(o: Int?) -> Int? = unwrap_id(o)
 ";
-    let dag = compile_to_dag(src, "nested_optional_generic_specialization.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "nested_optional_generic_specialization.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "generic optional specialization should be diagnostic-free, got: {:?}",
@@ -1010,16 +979,12 @@ fn use_it(o: Int?) -> Int? = unwrap_id(o)
 
 #[test]
 fn structural_data_scalar_fields_do_not_bypass_refinement() {
-    let err = compile_to_dag(
+    let dag = compile_semantic_fixture(
         "type PositiveInt = Int where PositiveInt > 0\n\
          type Box { value: PositiveInt }\n\
          data x: Box = { value: 1 }",
         "structural_data_refined_scalar_field.v3",
-    )
-    .expect_err("structural scalar field must fail missing refinement evidence");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
-    };
+    );
     let messages: Vec<String> = dag
         .diagnostics()
         .iter()

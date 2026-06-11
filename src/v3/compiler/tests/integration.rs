@@ -323,11 +323,9 @@ mod t_demo_fixture_test {
     use std::path::PathBuf;
     use std::sync::OnceLock;
 
-    use crate::common::cached_compile_to_dag;
-    use v3_compiler::compile_to_dag;
+    use crate::common::{cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome};
     use v3_compiler::dag::Dag;
     use v3_compiler::test_runner::{ClaimResult, TestRunner};
-    use v3_compiler::CompileError;
 
     const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
 
@@ -403,10 +401,10 @@ mod t_demo_fixture_test {
     #[test]
     fn impossible_bug_idempotency_violation_emits_named_constructor_resolve_error() {
         let src = "let bad_shape = IsIdempotent(AppendEffect())\n";
-        let err = compile_to_dag(src, "impossible_bug_idempotency.v3")
-            .expect_err("idempotency-violation witness should not compile");
-        let CompileError::Semantic(dag) = err else {
-            panic!("expected Semantic(Dag) handoff, got {err:?}");
+        let CachedCompileOutcome::Semantic(dag) =
+            cached_compile_outcome(src, "impossible_bug_idempotency.v3")
+        else {
+            panic!("idempotency-violation witness should not compile");
         };
         let msgs: Vec<String> = dag.diagnostics().iter().map(|(_, d)| d.message()).collect();
         let append_needle = "AppendEffect";
@@ -450,15 +448,10 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_structural_cost_obligation_witness_compiles_cleanly() {
-        compile_to_dag(
+        cached_compile_to_dag(
             T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE,
             "t_demo_structural_cost_obligation.v3",
-        )
-        .unwrap_or_else(|err| {
-            panic!(
-                "T-Demo structural cost witness must compile so CostBounded exercises lens_cost::cost_of, not tokenizer/parse failures: {err:?}"
-            )
-        });
+        );
     }
 
     #[test]
@@ -480,8 +473,8 @@ mod t_demo_fixture_test {
 }
 
 mod lane2_stage_2f_dimension_test {
+    use crate::common::cached_compile_to_dag;
     use v3_compiler::analyze_symbolic_cost_dimension;
-    use v3_compiler::compile_to_dag;
     use v3_compiler::dag::{Behavior, Dag, DeclarationId, PortId, TypeConnective};
     use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
     use v3_compiler::DimensionReport;
@@ -596,7 +589,7 @@ mod lane2_stage_2f_dimension_test {
 
     #[test]
     fn analyze_symbolic_cost_composed_matches_lens_at_workflow_root() {
-        let dag = compile_to_dag("let x = 1 + 2", "lane2_2f_dim.v3").expect("compiles");
+        let dag = cached_compile_to_dag("let x = 1 + 2", "lane2_2f_dim.v3");
         let root = find_bind_root(&dag, "x");
         let report = analyze_symbolic_cost_dimension(&dag, root);
         let lens = match symbolic_cost_lookup(&dag, &find_bind_port(&dag, "x")) {
@@ -672,7 +665,7 @@ mod lane2_stage_2f_dimension_test {
 /// analyzer, and preserves the typed `DimensionReport` /
 /// `Diagnostic` partition without parsing `Witness::Violates.reason`.
 mod e7_analyze_complexity_integration {
-    use v3_compiler::compile_to_dag;
+    use crate::common::cached_compile_to_dag;
     use v3_compiler::dag::Behavior;
     use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
     use v3_compiler::{analyze_complexity, analyze_symbolic_cost_dimension, DimensionReport};
@@ -705,7 +698,7 @@ mod e7_analyze_complexity_integration {
     /// fields. Single-authority via the public crate surface.
     #[test]
     fn analyze_complexity_public_api_delegates_to_symbolic_cost_dimension() {
-        let dag = compile_to_dag("let y = 3 + 4", "e7_int_match.v3").expect("compiles");
+        let dag = cached_compile_to_dag("let y = 3 + 4", "e7_int_match.v3");
         let root = find_bind_root(&dag, "y");
 
         let via_complexity = analyze_complexity(&dag, root);
@@ -774,8 +767,7 @@ mod e7_analyze_complexity_integration {
     /// more nodes than the first.
     #[test]
     fn analyze_complexity_public_api_honors_supplied_workflow_root() {
-        let dag = compile_to_dag("let a = 1 + 2\nlet b = a + 3 + 4", "e7_int_two_binds.v3")
-            .expect("compiles");
+        let dag = cached_compile_to_dag("let a = 1 + 2\nlet b = a + 3 + 4", "e7_int_two_binds.v3");
 
         let root_a = find_bind_root(&dag, "a");
         let root_b = find_bind_root(&dag, "b");
@@ -867,7 +859,7 @@ mod e7_analyze_complexity_integration {
     /// Confirms the wrapper preserves the lens contract.
     #[test]
     fn analyze_complexity_composed_matches_lens_at_workflow_root() {
-        let dag = compile_to_dag("let z = 5 + 6", "e7_int_lens.v3").expect("compiles");
+        let dag = cached_compile_to_dag("let z = 5 + 6", "e7_int_lens.v3");
         let root = find_bind_root(&dag, "z");
 
         let SymbolicCostLookup::Hit(lens_cost) =
@@ -901,7 +893,7 @@ mod e7_analyze_complexity_integration {
     /// API does not lose the typed envelope on the success path.
     #[test]
     fn analyze_complexity_public_api_preserves_typed_witness_envelope_on_ok() {
-        let dag = compile_to_dag("let w = 7 + 8", "e7_int_typed.v3").expect("compiles");
+        let dag = cached_compile_to_dag("let w = 7 + 8", "e7_int_typed.v3");
         let root = find_bind_root(&dag, "w");
 
         let DimensionReport::DimensionOk { witnesses, .. } = analyze_complexity(&dag, root) else {

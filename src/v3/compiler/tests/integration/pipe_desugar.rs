@@ -1,3 +1,4 @@
+use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     literal_bits_int, AtomPayload, Behavior, Dag, LiteralBits, TransformTarget, TypeConnective,
@@ -62,7 +63,7 @@ fn pipe_desugars_unary_call_by_injecting_the_left_value() {
 fn negate(x: Int) -> Int = 0 - x
 let y = 5 |> negate
 ";
-    let dag = compile_to_dag(src, "pipe_unary.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "pipe_unary.v3");
 
     let bind_y = bind_named(&dag, "y");
     let call_id = dag
@@ -91,7 +92,7 @@ fn pipe_desugars_multi_arg_call_with_first_arg_injection() {
 fn keep_first(a: Int, b: Int) -> Int = a
 let y = 5 |> keep_first(6)
 ";
-    let dag = compile_to_dag(src, "pipe_multi_arg.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "pipe_multi_arg.v3");
 
     let bind_y = bind_named(&dag, "y");
     let call_id = dag
@@ -129,7 +130,7 @@ fn add1(x: Int) -> Int = x + 1
 fn double(x: Int) -> Int = x + x
 let y = 5 |> add1 |> double
 ";
-    let dag = compile_to_dag(src, "pipe_chain.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "pipe_chain.v3");
 
     let bind_y = bind_named(&dag, "y");
     let outer_call_id = dag
@@ -166,7 +167,7 @@ fn pipe_result_can_feed_later_addition() {
 fn negate(x: Int) -> Int = 0 - x
 let y = 5 |> negate + 1
 ";
-    let dag = compile_to_dag(src, "pipe_addition.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "pipe_addition.v3");
 
     let bind_y = bind_named(&dag, "y");
     let add_id = dag
@@ -200,7 +201,7 @@ fn pipe_result_can_feed_later_comparison() {
 fn identity(x: Int) -> Int = x
 let is_five = 5 |> identity == 5
 ";
-    let dag = compile_to_dag(src, "pipe_comparison.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "pipe_comparison.v3");
 
     let bind = bind_named(&dag, "is_five");
     let cmp_id = dag

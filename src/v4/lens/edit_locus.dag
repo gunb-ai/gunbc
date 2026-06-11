@@ -16,6 +16,9 @@ import v4.std.diagnostic {
   Unavailable,
   node_locus
 }
+import v4.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
 import v4.std.node { Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
@@ -73,8 +76,11 @@ fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
 }
 
 
+// occurrence_id is excluded from structural equality (design-node-identity-channels.md).
+// Deep canonical compare — parity with source_authority.dag source_authority_node_equal —
+// so loci dedup is not split by minted ids at any depth.
 fn node_eq(left: Node, right: Node) -> Bool {
-  left == right
+  exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
 

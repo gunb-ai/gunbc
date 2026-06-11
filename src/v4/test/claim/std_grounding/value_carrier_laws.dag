@@ -10,7 +10,18 @@ module v4.test.claim.std_grounding.value_carrier_laws
 
 import v4.std.collection { empty_map, map_insert }
 import v4.std.runtime { ReferenceIdentical, StructurallyCompared, identity_evidence_equal }
-import v4.std.value_carrier { Ephemeral, Persistent, list_carrier, map_carrier }
+import v4.std.value_carrier {
+  Ephemeral,
+  FieldNames,
+  Persistent,
+  TypeNames,
+  VariantNames,
+  field_name_interning,
+  list_carrier,
+  map_carrier,
+  type_name_interning,
+  variant_name_interning
+}
 import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
 // ── Sharing law (M-A): sharing is unobservable ────────────────────────────
@@ -83,6 +94,26 @@ fn declared_carriers_are_persistent_holds() -> Bool {
   map_persistent && list_persistent
 }
 
+// ── Name-interning declarations cover all three domains (M-D resolves) ───
+fn name_interning_covers_all_domains_holds() -> Bool {
+  let t = match type_name_interning.domain {
+    TypeNames => true
+    VariantNames => false
+    FieldNames => false
+  }
+  let v = match variant_name_interning.domain {
+    VariantNames => true
+    TypeNames => false
+    FieldNames => false
+  }
+  let f = match field_name_interning.domain {
+    FieldNames => true
+    TypeNames => false
+    VariantNames => false
+  }
+  t && v && f
+}
+
 // ── Glob-discovery registrations (consolidation #4553 Phase 2) ────────────
 // Co-located BoolWitnessClaim markers so discovery finds each witness
 // without a central roster.
@@ -133,5 +164,12 @@ data unified_claim_declared_carriers_are_persistent: UnifiedTestClaim = BoolWitn
   witness: BoolWitness {
     entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
     function: declared_carriers_are_persistent_holds
+  }
+}
+
+data unified_claim_name_interning_covers_all_domains: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: name_interning_covers_all_domains_holds
   }
 }
