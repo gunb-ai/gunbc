@@ -34,8 +34,8 @@ pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
-    is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
+    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, intern_find,
+    is_compiler_error, is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
     local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
     make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
     make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
@@ -1615,6 +1615,19 @@ pub fn resolve_node_bounded(
                                                     diagnostics: Rc::new(vec![]),
                                                 })
                                             } else {
+                                                let __dbg_name = authored_name(env.clone(), n.clone());
+                                                if ((__dbg_name.as_str() == "T")
+                                                    || (__dbg_name.as_str() == "C")
+                                                    || (__dbg_name.as_str() == "S")
+                                                    || (__dbg_name.as_str() == "A"))
+                                                {
+                                                    eprintln!(
+                                                        "DBG unresolved lookup name={} intern_find={:?} lookup={}",
+                                                        __dbg_name,
+                                                        intern_find(env.intern_table.clone(), __dbg_name.clone()),
+                                                        lookup_type_by_name(env.clone(), __dbg_name.clone()).is_some()
+                                                    );
+                                                }
                                                 Rc::new(NodeResolveResult {
                                                     resolved: n.clone(),
                                                     diagnostics: Rc::new(vec![make_error_node(
@@ -3100,22 +3113,6 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         } else {
             fn_type_param_names(item.clone(), env.source_indices.clone())
         };
-        let __dbg_item_name = authored_name_at(env.source_indices.clone(), item.clone());
-        if ((__dbg_item_name.as_str() == "Outcome")
-            || (__dbg_item_name.as_str() == "Witness")
-            || (__dbg_item_name.as_str() == "Optional"))
-        {
-            eprintln!(
-                "DBG resolve_item_types name={} connective={:?} params={} body={} transport={} inferred={} tp_names={:?}",
-                __dbg_item_name,
-                item.connective.clone(),
-                item.params.clone().len(),
-                item.body.clone().is_some(),
-                item.transport.clone().is_some(),
-                item.inferred.clone().is_some(),
-                tp_names
-            );
-        }
         let collision_diags = if has_duplicate_type_param_name(tp_names.clone()) {
             Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v2_rt::concat(v2_rt::concat("type param name collides with a value param in fn '".to_string(), authored_name_at(env.source_indices.clone(), item.clone())), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition.".to_string()),
@@ -3127,10 +3124,11 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         let env = tp_names.clone().iter().cloned().fold(
             env.clone(),
             |e: Rc<TypeEnv>, tp_name: String| {
+                let tp_intern = intern(e.intern_table.clone(), tp_name.clone());
                 Rc::new(TypeEnv {
                     bindings: v2_rt::rc_map_insert(
                         e.bindings.clone(),
-                        intern(e.intern_table.clone(), tp_name.clone()).id.clone(),
+                        tp_intern.id.clone(),
                         Rc::new(TypeBinding {
                             name: tp_name.clone(),
                             resolved: Rc::new(Node {
@@ -3166,7 +3164,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                     recursive_type_set: e.recursive_type_set.clone(),
                     inductive_fields: e.inductive_fields.clone(),
                     source_indices: e.source_indices.clone(),
-                    intern_table: e.intern_table.clone(),
+                    intern_table: tp_intern.table.clone(),
                 })
             },
         );

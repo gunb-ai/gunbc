@@ -1014,8 +1014,9 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
     [make_error_node(diagnostic: InternalError { message: concat("type param name collides with a value param in fn '", authored_name_at(source_indices: env.source_indices, node: item), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition."), span: item.span }, module_name: module_name)]
   } else { [] }
   let env = fold(tp_names, init: env, f: (e, tp_name) =>
+    let tp_intern = intern(table: e.intern_table, s: tp_name)
     TypeEnv {
-      bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, TypeBinding {
+      bindings: map_insert(e.bindings, tp_intern.id, TypeBinding {
         name: tp_name,
         resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         provenance: SubValueUnknown
@@ -1027,7 +1028,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       recursive_type_set: e.recursive_type_set,
       inductive_fields: e.inductive_fields,
       source_indices: e.source_indices,
-      intern_table: e.intern_table
+      intern_table: tp_intern.table
     }
   )
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
