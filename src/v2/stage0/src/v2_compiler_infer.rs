@@ -11947,6 +11947,64 @@ pub struct CarrierClosureState {
     pub seen_names: Rc<HashMap<String, bool>>,
 }
 
+pub fn lookup_decl_type_binding_by_name_excluding_binding_id(
+    env: Rc<TypeEnv>,
+    name: String,
+    excluded_binding_id: BindingId,
+) -> Option<Rc<TypeBinding>> {
+    env.decl_registry.clone().values().cloned().fold(
+        None,
+        |acc: Option<Rc<TypeBinding>>, decl: Rc<TypeDeclBinding>| match acc.clone() {
+            Some(_) => acc.clone(),
+            None => {
+                if ((decl.name.clone().as_str() == name.clone().as_str())
+                    && (decl.binding_id.clone() != excluded_binding_id.clone()))
+                {
+                    match v2_rt::map_get(&env.bindings.clone(), decl.binding_key.clone()) {
+                        Some(binding) => {
+                            if node_has_binding_id(
+                                binding.resolved.clone(),
+                                decl.binding_id.clone(),
+                            ) {
+                                Some(binding.clone())
+                            } else {
+                                v2_rt::map_get(
+                                    &env.carrier_bindings.clone(),
+                                    decl.binding_id.clone(),
+                                )
+                            }
+                        }
+                        None => {
+                            v2_rt::map_get(&env.carrier_bindings.clone(), decl.binding_id.clone())
+                        }
+                    }
+                } else {
+                    None
+                }
+            }
+        },
+    )
+}
+
+pub fn carrier_authority_target(
+    binding: Rc<TypeBinding>,
+    dep_env: Rc<TypeEnv>,
+    target_name: String,
+    fallback: Rc<Node>,
+) -> Rc<Node> {
+    match binding.resolved.binding_id.clone() {
+        Some(alias_binding_id) => match lookup_decl_type_binding_by_name_excluding_binding_id(
+            dep_env,
+            target_name,
+            alias_binding_id.clone(),
+        ) {
+            Some(target_binding) => target_binding.resolved.clone(),
+            None => fallback.clone(),
+        },
+        None => fallback.clone(),
+    }
+}
+
 pub fn carrier_authority_binding(
     binding: Rc<TypeBinding>,
     dep_env: Rc<TypeEnv>,
@@ -11971,7 +12029,12 @@ pub fn carrier_authority_binding(
                             };
                         Rc::new(TypeBinding {
                             name: binding.name.clone(),
-                            resolved: target_authority,
+                            resolved: carrier_authority_target(
+                                binding.clone(),
+                                dep_env.clone(),
+                                target_name.clone(),
+                                target_authority.clone(),
+                            ),
                             provenance: binding.provenance.clone(),
                         })
                     } else {
@@ -11981,7 +12044,28 @@ pub fn carrier_authority_binding(
                 _ => binding.clone(),
             }
         } else {
-            binding.clone()
+            let carrier_is_structural_shell = ((resolved.connective.clone()
+                != Connective::NoConnective)
+                || ((resolved.children.clone().len() as i64) > 0))
+                || ((resolved.params.clone().len() as i64) > 0);
+            let carrier_name = authored_name_at(source_indices, resolved.clone());
+            if carrier_is_structural_shell
+                && (carrier_name.clone().as_str() != "".to_string().as_str())
+                && (binding.name.clone().as_str() != carrier_name.clone().as_str())
+            {
+                Rc::new(TypeBinding {
+                    name: binding.name.clone(),
+                    resolved: carrier_authority_target(
+                        binding.clone(),
+                        dep_env.clone(),
+                        carrier_name.clone(),
+                        resolved.clone(),
+                    ),
+                    provenance: binding.provenance.clone(),
+                })
+            } else {
+                binding.clone()
+            }
         }
     }
 }

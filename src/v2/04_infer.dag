@@ -5824,6 +5824,37 @@ type CarrierClosureState {
   seen_names: Map<String, Bool>
 }
 
+fn lookup_decl_type_binding_by_name_excluding_binding_id(env: TypeEnv, name: String, excluded_binding_id: BindingId) -> TypeBinding? {
+  fold(env.decl_registry |> map_values, init: none, f: (acc, decl) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if decl.name == name && decl.binding_id != excluded_binding_id {
+          match map_get(env.bindings, decl.binding_key) {
+            Present { value: binding } =>
+              if node_has_binding_id(n: binding.resolved, binding_id: decl.binding_id) {
+                Present { value: binding }
+              } else {
+                map_get(env.carrier_bindings, decl.binding_id)
+              }
+            Absent => map_get(env.carrier_bindings, decl.binding_id)
+          }
+        } else { none }
+    }
+  )
+}
+
+fn carrier_authority_target(binding: TypeBinding, dep_env: TypeEnv, target_name: String, fallback: Node) -> Node {
+  match binding.resolved.binding_id {
+    Present { value: alias_binding_id } =>
+      match lookup_decl_type_binding_by_name_excluding_binding_id(env: dep_env, name: target_name, excluded_binding_id: alias_binding_id) {
+        Present { value: target_binding } => target_binding.resolved
+        Absent => fallback
+      }
+    Absent => fallback
+  }
+}
+
 fn carrier_authority_binding(binding: TypeBinding, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
   let resolved = binding.resolved
   if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.params |> count == 0 {
@@ -5836,11 +5867,19 @@ fn carrier_authority_binding(binding: TypeBinding, dep_env: TypeEnv, source_indi
             Present { value: resolved_target } => resolved_target
             Absent => target
           }
-          TypeBinding { name: binding.name, resolved: target_authority, provenance: binding.provenance }
+          TypeBinding { name: binding.name, resolved: carrier_authority_target(binding: binding, dep_env: dep_env, target_name: target_name, fallback: target_authority), provenance: binding.provenance }
         } else { binding }
       _ => binding
     }
-  } else { binding }
+  } else {
+    let carrier_is_structural_shell = resolved.connective != NoConnective
+      || resolved.children |> count > 0
+      || resolved.params |> count > 0
+    let carrier_name = authored_name_at(source_indices: source_indices, node: resolved)
+    if carrier_is_structural_shell && carrier_name != "" && binding.name != carrier_name {
+      TypeBinding { name: binding.name, resolved: carrier_authority_target(binding: binding, dep_env: dep_env, target_name: carrier_name, fallback: resolved), provenance: binding.provenance }
+    } else { binding }
+  }
 }
 
 fn type_binding_decl_binding_id(env: TypeEnv, binding: TypeBinding) -> BindingId? {
