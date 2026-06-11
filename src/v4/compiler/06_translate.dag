@@ -2602,11 +2602,6 @@ fn project_type_expression_connective_bounded(
     ),
     f: fn(_) {
       match connective {
-        Atom { identity: id } =>
-          Accepted {
-            value: target_type_expr_atom_emitted(form: projection.atom_form, identity: id),
-            diagnostics: None
-          }
         Instantiation =>
           if target_collection_type_node_is_free_monoid_carrier(node: node) {
             project_free_monoid_collection_type_node(node: node, target: target, projection: projection)
@@ -2748,6 +2743,39 @@ fn project_type_expression_connective_bounded(
     }
   )
 }
+// translate_algebra — the per-connective projection algebra for fold_node
+// (dep-graph 2026-06-11 §1, W1 fan-out). Each connective wave moves its row out of
+// project_type_expression_connective_bounded into init here and repoints its dispatch
+// arm. Atom is migrated (W1-Atom): the terminal base case (NoEdges) — init alone
+// decides it, no fuel, no child traversal. Connectives still owned by the bounded
+// tower reject fail-closed here so a premature repoint cannot double-project.
+fn translate_algebra(
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> NodeFold<Outcome<Node>> {
+  NodeFold {
+    init: fn(n0) {
+      match n0.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          bind_outcome(
+            o: type_expr_projection_row_closedness_from_target(
+              target: target,
+              projection: projection,
+              connective: Atom { identity: id }
+            ),
+            f: fn(_) {
+              Accepted {
+                value: target_type_expr_atom_emitted(form: projection.atom_form, identity: id),
+                diagnostics: None
+              }
+            }
+          )
+        _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n0))
+      }
+    },
+    step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+  }
+}
 fn project_type_expression_node(
   node: Node,
   target: TargetModel,
@@ -2770,6 +2798,9 @@ fn project_type_expression_node_bounded(
     outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
   } else {
   match node.kind {
+    // W1-Atom repoint: the terminal base case routes through the fold algebra.
+    TypeNode { connective: Atom { identity: _ } } =>
+      fold_node(n: node, algebra: translate_algebra(target: target, projection: projection))
     TypeNode { connective: c } =>
       project_type_expression_connective_bounded(
         remaining: remaining,
