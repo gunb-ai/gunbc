@@ -48,7 +48,7 @@ import v4.extdeps.languages.rust {
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model { TargetModel, TargetModelBundle }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
   infer_receipt_context
@@ -123,7 +123,7 @@ data mvp_add_arrow_node: Node = Node {
 
 data mvp1_rust_emitted_root: Node = rust_mvp1_fixture_emitted_add_fn
 
-data mvp1_rust_target_model: TargetModel = rust_mvp1_target_model()
+data mvp1_rust_target_model: TargetModelBundle = rust_mvp1_target_model()
 
 data mvp1_rust_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: rust_mvp1_target_model_node(),
@@ -146,9 +146,13 @@ data mvp1_rust_missing_translation_rules_target: TargetModel = TargetModel {
   authority_source_text: ""
 }
 
+fn mvp1_rust_missing_translation_rules_bundle() -> TargetModelBundle {
+  mvp1_rust_missing_translation_rules_target
+}
+
 fn anchor_mvp1_serialize_rejects_missing_translation_rules() -> Outcome<TargetSource> {
   target_serialize_source_from_model(
-    target: mvp1_rust_missing_translation_rules_target,
+    target: mvp1_rust_missing_translation_rules_bundle(),
     emitted: mvp1_rust_emitted_root
   )
 }

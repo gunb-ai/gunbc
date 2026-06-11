@@ -2422,7 +2422,7 @@ fn rust_snoc_primitive_bundle(
     Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
       registry: registry,
       subject_carrier: subject_carrier,
-      target: rust_mvp1_target_model()
+      target: rust_mvp1_target_model_staging()
     ) {
       Accepted { value: bundle, diagnostics: d } =>
         Accepted {
