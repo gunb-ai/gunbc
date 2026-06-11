@@ -2001,6 +2001,20 @@ pub fn direct_call_arg_mismatch_diags(
                                                 module_name.clone(),
                                                 source_indices.clone(),
                                             )) {
+                                                eprintln!(
+                                                    "DBG mismatch formal={} {:?} actual={} {:?} formal_id={} {:?} actual_id={} {:?} trans_id={} trans_node={} carriers={:?}",
+                                                    authored_name_at(source_indices.clone(), formal.clone()),
+                                                    formal.binding_id.clone(),
+                                                    authored_name_at(source_indices.clone(), actual.clone()),
+                                                    actual.binding_id.clone(),
+                                                    authored_name_at(source_indices.clone(), formal_identity.clone()),
+                                                    formal_identity.binding_id.clone(),
+                                                    authored_name_at(source_indices.clone(), actual_identity.clone()),
+                                                    actual_identity.binding_id.clone(),
+                                                    direct_call_transparent_alias_pair(type_env.clone(), formal_identity.clone(), actual_identity.clone(), source_indices.clone()),
+                                                    direct_call_transparent_alias_pair(type_env.clone(), formal.clone(), actual.clone(), source_indices.clone()),
+                                                    type_env.carrier_bindings.keys().cloned().collect::<Vec<_>>()
+                                                );
                                                 Rc::new(vec![type_mismatch_error(
                                                     node_type_shape(
                                                         formal.clone(),
