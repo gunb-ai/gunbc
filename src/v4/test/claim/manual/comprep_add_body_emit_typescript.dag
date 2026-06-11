@@ -88,7 +88,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   arrow_body_edge,
-  node_unanchored
+  node_synthetic
 }
 import v4.std.verification {
   BoolWitness,
@@ -128,7 +128,7 @@ fn comprep_ts_operator_catalog_empty() -> Node {
 }
 
 fn comprep_ts_target_model_bundle(operator_catalog: Node) -> Node {
-  node_unanchored(
+  node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
       comprep_ts_named_edge(
