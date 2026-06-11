@@ -174,3 +174,8 @@ fn scale_exponent(s: Scale) -> Int {
 //   - No mechanical Measure-witness derivation declared here -- same
 //     substrate gap as `GroupCompletion<M>`; inhabitance lens follow-up.
 type Measure<Q, S>
+
+// Dimensional alias for sustained per-thread clock rate (SI hertz).
+// v2 execution-layer carriers use bare Int hertz at projection sites until
+// value-typed Measure inhabitants land (same pattern as ByteSize).
+type Hertz = Measure<Frequency, One>
