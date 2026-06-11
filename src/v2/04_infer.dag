@@ -102,7 +102,7 @@ import std.termination {
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
-  NodeResolveResult, ItemResult
+  peel_nominal_alias_identity_result, NodeResolveResult, ItemResult
 }
 import v2.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
@@ -986,18 +986,23 @@ fn direct_call_arg_mismatch_diags(
     pair =>
       let formal_raw = param_node_type_expr(n: pair.second)
       let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
-	      let formal_peeled = peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name)
-	      let formal_identity = direct_call_arg_decl_identity(n: formal_peeled, env: type_env)
-	      let formal = stamp_hidden_dependency_refs(n: formal_peeled, dep_env: type_env, source_indices: source_indices)
-	      match typed_args |> skip(pair.first) |> first {
-	        Present { value: ta } =>
-	          let actual_expr = arg_value(n: ta)
-	          let actual_raw = resolved_type(n: actual_expr)
-	          let actual_peeled = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-	          let actual_identity = direct_call_arg_decl_identity(n: actual_peeled, env: type_env)
+      let formal_peeled_result = peel_nominal_alias_identity_result(n: formal_subst, env: type_env, module_name: module_name)
+      let formal_peeled = formal_peeled_result.node
+      let formal_identity = direct_call_arg_decl_identity(n: formal_peeled, env: type_env)
+      let formal = stamp_hidden_dependency_refs(n: formal_peeled, dep_env: type_env, source_indices: source_indices)
+      match typed_args |> skip(pair.first) |> first {
+        Present { value: ta } =>
+          let actual_expr = arg_value(n: ta)
+          let actual_raw = resolved_type(n: actual_expr)
+          let actual_peeled_result = peel_nominal_alias_identity_result(n: actual_raw, env: type_env, module_name: module_name)
+          let actual_peeled = actual_peeled_result.node
+          let actual_identity = direct_call_arg_decl_identity(n: actual_peeled, env: type_env)
           let actual = stamp_hidden_dependency_refs(n: actual_peeled, dep_env: type_env, source_indices: source_indices)
+          let peel_diags = concat(formal_peeled_result.diagnostics, actual_peeled_result.diagnostics)
           let arg_span = arg_value(n: ta).span
-          if direct_call_arg_is_typed_deferral(
+          if peel_diags |> count > 0 {
+            peel_diags
+          } else if direct_call_arg_is_typed_deferral(
             formal_raw: formal_raw,
             actual_expr: actual_expr,
             actual_type: actual_raw,
@@ -1012,19 +1017,19 @@ fn direct_call_arg_mismatch_diags(
             formal_identity: formal_identity,
             actual_identity: actual_identity,
             formal: formal,
-	            actual: actual,
+            actual: actual,
             env: type_env,
-	            source_indices: source_indices
-	          ) || direct_call_arg_type_mismatch(
-	            formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+            source_indices: source_indices
+          ) || direct_call_arg_type_mismatch(
+            formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
               got: node_type_shape(n: actual, source_indices: source_indices),
               span: arg_span,
               module_name: module_name
             )]
-	          } else { [] }
-	        Absent => []
+          } else { [] }
+        Absent => formal_peeled_result.diagnostics
       }
   )
 }
