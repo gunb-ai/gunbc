@@ -767,4 +767,4 @@ jobs:
         echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor + DAG parity in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (discriminating v4 lens witnesses)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (discriminating v4 lens witnesses)"
