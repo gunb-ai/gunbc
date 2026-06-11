@@ -1014,7 +1014,6 @@ data eval_rejected_unsupported_callee: Symbol = eval_rejected_unsupported_callee
 // callee's declared signature admits. The extras must refuse, never be silently dropped.
 data eval_rejected_argument_arity_excess: Symbol = eval_rejected_argument_arity_excess
 data eval_rejected_effect_io_unbound: Symbol = eval_rejected_effect_io_unbound
-data eval_rejected_effect_io_roundtrip_marker_absent: Symbol = eval_rejected_effect_io_roundtrip_marker_absent
 data eval_rejected_effect_io_roundtrip_arity: Symbol = eval_rejected_effect_io_roundtrip_arity
 data eval_rejected_effect_io_write_payload_mismatch: Symbol = eval_rejected_effect_io_write_payload_mismatch
 data effect_io_roundtrip_marker: Symbol = effect_io_roundtrip_marker
@@ -1449,8 +1448,8 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
   }
 }
 
-// Canonical roundtrip Transform input (declare-per-claim locator/payload leaves; wave-1 gate uses a
-// callee-free 2-argument Transform — detected only when EffectIoEvalPresent is injected per run).
+// Canonical roundtrip Transform input (declare-per-claim locator/payload leaves; wave-1 gate pairs
+// this callee-free 2-argument Transform with EffectIoEvalPresent — never with EffectIoEvalAbsent).
 fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -1462,14 +1461,16 @@ fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   }
 }
 
-// Wave-2 effect-IO consumer: callee-free 2-arg Transform under EffectIoEvalPresent (never inline).
-// Exported for claim witnesses (E-10 gate). Wave-1 gate claims pair this with an interpretation
-// that has no other non-callee 2-arg transforms.
-fn eval_node_is_effect_io_roundtrip(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Transform } =>
-      !eval_transform_has_callee_reference(node: node) && count(node.children) == 2
-    _ => false
+// Wave-2 effect-IO consumer: callee-free 2-arg Transform under EffectIoEvalPresent only (never inline).
+fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) -> Bool {
+  match effect_io {
+    EffectIoEvalAbsent => false
+    EffectIoEvalPresent { bundle: _ } =>
+      match node.kind {
+        ComputationNode { behavior: Transform } =>
+          !eval_transform_has_callee_reference(node: node) && count(node.children) == 2
+        _ => false
+      }
   }
 }
 
@@ -1587,7 +1588,7 @@ fn eval_transform_node(
 ) -> Outcome<RuntimeValue> {
   match interpreter {
     TransformRuntimeInterpreter { interpreter: transform } =>
-      if eval_node_is_effect_io_roundtrip(node: node) {
+      if eval_node_is_effect_io_roundtrip(node: node, effect_io: effect_io) {
         match effect_io {
           EffectIoEvalPresent { bundle: b } =>
             eval_effect_io_roundtrip(bundle: b, args: args, node: node)

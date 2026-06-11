@@ -13,7 +13,6 @@ import v4.compiler.eval {
   eval_context_with_effect_io,
   eval_context_with_semantics,
   eval_diagnostic,
-  eval_rejected_effect_io_unbound,
   eval_test_claim_subject,
   eval_with_context,
   inputs_root_only,
@@ -250,13 +249,14 @@ fn effect_io_eval_roundtrip_holds() -> Bool {
   }
 }
 
+// Discriminating red: declare-per-claim bundle absent — effectful roundtrip falls through to call_primitive refusal.
 fn effect_io_eval_unbound_fail_closed_holds() -> Bool {
   match eval_with_context(
     tree: effect_io_eval_tree(),
     context: effect_io_eval_context_unbound(),
     inputs: inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    Rejected { diagnostics: d } => d.head.reason == eval_rejected_effect_io_unbound
+    Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }
