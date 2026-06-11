@@ -278,6 +278,13 @@ fn resolve_host_tool(identity: &str) -> Result<String, HostSetupFailure> {
 }
 
 /// Single generic host-process primitive — dispatches on modeled descriptor identity.
+// 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
+// match on descriptor_identity against a single hard-coded TS identity with default-reject arm,
+// cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4674 —
+// dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target
+// match (its mirror resolve_host_tool above + the emit_host.dag if-chains + the python
+// hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup.
+// forbidden: adding a 5th per-target arm without the dissolution.
 pub fn run_host_process(
     descriptor_identity: &str,
     source: &str,
