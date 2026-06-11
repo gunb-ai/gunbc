@@ -45,6 +45,7 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+import v4.std.grammar { ParseTree }
 import v4.std.lexing { Token }
 import v4.std.machine { Byte }
 import v4.std.node {
@@ -267,38 +268,6 @@ fn comprep_eval_context() -> EvalContext {
   )
 }
 
-<<<<<<< HEAD
-fn comprep_source_resolved_add_arrow() -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
-  bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^comprep_eval_source_file, rules: lm.lex),
-    f: fn(tokens) {
-      bind_outcome(
-        o: comprep_eval_parse_mvp1_add_tokens(tokens: tokens.tokens),
-        f: fn(parsed) {
-          bind_outcome(
-            o: normalize(parse_tree: comprep_eval_parse_tree_to_node(tree: parsed)),
-            f: fn(normalized) {
-              resolve(tree: normalized, lm: lm)
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
-fn comprep_source_bridged_add_arrow_with_body() -> Outcome<Node> {
-  bind_outcome(
-    o: comprep_source_resolved_add_arrow(),
-    f: fn(resolved) {
-      produce_mvp1_add_arrow_with_body_from_resolved(resolved_root: resolved)
-    }
-  )
-}
-
-=======
->>>>>>> origin/main
 fn comprep_source_ingested_add_infers() -> Outcome<InferredTree> {
   let lm = dag_language_model_wave1()
   bind_outcome(
