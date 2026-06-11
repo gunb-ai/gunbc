@@ -350,6 +350,7 @@ fn infer_descent_witness_receipt_run(
 fn fixture_add_resolved_node() -> Node {
   fixture_add_resolved_tree()
 }
+
 fn fixture_add_resolved_tree() -> ResolvedTree {
   Node {
     kind: TypeNode { connective: Conj },
@@ -382,7 +383,7 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
 
 
 fn anchor_infer_add_mvp() -> Outcome<InferredTree> {
-  infer(tree: fixture_add_resolved_tree())
+  infer(tree: fixture_add_resolved_node())
 }
 
 

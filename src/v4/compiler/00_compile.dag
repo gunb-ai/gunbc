@@ -54,6 +54,10 @@ type RuntimeTarget = Node
 
 type Source = String
 
+fn source_to_string(source: Source) -> String {
+  source
+}
+
 fn target_model_to_bundle(target: TargetModel) -> TargetModelBundle {
   target
 }
@@ -391,7 +395,7 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: source,
+      text: source_to_string(source: source),
       file: compile_ingest_staging_source_file,
       rules: lm.lex
     ),
