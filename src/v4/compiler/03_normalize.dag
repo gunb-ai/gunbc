@@ -25,7 +25,7 @@ import v4.std.node {
   Connective,
   Edge,
   Node,
-  OccurrenceId,
+  NodeOccurrenceId,
   Symbol,
   TypeNode,
   is_positional,

@@ -44,7 +44,7 @@ import v4.std.node {
   Edge,
   Node,
   NodeFold,
-  OccurrenceId,
+  NodeOccurrenceId,
   Symbol,
   TypeNode,
   fold_node,
