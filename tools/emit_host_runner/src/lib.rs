@@ -258,6 +258,13 @@ __gunbc_b.writeInt32LE(__gunbc_r, 0);
 process.stdout.write(__gunbc_b);
 ";
 
+// 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
+// hand-rolled discriminator-over-Symbol with default-reject arm) — feature: T-22 host-emission
+// TargetModel dissolution — bind: gunbc#4674 — dissolve-on-arrival: promote a typed runtime_row
+// onto TargetModel and replace this per-target match (its mirror run_host_process below + the
+// emit_host.dag if-chains + the python hand-reification at emit_host_eval.rs:1022-1061) with a
+// generic row-lookup; point host-tool/descriptor identities at extdeps/languages/*::*_mvp1_source_text.
+// forbidden: adding a 5th per-target arm without the dissolution.
 fn resolve_host_tool(identity: &str) -> Result<String, HostSetupFailure> {
     match identity {
         "host_tool_npx" => Ok("npx".to_string()),

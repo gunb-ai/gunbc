@@ -81,9 +81,7 @@ data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
 data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
 data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
 data emit_host_ts_i32_symbol: Symbol = emit_host_ts_i32_symbol
-// 🟡 coproduct dissolution — feature:emit-host-rust-authority-pin (joint spec §4.2 A3);
-// W3: executable transport in `emit_host_bridge.rs`; substrate row defers until T-22 dispatch.
-// dissolve-on: structural `runtime_row` on TargetModel replaces `authority_source_text` pin match.
+// 🟡 gated — per-target host-emission source-text pins (P2 §314: target knowledge in compiler code; these literals DUPLICATE the authority of extdeps/languages/*::*_mvp1_source_text) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4674 — dissolve-on-arrival: promote a typed runtime_row onto TargetModel; point these pins at extdeps/languages/*::*_mvp1_source_text instead of local copies, then delete them; replace the per-target if-chains below (and their mirror in emit_host_eval.rs + the python hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup. forbidden: adding a 5th per-target pin/arm without the dissolution.
 data emit_host_rust_authority_pin: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 // Aligns with `python_mvp1_source_text` in `v4.extdeps.languages.python` (W3.4 python host row).
 data emit_host_python_authority_pin: String = "def add(x, y): return x + y"
@@ -218,6 +216,7 @@ fn runtime_value_parse_signed_i32_le(bytes: ByteString) -> Outcome<RuntimeValue>
 }
 
 fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<RuntimeValue> {
+  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority_source_text pins, cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4674 — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_eval.rs + the python hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
   if target.authority_source_text == emit_host_rust_authority_pin {
     runtime_value_parse_rust(bytes: stdout.bytes)
   } else if target.authority_source_text == emit_host_python_authority_pin {
@@ -290,6 +289,7 @@ fn run_emit_host(
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
+  // 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code; this if-chain branches on per-target authority_source_text pins, cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4674 — dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target if-chain (and its mirror in emit_host_eval.rs + the python hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup. forbidden: adding a 5th per-target arm without the dissolution.
   if target.authority_source_text == ts_mvp1_source_text_authority() {
     run_host_process(
       descriptor: ts_host_transport_mvp1_descriptor(),
