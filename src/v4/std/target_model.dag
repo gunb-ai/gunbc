@@ -31,6 +31,7 @@ import v4.std.collection {
   Present,
   empty_map,
   list_at_optional,
+  map_get,
   optional_absent,
   optional_present
 }
@@ -41,13 +42,25 @@ import v4.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  diagnostics_merge,
-  node_locus,
   bind_outcome,
+  diagnostics_merge,
+  diagnostics_singleton,
+  node_locus,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
+  rejected_with_pending
 }
-import v4.std.lexing { LexRules, VoidLexRules }
+import v4.std.lexing {
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  TokenRule,
+  TriviaRule,
+  VoidLexRules
+}
 import v4.std.find_witness {
   CandidateSet,
   ManyPassingCandidates,
@@ -214,6 +227,202 @@ fn concrete_syntax_token_class(token: ConcreteSyntaxToken) -> Symbol {
     FixedToken { token_class: c } => c
     BoundToken { token_class: c, binding: _ } => c
   }
+}
+
+// Per-target lex + binding-spelling lookup (tokens/layout authority for translate serialize).
+data target_lex_rule_literal_not_found: Symbol = target_lex_rule_literal_not_found
+data target_binding_spelling_not_found: Symbol = target_binding_spelling_not_found
+data target_type_expr_projection_bundle_malformed: Symbol = target_type_expr_projection_bundle_malformed
+data target_collection_shape_malformed: Symbol = target_collection_shape_malformed
+
+fn target_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: target_lex_rule_literal_not_found,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: token_class } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: target_binding_spelling_not_found,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: binding } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_type_expr_projection_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_type_expr_projection_bundle_malformed,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_collection_shape_malformed_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_collection_shape_malformed,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_lex_rule_literal_step(
+  acc: Outcome<String>,
+  rule: LexRule,
+  token_class: Symbol
+) -> Outcome<String> {
+  match acc {
+    Accepted { value: _, diagnostics: _ } => acc
+    Rejected { diagnostics: _ } =>
+      match rule {
+        TokenRule { token_class: c, pattern: pattern } =>
+          if c == token_class {
+            match pattern {
+              LiteralPattern { text: text } =>
+                Accepted { value: text, diagnostics: None }
+              KeywordPattern { text: text } =>
+                Accepted { value: text, diagnostics: None }
+              _ =>
+                Rejected {
+                  diagnostics: diagnostics_singleton(
+                    d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
+                  )
+                }
+            }
+          } else {
+            acc
+          }
+        TriviaRule { pattern: _ } => acc
+      }
+  }
+}
+
+fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
+  match rules {
+    VoidLexRules =>
+      outcome_rejected(
+        target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
+      )
+    ModeledLexRules { root: set } =>
+      fold_list(
+        xs: set.rules,
+        empty: Rejected {
+          diagnostics: diagnostics_singleton(
+            d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
+          )
+        },
+        cons: fn(acc, rule) {
+          target_lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class)
+        }
+      )
+  }
+}
+
+fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String> {
+  lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
+}
+
+fn target_binding_spelling_lookup(
+  target: TargetModel,
+  binding: Symbol
+) -> Outcome<String> {
+  match map_get(target.binding_spellings, binding) {
+    Accepted { value: opt, diagnostics: pending } => match opt {
+      Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
+      Absent =>
+        Rejected {
+          diagnostics: rejected_with_pending(
+            pending: pending,
+            rejected: diagnostics_singleton(
+              d: target_binding_spelling_not_found_diagnostic(binding: binding)
+            )
+          )
+        }
+    }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
+  bind_outcome(
+    o: concrete_syntax_token_from_node(token: token),
+    f: fn(decoded) {
+      match decoded {
+        FixedToken { token_class: token_class } =>
+          lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
+        BoundToken { token_class: _, binding: binding } =>
+          target_binding_spelling_lookup(target: target, binding: binding)
+      }
+    }
+  )
+}
+
+fn type_expr_atom_binding_from_positional(
+  targets: List<Node>,
+  node: Node
+) -> Outcome<Symbol> {
+  bind_outcome(
+    o: list_at_optional(xs: targets, index: 0),
+    f: fn(head_opt) {
+      match head_opt {
+        Present { value: head } =>
+          if length(xs: targets) == 1 {
+            match head.kind {
+              TypeNode { connective: Atom { identity: id } } =>
+                outcome_accepted(id)
+              _ =>
+                outcome_rejected(
+                  target_type_expr_projection_bundle_malformed_diagnostic(bundle: node)
+                )
+            }
+          } else {
+            outcome_rejected(
+              target_type_expr_projection_bundle_malformed_diagnostic(bundle: node)
+            )
+          }
+        Absent =>
+          outcome_rejected(
+            target_type_expr_projection_bundle_malformed_diagnostic(bundle: node)
+          )
+      }
+    }
+  )
+}
+
+fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<String> {
+  bind_outcome(
+    o: type_expr_atom_binding_from_positional(
+      targets: node_positional_child_targets(node: node),
+      node: node
+    ),
+    f: fn(binding) {
+      target_binding_spelling_lookup(target: target, binding: binding)
+    }
+  )
+}
+
+fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<String> {
+  match edge.label {
+    Named { name: label } => target_binding_spelling_lookup(target: target, binding: label)
+    Positional =>
+      outcome_rejected(target_type_expr_projection_bundle_malformed_diagnostic(bundle: edge.target))
+  }
+}
+
+fn serialize_type_expr_arrow_param_spelling(
+  target: TargetModel,
+  label: Symbol
+) -> Outcome<String> {
+  target_binding_spelling_lookup(target: target, binding: label)
 }
 
 data target_model_edge_atom_realizations: Symbol = target_model_edge_atom_realizations
@@ -912,6 +1121,276 @@ fn decode_value_expression_projection_bundle(
         target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
       )
   }
+}
+
+fn decode_optional_projection_bundle_symbol_field(
+  bundle: Node,
+  field: Symbol
+) -> Outcome<Optional<Symbol>> {
+  match find_named_child(root: bundle, name: field) {
+    Accepted { value: child, diagnostics: d } =>
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          Accepted { value: optional_present(value: id), diagnostics: d }
+        _ =>
+          outcome_rejected(
+            target_type_expr_projection_bundle_malformed_diagnostic(bundle: bundle)
+          )
+      }
+    Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
+  }
+}
+
+fn decode_atom_type_shape_bundle(bundle: Node) -> Outcome<TargetAtomTypeShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_surface),
+    f: fn(surface) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(
+          bundle: bundle,
+          field: target_type_expr_field_ident_token
+        ),
+        f: fn(ident_token) {
+          outcome_accepted(
+            TargetAtomTypeShape { surface: surface, ident_token: ident_token }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_generic_apply_shape_bundle(bundle: Node) -> Outcome<TargetGenericApply> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_surface),
+    f: fn(surface) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: target_type_expr_field_separator
+            ),
+            f: fn(separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: target_type_expr_field_close
+                ),
+                f: fn(close) {
+                  bind_outcome(
+                    o: decode_optional_projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: target_type_expr_field_field_label_separator
+                    ),
+                    f: fn(field_label_separator) {
+                      outcome_accepted(
+                        TargetGenericApply {
+                          surface: surface,
+                          open: open,
+                          separator: separator,
+                          field_label_separator: field_label_separator,
+                          close: close
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_sum_type_shape_bundle(bundle: Node) -> Outcome<TargetSumTypeShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_surface),
+    f: fn(surface) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(
+          bundle: bundle,
+          field: target_type_expr_field_variant_separator
+        ),
+        f: fn(variant_separator) {
+          outcome_accepted(
+            TargetSumTypeShape {
+              surface: surface,
+              variant_separator: variant_separator
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_function_type_shape_bundle(bundle: Node) -> Outcome<TargetFunctionTypeShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_surface),
+    f: fn(surface) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_close),
+            f: fn(close) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(bundle: bundle, field: target_type_expr_field_arrow),
+                f: fn(arrow) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: target_type_expr_field_param_ident_token
+                    ),
+                    f: fn(param_ident_token) {
+                      bind_outcome(
+                        o: projection_bundle_symbol_field(
+                          bundle: bundle,
+                          field: target_type_expr_field_param_type_separator
+                        ),
+                        f: fn(param_type_separator) {
+                          bind_outcome(
+                            o: projection_bundle_symbol_field(
+                              bundle: bundle,
+                              field: target_type_expr_field_param_list_separator
+                            ),
+                            f: fn(param_list_separator) {
+                              outcome_accepted(
+                                TargetFunctionTypeShape {
+                                  surface: surface,
+                                  open: open,
+                                  close: close,
+                                  arrow: arrow,
+                                  param_ident_token: param_ident_token,
+                                  param_type_separator: param_type_separator,
+                                  param_list_separator: param_list_separator
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_type_expression_projection_bundle(
+  bundle: Node
+) -> Outcome<TargetTypeExpressionProjection> {
+  match bundle.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: projection_bundle_child(bundle: bundle, name: target_type_expr_field_atom),
+        f: fn(atom_bundle) {
+          bind_outcome(
+            o: decode_atom_type_shape_bundle(bundle: atom_bundle),
+            f: fn(atom_form) {
+              bind_outcome(
+                o: projection_bundle_child(bundle: bundle, name: target_type_expr_field_conj),
+                f: fn(conj_bundle) {
+                  bind_outcome(
+                    o: decode_generic_apply_shape_bundle(bundle: conj_bundle),
+                    f: fn(conj_form) {
+                      bind_outcome(
+                        o: projection_bundle_child(bundle: bundle, name: target_type_expr_field_disj),
+                        f: fn(disj_bundle) {
+                          bind_outcome(
+                            o: decode_sum_type_shape_bundle(bundle: disj_bundle),
+                            f: fn(disj_form) {
+                              bind_outcome(
+                                o: projection_bundle_child(
+                                  bundle: bundle,
+                                  name: target_type_expr_field_arrow
+                                ),
+                                f: fn(arrow_bundle) {
+                                  bind_outcome(
+                                    o: decode_function_type_shape_bundle(bundle: arrow_bundle),
+                                    f: fn(arrow_form) {
+                                      bind_outcome(
+                                        o: projection_bundle_child(
+                                          bundle: bundle,
+                                          name: target_type_expr_field_cardinality
+                                        ),
+                                        f: fn(card_bundle) {
+                                          bind_outcome(
+                                            o: decode_generic_apply_shape_bundle(bundle: card_bundle),
+                                            f: fn(cardinality_form) {
+                                              bind_outcome(
+                                                o: projection_bundle_child(
+                                                  bundle: bundle,
+                                                  name: target_type_expr_field_instantiation
+                                                ),
+                                                f: fn(inst_bundle) {
+                                                  bind_outcome(
+                                                    o: decode_generic_apply_shape_bundle(
+                                                      bundle: inst_bundle
+                                                    ),
+                                                    f: fn(instantiation_form) {
+                                                      outcome_accepted(
+                                                        TargetTypeExpressionProjection {
+                                                          atom_form: atom_form,
+                                                          conj_form: conj_form,
+                                                          disj_form: disj_form,
+                                                          arrow_form: arrow_form,
+                                                          cardinality_form: cardinality_form,
+                                                          instantiation_form: instantiation_form
+                                                        }
+                                                      )
+                                                    }
+                                                  )
+                                                }
+                                              )
+                                            }
+                                          )
+                                        }
+                                      )
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        target_type_expr_projection_bundle_malformed_diagnostic(bundle: bundle)
+      )
+  }
+}
+
+fn type_expression_projection_from_target(
+  target: TargetModel
+) -> Outcome<TargetTypeExpressionProjection> {
+  bind_outcome(
+    o: find_named_child(
+      root: target.bundle,
+      name: target_model_edge_type_expression_projection
+    ),
+    f: fn(bundle) {
+      decode_type_expression_projection_bundle(bundle: bundle)
+    }
+  )
 }
 
 fn concrete_syntax_token_list_to_node(tokens: List<ConcreteSyntaxToken>) -> Node {
@@ -4432,6 +4911,194 @@ fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectio
       }
     }
   }
+}
+
+fn target_collection_node_atom_identity(node: Node) -> Outcome<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+  }
+}
+
+fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation> {
+  bind_outcome(
+    o: find_named_child(root: node, name: target_collection_repr_field_kind),
+    f: fn(kind_node) {
+      bind_outcome(
+        o: target_collection_node_atom_identity(node: kind_node),
+        f: fn(kind_sym) {
+          match target_collection_repr_kind_from_atom(id: kind_sym) {
+            Present { value: kind } =>
+              bind_outcome(
+                o: find_named_child(root: node, name: target_collection_repr_field_apply),
+                f: fn(apply_node) {
+                  bind_outcome(
+                    o: decode_generic_apply_shape_bundle(bundle: apply_node),
+                    f: fn(apply) {
+                      outcome_accepted(
+                        TargetRepresentation { kind: kind, apply: apply }
+                      )
+                    }
+                  )
+                }
+              )
+            Absent =>
+              outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+          }
+        }
+      )
+    }
+  )
+}
+
+fn target_collection_witness_from_node(node: Node) -> Outcome<RequiredTraitWitness> {
+  bind_outcome(
+    o: find_named_child(root: node, name: target_collection_witness_field_trait_name),
+    f: fn(trait_node) {
+      bind_outcome(
+        o: target_collection_node_atom_identity(node: trait_node),
+        f: fn(trait_name) {
+          bind_outcome(
+            o: find_named_child(root: node, name: target_collection_witness_field_type_param),
+            f: fn(param_node) {
+              bind_outcome(
+                o: target_collection_node_atom_identity(node: param_node),
+                f: fn(type_param) {
+                  if trait_name == target_collection_trait_ord {
+                    outcome_accepted(
+                      TargetCollectionWitnessOrd { type_param: type_param }
+                    )
+                  } else {
+                    if trait_name == target_collection_trait_hash {
+                      outcome_accepted(
+                        TargetCollectionWitnessHash { type_param: type_param }
+                      )
+                    } else {
+                      if trait_name == target_collection_trait_eq {
+                        outcome_accepted(
+                          TargetCollectionWitnessEq { type_param: type_param }
+                        )
+                      } else {
+                        outcome_rejected(
+                          target_collection_shape_malformed_diagnostic(node: node)
+                        )
+                      }
+                    }
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_collection_subtree_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(_) { 1 },
+      step: fn(acc, _edge, child_count) { acc + child_count }
+    }
+  )
+}
+
+fn target_collection_fold_list_from_node<T>(
+  remaining: Int,
+  node: Node,
+  decode_item: fn(Node) -> Outcome<T>
+) -> Outcome<List<T>> {
+  if remaining <= 0 {
+    outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+  } else {
+    match node.kind {
+      TypeNode { connective: Conj } =>
+        if is_empty(xs: node.children) {
+          outcome_accepted(Empty)
+        } else {
+          bind_outcome(
+            o: find_named_child(root: node, name: fold_list_node_head),
+            f: fn(head_node) {
+              bind_outcome(
+                o: decode_item(node: head_node),
+                f: fn(head_item) {
+                  bind_outcome(
+                    o: find_named_child(root: node, name: fold_list_node_tail),
+                    f: fn(tail_node) {
+                      bind_outcome(
+                        o: target_collection_fold_list_from_node(
+                          remaining: remaining - 1,
+                          node: tail_node,
+                          decode_item: decode_item
+                        ),
+                        f: fn(tail_items) {
+                          outcome_accepted(
+                            Cons { head: head_item, tail: tail_items }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      _ => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+    }
+  }
+}
+
+fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentationChoice> {
+  bind_outcome(
+    o: find_named_child(root: node, name: target_collection_choice_field_form),
+    f: fn(form_node) {
+      bind_outcome(
+        o: target_collection_repr_from_node(node: form_node),
+        f: fn(form) {
+          bind_outcome(
+            o: find_named_child(root: node, name: target_collection_choice_field_constraints),
+            f: fn(constraints_node) {
+              bind_outcome(
+                o: target_collection_fold_list_from_node(
+                  remaining: target_collection_subtree_count(n: constraints_node),
+                  node: constraints_node,
+                  decode_item: target_collection_witness_from_node
+                ),
+                f: fn(constraints) {
+                  outcome_accepted(
+                    TargetRepresentationChoice {
+                      form: form,
+                      constraints: constraints
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
+  bind_outcome(
+    o: target_collection_node_atom_identity(node: node),
+    f: fn(reason) {
+      if reason == target_collection_set_no_representation {
+        outcome_accepted(target_collection_set_no_representation_diagnostic())
+      } else {
+        if reason == target_collection_free_monoid_no_representation {
+          outcome_accepted(target_collection_free_monoid_no_representation_diagnostic())
+        } else {
+          outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+        }
+      }
+    }
+  )
 }
 
 // 🟡 gated — feature:SG-5-element-trait-eligibility — bind docs/planning/v4-sg5-sg6-collection-bounded-lattice-worksheet-2026-05-30.md §10.0 — dissolve-on: witness eligibility reads declared_inhabitants algebra witnesses instead of kernel atom tags.
