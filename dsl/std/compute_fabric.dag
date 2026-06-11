@@ -13,15 +13,7 @@ import std.float { Float }
 import std.measure { Measure, Time, DataRate, Frequency, One, Hertz, ByteSize }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 import std.placement_supply { HostIdentity, PlacementSupplyRow, cpu_capacity_hz_row }
-import std.cpu {
-  CpuArchitecture,
-  CpuModel,
-  CpuVendor,
-  InstructionSet,
-  ampere_altra_max_model,
-  cpu_model_facts,
-  cpu_vendor,
-}
+import std.cpu { CpuArchitecture, CpuModel, CpuVendor, InstructionSet, ampere_altra_max_model, cpu_model_facts, cpu_vendor }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
@@ -117,11 +109,14 @@ fn cpu_facts_threads(cpu: CpuFacts) -> Int {
 fn cpu_facts_sustained_per_thread_hz(cpu: CpuFacts) -> Int {
   match cpu.sustained_per_thread_hz_override {
     Some(hz) => hz
-    None =>
-      match cpu.model {
-        Some(m) => cpu_model_facts(m).sustained_per_thread_hz
-        None => 0
-      }
+    None => cpu_facts_model_sustained_per_thread_hz(cpu)
+  }
+}
+
+fn cpu_facts_model_sustained_per_thread_hz(cpu: CpuFacts) -> Int {
+  match cpu.model {
+    Some(m) => cpu_model_facts(m).sustained_per_thread_hz
+    None => 0
   }
 }
 
