@@ -108,10 +108,17 @@ The recursion taxonomy is **closed up front**, and the gate's posture toward
   never to tolerate the unknown. In all three the gate goes red and the red is a
   work item against the compiler/model, not a verdict the function's author routes
   around.
-- Declared-side `ClassUnknown` budget rows (the roster's explicit placeholders for
-  not-yet-rated producers) are the one sanctioned appearance: visible, enumerable
-  debt that trends to zero as ratings land — explicit rows, never omission, per the
-  roster's own header rule.
+- Declared-side `ClassUnknown` budget rows are NOT a green path either (operator
+  2026-06-11): `complexity_bound_dominates` treats a declared `UnknownComplexity` as
+  lattice top — it dominates every computed class (`src/v4/lens/complexity.dag:340`) —
+  so an unrated roster row would pass silently. The family gate must therefore reject
+  any row whose declared budget is `UnknownComplexity`: an unrated producer is an
+  ERROR to surface and prioritize, never a silent pass and never an omission. End
+  state: zero `ClassUnknown` anywhere — computed-side unknowns are compiler/model
+  defects (above), declared-side unknowns are unrated debt that must be rated before
+  the row lands. (Enforcement change dispatched separately from this design;
+  the roster header's "unknown_complexity(), never omission" rule is superseded by
+  "rate it before you add it".)
 
 ## 4. What this is NOT
 
