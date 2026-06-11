@@ -44,11 +44,20 @@ data lens_ci_claim_run_row_structural_resolution_binds_to_resolved: LensCiClaimR
   function: "binds_to_resolved_claim_holds"
 }
 
+// #4643 still-raven load-bearing: distinct-minted-id occurrence_id exclusion proof (both
+// exact_structural_equality_zip_fold + node_for_structural_equality authorities).
+data lens_ci_claim_run_row_provenance_occurrence_id_model: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "provenance/occurrence_id_model",
+  entry: "src/v4/test/claim/provenance/occurrence_id_model.dag",
+  function: "witness_occurrence_id_model_substrate_holds"
+}
+
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_cost_atom_zero,
   lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
   lens_ci_claim_run_row_coverage_hollow_type_defect_key,
-  lens_ci_claim_run_row_structural_resolution_binds_to_resolved
+  lens_ci_claim_run_row_structural_resolution_binds_to_resolved,
+  lens_ci_claim_run_row_provenance_occurrence_id_model
 ]
 
-data lens_ci_claim_run_row_count: String = "4"
+data lens_ci_claim_run_row_count: String = "5"
