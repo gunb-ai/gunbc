@@ -13,7 +13,7 @@ pub use crate::v2_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
 pub use crate::v2_compiler_infer_env::{
-    authored_name, is_recursive_type, lookup_carrier_type_by_name, lookup_type, lookup_type_for,
+    authored_name, is_recursive_type, lookup_type, lookup_type_for,
 };
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_service::check_service_method_call_node;
@@ -277,27 +277,7 @@ pub fn resolve_scrutinee_type_node_seen(
                                                 == Connective::NoConnective))
                                             && ((resolved.children.clone().len() as i64) == 0))
                                         {
-                                            match lookup_carrier_type_by_name(
-                                                env.clone(),
-                                                canonical.clone(),
-                                            ) {
-                                                Some(carrier) => {
-                                                    let result = resolve_scrutinee_type_node_seen(
-                                                        env.clone(),
-                                                        carrier.clone(),
-                                                        next_seen,
-                                                    );
-                                                    let is_optional =
-                                                        (normed.return_cardinality.clone()
-                                                            == Cardinality::CardOptional);
-                                                    if is_optional {
-                                                        with_optional_cardinality(result)
-                                                    } else {
-                                                        result
-                                                    }
-                                                }
-                                                None => normed.clone(),
-                                            }
+                                            normed.clone()
                                         } else {
                                             {
                                                 let result = resolve_scrutinee_type_node_seen(
@@ -316,26 +296,7 @@ pub fn resolve_scrutinee_type_node_seen(
                                             }
                                         }
                                     }
-                                    None => match lookup_carrier_type_by_name(
-                                        env.clone(),
-                                        canonical.clone(),
-                                    ) {
-                                        Some(carrier) => {
-                                            let result = resolve_scrutinee_type_node_seen(
-                                                env.clone(),
-                                                carrier.clone(),
-                                                next_seen,
-                                            );
-                                            let is_optional = (normed.return_cardinality.clone()
-                                                == Cardinality::CardOptional);
-                                            if is_optional {
-                                                with_optional_cardinality(result)
-                                            } else {
-                                                result
-                                            }
-                                        }
-                                        None => normed.clone(),
-                                    },
+                                    None => normed.clone(),
                                 }
                             }
                         }

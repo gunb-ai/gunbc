@@ -12,7 +12,8 @@ pub use crate::v2_compiler_infer_env::{
 };
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_types::{
-    child_type_node, is_declared_container_alias_spelling, node_is_keyed_collection, resolved_type,
+    child_type_node, is_declared_container_alias_spelling, node_is_bare_type_ref,
+    node_is_keyed_collection, resolved_type,
 };
 use crate::v2_rt;
 use crate::v2_rt::Witness;
@@ -80,68 +81,32 @@ pub fn preserve_nominal_brand_on_resolve(
     }
 }
 
-pub fn is_bare_type_ref(n: Rc<Node>) -> bool {
-    (((n.connective.clone() == Connective::NoConnective)
-        && ((n.children.clone().len() as i64) == 0))
-        && ((n.params.clone().len() as i64) == 0))
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AliasPeelResult {
+    pub node: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
+pub fn peel_nominal_alias_identity_result(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<AliasPeelResult> {
     {
         let source_indices = env.source_indices.clone();
         let brand = authored_name_at(source_indices.clone(), n.clone());
         if (is_declared_container_alias_spelling(brand.clone())
             && ((n.children.clone().len() as i64) > 0))
         {
-            return n.clone();
-        }
-        match lookup_type_for(env.clone(), n.clone()) {
-            Some(resolved) => {
-                let structural = if (((resolved.connective.clone() == Connective::NoConnective)
-                    && ((resolved.children.clone().len() as i64) == 0))
-                    && (resolved.inferred.clone() != None))
-                {
-                    match resolved.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: target, .. }) => resolve_alias_target(
-                            target.clone(),
-                            env.clone(),
-                            module_name.clone(),
-                            0,
-                        )
-                        .resolved
-                        .clone(),
-                        _ => resolve_node_bounded(
-                            resolved.clone(),
-                            env.clone(),
-                            module_name.clone(),
-                            0,
-                        )
-                        .resolved
-                        .clone(),
-                    }
-                } else {
-                    resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
-                        .resolved
-                        .clone()
-                };
-                if ((((resolved.binding_id.clone() != None)
-                    && (brand.clone().as_str() != "".to_string().as_str()))
-                    && (brand.clone().as_str()
-                        != authored_name_at(source_indices.clone(), structural.clone()).as_str()))
-                    && !is_declared_container_alias_spelling(brand.clone()))
-                {
-                    match resolved.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: target, .. }) => {
-                            if is_bare_type_ref(target.clone()) {
-                                structural.clone()
-                            } else {
-                                with_preserved_binding_id(resolved.clone(), structural.clone())
-                            }
-                        }
-                        _ => with_preserved_binding_id(resolved.clone(), structural.clone()),
-                    }
-                } else {
-                    if (((resolved.connective.clone() == Connective::NoConnective)
+            Rc::new(AliasPeelResult {
+                node: n.clone(),
+                diagnostics: Rc::new(vec![]),
+            })
+        } else {
+            match lookup_type_for(env.clone(), n.clone()) {
+                Some(resolved) => {
+                    let structural_result = if (((resolved.connective.clone()
+                        == Connective::NoConnective)
                         && ((resolved.children.clone().len() as i64) == 0))
                         && (resolved.inferred.clone() != None))
                     {
@@ -153,19 +118,93 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                                     module_name.clone(),
                                     0,
                                 )
-                                .resolved
-                                .clone()
                             }
-                            _ => resolved.clone(),
+                            _ => resolve_node_bounded(
+                                resolved.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                                0,
+                            ),
                         }
                     } else {
-                        resolved.clone()
+                        resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
+                    };
+                    let structural = structural_result.resolved.clone();
+                    if ((((resolved.binding_id.clone() != None)
+                        && (brand.clone().as_str() != "".to_string().as_str()))
+                        && (brand.clone().as_str()
+                            != authored_name_at(source_indices.clone(), structural.clone())
+                                .as_str()))
+                        && !is_declared_container_alias_spelling(brand.clone()))
+                    {
+                        {
+                            let branded = match resolved.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: target, .. }) => {
+                                    if node_is_bare_type_ref(target.clone()) {
+                                        structural.clone()
+                                    } else {
+                                        with_preserved_binding_id(
+                                            resolved.clone(),
+                                            structural.clone(),
+                                        )
+                                    }
+                                }
+                                _ => {
+                                    with_preserved_binding_id(resolved.clone(), structural.clone())
+                                }
+                            };
+                            Rc::new(AliasPeelResult {
+                                node: branded,
+                                diagnostics: structural_result.diagnostics.clone(),
+                            })
+                        }
+                    } else {
+                        if (((resolved.connective.clone() == Connective::NoConnective)
+                            && ((resolved.children.clone().len() as i64) == 0))
+                            && (resolved.inferred.clone() != None))
+                        {
+                            match resolved.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: target, .. }) => {
+                                    let target_result = resolve_alias_target(
+                                        target.clone(),
+                                        env.clone(),
+                                        module_name.clone(),
+                                        0,
+                                    );
+                                    Rc::new(AliasPeelResult {
+                                        node: target_result.resolved.clone(),
+                                        diagnostics: v2_rt::concat(
+                                            structural_result.diagnostics.clone(),
+                                            target_result.diagnostics.clone(),
+                                        ),
+                                    })
+                                }
+                                _ => Rc::new(AliasPeelResult {
+                                    node: resolved.clone(),
+                                    diagnostics: structural_result.diagnostics.clone(),
+                                }),
+                            }
+                        } else {
+                            Rc::new(AliasPeelResult {
+                                node: resolved.clone(),
+                                diagnostics: structural_result.diagnostics.clone(),
+                            })
+                        }
                     }
                 }
+                None => Rc::new(AliasPeelResult {
+                    node: n.clone(),
+                    diagnostics: Rc::new(vec![]),
+                }),
             }
-            None => n.clone(),
         }
     }
+}
+
+pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
+    peel_nominal_alias_identity_result(n, env, module_name)
+        .node
+        .clone()
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -410,69 +449,83 @@ pub fn classify_alias(target: Rc<Node>) -> AliasKind {
 }
 
 pub fn resolve_alias_target(
-    target: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-    depth: i64,
+    mut target: Rc<Node>,
+    mut env: Rc<TypeEnv>,
+    mut module_name: String,
+    mut depth: i64,
 ) -> Rc<NodeResolveResult> {
-    if (depth > 100) {
-        return Rc::new(NodeResolveResult {
-            resolved: target.clone(),
-            diagnostics: Rc::new(vec![make_error_node(
-                Rc::new(CompilerDiagnostic::InternalError {
-                    message: v2_rt::concat(
-                        v2_rt::concat(
-                            "internal: alias resolution exceeded depth 100 for '".to_string(),
-                            authored_name(env.clone(), target.clone()),
+    loop {
+        if (depth.clone() > 100) {
+            return Rc::new(NodeResolveResult {
+                resolved: target.clone(),
+                diagnostics: Rc::new(vec![make_error_node(
+                    Rc::new(CompilerDiagnostic::InternalError {
+                        message: v2_rt::concat(
+                            v2_rt::concat(
+                                "internal: alias resolution exceeded depth 100 for '".to_string(),
+                                authored_name(env.clone(), target.clone()),
+                            ),
+                            "'".to_string(),
                         ),
-                        "'".to_string(),
-                    ),
-                    span: target.span.clone(),
-                }),
-                module_name.clone(),
-            )]),
-        });
-    }
-    match classify_alias(target.clone()) {
-        AliasKind::AliasParameterized => {
-            resolve_node_bounded(target.clone(), env.clone(), module_name, (depth + 1))
+                        span: target.span.clone(),
+                    }),
+                    module_name.clone(),
+                )]),
+            });
         }
-        AliasKind::AliasLeaf => match lookup_type_for(env.clone(), target.clone()) {
-            Some(env_target) => {
-                if (((env_target.connective.clone() == Connective::NoConnective)
-                    && ((env_target.children.clone().len() as i64) == 0))
-                    && (env_target.inferred.clone() != None))
-                {
-                    match env_target.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved {
-                            node: next_target, ..
-                        }) => resolve_alias_target(
-                            next_target.clone(),
-                            env.clone(),
-                            module_name,
-                            (depth + 1),
-                        ),
-                        _ => Rc::new(NodeResolveResult {
+        match classify_alias(target.clone()) {
+            AliasKind::AliasParameterized => {
+                break resolve_node_bounded(
+                    target.clone(),
+                    env.clone(),
+                    module_name.clone(),
+                    (depth.clone() + 1),
+                );
+            }
+            AliasKind::AliasLeaf => match lookup_type_for(env.clone(), target.clone()) {
+                Some(env_target) => {
+                    if (((env_target.connective.clone() == Connective::NoConnective)
+                        && ((env_target.children.clone().len() as i64) == 0))
+                        && (env_target.inferred.clone() != None))
+                    {
+                        match env_target.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved {
+                                node: next_target, ..
+                            }) => {
+                                let __tco_0 = next_target.clone();
+                                let __tco_1 = (depth + 1);
+                                target = __tco_0;
+                                depth = __tco_1;
+                                continue;
+                            }
+                            _ => {
+                                break Rc::new(NodeResolveResult {
+                                    resolved: env_target.clone(),
+                                    diagnostics: Rc::new(vec![]),
+                                });
+                            }
+                        }
+                    } else {
+                        break Rc::new(NodeResolveResult {
                             resolved: env_target.clone(),
                             diagnostics: Rc::new(vec![]),
-                        }),
+                        });
                     }
-                } else {
-                    Rc::new(NodeResolveResult {
-                        resolved: env_target.clone(),
-                        diagnostics: Rc::new(vec![]),
-                    })
                 }
+                None => {
+                    break Rc::new(NodeResolveResult {
+                        resolved: target.clone(),
+                        diagnostics: Rc::new(vec![]),
+                    });
+                }
+            },
+            AliasKind::AliasPassthrough => {
+                break Rc::new(NodeResolveResult {
+                    resolved: target.clone(),
+                    diagnostics: Rc::new(vec![]),
+                });
             }
-            None => Rc::new(NodeResolveResult {
-                resolved: target.clone(),
-                diagnostics: Rc::new(vec![]),
-            }),
-        },
-        AliasKind::AliasPassthrough => Rc::new(NodeResolveResult {
-            resolved: target.clone(),
-            diagnostics: Rc::new(vec![]),
-        }),
+        }
     }
 }
 
@@ -1664,8 +1717,8 @@ pub fn resolve_optional_node(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    binding_id: None,
                     ident: None,
+                    binding_id: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -3072,8 +3125,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                binding_id: None,
                                 ident: None,
+                                binding_id: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),

@@ -162,27 +162,6 @@ pub fn lookup_carrier_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<No
     }
 }
 
-pub fn lookup_carrier_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for binding in Rc::new(v2_rt::map_values(&env.carrier_bindings.clone()))
-            .iter()
-            .cloned()
-        {
-            if (binding.name.clone().as_str() == name.clone().as_str()) {
-                __result.push(binding);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(binding) => Some(binding.resolved.clone()),
-        None => None,
-    }
-}
-
 pub fn node_has_binding_id(n: Rc<Node>, binding_id: BindingId) -> bool {
     match n.binding_id.clone() {
         Some(actual) => (actual.clone() == binding_id),

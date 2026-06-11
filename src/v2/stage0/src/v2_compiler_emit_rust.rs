@@ -574,8 +574,8 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_id: None,
         ident: None,
+        binding_id: None,
     })
 }
 
@@ -689,6 +689,10 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
         && ((n.children.clone().len() as i64) == 0))
         && ((n.params.clone().len() as i64) == 0))
         && (n.connective.clone() == Connective::NoConnective))
+}
+
+pub fn rust_binding_id_opaque_newtype_bridge(name: String) -> bool {
+    (name.as_str() == "BindingId".to_string().as_str())
 }
 
 pub fn rust_diff_id_ord_carrier_shape_eligible(
@@ -6329,7 +6333,7 @@ pub fn emit_struct_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        if (name.clone().as_str() == "BindingId".to_string().as_str()) {
+        if rust_binding_id_opaque_newtype_bridge(name.clone()) {
             return v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]\n".to_string(), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " BindingId(i64);\n\n".to_string()), "impl BindingId {\n".to_string()), "    pub(crate) fn mint(value: i64) -> Self { BindingId(value) }\n".to_string()), "}".to_string());
         }
         let has_fn_fields = match v2_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
@@ -15421,7 +15425,7 @@ pub fn emit_typed_record_lit(
             }
             Some(tn) => {
                 let si = scope.type_env.clone().source_indices.clone();
-                if (tn.clone().as_str() == "BindingId".to_string().as_str()) {
+                if rust_binding_id_opaque_newtype_bridge(tn.clone()) {
                     match Rc::new({
                         let mut __result = Vec::new();
                         for f in fields.clone().iter().cloned() {
