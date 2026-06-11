@@ -34,6 +34,7 @@ import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map }
 import v4.std.diagnostic {
   Accepted,
+  None,
   Outcome,
   Rejected,
   diagnostics_singleton
