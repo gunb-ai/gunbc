@@ -5934,7 +5934,8 @@ fn carrier_closure_node_type_deps(n: Node, dep_env: TypeEnv, source_indices: Map
   let base = carrier_closure_direct_type_deps(n: n, dep_env: dep_env, source_indices: source_indices)
   let child_deps = if n.connective == Conj {
     flat_map(n.children, child =>
-      carrier_closure_node_type_deps(n: field_node_type_expr(n: child), dep_env: dep_env, source_indices: source_indices)
+      let field_type = field_node_type_expr(n: child)
+      carrier_closure_node_type_deps(n: field_type, dep_env: dep_env, source_indices: source_indices)
     )
   } else {
     flat_map(n.children, child =>
