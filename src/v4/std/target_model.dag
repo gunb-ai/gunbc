@@ -904,14 +904,6 @@ fn concrete_syntax_token_list_to_node(tokens: List<ConcreteSyntaxToken>) -> Node
   fold_list_node(xs: tokens, item_node: concrete_syntax_token_to_node)
 }
 
-fn grammar_relation_bodied_scaffold_missing_diagnostic(row: Node) -> Diagnostic {
-  Diagnostic {
-    reason: grammar_relation_bodied_scaffold_missing,
-    at: node_locus(node: row),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
 fn grammar_relation_row_attach_bodied_scaffold(
   row: Node,
   scaffold: TargetBodiedArrowStatementScaffold
@@ -930,22 +922,6 @@ fn grammar_relation_row_attach_bodied_scaffold(
   )
 }
 
-fn bodied_arrow_scaffold_from_grammar_relation_row(
-  row: Node
-) -> Outcome<TargetBodiedArrowStatementScaffold> {
-  match find_named_child(root: row, name: grammar_relation_field_bodied_scaffold) {
-    Accepted { value: scaffold_bundle, diagnostics: d } =>
-      bind_outcome(
-        o: decode_bodied_arrow_statement_scaffold_bundle(bundle: scaffold_bundle),
-        f: fn(scaffold) {
-          Accepted { value: scaffold, diagnostics: d }
-        }
-      )
-    Rejected { diagnostics: r } =>
-      Rejected { diagnostics: r }
-  }
-}
-
 fn bodied_arrow_statement_scaffold_bundle_node(
   scaffold: TargetBodiedArrowStatementScaffold
 ) -> Node {
@@ -960,16 +936,6 @@ fn bodied_arrow_statement_scaffold_bundle_node(
         target: concrete_syntax_token_list_to_node(tokens: scaffold.suffix)
       )
     ]
-  )
-}
-
-fn target_bodied_arrow_compose_statement_tokens(
-  scaffold: TargetBodiedArrowStatementScaffold,
-  body: List<ConcreteSyntaxToken>
-) -> List<ConcreteSyntaxToken> {
-  list_append(
-    left: list_append(left: scaffold.prefix, right: body),
-    right: scaffold.suffix
   )
 }
 
@@ -1122,114 +1088,6 @@ fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxTo
       )
     }
   )
-}
-
-fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List<Node>> {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if is_empty(xs: node.children) {
-        outcome_accepted(Empty)
-      } else {
-        bind_outcome(
-          o: find_named_child(root: node, name: fold_list_node_head),
-          f: fn(head) {
-            bind_outcome(
-              o: find_named_child(root: node, name: fold_list_node_tail),
-              f: fn(tail) {
-                bind_outcome(
-                  o: concrete_syntax_token_node_targets_from_list_node(node: tail),
-                  f: fn(rest) {
-                    outcome_accepted(Cons { head: head, tail: rest })
-                  }
-                )
-              }
-            )
-          }
-        )
-      }
-    _ =>
-      outcome_rejected(
-        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node)
-      )
-  }
-}
-
-fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
-  bind_outcome(
-    o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
-    f: fn(token_nodes) {
-      fold_list(
-        xs: token_nodes,
-        empty: Accepted { value: Empty, diagnostics: None },
-        cons: fn(acc, token_node) {
-          match acc {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: partial, diagnostics: ad } =>
-              bind_outcome(
-                o: concrete_syntax_token_from_wire_node(token: token_node),
-                f: fn(tok) {
-                  outcome_accepted(
-                    list_snoc_item(xs: partial, item: tok)
-                  )
-                }
-              )
-          }
-        }
-      )
-    }
-  )
-}
-
-fn target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
-  Diagnostic {
-    reason: target_bodied_arrow_scaffold_bundle_malformed,
-    at: node_locus(node: bundle),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn decode_bodied_arrow_statement_scaffold_bundle(
-  bundle: Node
-) -> Outcome<TargetBodiedArrowStatementScaffold> {
-  match bundle.kind {
-    TypeNode { connective: Conj } =>
-      bind_outcome(
-        o: projection_bundle_child(
-          bundle: bundle,
-          name: target_bodied_arrow_scaffold_field_prefix
-        ),
-        f: fn(prefix_node) {
-          bind_outcome(
-            o: concrete_syntax_token_list_from_node(list_node: prefix_node),
-            f: fn(prefix) {
-              bind_outcome(
-                o: projection_bundle_child(
-                  bundle: bundle,
-                  name: target_bodied_arrow_scaffold_field_suffix
-                ),
-                f: fn(suffix_node) {
-                  bind_outcome(
-                    o: concrete_syntax_token_list_from_node(list_node: suffix_node),
-                    f: fn(suffix) {
-                      outcome_accepted(
-                        TargetBodiedArrowStatementScaffold {
-                          prefix: prefix,
-                          suffix: suffix
-                        }
-                      )
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    _ =>
-      outcome_rejected(
-        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: bundle)
-      )
-  }
 }
 
 data target_value_projection_field_missing: Symbol = target_value_projection_field_missing
@@ -2358,7 +2216,8 @@ fn target_wave1_signature_slot_matches_declared_inhabitants(
   } else {
     match slot.kind {
       TypeNode { connective: Atom { identity: slot_atom } } =>
-        target_catalog_atom_identity_matches_inhabitant_wires(
+        slot_atom == ^dag_binding_type_int
+        || target_catalog_atom_identity_matches_inhabitant_wires(
           slot_atom: slot_atom,
           catalog_targets: catalog_targets
         )

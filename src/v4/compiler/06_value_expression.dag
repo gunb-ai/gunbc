@@ -64,8 +64,7 @@ import v4.std.target_model {
   target_value_expression_binding_ref,
   target_value_expression_primitive_apply,
   target_value_expression_to_concrete_tokens,
-  target_wave1_add_signature_matches,
-  target_wave1_signature_slot_matches_declared_inhabitants
+  target_wave1_add_signature_matches
 }
 
 data value_expr_reason_surface_op_unmapped: Symbol = value_expr_reason_surface_op_unmapped
@@ -183,75 +182,13 @@ fn value_expr_declared_inhabitants_from_target(target: TargetModel) -> Outcome<N
   )
 }
 
-fn value_expr_wave1_add_signature_slot_valid(
-  slot: Node,
-  inhabitants_root: Node
-) -> Bool {
-  match slot.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      id == ^dag_binding_type_int
-      || target_wave1_signature_slot_matches_declared_inhabitants(
-        slot: slot,
-        inhabitants_root: inhabitants_root
-      )
-    _ =>
-      target_wave1_signature_slot_matches_declared_inhabitants(
-        slot: slot,
-        inhabitants_root: inhabitants_root
-      )
-  }
-}
-
-fn value_expr_wave1_add_signature_slot_at(
-  arrow: Node,
-  index: Int,
-  inhabitants_root: Node
-) -> Bool {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
-    Present { value: slot } =>
-      value_expr_wave1_add_signature_slot_valid(
-        slot: slot,
-        inhabitants_root: inhabitants_root
-      )
-    Absent => false
-  }
-}
-
-// 🟡 gated — COMPREP wave-1 body-scope binding authority (E-9) — dissolve-on: Arrow signature
-// carries declared param bindings and body projection consumes that authority instead of a
-// literal Int,Int→Int add-shape gate; forbidden: unscoped Atom binding refs in body projection.
-fn value_expr_wave1_add_signature_matches(
-  arrow: Node,
-  inhabitants_root: Node
-) -> Bool {
-  match arrow.kind {
-    TypeNode { connective: Arrow } =>
-      value_expr_wave1_add_signature_slot_at(
-        arrow: arrow,
-        index: 0,
-        inhabitants_root: inhabitants_root
-      )
-      && value_expr_wave1_add_signature_slot_at(
-        arrow: arrow,
-        index: 1,
-        inhabitants_root: inhabitants_root
-      )
-      && value_expr_wave1_add_signature_slot_at(
-        arrow: arrow,
-        index: 2,
-        inhabitants_root: inhabitants_root
-      )
-    _ => false
-  }
-}
-
 fn value_expr_wave1_add_signature_matches_for_target(
   arrow: Node,
   target: TargetModel
 ) -> Bool {
   match value_expr_declared_inhabitants_from_target(target: target) {
     Accepted { value: inhabitants_root, diagnostics: _ } =>
-      value_expr_wave1_add_signature_matches(
+      target_wave1_add_signature_matches(
         arrow: arrow,
         inhabitants_root: inhabitants_root
       )
