@@ -5930,16 +5930,19 @@ fn carrier_closure_direct_type_deps(n: Node, dep_env: TypeEnv, source_indices: M
   concat(concat(authored_ref, decl_ref), node_type_deps(n: n, source_indices: source_indices))
 }
 
+fn carrier_closure_field_node_type_deps(child: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  carrier_closure_node_type_deps(n: field_node_type_expr(n: child), dep_env: dep_env, source_indices: source_indices)
+}
+
 fn carrier_closure_node_type_deps(n: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let base = carrier_closure_direct_type_deps(n: n, dep_env: dep_env, source_indices: source_indices)
   let child_deps = if n.connective == Conj {
-    flat_map(n.children, child =>
-      let field_type = field_node_type_expr(n: child)
-      carrier_closure_node_type_deps(n: field_type, dep_env: dep_env, source_indices: source_indices)
+    fold(n.children, init: [], f: (acc, child) =>
+      concat(acc, carrier_closure_field_node_type_deps(child: child, dep_env: dep_env, source_indices: source_indices))
     )
   } else {
-    flat_map(n.children, child =>
-      carrier_closure_node_type_deps(n: child, dep_env: dep_env, source_indices: source_indices)
+    fold(n.children, init: [], f: (acc, child) =>
+      concat(acc, carrier_closure_node_type_deps(n: child, dep_env: dep_env, source_indices: source_indices))
     )
   }
   concat(base, child_deps)

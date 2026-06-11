@@ -38,7 +38,7 @@ import v4.std.diagnostic {
 import v4.std.grammar { GrammarRoot, ParseTree }
 import v4.std.lexing { Token }
 import v4.std.logic { Bool }
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 import v4.std.node_query { find_arrow_body_child }
 import v4.std.witness { Holds }
 
