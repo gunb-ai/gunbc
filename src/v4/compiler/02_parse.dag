@@ -26,9 +26,11 @@ import v4.std.diagnostic {
   Textual,
   Unavailable,
   UserInputBoundary,
+  diagnostics_merge,
   diagnostics_singleton,
   outcome_accepted,
-  port_locus
+  port_locus,
+  rejected_with_pending
 }
 import v4.std.node {
   Atom,
@@ -50,6 +52,7 @@ import v4.std.node {
 import v4.std.occurrence_id {
   OccurrenceIdAllocator,
   alloc_occurrence_id,
+  occurrence_id_allocator_advance_to,
   occurrence_id_allocator_initial
 }
 import v4.std.provenance {
@@ -57,6 +60,7 @@ import v4.std.provenance {
   SpanIndex,
   origin_event_from_source,
   span_index_empty,
+  span_index_merge,
   span_index_record
 }
 import v4.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_insert }
@@ -86,10 +90,8 @@ import v4.std.grammar {
 }
 
 
-// PROV A-pivot wave-1 (honest scope): stamping machinery at parse walk sites — terminal
-// FromSource mint, DerivedBy on conj/repeat/wrap, per-memo-cell prov via parse_prov_initial,
-// ParseArtifact carries the root cell's SpanIndex. Does NOT establish global SpanIndex
-// coherence across memoized table composition (wave-2 — see 🟡 below).
+// PROV A-pivot wave-2: per-compile occurrence mint + off-tree SpanIndex; global coherence via
+// parse_prov_merge across memoized parse-table cells and threaded table build.
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   index: SpanIndex
@@ -330,6 +332,19 @@ fn parse_prov_initial() -> ParseProvenanceState {
   }
 }
 
+fn parse_prov_merge(
+  base: ParseProvenanceState,
+  incoming: ParseProvenanceState
+) -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: occurrence_id_allocator_advance_to(
+      alloc: base.alloc,
+      min_next: incoming.alloc.next_id
+    ),
+    index: span_index_merge(base: base.index, incoming: incoming.index)
+  }
+}
+
 fn parse_mint_from_source(
   prov: ParseProvenanceState,
   file: Symbol,
@@ -464,11 +479,6 @@ fn parse_wrap_production_captured(
   }
 }
 
-// Wave-1: on table hit, wrap uses the memo cell's inner_prov only (incoming prov discarded).
-// 🟡 gated — feature:T-8-source-provenance-wave-2 — owner: SOUNDNESS — bind #4643 —
-// dissolve-on-arrival: parse_prov_merge + span_index_merge across memo cells; thread global
-// alloc/index through parse_table_fill; forbidden: claiming composed-parse SpanIndex
-// coherence on wave-1 heads.
 fn parse_nonterminal_from_table(
   table: ParseTable,
   all_tokens: List<Token>,
@@ -491,10 +501,11 @@ fn parse_nonterminal_from_table(
             ParseExprRejected { diagnostics: diags } =>
               ParseExprRejected { diagnostics: diags }
             ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
+              let merged_prov = parse_prov_merge(base: prov, incoming: inner_prov)
               let stamped = parse_wrap_production_captured(
                 production: production,
                 captured: captured,
-                prov: inner_prov
+                prov: merged_prov
               )
               ParseExprAccepted {
                 remaining: remaining,
@@ -1070,15 +1081,18 @@ fn parse_expr(
 }
 
 
-// Wave-1: each memo cell restarts occurrence_id_allocator_initial() — ids may collide
-// across cells until wave-2 global/relabeled allocation lands (🟡 above).
+type ParseTableBuildAcc {
+  table: ParseTable
+  prov: ParseProvenanceState
+}
+
 fn parse_table_fill_production_step(
-  table: ParseTable,
+  acc: ParseTableBuildAcc,
   production: GrammarProduction,
   position: Int,
   all_tokens: List<Token>,
   root: GrammarRoot
-) -> ParseTable {
+) -> ParseTableBuildAcc {
   let key = ParsePositionKey { position: position, production: production.name }
   let suffix = tokens_at_position(all_tokens: all_tokens, position: position)
   let result = parse_expr(
@@ -1086,26 +1100,33 @@ fn parse_table_fill_production_step(
     tokens: suffix,
     all_tokens: all_tokens,
     root: root,
-    table: table,
-    prov: parse_prov_initial()
+    table: acc.table,
+    prov: acc.prov
   )
-  parse_table_insert(table: table, key: key, value: result)
+  let next_prov = match result {
+    ParseExprAccepted { prov: p, diagnostics: _, remaining: _, captured: _ } => p
+    ParseExprRejected { diagnostics: _ } => acc.prov
+  }
+  ParseTableBuildAcc {
+    table: parse_table_insert(table: acc.table, key: key, value: result),
+    prov: next_prov
+  }
 }
 
 
 // One pass: update every production entry at a fixed position.
 fn parse_table_fill_position_pass(
-  table: ParseTable,
+  acc: ParseTableBuildAcc,
   position: Int,
   all_tokens: List<Token>,
   root: GrammarRoot
-) -> ParseTable {
+) -> ParseTableBuildAcc {
   fold_list(
     xs: root.productions,
-    empty: table,
-    cons: fn(acc, prod) {
+    empty: acc,
+    cons: fn(acc2, prod) {
       parse_table_fill_production_step(
-        table: acc,
+        acc: acc2,
         production: prod,
         position: position,
         all_tokens: all_tokens,
@@ -1118,17 +1139,17 @@ fn parse_table_fill_position_pass(
 
 // |productions| passes at one position — converges same-position wrapper chains (A = B; B = "x").
 fn parse_table_fill_position(
-  table: ParseTable,
+  acc: ParseTableBuildAcc,
   position: Int,
   all_tokens: List<Token>,
   root: GrammarRoot
-) -> ParseTable {
+) -> ParseTableBuildAcc {
   fold_list(
     xs: root.productions,
-    empty: table,
-    cons: fn(acc, _) {
+    empty: acc,
+    cons: fn(acc2, _) {
       parse_table_fill_position_pass(
-        table: acc,
+        acc: acc2,
         position: position,
         all_tokens: all_tokens,
         root: root
@@ -1145,13 +1166,16 @@ fn parse_table_empty() -> ParseTable {
 
 // Outer fold over positions high→low; inner fold over productions × passes at each position.
 // Termination: (N+1) positions × K productions × K passes — structurally bounded, no fuel.
-fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTable {
+fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTableBuildAcc {
   fold_list_right(
     xs: token_position_indices(tokens: all_tokens),
-    empty: parse_table_empty(),
+    empty: ParseTableBuildAcc {
+      table: parse_table_empty(),
+      prov: parse_prov_initial()
+    },
     snoc: fn(acc, position) {
       parse_table_fill_position(
-        table: acc,
+        acc: acc,
         position: position,
         all_tokens: all_tokens,
         root: root
@@ -1170,17 +1194,18 @@ fn parse_production(
   let at = port_locus(port: parse_stage_locus_port)
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
-      let table = build_parse_table(all_tokens: tokens, root: root)
+      let built = build_parse_table(all_tokens: tokens, root: root)
       let key = ParsePositionKey { position: 0, production: production_name }
-      match parse_table_lookup(table: table, key: key) {
+      match parse_table_lookup(table: built.table, key: key) {
         Holds { value: inner } =>
           match inner {
             ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
               if is_empty(xs: remaining) {
+                let merged_prov = parse_prov_merge(base: built.prov, incoming: inner_prov)
                 let stamped = parse_wrap_production_captured(
                   production: production,
                   captured: captured,
-                  prov: inner_prov
+                  prov: merged_prov
                 )
                 Accepted {
                   value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
@@ -1202,6 +1227,25 @@ fn parse_production(
       }
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+
+// Back-compat projection — tree-only callers keep Outcome<ParseTree>; span_index via parse_production.
+fn parse_production_tree(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  production_name: Symbol
+) -> Outcome<ParseTree> {
+  match parse_production(
+    tokens: tokens,
+    validated: validated,
+    production_name: production_name
+  ) {
+    Accepted { value: artifact, diagnostics: d } =>
+      Accepted { value: artifact.tree, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
   }
 }
 
