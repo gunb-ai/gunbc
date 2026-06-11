@@ -1,38 +1,24 @@
 // src/v4/std/provenance.dag
 // Scope: source-text provenance substrate (T-8 / PROV A-pivot).
 // Status: Phase 1+2 landed — on-tree Node.span dissolved (#4604 revert); off-tree SpanIndex
-//   (OccurrenceId → OriginEvent) is the surviving authority (design-provenance-span.md §4.5).
+//   (OccurrenceId → OriginEvent) carrier + record/lookup/merge substrate
+//   (design-provenance-span.md §4.5).
 
 module v4.std.provenance
 
 import v4.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
-import v4.std.collection {
-  Absent,
-  List,
-  Map,
-  Present,
-  empty_map,
-  map_get,
-  map_insert
-}
+import v4.std.algebra { Cons, Empty, fold_list, list_snoc_item }
+import v4.std.collection { List }
 import v4.std.diagnostic {
-  Accepted,
   ByteRange,
   Diagnostic,
   ExternalContractUnknown,
   Locus,
-  Outcome,
-  Rejected,
-  Textual,
-  UserInputBoundary,
   Unavailable,
-  diagnostics_merge,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus,
-  rejected_with_pending
+  port_locus
 }
 import v4.std.node { Node, OccurrenceId, Symbol }
+import v4.std.occurrence_id { occurrence_id_eq }
 import v4.std.witness { Holds, Violates, Witness }
 
 // --- A-pivot off-tree provenance (design-provenance-span.md §4.5) ---
@@ -46,16 +32,27 @@ fn origin_event_from_source(locus: Locus) -> OriginEvent {
   FromSource { locus: locus }
 }
 
+type SpanIndexEntry {
+  id: OccurrenceId
+  event: OriginEvent
+}
+
+// List-backed index — linear lookup/merge (design-provenance-span.md §4.4 wave-1 scale).
 type SpanIndex {
-  events: Map<OccurrenceId, OriginEvent>
+  entries: List<SpanIndexEntry>
 }
 
 fn span_index_empty() -> SpanIndex {
-  SpanIndex { events: empty_map() }
+  SpanIndex { entries: Empty }
 }
 
 fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> SpanIndex {
-  SpanIndex { events: map_insert(m: index.events, key: id, value: event) }
+  SpanIndex {
+    entries: list_snoc_item(
+      xs: index.entries,
+      item: SpanIndexEntry { id: id, event: event }
+    )
+  }
 }
 
 data span_index_occurrence_absent: Symbol = span_index_occurrence_absent
@@ -68,14 +65,60 @@ fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
   }
 }
 
-fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
-  match map_get(m: index.events, key: id) {
-    Accepted { value: opt, diagnostics: _ } =>
-      match opt {
-        Present { value: event } => Holds { value: event }
-        Absent => Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
+fn span_index_lookup_entries(
+  entries: List<SpanIndexEntry>,
+  id: OccurrenceId
+) -> Witness<OriginEvent> {
+  match entries {
+    Empty => Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
+    Cons { head: head, tail: rest } =>
+      if occurrence_id_eq(left: head.id, right: id) {
+        Holds { value: head.event }
+      } else {
+        span_index_lookup_entries(entries: rest, id: id)
       }
-    Rejected { diagnostics: d } => Violates { diagnostic: d.head }
+  }
+}
+
+fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
+  span_index_lookup_entries(entries: index.entries, id: id)
+}
+
+fn span_index_entries_has_id(entries: List<SpanIndexEntry>, id: OccurrenceId) -> Bool {
+  fold_list(
+    xs: entries,
+    empty: false,
+    cons: fn(found, entry) {
+      if found {
+        true
+      } else {
+        occurrence_id_eq(left: entry.id, right: id)
+      }
+    }
+  )
+}
+
+fn span_index_merge_entries(
+  base: List<SpanIndexEntry>,
+  incoming: List<SpanIndexEntry>
+) -> List<SpanIndexEntry> {
+  fold_list(
+    xs: incoming,
+    empty: base,
+    cons: fn(acc, entry) {
+      if span_index_entries_has_id(entries: acc, id: entry.id) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: entry)
+      }
+    }
+  )
+}
+
+// Wave-2: compose memoized parse-cell indices (left wins on id collision).
+fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
+  SpanIndex {
+    entries: span_index_merge_entries(base: base.entries, incoming: incoming.entries)
   }
 }
 
