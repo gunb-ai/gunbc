@@ -5959,10 +5959,9 @@ fn carrier_closure_node_type_deps(n: Node, dep_env: TypeEnv, source_indices: Map
   let ctx = CarrierClosureDepsContext { n: n, dep_env: dep_env, source_indices: source_indices }
   let conj_deps = carrier_closure_node_conj_child_deps(ctx: ctx)
   let plain_deps = carrier_closure_node_plain_child_deps(ctx: ctx)
-  let child_deps = if n.connective == Conj {
-    conj_deps
-  } else {
-    plain_deps
+  let child_deps = match n.connective {
+    Conj => conj_deps
+    _ => plain_deps
   }
   concat(base, child_deps)
 }

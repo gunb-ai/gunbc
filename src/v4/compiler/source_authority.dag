@@ -41,6 +41,10 @@ import v4.std.witness { Holds, Violates, Witness }
 
 type DagSource = String
 
+fn target_source_to_string(source: TargetSource) -> String {
+  source
+}
+
 type DagSourceAst {
   tree: ParseTree
 }
@@ -440,7 +444,7 @@ fn source_authority_round_trip_with_model(
                 f: fn(canonical_source_again) {
                   bind_outcome(
                     o: parse_dag_source_ast_with_model(
-                      source: canonical_source,
+                      source: target_source_to_string(source: canonical_source),
                       compilation_unit: source_authority_port,
                       lm: lm
                     ),
@@ -451,8 +455,8 @@ fn source_authority_round_trip_with_model(
                           bind_outcome(
                             o: canonical_dag_source_emission_law_from_parts(
                               original_ast: original_ast,
-                              canonical_source_first: canonical_source,
-                              canonical_source_second: canonical_source_again,
+                              canonical_source_first: target_source_to_string(source: canonical_source),
+                              canonical_source_second: target_source_to_string(source: canonical_source_again),
                               reparsed_ast: reparsed_ast
                             ),
                             f: fn(canonical_source_law_witness) {
@@ -462,7 +466,7 @@ fn source_authority_round_trip_with_model(
                                 Holds { value: canonical_source_law } =>
                                   source_authority_law_from_parts(
                                     original_ast: original_ast,
-                                    canonical_source: canonical_source,
+                                    canonical_source: target_source_to_string(source: canonical_source),
                                     reparsed_ast: reparsed_ast,
                                     original_ir: original_ir,
                                     reparsed_ir: reparsed_ir,
@@ -512,12 +516,12 @@ fn canonical_dag_source_parse_print_law(
                 ),
                 f: fn(canonical_source_again) {
                   bind_outcome(
-                    o: parse_dag_source_ast(source: canonical_source),
+                    o: parse_dag_source_ast(source: target_source_to_string(source: canonical_source)),
                     f: fn(reparsed_ast) {
                       canonical_dag_source_emission_law_from_parts(
                         original_ast: original_ast,
-                        canonical_source_first: canonical_source,
-                        canonical_source_second: canonical_source_again,
+                        canonical_source_first: target_source_to_string(source: canonical_source),
+                        canonical_source_second: target_source_to_string(source: canonical_source_again),
                         reparsed_ast: reparsed_ast
                       )
                     }
