@@ -167,9 +167,9 @@ fn lex_rule_pattern(rule: LexRule) -> LexPattern {
 // No per-variant hand arms remain; lex_match_pattern deleted (§1.8 Class-B dissolution).
 // C1-C4 fail-safe arms embedded in algebra handlers; parity verified by BoolWitnessClaim (C6).
 fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
-  let thunk = fold_lex_pattern<LexMatchThunk>(
+  let thunk = fold_lex_pattern(
     pattern: lex_rule_pattern(rule: rule),
-    algebra: LexPatternFold<LexMatchThunk> {
+    algebra: LexPatternFold {
       empty: LexMatchThunk { apply: fn(s) {
         LexMatchAccepted { remaining: s, lexeme: Empty }
       } },

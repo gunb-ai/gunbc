@@ -129,25 +129,25 @@ fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
       algebra.char_class(class)
     SequencePattern { left: left, right: right } =>
       algebra.sequence(
-        fold_lex_pattern<R>(pattern: left, algebra: algebra),
-        fold_lex_pattern<R>(pattern: right, algebra: algebra)
+        fold_lex_pattern(pattern: left, algebra: algebra),
+        fold_lex_pattern(pattern: right, algebra: algebra)
       )
     ChoicePattern { left: left, right: right } =>
       algebra.choice(
-        fold_lex_pattern<R>(pattern: left, algebra: algebra),
-        fold_lex_pattern<R>(pattern: right, algebra: algebra)
+        fold_lex_pattern(pattern: left, algebra: algebra),
+        fold_lex_pattern(pattern: right, algebra: algebra)
       )
     OptionalPattern { element: element } =>
-      algebra.optional(fold_lex_pattern<R>(pattern: element, algebra: algebra))
+      algebra.optional(fold_lex_pattern(pattern: element, algebra: algebra))
     RepeatPattern { element: element } =>
-      algebra.repeat(fold_lex_pattern<R>(pattern: element, algebra: algebra))
+      algebra.repeat(fold_lex_pattern(pattern: element, algebra: algebra))
     OneOrMorePattern { element: element } =>
-      algebra.one_or_more(fold_lex_pattern<R>(pattern: element, algebra: algebra))
+      algebra.one_or_more(fold_lex_pattern(pattern: element, algebra: algebra))
     DelimitedPattern { open: open, body: body, close: close } =>
       algebra.delimited(
-        fold_lex_pattern<R>(pattern: open, algebra: algebra),
-        fold_lex_pattern<R>(pattern: body, algebra: algebra),
-        fold_lex_pattern<R>(pattern: close, algebra: algebra)
+        fold_lex_pattern(pattern: open, algebra: algebra),
+        fold_lex_pattern(pattern: body, algebra: algebra),
+        fold_lex_pattern(pattern: close, algebra: algebra)
       )
   }
 }
