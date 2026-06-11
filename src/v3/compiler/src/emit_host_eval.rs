@@ -288,16 +288,27 @@ pub fn try_dispatch_runtime_value_signed_i32_le_as_int(
     let parsed = match emit_host_runner::runtime_value_parse_signed_i32_le(&bytes) {
         Ok(n) => n,
         Err(_) => {
-            return Some(Ok(rejected_outcome_variant(
-                dag,
-                non_empty_diagnostics_singleton(dag, emit_host_parse_failure_diagnostic(dag)?)?,
-            )?));
+            let diagnostic = match emit_host_parse_failure_diagnostic(dag) {
+                Ok(v) => v,
+                Err(err) => return Some(Err(err)),
+            };
+            let diagnostics = match non_empty_diagnostics_singleton(dag, diagnostic) {
+                Ok(v) => v,
+                Err(err) => return Some(Err(err)),
+            };
+            return match rejected_outcome_variant(dag, diagnostics) {
+                Ok(v) => Some(Ok(v)),
+                Err(err) => Some(Err(err)),
+            };
         }
     };
-    Some(Ok(accepted_variant(
+    match accepted_variant(
         dag,
         Value::LiteralValue(LiteralBits::Int(parsed.to_string())),
-    )?))
+    ) {
+        Ok(v) => Some(Ok(v)),
+        Err(err) => Some(Err(err)),
+    }
 }
 
 fn is_run_host_process_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
