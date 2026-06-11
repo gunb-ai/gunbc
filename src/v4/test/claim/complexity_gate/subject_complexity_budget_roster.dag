@@ -10,8 +10,9 @@
 //        Wave-1 today: source-bridged add only (comprep_wave1_add_subject_producer.dag).
 //        02_parse compiler-stage bodies arrive with COMPREP waves 2+ / self-host breadth;
 //        until a producer lands, do not add name-keyed placeholder rows — new rows attach
-//        when the §2 subject-producer composition exists. Unrated producers use
-//        unknown_complexity() (ClassUnknown fail-closed top), never omission.
+//        when the §2 subject-producer composition exists. Rate every producer before the
+//        row lands (operator 2026-06-11): declared UnknownComplexity is a gate ERROR,
+//        never omission and never a silent pass via lattice top.
 // Consumer: gate rows import named rows from this roster (not inline budgets).
 // Status: roster authority; S2 family gate folds complexity_subject_budget_rows.
 // Anchor: docs/design-lens-subject-supply.md §5 + v4.lens.complexity ComplexityBound.
