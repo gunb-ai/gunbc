@@ -265,7 +265,7 @@ fn produce_mvp1_add_arrow_signature_from_resolved(resolved_root: Node) -> Outcom
                     && body_producer_node_is_ident_atom(node: domain_y)
                     && body_producer_node_is_ident_atom(node: codomain) {
                     outcome_accepted(
-                      value: node_unanchored(
+                      value: node_synthetic(
                         kind: TypeNode { connective: Arrow },
                         children: [
                           Edge {
@@ -340,7 +340,7 @@ fn produce_mvp1_add_binary_body_from_resolved(resolved_root: Node) -> Outcome<No
                     && body_producer_node_is_ident_atom(node: left_operand)
                     && body_producer_node_is_ident_atom(node: right_operand) {
                     outcome_accepted(
-                      value: node_unanchored(
+                      value: node_synthetic(
                         kind: ComputationNode { behavior: Transform },
                         children: [
                           Edge {
