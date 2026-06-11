@@ -4,9 +4,10 @@
 
 module v4.test.claim.manual.comprep_eval_by_execution
 
-import v4.compiler.body_producer {
-  produce_mvp1_add_arrow_with_body,
-  produce_mvp1_add_arrow_with_body_from_resolved
+import v4.compiler.body_producer { produce_mvp1_add_arrow_with_body }
+import v4.test.claim.complexity_gate.comprep_wave1_add_subject_producer {
+  comprep_source_bridged_add_arrow_with_body,
+  comprep_wave1_add_parse_tokens
 }
 import v4.compiler.eval {
   EvalContext,
@@ -21,19 +22,13 @@ import v4.compiler.eval {
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.normalize { normalize }
-import v4.compiler.parse {
-  grammar_validate_for_parse,
-  parse_production_tree,
-  parse_stage_locus_port
-}
 import v4.compiler.resolve { resolve }
 import v4.compiler.tokenize { tokenize }
 import v4.extdeps.languages.dag {
-  dag_grammar_production_mvp1_fn_add,
   dag_language_model_wave1,
   dag_mvp1_source_text
 }
-import v4.std.collection { Absent, List, Map, Present, Set, map_insert }
+import v4.std.collection { Absent, List, Map, Present, map_insert }
 import v4.std.cardinality { termination_proof_witness_for_node }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.diagnostic {
@@ -48,10 +43,8 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   node_locus,
   outcome_accepted,
-  outcome_rejected,
-  port_locus
+  outcome_rejected
 }
-import v4.std.grammar { GrammarRoot, ParseTree }
 import v4.std.lexing { Token }
 import v4.std.machine { Byte }
 import v4.std.node {
@@ -274,6 +267,7 @@ fn comprep_eval_context() -> EvalContext {
   )
 }
 
+<<<<<<< HEAD
 fn comprep_source_resolved_add_arrow() -> Outcome<Node> {
   let lm = dag_language_model_wave1()
   bind_outcome(
@@ -303,13 +297,15 @@ fn comprep_source_bridged_add_arrow_with_body() -> Outcome<Node> {
   )
 }
 
+=======
+>>>>>>> origin/main
 fn comprep_source_ingested_add_infers() -> Outcome<InferredTree> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(text: dag_mvp1_source_text, file: ^comprep_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
-        o: comprep_eval_parse_mvp1_add_tokens(tokens: tokens.tokens),
+        o: comprep_wave1_add_parse_tokens(tokens: tokens.tokens),
         f: fn(parsed) {
           bind_outcome(
             o: normalize(parse_tree: comprep_eval_parse_tree_to_node(tree: parsed)),
@@ -338,31 +334,6 @@ fn comprep_eval_tokenize_source() -> Outcome<List<Token>> {
   )
 }
 
-fn comprep_eval_mvp1_add_parse_root() -> GrammarRoot {
-  GrammarRoot {
-    start: ^dag_production_mvp1_fn_add,
-    productions: [dag_grammar_production_mvp1_fn_add()],
-    sync_tokens: Set {
-      member: fn(_) {
-        false
-      }
-    }
-  }
-}
-
-fn comprep_eval_parse_mvp1_add_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
-  let root = comprep_eval_mvp1_add_parse_root()
-  match grammar_validate_for_parse(root: root, at: port_locus(port: parse_stage_locus_port)) {
-    Accepted { value: validated, diagnostics: _ } =>
-      parse_production_tree(
-        tokens: tokens,
-        validated: validated,
-        production_name: ^dag_production_mvp1_fn_add
-      )
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
 fn comprep_eval_tokenize_holds() -> Bool {
   match comprep_eval_tokenize_source() {
     Accepted { value: _, diagnostics: _ } => true
@@ -373,7 +344,7 @@ fn comprep_eval_tokenize_holds() -> Bool {
 fn comprep_eval_parse_holds() -> Bool {
   match comprep_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match comprep_eval_parse_mvp1_add_tokens(tokens: tokens) {
+      match comprep_wave1_add_parse_tokens(tokens: tokens) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -384,7 +355,7 @@ fn comprep_eval_parse_holds() -> Bool {
 fn comprep_eval_normalize_holds() -> Bool {
   match comprep_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match comprep_eval_parse_mvp1_add_tokens(tokens: tokens) {
+      match comprep_wave1_add_parse_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: comprep_eval_parse_tree_to_node(tree: parsed)) {
             Accepted { value: _, diagnostics: _ } => true
@@ -400,7 +371,7 @@ fn comprep_eval_resolve_holds() -> Bool {
   let lm = dag_language_model_wave1()
   match comprep_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match comprep_eval_parse_mvp1_add_tokens(tokens: tokens) {
+      match comprep_wave1_add_parse_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: comprep_eval_parse_tree_to_node(tree: parsed)) {
             Accepted { value: normalized, diagnostics: _ } =>
