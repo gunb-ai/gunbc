@@ -97,13 +97,13 @@ import v4.std.node_query { find_named_child, node_labeled_child_edges, node_posi
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
 
-type TargetModelBundle {
+type TargetModel {
   bundle: Node
   lex: LexRules
   binding_spellings: Map<Symbol, String>
   authority_source_text: String
 }
-type TargetModel = TargetModelBundle
+type TargetModelBundle = TargetModel
 
 data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
 data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
@@ -2608,7 +2608,7 @@ fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge>
   }
 }
 
-fn target_model_bundle_core(host: TargetModelBundle) -> Node {
+fn target_model_bundle_core(host: TargetModel) -> Node {
   match host.bundle.kind {
     TypeNode { connective: Conj } =>
       Node {
@@ -2633,7 +2633,7 @@ fn target_model_bundle_core(host: TargetModelBundle) -> Node {
 // content_hash disjunction. Until then, rows encode with host bundle minus
 // atom_realizations (including collection_realization when on the live host); forbidden: a third bundle
 // shape or widening the disjunction without modeling escalation.
-fn target_atom_realization_bundle_matches_host(row_bundle: Node, host: TargetModelBundle) -> Bool {
+fn target_atom_realization_bundle_matches_host(row_bundle: Node, host: TargetModel) -> Bool {
   content_hash(n: row_bundle) == content_hash(n: host.bundle)
   || content_hash(n: row_bundle) == content_hash(n: target_model_bundle_core(host: host))
 }
@@ -5635,7 +5635,7 @@ fn type_expr_projection_bundle_shape_for_connective(
 
 // SG-2 fold — fail-close when caller projection row disagrees with bundle authority (P2/P3).
 fn type_expr_projection_row_closedness_from_target(
-  target: TargetModelBundle,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection,
   connective: Connective
 ) -> Outcome<Node> {
