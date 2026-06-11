@@ -1384,11 +1384,7 @@ pub fn direct_call_target_matches_alias_target_node(
     alias_target_node: Rc<Node>,
 ) -> bool {
     let alias_target_name = authored_name_at(env.source_indices.clone(), alias_target_node.clone());
-    let canonical_alias_target = match lookup_type_by_name(env.clone(), alias_target_name.clone()) {
-        Some(resolved_target) => resolved_target.clone(),
-        None => alias_target_node.clone(),
-    };
-    match canonical_alias_target.binding_id.clone() {
+    match alias_target_node.binding_id.clone() {
         Some(alias_target_binding_id) => match target_node.binding_id.clone() {
             Some(target_binding_id) => target_binding_id.clone() == alias_target_binding_id.clone(),
             None => false,
@@ -1407,30 +1403,42 @@ pub fn direct_call_carrier_transparent_alias_to(
 ) -> bool {
     match alias_node.binding_id.clone() {
         Some(alias_binding_id) => {
-            let alias_name = authored_name_at(env.source_indices.clone(), alias_node.clone());
-            let target_name = authored_name_at(env.source_indices.clone(), target_node.clone());
-            if alias_name.as_str() == "TargetModel" || target_name.as_str() == "TargetModelBundle" {
-                eprintln!(
-                    "DBG target_alias alias={} target={} alias_bid={:?} target_bid={:?} has_carrier={}",
-                    alias_name,
-                    target_name,
-                    alias_node.binding_id,
-                    target_node.binding_id,
-                    v2_rt::map_get(&env.carrier_bindings.clone(), alias_binding_id.clone()).is_some()
-                );
-            }
             match v2_rt::map_get(&env.carrier_bindings.clone(), alias_binding_id.clone()) {
                 Some(carrier) => match carrier.resolved.binding_id.clone() {
-                    Some(carrier_target_binding_id) => {
-                        ((carrier_target_binding_id.clone() != alias_binding_id.clone())
-                            && match target_node.binding_id.clone() {
-                                Some(target_binding_id) => {
-                                    target_binding_id.clone() == carrier_target_binding_id.clone()
-                                }
-                                None => false,
-                            })
+                    _ => {
+                        let carrier_name =
+                            authored_name_at(env.source_indices.clone(), carrier.resolved.clone());
+                        let alias_decl_name = match v2_rt::map_get(
+                            &env.decl_registry.clone(),
+                            alias_binding_id.clone(),
+                        ) {
+                            Some(decl) => decl.name.clone(),
+                            None => carrier.name.clone(),
+                        };
+                        let transparent_alias_carrier =
+                            alias_decl_name.clone().as_str() != carrier_name.clone().as_str();
+                        let carrier_target = if transparent_alias_carrier {
+                            match lookup_type_by_name(env.clone(), carrier_name.clone()) {
+                                Some(resolved_target) => resolved_target.clone(),
+                                None => carrier.resolved.clone(),
+                            }
+                        } else {
+                            carrier.resolved.clone()
+                        };
+                        match carrier_target.binding_id.clone() {
+                            Some(carrier_target_binding_id) => {
+                                ((carrier_target_binding_id.clone() != alias_binding_id.clone())
+                                    && match target_node.binding_id.clone() {
+                                        Some(target_binding_id) => {
+                                            target_binding_id.clone()
+                                                == carrier_target_binding_id.clone()
+                                        }
+                                        None => false,
+                                    })
+                            }
+                            None => false,
+                        }
                     }
-                    None => false,
                 },
                 None => false,
             }
