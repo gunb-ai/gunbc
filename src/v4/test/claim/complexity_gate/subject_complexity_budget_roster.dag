@@ -2,6 +2,10 @@
 // Scope: complexity-gate S1b — declared ComplexityBound budget rows (should-be side).
 //        Each row pairs a static subject-producer fn (-> Outcome<Node>) with its declared
 //        ComplexityBound. No function-name strings (runtime name-keyed lookup banned).
+// Budget semantics: when subject_producer yields an Arrow-with-body, the declared budget
+//        bounds the complexity of the arrow's BODY (gate rows extract via the canonical
+//        arrow_body_target_lookup accessor — std/node.dag — before cost_lens / complexity_lens).
+//        Do not declare a bound thinking it covers a whole-arrow fold.
 // Coverage: subject reach = COMPREP grammar coverage (design-lens-subject-supply.md §3).
 //        Wave-1 today: source-bridged add only (comprep_eval_by_execution.dag:293).
 //        02_parse compiler-stage bodies arrive with COMPREP waves 2+ / self-host breadth;
