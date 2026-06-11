@@ -8,6 +8,14 @@ default = []
 text_lookup_work_counter = []
 
 [dependencies]
+# Persistent value carriers (ctrl#1533 phase 2). im-rc is the Rc-backed
+# (thread-confined, matching the Value Rc-discipline) crate providing BOTH
+# carriers v4.std.value_carrier declares: HashMap is a hash array mapped trie
+# (map_carrier: ^hash_array_mapped_trie) and Vector is a relaxed radix
+# balanced tree (list_carrier: ^relaxed_radix_balanced_tree, O(log n)
+# concatenation). rpds was the considered alternative; rejected because its
+# Vector has no concatenation, so it cannot realize the declared list carrier.
+im-rc = "15.1"
 stacker = "0.1"
 clap = { version = "4", features = ["derive"] }
 lazy_static = "1"

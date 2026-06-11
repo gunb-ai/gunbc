@@ -117,8 +117,8 @@ fn read_xs() -> List<Int> { xs }
     let second = v2_interpreter::run_in_context(&ctx2, "read_xs", false).expect("second context");
     match (&first, &second) {
         (Value::List(a), Value::List(b)) => {
-            assert_eq!(a.as_slice(), &[Value::Int(7)]);
-            assert_eq!(b.as_slice(), &[Value::Int(7)]);
+            assert_eq!(a.iter().cloned().collect::<Vec<_>>(), vec![Value::Int(7)]);
+            assert_eq!(b.iter().cloned().collect::<Vec<_>>(), vec![Value::Int(7)]);
         }
         other => panic!("expected two Lists, got {other:?}"),
     }

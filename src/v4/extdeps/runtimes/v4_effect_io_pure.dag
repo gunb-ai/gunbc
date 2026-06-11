@@ -54,11 +54,18 @@ type EffectIoResourceBackend
   | HttpResourceBackend
   | StorageResourceBackend
 
+// 🟡 gated — illegal-states interim (Practice 2) — feature:effect-io-backend-parameterized-store —
+// consumer: effect_io_pure_backends_match — locator carries backend tag alongside store.backend;
+// mismatch unrepresentable once fixture store is parameterized by backend. dissolve-on-arrival:
+// backend-indexed store type or eq/tag substrate in std/; forbidden: silent dual-tag drift.
 type EffectIoResourceLocator {
   backend: EffectIoResourceBackend
   identity: Symbol
 }
 
+// 🟡 gated — illegal-states interim (Practice 2) — feature:effect-io-backend-parameterized-store —
+// consumer: effect_io_pure_backends_match — store carries backend tag alongside locator.backend;
+// dissolve-on-arrival: backend-indexed store type makes cross-backend lookup unrepresentable.
 type EffectIoFixtureStore {
   backend: EffectIoResourceBackend
   entries: Map<Symbol, RuntimeValue>
@@ -377,7 +384,8 @@ fn effect_io_pure_apply_write(
   }
 }
 
-// Orchestrate ReadResource→WriteResource round-trip through EffectHandlerBinding dispatch.
+// Wave-2 gate: ReadResource→WriteResource round-trip through EffectHandlerBinding dispatch for
+// one default locator per backend (binding dispatch + Q-R2 receipt replay; not multi-resource).
 fn effect_io_pure_read_write_roundtrip(
   backend: EffectIoResourceBackend,
   locator: EffectIoResourceLocator,

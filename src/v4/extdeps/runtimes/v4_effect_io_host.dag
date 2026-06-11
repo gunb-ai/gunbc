@@ -34,6 +34,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.network { UriAuthority, UriHost, rfc3986_host_abnf }
+import v4.std.node { Symbol }
 import v4.std.runtime {
   EffectHandler,
   EffectHandlerBinding,

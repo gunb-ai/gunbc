@@ -57,7 +57,8 @@ import v4.std.find_witness {
   PreservationPredicate,
   UniqueOnly,
   find_witness,
-  preservation_rule_exact_structural_equality_zip_fold
+  preservation_rule_exact_structural_equality_zip_fold,
+  preservation_rule_type_expr_projection_discipline_zip_fold
 }
 import v4.std.node {
   Arrow,
@@ -84,6 +85,7 @@ import v4.std.node {
   content_hash,
   fold_node,
   name_occurrences,
+  node_rebuild,
   SyntheticOccurrence
 }
 import v4.std.witness { StructuralPropertyWitness }
@@ -91,7 +93,8 @@ import v4.std.type_expr_projection_row_schema {
   target_type_expr_discipline_labeled,
   target_type_expr_discipline_no_edges,
   target_type_expr_discipline_positional,
-  target_type_expr_field_child_slot_discipline
+  target_type_expr_field_child_slot_discipline,
+  target_type_expr_field_child_slots
 }
 import v4.std.node_query { find_named_child, node_labeled_child_edges, node_positional_child_targets }
 import v4.std.logic { Bool }
@@ -948,6 +951,148 @@ fn bodied_arrow_statement_scaffold_bundle_node(
       )
     ]
   )
+}
+
+fn grammar_relation_bodied_scaffold_missing_diagnostic(row: Node) -> Diagnostic {
+  Diagnostic {
+    reason: grammar_relation_bodied_scaffold_missing,
+    at: node_locus(node: row),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_bodied_arrow_scaffold_bundle_malformed,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bodied_arrow_scaffold_from_grammar_relation_row(
+  row: Node
+) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  match find_named_child(root: row, name: grammar_relation_field_bodied_scaffold) {
+    Accepted { value: scaffold_bundle, diagnostics: d } =>
+      bind_outcome(
+        o: decode_bodied_arrow_statement_scaffold_bundle(bundle: scaffold_bundle),
+        f: fn(scaffold) {
+          Accepted { value: scaffold, diagnostics: d }
+        }
+      )
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+
+fn target_bodied_arrow_compose_statement_tokens(
+  scaffold: TargetBodiedArrowStatementScaffold,
+  body: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(left: scaffold.prefix, right: body),
+    right: scaffold.suffix
+  )
+}
+
+fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List<Node>> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if is_empty(xs: node.children) {
+        outcome_accepted(Empty)
+      } else {
+        bind_outcome(
+          o: find_named_child(root: node, name: fold_list_node_head),
+          f: fn(head) {
+            bind_outcome(
+              o: find_named_child(root: node, name: fold_list_node_tail),
+              f: fn(tail) {
+                bind_outcome(
+                  o: concrete_syntax_token_node_targets_from_list_node(node: tail),
+                  f: fn(rest) {
+                    outcome_accepted(Cons { head: head, tail: rest })
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node)
+      )
+  }
+}
+
+fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
+    f: fn(token_nodes) {
+      fold_list(
+        xs: token_nodes,
+        empty: Accepted { value: Empty, diagnostics: None },
+        cons: fn(acc, token_node) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: partial, diagnostics: ad } =>
+              bind_outcome(
+                o: concrete_syntax_token_from_wire_node(token: token_node),
+                f: fn(tok) {
+                  outcome_accepted(
+                    list_snoc_item(xs: partial, item: tok)
+                  )
+                }
+              )
+          }
+        }
+      )
+    }
+  )
+}
+
+fn decode_bodied_arrow_statement_scaffold_bundle(
+  bundle: Node
+) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  match bundle.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: projection_bundle_child(
+          bundle: bundle,
+          name: target_bodied_arrow_scaffold_field_prefix
+        ),
+        f: fn(prefix_node) {
+          bind_outcome(
+            o: concrete_syntax_token_list_from_node(list_node: prefix_node),
+            f: fn(prefix) {
+              bind_outcome(
+                o: projection_bundle_child(
+                  bundle: bundle,
+                  name: target_bodied_arrow_scaffold_field_suffix
+                ),
+                f: fn(suffix_node) {
+                  bind_outcome(
+                    o: concrete_syntax_token_list_from_node(list_node: suffix_node),
+                    f: fn(suffix) {
+                      outcome_accepted(
+                        TargetBodiedArrowStatementScaffold {
+                          prefix: prefix,
+                          suffix: suffix
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: bundle)
+      )
+  }
 }
 
 fn wire_conj_named_binding_atom(parent: Node) -> Outcome<Symbol> {
@@ -5426,8 +5571,8 @@ fn type_expr_projection_row_shape_envelope(
   envelope: Node,
   connective: Connective
 ) -> Node {
-  Node {
-    kind: envelope.kind,
+  node_rebuild(
+    n: envelope,
     children: list_append(
       left: envelope.children,
       right: Cons {
@@ -5437,9 +5582,28 @@ fn type_expr_projection_row_shape_envelope(
         ),
         tail: Empty
       }
-    ),
-    occurrence_id: envelope.occurrence_id
-  }
+    )
+  )
+}
+
+// SG-2 fold — substrate child slots as named coordinate (substrate TypeNode authority; not flat Conj mix).
+fn type_expr_projection_graft_child_slots_coordinate(
+  envelope: Node,
+  facts: Node
+) -> Node {
+  node_rebuild(
+    n: envelope,
+    children: list_append(
+      left: envelope.children,
+      right: Cons {
+        head: target_model_named_edge(
+          name: target_type_expr_field_child_slots,
+          target: facts
+        ),
+        tail: Empty
+      }
+    )
+  )
 }
 
 // P2 row-shape authority — consumed by *type_expression_projection_bundle_node in language targets.
@@ -5567,6 +5731,59 @@ fn type_expr_projection_candidate_for_connective(
   )
 }
 
+// SG-2 fold — anchored substrate TypeNode with projected positional children (checkpoint 3).
+// Labeled Conj/Disj substrates keep node.children; positional connectives pass projected list.
+fn type_expr_projection_substrate_facts(
+  node: Node,
+  projected_positional: List<Node>
+) -> Node {
+  match node.kind {
+    TypeNode { connective: Conj } => node
+    TypeNode { connective: Disj } => node
+    _ =>
+      node_rebuild(
+        n: node,
+        children: fold_list(
+          xs: projected_positional,
+          empty: Empty,
+          cons: fn(acc, child) {
+            list_snoc_item(
+              xs: acc,
+              item: Edge { label: Positional, target: child }
+            )
+          }
+        )
+      )
+  }
+}
+
+// SG-2 fold — graft substrate child slots into row envelope (discipline + delimiter metadata).
+fn type_expr_projection_graft_substrate_in_row_slot(
+  projection: TargetTypeExpressionProjection,
+  connective: Connective,
+  node: Node,
+  projected_positional: List<Node>
+) -> Outcome<Node> {
+  let facts = type_expr_projection_substrate_facts(
+    node: node,
+    projected_positional: projected_positional
+  )
+  bind_outcome(
+    o: type_expr_projection_shape_for_connective(
+      projection: projection,
+      connective: connective
+    ),
+    f: fn(envelope) {
+      outcome_accepted(
+        type_expr_projection_graft_child_slots_coordinate(
+          envelope: envelope,
+          facts: facts
+        )
+      )
+    }
+  )
+}
+
 fn type_expr_projection_row_witness_gate_with_rule(
   source_facts: Node,
   projection: TargetTypeExpressionProjection,
@@ -5610,7 +5827,21 @@ fn type_expr_projection_row_shape_witness_gate(
   )
 }
 
-// SG-2 fold — connective → step_algebra row slot field (uniform key for bundle decode).
+// SG-2 fold — grafted substrate witness gate (requires child_slots coordinate; discipline zip-fold).
+fn type_expr_projection_graft_witness_gate(
+  source_facts: Node,
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<Node> {
+  type_expr_projection_row_witness_gate_with_rule(
+    source_facts: source_facts,
+    projection: projection,
+    connective: connective,
+    preservation_rule: preservation_rule_type_expr_projection_discipline_zip_fold
+  )
+}
+
+// SG-2 fold — connective → step_algebra row slot field (uniform key for graft + bundle decode).
 fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symbol {
   match connective {
     Atom { identity: _ } => target_type_expr_field_atom
