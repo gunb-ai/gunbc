@@ -19,6 +19,8 @@ Disposition key: `algebra-row` | `deleted-as-traversal` | `deleted-as-fuel` | `m
 | target_serialize_source_from_model | kept+why | emit consumer surface; body repoints to grammar-inverse fold |
 | coerce_grounded_node | kept+why | coercion entry via std/coercion.dag |
 
+---
+
 ## B. translate_algebra spine (new + repoint targets)
 
 | fn | disposition | notes |
@@ -45,8 +47,6 @@ Disposition key: `algebra-row` | `deleted-as-traversal` | `deleted-as-fuel` | `m
 
 ## D. project_type_expression_* (target: ≤3 survivors)
 
-| fn | disposition | connective | notes |
-|---|---|---|---|
 | fn | disposition | connective | notes |
 |---|---|---|---|
 | project_type_expression_node | kept+why | — | **sole repoint:** `fold_node(node, translate_algebra(target))` |
@@ -121,7 +121,6 @@ Disposition key: `algebra-row` | `deleted-as-traversal` | `deleted-as-fuel` | `m
 
 | fn | disposition | notes |
 |---|---|---|
-| target_serialize_relation_row_from_model_bounded | deleted-as-fuel | see F |
 | target_serialize_bodied_arrow_from_model | algebra-row | bodied Arrow serialize; dissolve d) |
 | grammar_relation_row_for_emitted | kept+why | find row in rules bundle |
 | grammar_relation_row_emitted | kept+why | row field accessor |
