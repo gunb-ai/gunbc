@@ -55,7 +55,9 @@ type DagSemanticIr {
 type DagSourceReadWitness {
   source: DagSource
   artifact: Artifact
-  // R3 gate #31: Symbol compilation-unit authority stamped into Node.span via tokenize.
+  // R3 gate #31: Symbol compilation-unit authority. PROV A-pivot — source anchoring is off-tree:
+  // parse mints a per-occurrence id and records FromSource { locus } into the SpanIndex
+  // (v4.std.provenance), keyed by OccurrenceId; Node carries occurrence_id, not a span.
   compilation_unit: Symbol
 }
 

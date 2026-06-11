@@ -934,33 +934,26 @@ fn parse_expr_run_walk(
         prod_name: prod_name,
         prov: prov
       )
-<<<<<<< HEAD
-    Sequence { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
-        ParseExprRejected { diagnostics: diags } =>
-          ParseExprRejected { diagnostics: diags }
-        ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1 } =>
-          match parse_expr(expr: right, tokens: rest1, all_tokens: all_tokens, root: root, table: table, prov: prov1) {
-=======
     ParseExprWalkSequence { left: left, right: right } =>
       match parse_expr_run_walk(
         walk: left,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
-        table: table
+        table: table,
+        prov: prov
       ) {
         ParseExprRejected { diagnostics: diags } =>
           ParseExprRejected { diagnostics: diags }
-        ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1 } =>
+        ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1 } =>
           match parse_expr_run_walk(
             walk: right,
             tokens: rest1,
             all_tokens: all_tokens,
             root: root,
-            table: table
+            table: table,
+            prov: prov1
           ) {
->>>>>>> origin/main
             ParseExprRejected { diagnostics: diags2 } =>
               ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
             ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2 } =>
@@ -973,36 +966,25 @@ fn parse_expr_run_walk(
               }
           }
       }
-<<<<<<< HEAD
-    Choice { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
-        ParseExprRejected { diagnostics: _ } =>
-          parse_expr(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-      }
-    Optional { element: element } =>
-      match parse_expr(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
-=======
     ParseExprWalkChoice { left: left, right: right } =>
       match parse_expr_run_walk(
         walk: left,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
-        table: table
+        table: table,
+        prov: prov
       ) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
+        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
         ParseExprRejected { diagnostics: _ } =>
           parse_expr_run_walk(
             walk: right,
             tokens: tokens,
             all_tokens: all_tokens,
             root: root,
-            table: table
+            table: table,
+            prov: prov
           )
       }
     ParseExprWalkOptional { element: element } =>
@@ -1011,11 +993,11 @@ fn parse_expr_run_walk(
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
-        table: table
+        table: table,
+        prov: prov
       ) {
-        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
->>>>>>> origin/main
+        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
         ParseExprRejected { diagnostics: _ } =>
           ParseExprAccepted {
             remaining: tokens,
@@ -1024,8 +1006,7 @@ fn parse_expr_run_walk(
             prov: prov
           }
       }
-<<<<<<< HEAD
-    Repeat { element: element } =>
+    ParseExprWalkRepeat { element: element } =>
       // fold_list bounds iterations to length(tokens); done: true short-circuits remaining steps.
       // Each consuming iteration reduces acc.remaining; zero-progress or rejection sets done: true.
       let init = ParseRepeatAcc {
@@ -1035,10 +1016,6 @@ fn parse_expr_run_walk(
         done: false,
         prov: prov
       }
-=======
-    ParseExprWalkRepeat { element: element } =>
-      let init = ParseRepeatAcc { remaining: tokens, acc_nodes: [], acc_diags: [], done: false }
->>>>>>> origin/main
       let result = fold_list(
         xs: tokens,
         empty: init,
@@ -1046,22 +1023,13 @@ fn parse_expr_run_walk(
           match acc.done {
             true => acc
             false =>
-<<<<<<< HEAD
-              match parse_expr(
-                expr: element,
-                tokens: acc.remaining,
-                all_tokens: all_tokens,
-                root: root,
-                table: table,
-                prov: acc.prov
-=======
               match parse_expr_run_walk(
                 walk: element,
                 tokens: acc.remaining,
                 all_tokens: all_tokens,
                 root: root,
-                table: table
->>>>>>> origin/main
+                table: table,
+                prov: acc.prov
               ) {
                 ParseExprRejected { diagnostics: _ } =>
                   ParseRepeatAcc {
@@ -1116,7 +1084,8 @@ fn parse_expr(
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
-  table: ParseTable
+  table: ParseTable,
+  prov: ParseProvenanceState
 ) -> ParseExprResult {
   parse_expr_run_walk(
     walk: fold_grammar_expr(
@@ -1133,7 +1102,8 @@ fn parse_expr(
     tokens: tokens,
     all_tokens: all_tokens,
     root: root,
-    table: table
+    table: table,
+    prov: prov
   )
 }
 
