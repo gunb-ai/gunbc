@@ -1383,15 +1383,19 @@ pub fn direct_call_target_matches_alias_target_node(
     target_node: Rc<Node>,
     alias_target_node: Rc<Node>,
 ) -> bool {
-    match alias_target_node.binding_id.clone() {
+    let alias_target_name = authored_name_at(env.source_indices.clone(), alias_target_node.clone());
+    let canonical_alias_target = match lookup_type_by_name(env.clone(), alias_target_name.clone()) {
+        Some(resolved_target) => resolved_target.clone(),
+        None => alias_target_node.clone(),
+    };
+    match canonical_alias_target.binding_id.clone() {
         Some(alias_target_binding_id) => match target_node.binding_id.clone() {
             Some(target_binding_id) => target_binding_id.clone() == alias_target_binding_id.clone(),
             None => false,
         },
         None => {
-            let alias_target = authored_name_at(env.source_indices.clone(), alias_target_node);
-            ((alias_target.clone().as_str() != "".to_string().as_str())
-                && direct_call_target_matches_alias_target(env, target_node, alias_target))
+            ((alias_target_name.clone().as_str() != "".to_string().as_str())
+                && direct_call_target_matches_alias_target(env, target_node, alias_target_name))
         }
     }
 }
@@ -1403,21 +1407,21 @@ pub fn direct_call_carrier_transparent_alias_to(
 ) -> bool {
     match alias_node.binding_id.clone() {
         Some(alias_binding_id) => {
+            let alias_name = authored_name_at(env.source_indices.clone(), alias_node.clone());
+            let target_name = authored_name_at(env.source_indices.clone(), target_node.clone());
+            if alias_name.as_str() == "TargetModel" || target_name.as_str() == "TargetModelBundle" {
+                eprintln!(
+                    "DBG target_alias alias={} target={} alias_bid={:?} target_bid={:?} has_carrier={}",
+                    alias_name,
+                    target_name,
+                    alias_node.binding_id,
+                    target_node.binding_id,
+                    v2_rt::map_get(&env.carrier_bindings.clone(), alias_binding_id.clone()).is_some()
+                );
+            }
             match v2_rt::map_get(&env.carrier_bindings.clone(), alias_binding_id.clone()) {
                 Some(carrier) => match carrier.resolved.binding_id.clone() {
                     Some(carrier_target_binding_id) => {
-                        let carrier_name =
-                            authored_name_at(env.source_indices.clone(), carrier.resolved.clone());
-                        if carrier_name.as_str() == "Node"
-                            && carrier.resolved.binding_id.clone() != target_node.binding_id.clone()
-                        {
-                            eprintln!(
-                                "DBG carrier_mismatch alias={:?} carrier_bid={:?} target_bid={:?}",
-                                alias_binding_id,
-                                carrier.resolved.binding_id,
-                                target_node.binding_id
-                            );
-                        }
                         ((carrier_target_binding_id.clone() != alias_binding_id.clone())
                             && match target_node.binding_id.clone() {
                                 Some(target_binding_id) => {
@@ -12090,7 +12094,11 @@ pub fn add_type_binding_dependency_closure(
                         carrier_bindings: v2_rt::rc_map_insert(
                             state.carrier_bindings.clone(),
                             binding_id.clone(),
-                            stamped.clone(),
+                            carrier_authority_binding(
+                                stamped.clone(),
+                                dep_env.clone(),
+                                source_indices.clone(),
+                            ),
                         ),
                         seen_names: v2_rt::rc_map_insert(
                             state.seen_names.clone(),

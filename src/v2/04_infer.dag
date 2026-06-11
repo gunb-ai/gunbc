@@ -840,15 +840,19 @@ fn direct_call_target_matches_alias_target(env: TypeEnv, target_node: Node, alia
 }
 
 fn direct_call_target_matches_alias_target_node(env: TypeEnv, target_node: Node, alias_target_node: Node) -> Bool {
-  match alias_target_node.binding_id {
+  let alias_target_name = authored_name_at(source_indices: env.source_indices, node: alias_target_node)
+  let canonical_alias_target = match lookup_type_by_name(env: env, name: alias_target_name) {
+    Present { value: resolved_target } => resolved_target
+    Absent => alias_target_node
+  }
+  match canonical_alias_target.binding_id {
     Present { value: alias_target_binding_id } =>
       match target_node.binding_id {
         Present { value: target_binding_id } => target_binding_id == alias_target_binding_id
         Absent => false
       }
     Absent =>
-      let alias_target = authored_name_at(source_indices: env.source_indices, node: alias_target_node)
-      alias_target != "" && direct_call_target_matches_alias_target(env: env, target_node: target_node, alias_target: alias_target)
+      alias_target_name != "" && direct_call_target_matches_alias_target(env: env, target_node: target_node, alias_target: alias_target_name)
   }
 }
 
@@ -5875,7 +5879,7 @@ fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: Type
     let with_binding = match stamped.resolved.binding_id {
       Present { value: binding_id } =>
         CarrierClosureState {
-          carrier_bindings: map_insert(state.carrier_bindings, binding_id, stamped),
+          carrier_bindings: map_insert(state.carrier_bindings, binding_id, carrier_authority_binding(binding: stamped, dep_env: dep_env, source_indices: source_indices)),
           seen_names: map_insert(state.seen_names, stamped.name, true)
         }
       Absent =>
