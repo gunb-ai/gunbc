@@ -1178,6 +1178,18 @@ pub fn direct_call_actual_is_none(
             == "None".to_string().as_str()))
 }
 
+pub fn direct_call_actual_is_empty_collection(
+    formal_raw: Rc<Node>,
+    actual_expr: Rc<Node>,
+    actual_type: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((authored_name_at(source_indices.clone(), actual_expr).as_str()
+        == "Empty".to_string().as_str())
+        && node_is_element_collection(formal_raw, source_indices.clone()))
+        && node_is_element_collection(actual_type, source_indices)
+}
+
 pub fn direct_call_arg_is_typed_deferral(
     formal_raw: Rc<Node>,
     actual_expr: Rc<Node>,
@@ -1193,10 +1205,20 @@ pub fn direct_call_arg_is_typed_deferral(
             == Cardinality::CardOptional)
             || (authored_name_at(source_indices.clone(), formal_raw.clone()).as_str()
                 == "Optional".to_string().as_str()));
-        let actual_is_none =
-            direct_call_actual_is_none(actual_expr.clone(), actual_type, source_indices.clone());
+        let actual_is_none = direct_call_actual_is_none(
+            actual_expr.clone(),
+            actual_type.clone(),
+            source_indices.clone(),
+        );
+        let actual_is_empty_collection = direct_call_actual_is_empty_collection(
+            formal_raw.clone(),
+            actual_expr.clone(),
+            actual_type,
+            source_indices.clone(),
+        );
         ((formal_is_callable && actual_is_callable_literal)
-            || (formal_is_optional && actual_is_none))
+            || (formal_is_optional && actual_is_none)
+            || actual_is_empty_collection)
     }
 }
 
@@ -1418,11 +1440,14 @@ pub fn direct_call_carrier_transparent_alias_to(
                                 }
                                 None => false,
                             };
-                            if carrier_is_structural_shell && carrier_has_alias_id {
-                                let carrier_name = authored_name_at(
-                                    env.source_indices.clone(),
-                                    carrier.resolved.clone(),
-                                );
+                            let carrier_name = authored_name_at(
+                                env.source_indices.clone(),
+                                carrier.resolved.clone(),
+                            );
+                            if carrier_is_structural_shell
+                                && carrier_has_alias_id
+                                && (carrier.name.clone().as_str() != carrier_name.clone().as_str())
+                            {
                                 match lookup_type_by_name(env.clone(), carrier_name.clone()) {
                                     Some(resolved_target) => resolved_target.clone(),
                                     None => carrier.resolved.clone(),
