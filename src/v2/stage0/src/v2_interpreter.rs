@@ -559,6 +559,244 @@ struct PureCallMemo {
     keepalive_fns: Vec<Rc<Node>>,
 }
 
+// ---------------------------------------------------------------------------
+// Phase-0 memory measurement (ctrl#1533)
+// ---------------------------------------------------------------------------
+
+/// Copy-work counters for the collection-update primitives.
+///
+/// `*_calls` is the linear term; `*_copied` counts entries copied from
+/// already-existing collections into the freshly allocated result — the
+/// quadratic term a persistent carrier removes. Fold-building an n-entry
+/// collection shows `copied ≈ n·(n−1)/2` here; that ratio (copied/calls) is
+/// the before/after receipt for the ctrl#1533 carrier work.
+#[derive(Default, Clone)]
+pub struct MutationCounters {
+    pub map_insert_calls: u64,
+    pub map_insert_entries_copied: u64,
+    pub map_merge_calls: u64,
+    pub map_merge_entries_copied: u64,
+    pub list_push_calls: u64,
+    pub list_push_items_copied: u64,
+    pub list_concat_calls: u64,
+    pub list_concat_items_copied: u64,
+    pub set_insert_calls: u64,
+    pub set_insert_items_copied: u64,
+}
+
+impl fmt::Display for MutationCounters {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let rows: [(&str, u64, u64); 5] = [
+            ("map_insert", self.map_insert_calls, self.map_insert_entries_copied),
+            ("map_merge", self.map_merge_calls, self.map_merge_entries_copied),
+            ("list_push", self.list_push_calls, self.list_push_items_copied),
+            ("list_concat", self.list_concat_calls, self.list_concat_items_copied),
+            ("set_insert", self.set_insert_calls, self.set_insert_items_copied),
+        ];
+        for (name, calls, copied) in rows {
+            writeln!(
+                f,
+                "  {:<12} {:>12} calls  {:>16} entries copied  (avg {:.1}/call)",
+                name,
+                calls,
+                copied,
+                if calls == 0 { 0.0 } else { copied as f64 / calls as f64 }
+            )?;
+        }
+        Ok(())
+    }
+}
+
+/// Per-variant slice of a retained-value walk.
+#[derive(Default, Clone)]
+pub struct VariantAccounting {
+    /// Value occurrences reached (including re-encounters of shared payloads).
+    pub occurrences: u64,
+    /// Distinct heap allocations behind those occurrences.
+    pub unique_allocations: u64,
+    /// Occurrences whose payload was already visited (structural sharing hits).
+    pub shared_references: u64,
+    /// Estimated heap bytes of the unique allocations (buffers + key strings;
+    /// excludes allocator/bucket overhead and `Rc` headers — a floor, not RSS).
+    pub heap_bytes: u64,
+}
+
+/// Sharing-aware byte accounting over a set of retained root values.
+#[derive(Default)]
+pub struct MemoryAccounting {
+    pub per_variant: std::collections::BTreeMap<&'static str, VariantAccounting>,
+    pub total_heap_bytes: u64,
+    pub total_unique_allocations: u64,
+    pub total_shared_references: u64,
+}
+
+impl fmt::Display for MemoryAccounting {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (label, v) in &self.per_variant {
+            writeln!(
+                f,
+                "  {:<10} {:>12} occurrences  {:>10} unique  {:>10} shared  {:>14} bytes",
+                label, v.occurrences, v.unique_allocations, v.shared_references, v.heap_bytes
+            )?;
+        }
+        writeln!(
+            f,
+            "  total: {} bytes across {} unique allocations ({} shared references)",
+            self.total_heap_bytes, self.total_unique_allocations, self.total_shared_references
+        )
+    }
+}
+
+impl MemoryAccounting {
+    fn variant(&mut self, label: &'static str) -> &mut VariantAccounting {
+        self.per_variant.entry(label).or_default()
+    }
+
+    fn add_unique(&mut self, label: &'static str, bytes: u64) {
+        let v = self.variant(label);
+        v.unique_allocations += 1;
+        v.heap_bytes += bytes;
+        self.total_unique_allocations += 1;
+        self.total_heap_bytes += bytes;
+    }
+
+    fn add_shared(&mut self, label: &'static str) {
+        self.variant(label).shared_references += 1;
+        self.total_shared_references += 1;
+    }
+}
+
+/// Marks `ptr` visited; returns false (and records a sharing hit) if it was
+/// already visited, so each allocation is accounted exactly once.
+fn accounting_first_visit(
+    ptr: usize,
+    label: &'static str,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) -> bool {
+    if visited.insert(ptr) {
+        true
+    } else {
+        acc.add_shared(label);
+        false
+    }
+}
+
+fn account_env(
+    env: &Rc<Env>,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) {
+    if !accounting_first_visit(Rc::as_ptr(env) as usize, "(env)", visited, acc) {
+        return;
+    }
+    let mut bytes = (env.bindings.len() * std::mem::size_of::<(String, Value)>()) as u64;
+    for name in env.bindings.keys() {
+        bytes += name.len() as u64;
+    }
+    acc.add_unique("(env)", bytes);
+    for value in env.bindings.values() {
+        account_value(value, visited, acc);
+    }
+    if let Some(parent) = &env.parent {
+        account_env(parent, visited, acc);
+    }
+}
+
+fn account_named_fields(
+    label: &'static str,
+    fields: &Rc<HashMap<String, Value>>,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) {
+    if !accounting_first_visit(Rc::as_ptr(fields) as usize, label, visited, acc) {
+        return;
+    }
+    let mut bytes = (fields.len() * std::mem::size_of::<(String, Value)>()) as u64;
+    for key in fields.keys() {
+        bytes += key.len() as u64;
+    }
+    acc.add_unique(label, bytes);
+    for value in fields.values() {
+        account_value(value, visited, acc);
+    }
+}
+
+fn account_value(
+    value: &Value,
+    visited: &mut std::collections::HashSet<usize>,
+    acc: &mut MemoryAccounting,
+) {
+    let label = value.type_label();
+    acc.variant(label).occurrences += 1;
+    match value {
+        Value::Null | Value::Bool(_) | Value::Int(_) | Value::Float(_) | Value::Unit => {}
+        // Strings are owned per occurrence (not Rc-shared): every occurrence
+        // is its own allocation. type/variant/field names are accounted at
+        // their carriers below.
+        Value::Str(s) => acc.add_unique(label, s.len() as u64),
+        Value::List(items) => {
+            if !accounting_first_visit(Rc::as_ptr(items) as usize, label, visited, acc) {
+                return;
+            }
+            acc.add_unique(label, (items.len() * std::mem::size_of::<Value>()) as u64);
+            for item in items.iter() {
+                account_value(item, visited, acc);
+            }
+        }
+        Value::Map(entries) => {
+            if !accounting_first_visit(Rc::as_ptr(entries) as usize, label, visited, acc) {
+                return;
+            }
+            acc.add_unique(
+                label,
+                (entries.len() * (std::mem::size_of::<CanonKey>() + std::mem::size_of::<Value>()))
+                    as u64,
+            );
+            for (k, v) in entries.iter() {
+                account_value(&k.key, visited, acc);
+                account_value(v, visited, acc);
+            }
+        }
+        Value::Set(members) => {
+            if !accounting_first_visit(Rc::as_ptr(members) as usize, label, visited, acc) {
+                return;
+            }
+            let mut bytes = (members.len() * std::mem::size_of::<String>()) as u64;
+            for m in members.iter() {
+                bytes += m.len() as u64;
+            }
+            acc.add_unique(label, bytes);
+        }
+        Value::Record { type_name, fields } => {
+            acc.variant(label).heap_bytes += type_name.len() as u64;
+            acc.total_heap_bytes += type_name.len() as u64;
+            account_named_fields(label, fields, visited, acc);
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
+            let names = (type_name.len() + variant_name.len()) as u64;
+            acc.variant(label).heap_bytes += names;
+            acc.total_heap_bytes += names;
+            account_named_fields(label, fields, visited, acc);
+        }
+        // The AST body is program text (shared, graph-owned), not value heap;
+        // only the captured environment chain is retained value memory.
+        Value::Closure { params, env, body: _ } => {
+            let mut bytes = (params.len() * std::mem::size_of::<String>()) as u64;
+            for p in params {
+                bytes += p.len() as u64;
+            }
+            acc.add_unique(label, bytes);
+            account_env(env, visited, acc);
+        }
+        Value::Fn { .. } => {}
+    }
+}
+
 pub struct InterpContext {
     /// All typed modules from the compiler pipeline.
     pub modules: Rc<Vec<Rc<TypedModule>>>,
@@ -585,9 +823,42 @@ pub struct InterpContext {
     /// Memo for pure structural predicates, with the same context scoping as
     /// `data_cache` (see `PureCallMemo`).
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
+    /// Phase-0 measurement counters (ctrl#1533): copy work done by the
+    /// copy-on-update collection primitives, scoped to this context like the
+    /// caches above. Always on — a few integer adds next to O(n) clones.
+    mutation_counters: std::cell::RefCell<MutationCounters>,
 }
 
 impl InterpContext {
+    /// Snapshot of the copy-work counters accumulated by evaluations in this
+    /// context (phase-0 measurement, ctrl#1533).
+    pub fn mutation_counters_snapshot(&self) -> MutationCounters {
+        self.mutation_counters.borrow().clone()
+    }
+
+    /// Sharing-aware byte accounting over everything this context retains
+    /// (`data_cache`, pure-call memo results and keepalive pins) plus any
+    /// `extra_roots` (e.g. final claim values). One visited set across all
+    /// roots, so cross-root structural sharing is counted once.
+    pub fn account_retained_memory(&self, extra_roots: &[&Value]) -> MemoryAccounting {
+        let mut visited = std::collections::HashSet::new();
+        let mut acc = MemoryAccounting::default();
+        for value in self.data_cache.borrow().values() {
+            account_value(value, &mut visited, &mut acc);
+        }
+        let memo = self.pure_call_memo.borrow();
+        for value in memo.map.values() {
+            account_value(value, &mut visited, &mut acc);
+        }
+        for value in memo.keepalive.iter() {
+            account_value(value, &mut visited, &mut acc);
+        }
+        for value in extra_roots {
+            account_value(value, &mut visited, &mut acc);
+        }
+        acc
+    }
+
     pub fn new(
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -636,6 +907,7 @@ impl InterpContext {
             dry_run,
             data_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
+            mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
         }
     }
 
@@ -805,7 +1077,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         ExprData::ExprBinOp { op, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
             let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-            eval_binop(&op, left, right)
+            eval_binop(&op, left, right, ctx)
         }
 
         ExprData::ExprUnaryOp { op } => {
@@ -978,7 +1250,7 @@ fn eval_var(
 // Binary operators
 // ---------------------------------------------------------------------------
 
-fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
+fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> InterpResult<Value> {
     // NullCoalesce: short-circuit
     if matches!(op, BinOp::NullCoalesce) {
         return Ok(if matches!(left, Value::Null) {
@@ -998,15 +1270,22 @@ fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
     // List concatenation — List<T> IS FreeMonoid<T>; flatten operands (Option-B chokepoint).
     // Str operands stay atomic when mixed with lists (ctrl#1476 B1; same as .append/.concat).
     if matches!(op, BinOp::Add) {
+        let record_concat = |copied: usize| {
+            let mut counters = ctx.mutation_counters.borrow_mut();
+            counters.list_concat_calls += 1;
+            counters.list_concat_items_copied += copied as u64;
+        };
         match (&left, &right) {
             (l, Value::Str(s)) => {
                 if let Some(mut result) = free_monoid_to_vec(l) {
+                    record_concat(result.len());
                     result.push(Value::Str(s.clone()));
                     return Ok(Value::List(Rc::new(result)));
                 }
             }
             (Value::Str(s), r) => {
                 if let Some(result) = free_monoid_to_vec(r) {
+                    record_concat(result.len());
                     let mut out = vec![Value::Str(s.clone())];
                     out.extend(result);
                     return Ok(Value::List(Rc::new(out)));
@@ -1016,6 +1295,7 @@ fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
                 if let (Some(mut a), Some(b)) =
                     (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
                 {
+                    record_concat(a.len() + b.len());
                     a.extend(b);
                     return Ok(Value::List(Rc::new(a)));
                 }
@@ -2127,6 +2407,10 @@ fn eval_algebra_method(
                         }
                     }
                 }
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                counters.list_concat_calls += 1;
+                counters.list_concat_items_copied += items.len() as u64;
+                drop(counters);
                 return Ok(Value::List(Rc::new(result)));
             }
             Err(InterpError::TypeError {
@@ -2269,6 +2553,10 @@ fn eval_algebra_method(
             let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
                 msg: "insert key is not a valid map key (closure/fn/NaN)".to_string(),
             })?;
+            let mut counters = ctx.mutation_counters.borrow_mut();
+            counters.map_insert_calls += 1;
+            counters.map_insert_entries_copied += m.len() as u64;
+            drop(counters);
             let mut new_map = HashMap::clone(&m);
             new_map.insert(ck, val);
             Ok(Value::Map(Rc::new(new_map)))
@@ -2277,6 +2565,10 @@ fn eval_algebra_method(
         "merge" => {
             let base = expect_map(&receiver, "merge")?;
             let overlay = expect_map(args.first().unwrap_or(&Value::Null), "merge")?;
+            let mut counters = ctx.mutation_counters.borrow_mut();
+            counters.map_merge_calls += 1;
+            counters.map_merge_entries_copied += (base.len() + overlay.len()) as u64;
+            drop(counters);
             let mut result = HashMap::clone(&base);
             for (k, v) in overlay.iter() {
                 result.insert(k.clone(), v.clone());
@@ -3185,10 +3477,16 @@ fn eval_builtin(
                 }
                 return Ok(Some(Value::Str(result)));
             }
+            let record_concat = |copied: usize| {
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                counters.list_concat_calls += 1;
+                counters.list_concat_items_copied += copied as u64;
+            };
             match positional.as_slice() {
                 [a, b] => match (a, b) {
                     (l, Value::Str(s)) => match free_monoid_to_vec(l) {
                         Some(mut result) => {
+                            record_concat(result.len());
                             result.push(Value::Str(s.clone()));
                             Ok(Some(Value::List(Rc::new(result))))
                         }
@@ -3196,6 +3494,7 @@ fn eval_builtin(
                     },
                     (Value::Str(s), r) => match free_monoid_to_vec(r) {
                         Some(result) => {
+                            record_concat(result.len());
                             let mut out = vec![Value::Str(s.clone())];
                             out.extend(result);
                             Ok(Some(Value::List(Rc::new(out))))
@@ -3204,6 +3503,7 @@ fn eval_builtin(
                     },
                     _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
                         (Some(mut a_items), Some(b_items)) => {
+                            record_concat(a_items.len() + b_items.len());
                             a_items.extend(b_items);
                             Ok(Some(Value::List(Rc::new(a_items))))
                         }
@@ -3295,6 +3595,10 @@ fn eval_builtin(
             [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
             [list_val, item] => match free_monoid_to_vec(list_val) {
                 Some(items) => {
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.list_push_calls += 1;
+                    counters.list_push_items_copied += items.len() as u64;
+                    drop(counters);
                     let mut result = items;
                     result.push((*item).clone());
                     Ok(Some(Value::List(Rc::new(result))))
@@ -3308,6 +3612,10 @@ fn eval_builtin(
             [a, b] if matches!(a, Value::Str(_)) || matches!(b, Value::Str(_)) => Ok(None),
             [a, b] => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
                 (Some(a_items), Some(b_items)) => {
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.list_concat_calls += 1;
+                    counters.list_concat_items_copied += (a_items.len() + b_items.len()) as u64;
+                    drop(counters);
                     let mut result = a_items;
                     result.extend(b_items);
                     Ok(Some(Value::List(Rc::new(result))))
@@ -3323,6 +3631,10 @@ fn eval_builtin(
 
         "set_insert" => match positional.as_slice() {
             [Value::Set(s), Value::Str(k)] => {
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                counters.set_insert_calls += 1;
+                counters.set_insert_items_copied += s.len() as u64;
+                drop(counters);
                 let mut result = s.as_ref().clone();
                 result.insert(k.clone());
                 Ok(Some(Value::Set(Rc::new(result))))
@@ -3332,6 +3644,10 @@ fn eval_builtin(
 
         "set_union" => match positional.as_slice() {
             [Value::Set(a), Value::Set(b)] => {
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                counters.set_insert_calls += 1;
+                counters.set_insert_items_copied += (a.len() + b.len()) as u64;
+                drop(counters);
                 let mut result = a.as_ref().clone();
                 result.extend(b.iter().cloned());
                 Ok(Some(Value::Set(Rc::new(result))))
@@ -3355,6 +3671,10 @@ fn eval_builtin(
             // "not this builtin shape" (a non-Map receiver).
             [Value::Map(m), k, v] => match CanonKey::new((*k).clone()) {
                 Some(ck) => {
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.map_insert_calls += 1;
+                    counters.map_insert_entries_copied += m.len() as u64;
+                    drop(counters);
                     let mut result = HashMap::clone(m);
                     result.insert(ck, (*v).clone());
                     Ok(Some(Value::Map(Rc::new(result))))

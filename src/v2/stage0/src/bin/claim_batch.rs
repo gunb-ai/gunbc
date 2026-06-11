@@ -27,6 +27,11 @@
 //!
 //! Exit codes: 0 = all witnesses returned Bool(true); 1 = any witness failed,
 //! returned non-Bool, raised a runtime error, or resolve failed; 2 = usage error.
+//!
+//! Set GUNBC_INTERP_STATS=1 to print the phase-0 memory measurement report
+//! (ctrl#1533) on stderr after the run: copy-work counters for the
+//! copy-on-update collection primitives, sharing-aware byte accounting of the
+//! retained context, and peak RSS.
 
 // Binary entrypoint: it reports witness results directly on stdout/stderr, so
 // println!/eprintln! are appropriate here (the disallowed-macros lint is aimed
@@ -37,6 +42,28 @@
 use std::process::ExitCode;
 
 use v2_compiler::cli_run::{make_eval_context, resolve_entry_graph, run_claim, ClaimOutcome};
+use v2_compiler::v2_interpreter::InterpContext;
+
+/// VmHWM/VmRSS lines from /proc/self/status (linux best-effort; empty elsewhere).
+fn peak_rss_lines() -> String {
+    std::fs::read_to_string("/proc/self/status")
+        .map(|s| {
+            s.lines()
+                .filter(|l| l.starts_with("VmHWM") || l.starts_with("VmRSS"))
+                .map(|l| format!("  {}\n", l))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn print_interp_stats(ctx: &InterpContext) {
+    eprintln!("[interp-stats] mutation-primitive copy work (this context):");
+    eprint!("{}", ctx.mutation_counters_snapshot());
+    eprintln!("[interp-stats] retained value accounting (data cache + pure-call memo):");
+    eprint!("{}", ctx.account_retained_memory(&[]));
+    eprintln!("[interp-stats] process memory:");
+    eprint!("{}", peak_rss_lines());
+}
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -147,6 +174,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                 any_failed = true;
             }
         }
+    }
+
+    if std::env::var_os("GUNBC_INTERP_STATS").is_some_and(|v| v != "0") {
+        print_interp_stats(&ctx);
     }
 
     if any_failed {
