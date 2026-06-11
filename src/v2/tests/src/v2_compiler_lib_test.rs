@@ -7,8 +7,10 @@
 //!
 //! **Always-runs without a new CI step.** These are `pub` helpers invoked by that always-on
 //! parity test (same pattern as `r2_emit_add_named_test`). The guard runs
-//! `cargo test -p v2-compiler --lib --no-run` so Rc call-site regressions in the emitted
-//! `compiler_tests.rs` fail the parity receipt with zero `ci.yml` change.
+//! `cargo test -p v2-compiler --lib --no-run --release` so Rc call-site regressions in the
+//! emitted `compiler_tests.rs` fail the parity receipt with zero `ci.yml` change. Release
+//! profile matches the ci_floor_parity shared closure (debug would cold-compile serde under
+//! sccache pressure and flake with EAGAIN on shared runners).
 
 use crate::helpers::workspace_root;
 
@@ -29,6 +31,7 @@ pub fn assert_v2_compiler_lib_tests_compile() {
         .arg("v2-compiler")
         .arg("--lib")
         .arg("--no-run")
+        .arg("--release")
         .arg("--quiet")
         .current_dir(workspace_root())
         .output()

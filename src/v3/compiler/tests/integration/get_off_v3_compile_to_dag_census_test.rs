@@ -43,19 +43,15 @@
 //! `target/get-off-v3/compile_to_dag_caller_census.tsv`) so the tracking
 //! surface is visible — run with `--nocapture` to read it.
 //!
-//! ## Where this runs today (honest scope)
+//! ## Where this runs
 //!
-//! This is a **local/dev + artifact** gate, not yet a CI gate. Per
-//! `CLAUDE.md`, v3-compiler's tests are dormant in CI — the only
-//! `cargo test` CI runs for the v3 lane is the single `--exact` parity
-//! integration test, and nothing invokes `cargo test -p v3-compiler`. So
-//! the ratchet bites on `cargo test -p v3-compiler` (and in review/dev
-//! runs), but a 477th caller would currently land **green in CI**.
-//! Wiring this ratchet into CI means naming it in `ci.yml`, which is
-//! single-authority and out of this PR's task scope (INVARIANTS task-scope
-//! rule; no `ci.yml` edit without escalation, cf. #4556). **CI-enforcement
-//! is a named follow-up owned by the M-CI / CI-via-dag lane**
-//! (Mgr-SELFHOST), tracked separately from this instrument.
+//! This is a **CI gate** as of PR #4659: the test is wired into
+//! `ci_floor_parity` in `.github/workflows/ci.yml` (the single CI
+//! authority per INVARIANTS.md). A 477th direct `compile_to_dag(` caller
+//! will fail CI. It also runs locally via `cargo test -p v3-compiler` and
+//! in review/dev runs, and emits the full per-file census as an artifact
+//! (printed under `--nocapture`, written to
+//! `target/get-off-v3/compile_to_dag_caller_census.tsv`).
 //!
 //! ## What counts as a caller
 //!

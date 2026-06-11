@@ -13,7 +13,11 @@ import v4.compiler.infer {
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
+<<<<<<< HEAD
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
+=======
+import v4.std.algebra { fold_list, length }
+>>>>>>> origin/main
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection {
   List,
@@ -88,7 +92,7 @@ import v4.std.node {
   well_formed,
   SyntheticOccurrence
 }
-import v4.std.node_query { find_arrow_body_child }
+import v4.std.node_query { arrow_domain_named_param_bindings, find_arrow_body_child }
 import v4.std.diagnostic {
   AmbiguousIntent,
   ByteRange,
@@ -1207,38 +1211,10 @@ fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -
   )
 }
 
-// 🟡 gated — COMPREP wave-1 hard-coded binding accessor (docs/modeling-discipline.md Practice 10 /
-// INVARIANTS P5) — feature:COMPREP-WAVE1-EVAL — consumer:arrow-domain-named-param-binding-accessor
-// (eval_wave1_argument_binding_key; executed by comprep_eval_by_execution keystone) —
-// bind:node://adhoc-5edb46b5-841 — dissolve-on: node_query arrow_domain_named_param_bindings
-// lands (#4627 rebase); owner: Mgr-RUNTIME — forbidden: extending hard-coded
-// ^dag_binding_param_x/^dag_binding_param_y positions past wave-1 MVP add or adding a parallel
-// FunctionRef carrier in 05_eval.
-fn eval_wave1_argument_binding_key(wanted: Int, node: Node) -> Outcome<EnvironmentBindingKey> {
-  if wanted == 0 {
-    Accepted {
-      value: EnvironmentBindingKey {
-        declaration: eval_binding_key_node(sym: ^dag_binding_param_x)
-      },
-      diagnostics: None
-    }
-  } else if wanted == 1 {
-    Accepted {
-      value: EnvironmentBindingKey {
-        declaration: eval_binding_key_node(sym: ^dag_binding_param_y)
-      },
-      diagnostics: None
-    }
-  } else {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
-    )
-  }
-}
-
 fn eval_bind_wave1_argument(
   args: List<RuntimeValue>,
   wanted: Int,
+  param_names: List<Symbol>,
   environment: EvaluationEnvironment,
   bind: BindInterpreter,
   node: Node
@@ -1253,9 +1229,19 @@ fn eval_bind_wave1_argument(
     ),
     f: fn(value) {
       bind_outcome(
-        o: eval_wave1_argument_binding_key(wanted: wanted, node: node),
-        f: fn(key) {
-          bind.bind_value(key, value, environment)
+        o: eval_witness_outcome(
+          witness: list_nth(
+            xs: param_names,
+            wanted: wanted,
+            absent: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
+          )
+        ),
+        f: fn(name) {
+          bind.bind_value(
+            EnvironmentBindingKey { declaration: eval_binding_key_node(sym: name) },
+            value,
+            environment
+          )
         }
       )
     }
@@ -1276,36 +1262,43 @@ fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Boo
 
 fn eval_bind_wave1_arguments(
   args: List<RuntimeValue>,
+  callee_arrow: Node,
   environment: EvaluationEnvironment,
   bind: BindInterpreter,
   node: Node
 ) -> Outcome<EvaluationEnvironment> {
-  // Exact arity (P3/P5): the wave-1 add callee takes exactly two actuals. A third actual
-  // must refuse — binding only [0],[1] and ignoring the rest would silently drop arguments.
-  if eval_actual_present(args: args, wanted: 2, node: node) {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_argument_arity_excess, node: node)
-    )
-  } else {
-    bind_outcome(
-      o: eval_bind_wave1_argument(
-        args: args,
-        wanted: 0,
-        environment: environment,
-        bind: bind,
-        node: node
-      ),
-      f: fn(env1) {
-        eval_bind_wave1_argument(
-          args: args,
-          wanted: 1,
-          environment: env1,
-          bind: bind,
-          node: node
+  bind_outcome(
+    o: arrow_domain_named_param_bindings(arrow: callee_arrow),
+    f: fn(param_names) {
+      // Exact arity (P3/P5): reject if excess actuals beyond the declared param count.
+      if eval_actual_present(args: args, wanted: length(param_names), node: node) {
+        outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_argument_arity_excess, node: node)
+        )
+      } else {
+        bind_outcome(
+          o: eval_bind_wave1_argument(
+            args: args,
+            wanted: 0,
+            param_names: param_names,
+            environment: environment,
+            bind: bind,
+            node: node
+          ),
+          f: fn(env1) {
+            eval_bind_wave1_argument(
+              args: args,
+              wanted: 1,
+              param_names: param_names,
+              environment: env1,
+              bind: bind,
+              node: node
+            )
+          }
         )
       }
-    )
-  }
+    }
+  )
 }
 
 fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
@@ -1432,6 +1425,7 @@ fn eval_transform_node(
                   bind_outcome(
                     o: eval_bind_wave1_arguments(
                       args: args,
+                      callee_arrow: callee_edge.target,
                       environment: environment,
                       bind: interpretation.bind,
                       node: node
