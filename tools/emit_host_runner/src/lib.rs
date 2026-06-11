@@ -279,9 +279,7 @@ pub fn run_host_process(
 ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
     validate_emit_host_transport_inputs(inputs)?;
     match descriptor_identity {
-        TS_HOST_TRANSPORT_MVP1_IDENTITY => {
-            run_host_process_ts_mvp1(source, inputs, work_dir)
-        }
+        TS_HOST_TRANSPORT_MVP1_IDENTITY => run_host_process_ts_mvp1(source, inputs, work_dir),
         other => Err(HostSetupFailure::SpawnFailed {
             phase: HostPhase::Build,
             source: format!("unsupported host transport descriptor: {other}"),
@@ -305,20 +303,18 @@ fn run_host_process_ts_mvp1(
     })?;
 
     let mut build_cmd = Command::new(resolve_host_tool("host_tool_npx")?);
-    build_cmd
-        .current_dir(work_dir)
-        .args([
-            "-y",
-            "typescript@5.9.2",
-            "tsc",
-            "--target",
-            "ES2022",
-            "--module",
-            "commonjs",
-            "--outDir",
-            ".",
-            "fixture.ts",
-        ]);
+    build_cmd.current_dir(work_dir).args([
+        "-y",
+        "typescript@5.9.2",
+        "tsc",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--outDir",
+        ".",
+        "fixture.ts",
+    ]);
     let build = run_command_bounded(build_cmd, HOST_BUILD_TIMEOUT, HostPhase::Build)?;
     let mut build_log = bounded_output_to_log(&build, "tsc");
     if !matches!(build.status, Some(s) if s.success()) {

@@ -308,12 +308,7 @@ fn is_runtime_value_signed_i32_le_as_int_decl(dag: &Dag, callee_decl: Declaratio
     is_emit_host_fn_decl(dag, callee_decl, "runtime_value_signed_i32_le_as_int", 1)
 }
 
-fn is_emit_host_fn_decl(
-    dag: &Dag,
-    callee_decl: DeclarationId,
-    name: &str,
-    arity: usize,
-) -> bool {
+fn is_emit_host_fn_decl(dag: &Dag, callee_decl: DeclarationId, name: &str, arity: usize) -> bool {
     let Some(callee) = dag.declaration_opt(&callee_decl) else {
         return false;
     };
@@ -350,21 +345,23 @@ fn runtime_value_primitive_bytes(dag: &Dag, value: &Value) -> Result<Vec<u8>, Ev
     let prim_fields = record_fields(payload).ok_or(EvalError::BadTransformOperands {
         reason: "RuntimePrimitive payload is not a record",
     })?;
-    let value_field = prim_fields
-        .iter()
-        .find(|f| f.label == "value")
-        .ok_or(EvalError::BadTransformOperands {
-            reason: "RuntimePrimitiveValue missing value field",
-        })?;
+    let value_field =
+        prim_fields
+            .iter()
+            .find(|f| f.label == "value")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "RuntimePrimitiveValue missing value field",
+            })?;
     let inner = record_fields(&value_field.value).ok_or(EvalError::BadTransformOperands {
         reason: "RuntimePrimitiveValue is not a record",
     })?;
-    let bytes_field = inner
-        .iter()
-        .find(|f| f.label == "bytes")
-        .ok_or(EvalError::BadTransformOperands {
-            reason: "RuntimePrimitiveValue missing bytes field",
-        })?;
+    let bytes_field =
+        inner
+            .iter()
+            .find(|f| f.label == "bytes")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "RuntimePrimitiveValue missing bytes field",
+            })?;
     byte_list_to_vec(dag, &bytes_field.value)
 }
 
@@ -392,19 +389,21 @@ fn byte_list_to_vec(dag: &Dag, list: &Value) -> Result<Vec<u8>, EvalError> {
         let fields = record_fields(payload).ok_or(EvalError::BadTransformOperands {
             reason: "byte list Cons is not a record",
         })?;
-        let head = fields
-            .iter()
-            .find(|f| f.label == "head")
-            .ok_or(EvalError::BadTransformOperands {
-                reason: "byte list Cons missing head",
-            })?;
+        let head =
+            fields
+                .iter()
+                .find(|f| f.label == "head")
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "byte list Cons missing head",
+                })?;
         out.push(byte_value_to_u8(dag, &head.value)?);
-        let tail = fields
-            .iter()
-            .find(|f| f.label == "tail")
-            .ok_or(EvalError::BadTransformOperands {
-                reason: "byte list Cons missing tail",
-            })?;
+        let tail =
+            fields
+                .iter()
+                .find(|f| f.label == "tail")
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "byte list Cons missing tail",
+                })?;
         current = &tail.value;
     }
     Ok(out)
@@ -414,12 +413,13 @@ fn byte_value_to_u8(dag: &Dag, value: &Value) -> Result<u8, EvalError> {
     let fields = record_fields(value).ok_or(EvalError::BadTransformOperands {
         reason: "byte is not a record",
     })?;
-    let bits_value = fields
-        .iter()
-        .find(|f| f.label == "bits")
-        .ok_or(EvalError::BadTransformOperands {
-            reason: "byte missing bits field",
-        })?;
+    let bits_value =
+        fields
+            .iter()
+            .find(|f| f.label == "bits")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "byte missing bits field",
+            })?;
     let bits = bit_list_to_bools(dag, &bits_value.value)?;
     if bits.len() != 8 {
         return Err(EvalError::BadTransformOperands {
@@ -459,12 +459,13 @@ fn bit_list_to_bools(dag: &Dag, list: &Value) -> Result<Vec<bool>, EvalError> {
         let fields = record_fields(payload).ok_or(EvalError::BadTransformOperands {
             reason: "bit list Cons is not a record",
         })?;
-        let head = fields
-            .iter()
-            .find(|f| f.label == "head")
-            .ok_or(EvalError::BadTransformOperands {
-                reason: "bit list Cons missing head",
-            })?;
+        let head =
+            fields
+                .iter()
+                .find(|f| f.label == "head")
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "bit list Cons missing head",
+                })?;
         match &head.value {
             Value::LiteralValue(LiteralBits::Bool(bit)) => out.push(*bit),
             _ => {
@@ -473,12 +474,13 @@ fn bit_list_to_bools(dag: &Dag, list: &Value) -> Result<Vec<bool>, EvalError> {
                 });
             }
         }
-        let tail = fields
-            .iter()
-            .find(|f| f.label == "tail")
-            .ok_or(EvalError::BadTransformOperands {
-                reason: "bit list Cons missing tail",
-            })?;
+        let tail =
+            fields
+                .iter()
+                .find(|f| f.label == "tail")
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "bit list Cons missing tail",
+                })?;
         current = &tail.value;
     }
     Ok(out)
