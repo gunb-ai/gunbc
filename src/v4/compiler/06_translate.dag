@@ -77,8 +77,8 @@ import v4.std.node {
   arrow_body_edge,
   fold_node,
   node_rebuild,
-  well_formed,
-  SyntheticOccurrence
+  node_synthetic,
+  well_formed
 }
 import v4.std.node_query { find_named_child, node_positional_child_targets }
 import v4.std.lexing {
@@ -1268,22 +1268,18 @@ fn target_serialize_relation_row_from_model_bounded(
 fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
   Diagnostic {
     reason: translate_lex_rule_literal_not_found,
-    at: node_locus(node: Node {
-      kind: TypeNode { connective: Atom { identity: token_class } },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-}),
+    at: node_locus(
+      node: node_synthetic(kind: TypeNode { connective: Atom { identity: token_class } }, children: [])
+    ),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
   Diagnostic {
     reason: translate_binding_spelling_not_found,
-    at: node_locus(node: Node {
-      kind: TypeNode { connective: Atom { identity: binding } },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-}),
+    at: node_locus(
+      node: node_synthetic(kind: TypeNode { connective: Atom { identity: binding } }, children: [])
+    ),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -2602,6 +2598,9 @@ fn project_type_expression_connective_bounded(
     ),
     f: fn(_) {
       match connective {
+        // Unreachable: Atom repoints onto translate_algebra in project_type_expression_node_bounded.
+        Atom { identity: _ } =>
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
         Instantiation =>
           if target_collection_type_node_is_free_monoid_carrier(node: node) {
             project_free_monoid_collection_type_node(node: node, target: target, projection: projection)
@@ -2743,12 +2742,11 @@ fn project_type_expression_connective_bounded(
     }
   )
 }
-// translate_algebra — the per-connective projection algebra for fold_node
-// (dep-graph 2026-06-11 §1, W1 fan-out). Each connective wave moves its row out of
-// project_type_expression_connective_bounded into init here and repoints its dispatch
-// arm. Atom is migrated (W1-Atom): the terminal base case (NoEdges) — init alone
-// decides it, no fuel, no child traversal. Connectives still owned by the bounded
-// tower reject fail-closed here so a premature repoint cannot double-project.
+// translate_algebra — the per-connective projection algebra for fold_node (dep-graph
+// 2026-06-11 §1 W1 fan-out): each connective wave moves its row here from
+// project_type_expression_connective_bounded and repoints its dispatch arm. Atom is in:
+// terminal base case (NoEdges) — init decides it, no fuel, no child traversal. Bounded-
+// tower connectives reject fail-closed here so a premature repoint cannot double-project.
 fn translate_algebra(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -2798,7 +2796,6 @@ fn project_type_expression_node_bounded(
     outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
   } else {
   match node.kind {
-    // W1-Atom repoint: the terminal base case routes through the fold algebra.
     TypeNode { connective: Atom { identity: _ } } =>
       fold_node(n: node, algebra: translate_algebra(target: target, projection: projection))
     TypeNode { connective: c } =>
@@ -2817,29 +2814,20 @@ fn project_type_expression_node_bounded(
 fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String> {
   lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
 }
-fn type_expr_atom_binding_from_positional(
-  targets: List<Node>,
-  node: Node
-) -> Outcome<Symbol> {
+fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
   bind_outcome(
-    o: list_head_and_tail(xs: targets, node: node),
+    o: list_head_and_tail(xs: node_positional_child_targets(node: node), node: node),
     f: fn(split) {
-      if is_empty(xs: split.tail) {
-        match split.head.kind {
-          TypeNode { connective: Atom { identity: id } } =>
+      match split.head.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if is_empty(xs: split.tail) {
             Accepted { value: id, diagnostics: None }
-          _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        }
-      } else {
-        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+          } else {
+            outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+          }
+        _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
       }
     }
-  )
-}
-fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
-  type_expr_atom_binding_from_positional(
-    targets: node_positional_child_targets(node: node),
-    node: node
   )
 }
 // A use-site carrier's identity. Ownership attaches to CARRIERS, each asked ONCE by
@@ -4088,11 +4076,7 @@ fn translate_outcome_is_signature_realization_miss(
 // the SOURCE atom identity passed through, so for the kernel Symbol return type the binding ==
 // symbol_kernel_type_atom and this Node == symbol_kernel_type_node() — the SG-1 row key.
 fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: binding } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-}
+  node_synthetic(kind: TypeNode { connective: Atom { identity: binding } }, children: [])
 }
 
 fn function_boundary_site_to_ownership_use_site(
@@ -4149,56 +4133,6 @@ fn translate_target_function_signature_realization_for_boundary(
 // Serialize a fn-boundary atom: emit the signature realization's signature_type_form when a row
 // matches (SG-1b authority); otherwise consult TargetUseSiteOwnershipRealization for this
 // boundary role, then serialize the emitted wire (SG-RC + SG-2; no spelling-only bypass).
-fn serialize_type_expr_boundary_atom_bounded(
-  remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  boundary_site: FunctionBoundarySite,
-  emitted: Node
-) -> Outcome<TargetSource> {
-  match translate_target_function_signature_realization_for_boundary(
-    target: target,
-    emitted: emitted,
-    boundary_site: boundary_site
-  ) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: optional_row, diagnostics: _ } =>
-      match optional_row {
-        Present { value: row } =>
-          serialize_type_expr_emitted_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            emitted: row.signature_type_form.node
-          )
-        Absent =>
-          bind_outcome(
-            o: type_expr_atom_binding(node: emitted),
-            f: fn(binding) {
-              bind_outcome(
-                o: translate_apply_use_site_ownership_to_projected_type(
-                  projected: emitted,
-                  source_carrier: translate_boundary_source_carrier_node(binding: binding),
-                  target: target,
-                  use_site: function_boundary_site_to_ownership_use_site(
-                    boundary_site: boundary_site
-                  )
-                ),
-                f: fn(wrapped) {
-                  serialize_type_expr_emitted_bounded(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    emitted: wrapped
-                  )
-                }
-              )
-            }
-          )
-      }
-  }
-}
-
 // Boundary-aware type serializer used ONLY from Arrow domain (Param) and codomain (Return) sites.
 // Atom boundaries consult signature realization; composite boundary types serialize normally.
 fn serialize_type_expr_boundary_bounded(
@@ -4218,13 +4152,47 @@ fn serialize_type_expr_boundary_bounded(
       f: fn(wire) {
         match wire.kind {
           TargetTypeExprAtom =>
-            serialize_type_expr_boundary_atom_bounded(
-              remaining: remaining,
+            match translate_target_function_signature_realization_for_boundary(
               target: target,
-              projection: projection,
-              boundary_site: boundary_site,
-              emitted: emitted
-            )
+              emitted: emitted,
+              boundary_site: boundary_site
+            ) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: optional_row, diagnostics: _ } =>
+                match optional_row {
+                  Present { value: row } =>
+                    serialize_type_expr_emitted_bounded(
+                      remaining: remaining - 1,
+                      target: target,
+                      projection: projection,
+                      emitted: row.signature_type_form.node
+                    )
+                  Absent =>
+                    bind_outcome(
+                      o: type_expr_atom_binding(node: emitted),
+                      f: fn(binding) {
+                        bind_outcome(
+                          o: translate_apply_use_site_ownership_to_projected_type(
+                            projected: emitted,
+                            source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                            target: target,
+                            use_site: function_boundary_site_to_ownership_use_site(
+                              boundary_site: boundary_site
+                            )
+                          ),
+                          f: fn(wrapped) {
+                            serialize_type_expr_emitted_bounded(
+                              remaining: remaining - 1,
+                              target: target,
+                              projection: projection,
+                              emitted: wrapped
+                            )
+                          }
+                        )
+                      }
+                    )
+                }
+            }
           _ =>
             serialize_type_expr_emitted_wire_bounded(
               remaining: remaining,
