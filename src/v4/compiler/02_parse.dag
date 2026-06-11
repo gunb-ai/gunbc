@@ -63,8 +63,8 @@ import v4.std.provenance {
   span_index_merge,
   span_index_record
 }
-import v4.std.collection { List, Map, Set, empty_map, map_insert }
-import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
+import v4.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_insert }
+import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.lexing { Token, TokenStream }
@@ -126,16 +126,6 @@ type ParseSyncState {
   found_sync: Bool
   result: List<Token>
 }
-
-// 🟡 coproduct dissolution — feature: GrammarRoot duplicate-name scan accumulator — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived membership fold over production names eliminates the hand-written accumulator; invalid-state-representable Bool flag dissolved into coproduct branches.
-type GrammarDupCheckResult
-  = GrammarDupCheckUnique { seen: Set<Symbol> }
-  | GrammarDupCheckDuplicate
-
-// 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
-type TokenPeek
-  = TokenPeekAbsent
-  | TokenPeekFirst { value: Token }
 
 // Accumulator for the fold-list based Repeat implementation in parse_expr.
 // fold_list over the token stream bounds iterations to length(tokens);
@@ -259,35 +249,24 @@ fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-fn grammar_lookup_production_step(
-  acc: Witness<GrammarProduction>,
-  production: GrammarProduction,
-  name: Symbol
-) -> Witness<GrammarProduction> {
-  match acc {
-    Holds { value: _ } => acc
-    Violates { diagnostic: _ } =>
-      if production.name == name {
-        Holds { value: production }
-      } else {
-        acc
+// 🟢 substrate catamorphism consumer — feature: GrammarRoot production lookup — bind
+// node://adhoc-a896516d-3f7 — name match expressed as v4.std.algebra.filter + the
+// v4.std.collection.list_at_optional head projection; the hand-written first-match Witness
+// fold (grammar_lookup_production_step) dissolved. First match == unique match because
+// grammar_has_duplicate_productions rejects duplicate names before parse.
+fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<GrammarProduction> {
+  match list_at_optional(
+    xs: filter(xs: root.productions, predicate: fn(p) { p.name == name }),
+    index: 0
+  ) {
+    Present { value: production } => Holds { value: production }
+    Absent =>
+      Violates {
+        diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
+          at: port_locus(port: parse_stage_locus_port)
+        )
       }
   }
-}
-
-
-fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<GrammarProduction> {
-  fold_list(
-    xs: root.productions,
-    empty: Violates {
-      diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
-        at: port_locus(port: parse_stage_locus_port)
-      )
-    },
-    cons: fn(acc, production) {
-      grammar_lookup_production_step(acc: acc, production: production, name: name)
-    }
-  )
 }
 
 
@@ -725,27 +704,23 @@ fn compute_left_corner_closure(
 }
 
 
-fn grammar_has_left_recursion_step(acc: Bool, p: GrammarProduction, root: GrammarRoot, nullable_set: Set<Symbol>) -> Bool {
-  acc ||
-  contains(
-    xs: compute_left_corner_closure(
-      start: expr_direct_left_corner_list(expr: p.expression, nullable_set: nullable_set),
-      nullable_set: nullable_set,
-      root: root
-    ),
-    item: p.name,
-    eq: fn(a, b) { a == b }
-  )
-}
-
-
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot left-recursion validator substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-recursion reachability morphism over GrammarRoot productions; forbidden: duplicating left-recursion check logic outside this function.
+// Per-production or-fold rides v4.std.algebra.any (hand step fold dissolved, Level-1d).
 fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
   let nullable_set = compute_nullable_set(root: root)
-  fold_list(
+  any(
     xs: root.productions,
-    empty: false,
-    cons: fn(acc, p) { grammar_has_left_recursion_step(acc: acc, p: p, root: root, nullable_set: nullable_set) }
+    predicate: fn(p) {
+      contains(
+        xs: compute_left_corner_closure(
+          start: expr_direct_left_corner_list(expr: p.expression, nullable_set: nullable_set),
+          nullable_set: nullable_set,
+          root: root
+        ),
+        item: p.name,
+        eq: fn(a, b) { a == b }
+      )
+    }
   )
 }
 
@@ -773,47 +748,27 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
 }
 
 
-fn grammar_has_undefined_nonterminals_step(acc: Bool, p: GrammarProduction, root: GrammarRoot) -> Bool {
-  acc || expr_has_undefined_nonterminal(expr: p.expression, root: root)
-}
-
-
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-reference scan morphism over GrammarRoot; forbidden: duplicating undefined-nonterminal check logic outside this function.
+// Per-production or-fold rides v4.std.algebra.any (hand step fold dissolved, Level-1d).
 fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
   match grammar_lookup_production(root: root, name: root.start) {
     Violates { diagnostic: _ } => true
     Holds { value: _ } =>
-      fold_list(
+      any(
         xs: root.productions,
-        empty: false,
-        cons: fn(acc, p) { grammar_has_undefined_nonterminals_step(acc: acc, p: p, root: root) }
+        predicate: fn(p) { expr_has_undefined_nonterminal(expr: p.expression, root: root) }
       )
   }
 }
 
 
-fn grammar_dup_check_step(acc: GrammarDupCheckResult, p: GrammarProduction) -> GrammarDupCheckResult {
-  match acc {
-    GrammarDupCheckDuplicate => GrammarDupCheckDuplicate
-    GrammarDupCheckUnique { seen: seen } =>
-      if seen.member(p.name) {
-        GrammarDupCheckDuplicate
-      } else {
-        GrammarDupCheckUnique { seen: set_symbol_insert(s: seen, item: p.name) }
-      }
-  }
-}
-
-
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived duplicate-name scan morphism over GrammarRoot productions; forbidden: duplicating duplicate-check logic outside this function.
+// 🟢 substrate catamorphism consumer — feature: GrammarRoot duplicate-name scan — bind
+// node://adhoc-a896516d-3f7 — scan expressed as v4.std.algebra.unique over production names;
+// the hand-written GrammarDupCheckResult accumulator coproduct dissolved (Level-1d).
 fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
-  match fold_list(
-    xs: root.productions,
-    empty: GrammarDupCheckUnique { seen: Set { member: fn(_) { false } } },
-    cons: fn(acc, p) { grammar_dup_check_step(acc: acc, p: p) }
-  ) {
-    GrammarDupCheckDuplicate => true
-    GrammarDupCheckUnique { seen: _ } => false
+  match unique(xs: root.productions, eq: fn(a, b) { a.name == b.name }) {
+    true => false
+    false => true
   }
 }
 
@@ -888,8 +843,11 @@ fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> ParseSyn
 }
 
 
-fn parse_token_first(tokens: List<Token>) -> TokenPeek {
-  fold_list_right(xs: tokens, empty: TokenPeekAbsent, snoc: fn(_acc, tok) { TokenPeekFirst { value: tok } })
+// 🟢 substrate head projection — the TokenPeek per-use carrier dissolved onto the
+// v4.std.collection.list_at_optional Optional<T> head projection (Level-1d); this wrapper
+// only pins T = Token for the bootstrap compiler's monomorphic field-access inference.
+fn parse_token_first(tokens: List<Token>) -> Optional<Token> {
+  list_at_optional(xs: tokens, index: 0)
 }
 
 
@@ -924,8 +882,8 @@ fn parse_expr_run_walk(
   match walk {
     ParseExprWalkTerminal { token_class: class } =>
       match parse_token_first(tokens: tokens) {
-        TokenPeekAbsent => ParseExprRejected { diagnostics: [] }
-        TokenPeekFirst { value: tok } =>
+        Absent => ParseExprRejected { diagnostics: [] }
+        Present { value: tok } =>
           match tok.class == class {
             true =>
               match list_tail(xs: tokens) {
