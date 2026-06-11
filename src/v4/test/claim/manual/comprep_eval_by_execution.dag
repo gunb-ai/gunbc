@@ -67,7 +67,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   arrow_body_edge,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.runtime {
   BindInterpreter,
@@ -102,7 +102,7 @@ import v4.std.verification {
 fn comprep_eval_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: substrate_synthetic_occurrence_id,
+    occurrence_id: SyntheticOccurrence,
     children: []
   }
 }
@@ -415,7 +415,7 @@ fn comprep_eval_resolve_holds() -> Bool {
 fn comprep_eval_add_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: substrate_synthetic_occurrence_id,
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: callee },
       Edge { label: Positional, target: comprep_eval_literal_two_node() },
@@ -427,7 +427,7 @@ fn comprep_eval_add_call(callee: Node) -> Node {
 fn comprep_eval_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    occurrence_id: substrate_synthetic_occurrence_id,
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Named { name: ^comprep_eval_actual }, target: call },
       Edge { label: Named { name: ^comprep_eval_expected }, target: expected }
@@ -499,7 +499,7 @@ fn comprep_eval_run(callee: Node, expected: Node) -> Outcome<TestClaimRun<Node, 
 fn comprep_swapped_operand_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: substrate_synthetic_occurrence_id,
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
@@ -511,7 +511,7 @@ fn comprep_swapped_operand_body() -> Node {
 fn comprep_swapped_add_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    occurrence_id: substrate_synthetic_occurrence_id,
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },

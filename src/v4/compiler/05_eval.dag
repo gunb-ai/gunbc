@@ -86,7 +86,7 @@ import v4.std.node {
   fold_node,
   is_positional,
   well_formed,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.node_query { find_arrow_body_child }
 import v4.std.diagnostic {
@@ -184,7 +184,7 @@ fn symbol_atom_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -549,7 +549,7 @@ fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: tag } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 

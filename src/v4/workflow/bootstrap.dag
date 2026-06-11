@@ -5,7 +5,7 @@
 
 module v4.workflow.bootstrap
 
-import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, SyntheticOccurrence }
 import v4.std.algebra {
   bag_eq,
   contains,
@@ -172,7 +172,7 @@ fn seed_capability_language_model() -> LanguageModel {
   Node {
     kind: TypeNode { connective: Atom { identity: ^bootstrap_seed_language_model_identity } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -180,7 +180,7 @@ fn bootstrap_construct_subset_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -211,7 +211,7 @@ fn bootstrap_seed_capability_inventory_root() -> Node {
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset)
       }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -344,7 +344,7 @@ fn bootstrap_projection_runtime_identity_node(runtime: V4EvaluatorRuntime) -> No
   Node {
     kind: TypeNode { connective: Atom { identity: runtime.runtime_identity } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -352,7 +352,7 @@ fn bootstrap_projection_snapshot_content_hash_pin_node(pin: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: pin } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 fn bootstrap_hash_digest_in_fixture_constants(digest: Hash) -> Bool {
@@ -367,25 +367,25 @@ fn bootstrap_hash_digest_fixture_atom_node(digest: Hash) -> Node {
     Node {
       kind: TypeNode { connective: Atom { identity: v4_stage0_hash } },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   } else if digest == v4_stage1_hash {
     Node {
       kind: TypeNode { connective: Atom { identity: v4_stage1_hash } },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   } else if digest == v4_stage2_hash {
     Node {
       kind: TypeNode { connective: Atom { identity: v4_stage2_hash } },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   } else {
     Node {
       kind: TypeNode { connective: Atom { identity: pinned_v4_fixed_point_hash } },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -399,7 +399,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: pin } },
           children: [],
-          occurrence_id: substrate_synthetic_occurrence_id
+          occurrence_id: SyntheticOccurrence
 }
       },
       Edge {
@@ -407,7 +407,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
         target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
       }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -521,7 +521,7 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
         target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
       }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 

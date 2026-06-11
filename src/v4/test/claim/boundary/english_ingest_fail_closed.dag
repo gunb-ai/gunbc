@@ -35,7 +35,7 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, substrate_synthetic_occurrence_id }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
@@ -48,7 +48,7 @@ import v4.std.verification {
 }
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -65,7 +65,7 @@ data arbitrary_english_prose_input: Node = Node {
       target: atom_node(s: ^english_arbitrary_prose_symbol)
     },
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -81,7 +81,7 @@ data english_shape_b_docs_input: Node = Node {
       target: atom_node(s: ^english_doc_walker_symbol)
     },
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -97,7 +97,7 @@ data english_shape_b_docs_output: Node = Node {
       target: atom_node(s: ^english_prose_output_symbol)
     },
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 

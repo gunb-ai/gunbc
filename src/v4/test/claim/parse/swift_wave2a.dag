@@ -11,7 +11,7 @@ import v4.compiler.tokenize { tokenize }
 import v4.compiler.parse { parse }
 import v4.extdeps.languages.swift { swift_wave1_lex, swift_wave1_grammar }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 import v4.std.verification {
@@ -28,10 +28,10 @@ data swift_wave2a_non_mvp_source: String = "func choose(x: Int) -> Int { let y =
 fn swift_wave2a_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^swift_wave2a_bool_true } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^swift_wave2a_bool_false } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
   }
 }

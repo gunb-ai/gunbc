@@ -20,7 +20,7 @@ import v4.lens.affected_set_examples {
 }
 import v4.test.claim.lens_affected_set.frontier_observation { frontier_decision_matches }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Node, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Conj, Node, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -72,7 +72,7 @@ fn dimension_seed_rerun_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

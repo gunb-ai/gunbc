@@ -22,7 +22,7 @@ import v4.std.node {
   content_hash,
   loop_bound_edge,
   well_formed,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -36,7 +36,7 @@ import v4.std.verification {
 }
 fn loop_linear_bound_leaf(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -50,7 +50,7 @@ data loop_linear_bound_body: Node = Node {
   children: [
     Edge { label: Positional, target: loop_linear_bound_body_leaf }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -60,7 +60,7 @@ data loop_linear_bound_subject: Node = Node {
     Edge { label: Positional, target: loop_linear_bound_body },
     Edge { label: Named { name: loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -109,7 +109,7 @@ data loop_linear_bound_subject_rebuilt: Node = Node {
     Edge { label: Positional, target: loop_linear_bound_body },
     Edge { label: Named { name: loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 // Distinct node (bound edge removed) — sensitivity: a distinct input must yield a distinct hash.
@@ -118,7 +118,7 @@ data loop_linear_bound_subject_unbounded: Node = Node {
   children: [
     Edge { label: Positional, target: loop_linear_bound_body }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data witness_loop_linear_bound_content_hash_stable: Bool = (content_hash(n: loop_linear_bound_subject) == content_hash(n: loop_linear_bound_subject_rebuilt)) && (content_hash(n: loop_linear_bound_subject) != content_hash(n: loop_linear_bound_subject_unbounded))

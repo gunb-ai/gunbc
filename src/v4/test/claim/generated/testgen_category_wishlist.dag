@@ -29,7 +29,7 @@ import v4.std.algebra { length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -290,7 +290,7 @@ fn testgen_wishlist_count_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^t19_generator_wishlist_count_symbol } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -301,7 +301,7 @@ fn testgen_wishlist_count_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

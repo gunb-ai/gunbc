@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality, substrate_synthetic_occurrence_id }
+import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -37,7 +37,7 @@ import v4.std.verification {
 }
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -55,11 +55,11 @@ data falsification_nested_optional: Node = Node {
         children: [
           Edge { label: Positional, target: atom_node(s: ^optional_value_symbol) },
         ],
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
 }
     },
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -68,7 +68,7 @@ data falsification_optional_double_unwrap: Node = Node {
   children: [
     Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 

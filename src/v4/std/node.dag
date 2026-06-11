@@ -16,6 +16,16 @@ type Hash
 type OccurrenceId {
   value: Int
 }
+// 🟢 coproduct dissolution — PROV A-pivot (feature:T-8-source-provenance): closed carrier for
+// Node.occurrence_id — SyntheticOccurrence = pre-parse / substrate literal (no minted id);
+// MintedOccurrence = allocator-issued id (sole mint in v4.std.occurrence_id).
+type NodeOccurrenceId
+  = SyntheticOccurrence
+  | MintedOccurrence { id: OccurrenceId }
+
+fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
+  MintedOccurrence { id: id }
+}
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Connective
   = Atom { identity: Symbol }
@@ -93,14 +103,10 @@ data loop_bound_edge: Symbol = ^loop_bound_edge
 // 🟢 TERMINAL — E-9/DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
 data arrow_body_edge: Symbol = ^arrow_body_edge
 
-// PROV A-pivot: synthetic substrate literals not parse-stamped share this id (design-node-identity-channels.md).
-// Parse-time unique ids mint only via v4.std.occurrence_id.alloc_occurrence_id.
-data substrate_synthetic_occurrence_id: OccurrenceId = OccurrenceId { value: -1 }
-
 fn node_with_occurrence_id(
   kind: NodeKind,
   children: List<Edge>,
-  occurrence_id: OccurrenceId
+  occurrence_id: NodeOccurrenceId
 ) -> Node {
   Node { kind: kind, children: children, occurrence_id: occurrence_id }
 }
@@ -117,7 +123,7 @@ fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: kind,
     children: children,
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
   )
 }
 
@@ -126,14 +132,14 @@ fn node_for_structural_equality(n: Node) -> Node {
   node_with_occurrence_id(
     kind: n.kind,
     children: n.children,
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
   )
 }
 
 type Node {
   kind: NodeKind
   children: List<Edge>
-  occurrence_id: OccurrenceId
+  occurrence_id: NodeOccurrenceId
 }
 type NodeFold<R> {
   init: fn(Node) -> R
@@ -470,31 +476,31 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
       Node {
         kind: base.kind,
         children: sort_by(base.children, e => named_edge_sort_key(e: e)),
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
       }
     NoEdges =>
       Node {
         kind: base.kind,
         children: base.children,
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
       }
     PositionalEdges =>
       Node {
         kind: base.kind,
         children: base.children,
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
       }
     ArrowBodyEdges =>
       Node {
         kind: base.kind,
         children: canonicalize_arrow_children_for_content_hash(children: base.children),
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
       }
     LoopBoundEdges =>
       Node {
         kind: base.kind,
         children: canonicalize_loop_children_for_content_hash(children: base.children),
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
       }
   }
 }
@@ -1183,7 +1189,7 @@ fn node_offset_atom(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -1197,7 +1203,7 @@ fn node_offset_conj(children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: children,
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
   }
 }
 

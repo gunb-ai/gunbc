@@ -16,7 +16,7 @@ import v4.lens.application {
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Path, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -29,7 +29,7 @@ import v4.std.verification {
 data projection_test_section: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^projection_section_symbol } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data projection_test_root: Node = Node {
@@ -40,7 +40,7 @@ data projection_test_root: Node = Node {
       target: projection_test_section
     }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 fn projection_test_read(root: Node) -> Outcome<Symbol> {

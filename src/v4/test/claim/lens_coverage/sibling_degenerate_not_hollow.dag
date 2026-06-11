@@ -9,7 +9,7 @@ import v4.lens.coverage {
   coverage_defect_hollow_type
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -22,7 +22,7 @@ import v4.std.verification {
 data sibling_degenerate_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^sibling_degenerate_symbol } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 fn sibling_degenerate_not_hollow_claim_holds() -> Bool {
@@ -36,7 +36,7 @@ fn sibling_degenerate_not_hollow_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

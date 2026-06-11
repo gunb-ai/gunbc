@@ -137,7 +137,7 @@ fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
   })
 }
 
-fn type_node(connective: Connective, children: List<Edge>, occurrence_id: OccurrenceId) -> Node {
+fn type_node(connective: Connective, children: List<Edge>, occurrence_id: NodeOccurrenceId) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: connective },
     children: children,
