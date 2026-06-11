@@ -5287,7 +5287,11 @@ fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, 
 
 fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let function_name = method_name
-  if rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) {
+  let receiver_type = resolved_type(n: receiver)
+  let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
+  let runtime_container_method = map_contains_key(rt_functions(), function_name)
+    && (is_container_type(name: receiver_type_name) || node_is_keyed_collection(n: receiver_type, source_indices: scope.type_env.source_indices))
+  if rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) && !runtime_container_method {
     let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
     concat("(", recv_str, ".", emit_ident(name: function_name, target: Rust), ")(", arg_strs |> join(separator: ", "), ")")
