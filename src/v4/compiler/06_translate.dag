@@ -198,14 +198,12 @@ import v4.std.target_model {
   lex_rules_literal,
   token_spelling_from_model,
   concrete_syntax_token_from_node,
-  type_expr_spelling_for_atom,
-  serialize_type_expr_record_field_label,
+  target_binding_spelling_lookup,
   serialize_type_expr_arrow_param_spelling,
   target_collection_repr_from_node,
   target_collection_witness_from_node,
-  target_collection_choice_from_node,
   target_collection_fallback_from_node,
-  target_collection_fold_list_from_node
+  target_collection_shape_malformed_diagnostic
 }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -1468,6 +1466,95 @@ fn translate_type_expr_kind_authority_invalid_diagnostic(node: Node) -> Diagnost
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+fn target_collection_subtree_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(_) { 1 },
+      step: fn(acc, _edge, child_count) { acc + child_count }
+    }
+  )
+}
+
+fn target_collection_fold_list_from_node<T>(
+  remaining: Int,
+  node: Node,
+  decode_item: fn(Node) -> Outcome<T>
+) -> Outcome<List<T>> {
+  if remaining <= 0 {
+    outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+  } else {
+    match node.kind {
+      TypeNode { connective: Conj } =>
+        if is_empty(xs: node.children) {
+          outcome_accepted(Empty)
+        } else {
+          bind_outcome(
+            o: find_named_child(root: node, name: fold_list_node_head),
+            f: fn(head_node) {
+              bind_outcome(
+                o: decode_item(node: head_node),
+                f: fn(head_item) {
+                  bind_outcome(
+                    o: find_named_child(root: node, name: fold_list_node_tail),
+                    f: fn(tail_node) {
+                      bind_outcome(
+                        o: target_collection_fold_list_from_node(
+                          remaining: remaining - 1,
+                          node: tail_node,
+                          decode_item: decode_item
+                        ),
+                        f: fn(tail_items) {
+                          outcome_accepted(
+                            Cons { head: head_item, tail: tail_items }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      _ => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+    }
+  }
+}
+
+fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentationChoice> {
+  bind_outcome(
+    o: find_named_child(root: node, name: target_collection_choice_field_form),
+    f: fn(form_node) {
+      bind_outcome(
+        o: target_collection_repr_from_node(node: form_node),
+        f: fn(form) {
+          bind_outcome(
+            o: find_named_child(root: node, name: target_collection_choice_field_constraints),
+            f: fn(constraints_node) {
+              bind_outcome(
+                o: target_collection_fold_list_from_node(
+                  remaining: target_collection_subtree_count(n: constraints_node),
+                  node: constraints_node,
+                  decode_item: target_collection_witness_from_node
+                ),
+                f: fn(constraints) {
+                  outcome_accepted(
+                    TargetRepresentationChoice {
+                      form: form,
+                      constraints: constraints
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn target_collection_realization_from_bundle(
   bundle: Node
 ) -> Outcome<TargetCollectionRealization> {
@@ -1834,6 +1921,12 @@ fn project_type_expression_children(
     acc: Empty
   )
 }
+// 🟡 gated — feature:sg-2-type-expr-projection-row-data — owner:witty-raven-599 —
+// bind node://adhoc-3bb63121-471 (W2-proper / plan G1 completion) — dissolve-on:
+// each connective realization in translate_algebra is a DATA row on
+// TargetTypeExpressionProjection (generic row interpreter), not a per-connective algebra
+// fn; PR-T-FINISH lands traversal-fold + homing-correction only — forbidden: letting this
+// float as an untracked follow-up.
 // 🟢 TERMINAL — irreducible NodeFold states for translate_algebra Conj arm (Slots = field
 // accumulation; Done = leaf/subtree already projected); not a public API surface.
 type TypeExprTranslateAcc
