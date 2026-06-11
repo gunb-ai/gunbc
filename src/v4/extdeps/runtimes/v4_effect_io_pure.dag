@@ -1,0 +1,351 @@
+// src/v4/extdeps/runtimes/v4_effect_io_pure.dag
+// Scope: Pure/test effect-IO handler bundle — file / HTTP / storage backends over an in-memory fixture store.
+// Status: Wave-2 M-E2 — inhabits EffectHandlerBinding from std/runtime.dag E-1; declare-per-claim fixture
+//   store + inject-per-run binding construction (design-v4-runtime-architecture.md §4.3, §7 Q-R3).
+
+module v4.extdeps.runtimes.v4_effect_io_pure
+
+import v4.std.algebra { Cons, Empty }
+import v4.std.collection {
+  List,
+  Map,
+  Absent,
+  empty_map,
+  list_nth,
+  map_get,
+  map_insert,
+  optional_present
+}
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus,
+  outcome_rejected
+}
+import v4.std.logic { Bool }
+import v4.std.model_core { EffectSignature, PrimitiveOperationRef, ResourceAccess }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.runtime {
+  EffectHandler,
+  EffectHandlerBinding,
+  EffectReceipt,
+  EffectReceiptLog,
+  EffectRequest,
+  EffectRequestKind,
+  EvaluationEnvironment,
+  EvaluationFrame,
+  ReadResource,
+  RuntimeValue,
+  WriteResource,
+  effect_handler_for_kind
+}
+import v4.std.witness { Holds, Violates, Witness }
+
+// Resource transport backends (file → HTTP → storage) share one handler contract; the backend
+// arm is declared per claim and threaded into locator construction at inject-per-run time.
+type EffectIoResourceBackend
+  = FileResourceBackend
+  | HttpResourceBackend
+  | StorageResourceBackend
+
+type EffectIoResourceLocator {
+  backend: EffectIoResourceBackend
+  identity: Symbol
+}
+
+type EffectIoFixtureStore {
+  backend: EffectIoResourceBackend
+  entries: Map<Symbol, RuntimeValue>
+}
+
+type V4EffectIoPureRuntime {
+  bundle_identity: Symbol
+  declared_backend: EffectIoResourceBackend
+  handlers: EffectHandlerBinding
+}
+
+fn effect_io_pure_unit_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^effect_io_pure_unit_type } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn effect_io_pure_operation_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^effect_io_pure_operation } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn effect_io_pure_effect_signature_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^effect_io_pure_effect_signature } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn effect_io_pure_operation_ref() -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: effect_io_pure_operation_node(),
+    effect_signature: EffectSignature {
+      signature: effect_io_pure_effect_signature_node()
+    }
+  }
+}
+
+fn effect_io_pure_empty_environment() -> EvaluationEnvironment {
+  EvaluationEnvironment {
+    bindings: Map {
+      lookup: fn(_) {
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^effect_io_pure_binding_miss,
+            at: node_locus(node: effect_io_pure_unit_type_node()),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn effect_io_pure_empty_frame() -> EvaluationFrame {
+  EvaluationFrame {
+    current: effect_io_pure_unit_type_node(),
+    environment: effect_io_pure_empty_environment()
+  }
+}
+
+fn effect_io_pure_args_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^effect_io_pure_args_absent,
+    at: node_locus(node: effect_io_pure_operation_node()),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn effect_io_pure_locator_from_args(
+  backend: EffectIoResourceBackend,
+  args: List<RuntimeValue>
+) -> Witness<EffectIoResourceLocator> {
+  match list_nth(xs: args, wanted: 0, absent: effect_io_pure_args_absent_diagnostic()) {
+    Holds { value: locator_value } =>
+      Holds {
+        value: EffectIoResourceLocator {
+          backend: backend,
+          identity: effect_io_pure_locator_identity(value: locator_value)
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+// Wave-2: locator identity is the operation node's connective Symbol (declare-per-claim pin).
+fn effect_io_pure_locator_identity(value: RuntimeValue) -> Symbol {
+  match value {
+    _ => ^effect_io_pure_default_locator
+  }
+}
+
+fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<RuntimeValue> {
+  match list_nth(xs: args, wanted: 1, absent: effect_io_pure_args_absent_diagnostic()) {
+    Holds { value: payload } => Holds { value: payload }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn effect_io_pure_store_lookup(
+  store: EffectIoFixtureStore,
+  locator: EffectIoResourceLocator
+) -> Outcome<RuntimeValue> {
+  if locator.backend == store.backend {
+    match map_get(m: store.entries, key: locator.identity) {
+      Accepted { value: optional_present(value: payload), diagnostics: None } =>
+        Accepted { value: payload, diagnostics: None }
+      Accepted { value: Absent, diagnostics: None } =>
+        outcome_rejected(
+          d: Diagnostic {
+            reason: ^effect_io_pure_resource_absent,
+            at: node_locus(node: effect_io_pure_operation_node()),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+      Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    }
+  } else {
+    outcome_rejected(
+      d: Diagnostic {
+        reason: ^effect_io_pure_backend_mismatch,
+        at: node_locus(node: effect_io_pure_operation_node()),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    )
+  }
+}
+
+fn effect_io_pure_read_handler_for_store(store: EffectIoFixtureStore) -> EffectHandler {
+  EffectHandler {
+    handle: fn(request: EffectRequest) -> Outcome<RuntimeValue> {
+      match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
+        Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
+        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+      }
+    }
+  }
+}
+
+fn effect_io_pure_write_handler_for_store(store: EffectIoFixtureStore) -> EffectHandler {
+  EffectHandler {
+    handle: fn(request: EffectRequest) -> Outcome<RuntimeValue> {
+      match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
+        Holds { value: locator } =>
+          match effect_io_pure_write_payload_from_args(args: request.arguments) {
+            Holds { value: payload } =>
+              if locator.backend == store.backend {
+                Accepted { value: payload, diagnostics: None }
+              } else {
+                outcome_rejected(
+                  d: Diagnostic {
+                    reason: ^effect_io_pure_backend_mismatch,
+                    at: node_locus(node: effect_io_pure_operation_node()),
+                    correction: Unavailable { reason: ExternalContractUnknown }
+                  }
+                )
+              }
+            Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+          }
+        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+      }
+    }
+  }
+}
+
+// Inject-per-run: construct a flat binding over the run's declared fixture store.
+fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectHandlerBinding {
+  EffectHandlerBinding {
+    read_resource: effect_io_pure_read_handler_for_store(store: store),
+    write_resource: effect_io_pure_write_handler_for_store(store: store)
+  }
+}
+
+fn effect_io_pure_fixture_store(
+  backend: EffectIoResourceBackend,
+  entries: Map<Symbol, RuntimeValue>
+) -> EffectIoFixtureStore {
+  EffectIoFixtureStore {
+    backend: backend,
+    entries: entries
+  }
+}
+
+fn effect_io_pure_empty_fixture_store(backend: EffectIoResourceBackend) -> EffectIoFixtureStore {
+  effect_io_pure_fixture_store(backend: backend, entries: empty_map())
+}
+
+fn effect_io_pure_request(
+  kind: EffectRequestKind,
+  args: List<RuntimeValue>
+) -> EffectRequest {
+  EffectRequest {
+    kind: kind,
+    operation: effect_io_pure_operation_ref(),
+    arguments: args,
+    continuation: effect_io_pure_empty_frame()
+  }
+}
+
+fn effect_io_pure_read_request(args: List<RuntimeValue>) -> EffectRequest {
+  effect_io_pure_request(kind: ReadResource, args: args)
+}
+
+fn effect_io_pure_write_request(args: List<RuntimeValue>) -> EffectRequest {
+  effect_io_pure_request(kind: WriteResource, args: args)
+}
+
+fn effect_io_pure_append_receipt(
+  log: EffectReceiptLog,
+  request: EffectRequest,
+  result: Outcome<RuntimeValue>
+) -> EffectReceiptLog {
+  EffectReceiptLog {
+    entries: Cons {
+      head: EffectReceipt { request: request, result: result },
+      tail: log.entries
+    }
+  }
+}
+
+fn effect_io_pure_runtime(
+  backend: EffectIoResourceBackend,
+  store: EffectIoFixtureStore
+) -> V4EffectIoPureRuntime {
+  V4EffectIoPureRuntime {
+    bundle_identity: ^v4_effect_io_pure_runtime_id,
+    declared_backend: backend,
+    handlers: effect_io_pure_handler_binding(store: store)
+  }
+}
+
+fn effect_io_pure_runtime_wave2(backend: EffectIoResourceBackend) -> V4EffectIoPureRuntime {
+  effect_io_pure_runtime(
+    backend: backend,
+    store: effect_io_pure_empty_fixture_store(backend: backend)
+  )
+}
+
+// Apply a handled write to the fixture store (returned-modified-resource pattern).
+fn effect_io_pure_apply_write(
+  store: EffectIoFixtureStore,
+  locator: EffectIoResourceLocator,
+  payload: RuntimeValue
+) -> EffectIoFixtureStore {
+  EffectIoFixtureStore {
+    backend: store.backend,
+    entries: map_insert(m: store.entries, key: locator.identity, value: payload)
+  }
+}
+
+// Orchestrate ReadResource→WriteResource round-trip through real handlers (gate consumer).
+fn effect_io_pure_read_write_roundtrip(
+  backend: EffectIoResourceBackend,
+  locator: EffectIoResourceLocator,
+  payload: RuntimeValue,
+  locator_arg: RuntimeValue
+) -> Bool {
+  let store0 = effect_io_pure_empty_fixture_store(backend: backend)
+  let binding0 = effect_io_pure_handler_binding(store: store0)
+  let write_args = Cons { head: locator_arg, tail: Cons { head: payload, tail: Empty } }
+  let write_request = effect_io_pure_write_request(args: write_args)
+  let write_handler = effect_handler_for_kind(binding: binding0, kind: WriteResource)
+  match write_handler.handle(request: write_request) {
+    Accepted { value: written, diagnostics: None } =>
+      if written == payload {
+        let store1 = effect_io_pure_apply_write(
+          store: store0,
+          locator: locator,
+          payload: written
+        )
+        let binding1 = effect_io_pure_handler_binding(store: store1)
+        let read_args = Cons { head: locator_arg, tail: Empty }
+        let read_request = effect_io_pure_read_request(args: read_args)
+        let read_handler = effect_handler_for_kind(binding: binding1, kind: ReadResource)
+        match read_handler.handle(request: read_request) {
+          Accepted { value: read_back, diagnostics: None } => read_back == written
+          _ => false
+        }
+      } else {
+        false
+      }
+    _ => false
+  }
+}
