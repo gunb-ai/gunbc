@@ -13,11 +13,7 @@ import v4.compiler.infer {
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
-<<<<<<< HEAD
-import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
-=======
-import v4.std.algebra { fold_list, length }
->>>>>>> origin/main
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, length }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection {
   List,

@@ -63,13 +63,8 @@ import v4.std.provenance {
   span_index_merge,
   span_index_record
 }
-<<<<<<< HEAD
-import v4.std.collection { List, Map, Set, empty_map, map_insert }
-import v4.std.algebra { Cons, Empty, FreeMonoid, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
-=======
 import v4.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_insert }
 import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
->>>>>>> origin/main
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.lexing { Token, TokenStream }
