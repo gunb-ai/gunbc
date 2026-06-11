@@ -1198,6 +1198,44 @@ type EvalParamBindAcc {
   acc: Outcome<EvaluationEnvironment>
 }
 
+fn eval_bind_param_edge_step(
+  state: EvalParamBindAcc,
+  param_edge: Edge,
+  args: List<RuntimeValue>,
+  bind: BindInterpreter,
+  node: Node
+) -> EvalParamBindAcc {
+  match state.acc {
+    Rejected { diagnostics: r } =>
+      EvalParamBindAcc { idx: state.idx + 1, acc: Rejected { diagnostics: r } }
+    Accepted { value: env, diagnostics: _ } =>
+      match param_edge.label {
+        Named { name: binding_id } =>
+          EvalParamBindAcc {
+            idx: state.idx + 1,
+            acc: bind_outcome(
+              o: eval_witness_outcome(
+                witness: list_nth(
+                  xs: args,
+                  wanted: state.idx,
+                  absent: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
+                )
+              ),
+              f: fn(value) {
+                bind.bind_value(
+                  EnvironmentBindingKey { declaration: eval_binding_key_node(sym: binding_id) },
+                  value,
+                  env
+                )
+              }
+            )
+          }
+        Positional =>
+          EvalParamBindAcc { idx: state.idx, acc: Accepted { value: env, diagnostics: None } }
+      }
+  }
+}
+
 fn eval_bind_arrow_params(
   arrow: Node,
   args: List<RuntimeValue>,
@@ -1212,35 +1250,13 @@ fn eval_bind_arrow_params(
         xs: domain_edge.target.children,
         empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
         cons: fn(state, param_edge) {
-          match state.acc {
-            Rejected { diagnostics: r } =>
-              EvalParamBindAcc { idx: state.idx + 1, acc: Rejected { diagnostics: r } }
-            Accepted { value: env, diagnostics: _ } =>
-              match param_edge.label {
-                Named { name: binding_id } =>
-                  EvalParamBindAcc {
-                    idx: state.idx + 1,
-                    acc: bind_outcome(
-                      o: eval_witness_outcome(
-                        witness: list_nth(
-                          xs: args,
-                          wanted: state.idx,
-                          absent: eval_diagnostic(reason: eval_rejected_argument_bind_absent, node: node)
-                        )
-                      ),
-                      f: fn(value) {
-                        bind.bind_value(
-                          EnvironmentBindingKey { declaration: eval_binding_key_node(sym: binding_id) },
-                          value,
-                          env
-                        )
-                      }
-                    )
-                  }
-                Positional =>
-                  EvalParamBindAcc { idx: state.idx, acc: Accepted { value: env, diagnostics: None } }
-              }
-          }
+          eval_bind_param_edge_step(
+            state: state,
+            param_edge: param_edge,
+            args: args,
+            bind: bind,
+            node: node
+          )
         }
       ) {
         EvalParamBindAcc { idx: _, acc: result } => result

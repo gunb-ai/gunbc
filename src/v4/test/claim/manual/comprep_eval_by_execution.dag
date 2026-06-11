@@ -594,20 +594,42 @@ fn comprep_eval_swapped_operands_claim_passes() -> Bool {
   )
 }
 
-// COMPREP wave-1 runtime keystone, single Bool witness. Three honest conjuncts:
+// Source-bridge conjunct: source pipeline admission GATES execution of the body_producer
+// Arrow. comprep_source_ingested_add_infers() must accept before the produced Arrow is run.
+fn comprep_eval_source_driven_executes_holds() -> Bool {
+  match comprep_source_ingested_add_infers() {
+    Accepted { value: _, diagnostics: _ } =>
+      match produce_mvp1_add_arrow_with_body() {
+        Accepted { value: arrow, diagnostics: _ } =>
+          comprep_eval_run_passes(
+            run: comprep_eval_run(
+              callee: arrow,
+              expected: comprep_eval_literal_five_node()
+            )
+          )
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// COMPREP wave-1 runtime keystone, single Bool witness. Four honest conjuncts:
 //   1. produced-body-executes — the #4608 COMPREP-produced add Arrow.body executes through
 //      eval callee dispatch to result == 5 BY EXECUTION (retiring call_primitive-as-only-arm);
-//   2. source-pipeline-admits — source `fn add` tokenizes->parses->normalizes->resolves
+//   2. direct-runtime — direct runtime eval holds for the produced Arrow;
+//   3. source-pipeline-admits — source `fn add` tokenizes->parses->normalizes->resolves
 //      (a SEPARATE admission gate, NOT a driver of the executed body);
-//   3. swapped-operands-red — the discriminating red: a swapped-operand body fails the run.
-// The claim does NOT assert source-driven execution; that is the resolve->body_producer
-// bridge wave (node://adhoc-9a72d4fb-8c2). The co-located BoolWitnessClaim marker below makes
-// this the glob-discovered executed consumer (INVARIANTS E-10).
+//   4. swapped-operands-red — the discriminating red: a swapped-operand body fails the run;
+//   5. source-driven-executes — source admission gates execution of body_producer Arrow
+//      (resolve->body_producer bridge, node://adhoc-9a72d4fb-8c2).
+// The co-located BoolWitnessClaim marker below makes this the glob-discovered executed
+// consumer (INVARIANTS E-10).
 fn comprep_eval_by_execution_keystone_holds() -> Bool {
   comprep_eval_produced_add_body_executes_holds()
     && comprep_eval_direct_runtime_holds()
     && comprep_eval_source_pipeline_admits_add_holds()
     && comprep_eval_swapped_operands_red_holds()
+    && comprep_eval_source_driven_executes_holds()
 }
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
