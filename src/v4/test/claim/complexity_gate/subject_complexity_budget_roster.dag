@@ -12,8 +12,9 @@
 //        until a producer lands, do not add name-keyed placeholder rows — new rows attach
 //        when the §2 subject-producer composition exists. Unrated producers use
 //        unknown_complexity() (ClassUnknown fail-closed top), never omission.
-// Consumer: S1a exemplar gate rows import named rows from this roster (not inline budgets).
-// Status: roster authority only — enforcement wiring is follow-on (model-before-implement).
+// Consumer: gate rows import named rows from this roster (not inline budgets).
+//        complexity_lens_gate_consumer_rows is the discovered-subject authority for S2 completeness.
+// Status: roster + gate-consumer registry authority (S2 completeness gate consumes both lists).
 // Anchor: docs/design-lens-subject-supply.md §5 + v4.lens.complexity ComplexityBound.
 
 module v4.test.claim.complexity_gate.subject_complexity_budget_roster
@@ -42,5 +43,10 @@ data complexity_budget_row_comprep_source_bridged_add: LensSubjectComplexityBudg
   }
 
 data complexity_subject_budget_rows: List<LensSubjectComplexityBudgetRow> = [
+  complexity_budget_row_comprep_source_bridged_add
+]
+
+// Gate-consumer registry: every row a lens gate witness binds must be budget-covered in the roster above.
+data complexity_lens_gate_consumer_rows: List<LensSubjectComplexityBudgetRow> = [
   complexity_budget_row_comprep_source_bridged_add
 ]

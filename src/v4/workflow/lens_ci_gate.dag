@@ -61,11 +61,18 @@ data lens_ci_claim_run_row_provenance_parse_stamp_span_index: LensCiClaimRunRow 
 }
 
 // complexity-gate S1a — source-bridged COMPREP wave-1 `add` body (design-lens-subject-supply §3);
-// cost_lens → complexity projection; declared budget dominates computed class.
+// cost_lens → complexity projection; declared budget from roster row dominates computed class.
 data lens_ci_claim_run_row_complexity_gate_source_bridged_add: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "complexity_gate/source_bridged_add_budget",
   entry: "src/v4/test/claim/complexity_gate/source_bridged_add_budget.dag",
   function: "source_bridged_add_budget_claim_holds"
+}
+
+// complexity-gate S2 — fail-closed budget-roster completeness over lens gate subjects.
+data lens_ci_claim_run_row_complexity_gate_budget_roster_completeness: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "complexity_gate/budget_roster_completeness",
+  entry: "src/v4/test/claim/complexity_gate/budget_roster_completeness.dag",
+  function: "complexity_budget_roster_completeness_holds"
 }
 
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
@@ -75,7 +82,8 @@ data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_structural_resolution_binds_to_resolved,
   lens_ci_claim_run_row_provenance_occurrence_id_model,
   lens_ci_claim_run_row_provenance_parse_stamp_span_index,
-  lens_ci_claim_run_row_complexity_gate_source_bridged_add
+  lens_ci_claim_run_row_complexity_gate_source_bridged_add,
+  lens_ci_claim_run_row_complexity_gate_budget_roster_completeness
 ]
 
-data lens_ci_claim_run_row_count: String = "7"
+data lens_ci_claim_run_row_count: String = "8"

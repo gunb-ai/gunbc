@@ -1,0 +1,55 @@
+// src/v4/test/claim/complexity_gate/budget_roster_completeness.dag
+// Scope: complexity-gate S2 — fail-closed budget-roster completeness over lens gate subjects.
+//        Every gate-consumer subject-producer must appear in complexity_subject_budget_rows;
+//        missing coverage is red (design-lens-subject-supply §5).
+// Status: executable --claim-run witness (lens_ci_gate row).
+
+module v4.test.claim.complexity_gate.budget_roster_completeness
+
+import v4.std.algebra { Empty, any, fold_list }
+import v4.std.collection { List }
+import v4.std.diagnostic { Outcome }
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.test.claim.complexity_gate.subject_complexity_budget_roster {
+  LensSubjectComplexityBudgetRow,
+  complexity_budget_row_comprep_source_bridged_add,
+  complexity_lens_gate_consumer_rows,
+  complexity_subject_budget_rows
+}
+
+fn complexity_budget_row_subject_producer_covered(
+  subject: LensSubjectComplexityBudgetRow,
+  roster: List<LensSubjectComplexityBudgetRow>
+) -> Bool {
+  any(xs: roster, predicate: fn(row) {
+    row.subject_producer == subject.subject_producer
+  })
+}
+
+fn complexity_budget_roster_covers_all_gate_consumers() -> Bool {
+  fold_list(
+    xs: complexity_lens_gate_consumer_rows,
+    empty: true,
+    cons: fn(acc, consumer) {
+      acc
+        && complexity_budget_row_subject_producer_covered(
+          subject: consumer,
+          roster: complexity_subject_budget_rows
+        )
+    }
+  )
+}
+
+// Fail-closed semantic red: an uncovered producer against an empty roster must not pass.
+fn complexity_budget_roster_uncovered_producer_fails_closed() -> Bool {
+  !complexity_budget_row_subject_producer_covered(
+    subject: complexity_budget_row_comprep_source_bridged_add,
+    roster: Empty
+  )
+}
+
+fn complexity_budget_roster_completeness_holds() -> Bool {
+  complexity_budget_roster_covers_all_gate_consumers()
+    && complexity_budget_roster_uncovered_producer_fails_closed()
+}

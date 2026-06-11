@@ -1,0 +1,22 @@
+// src/v4/test/claim/complexity_gate/lens_subject_body_supply.dag
+// Scope: complexity-gate S2 — shared subject acquisition + canonical body extraction (design §2 steps 1–2).
+//        Call a static subject-producer, then extract the arrow body via node_query authority
+//        (wraps std.node arrow_body_target_lookup — no local edge-walker).
+// Design: docs/design-lens-subject-supply.md §2.
+
+module v4.test.claim.complexity_gate.lens_subject_body_supply
+
+import v4.std.diagnostic { Outcome, bind_outcome }
+import v4.std.node { Node }
+import v4.std.node_query { find_arrow_body_child }
+
+fn lens_subject_arrow_body_from_producer(
+  producer: fn() -> Outcome<Node>
+) -> Outcome<Node> {
+  bind_outcome(
+    o: producer(),
+    f: fn(arrow) {
+      find_arrow_body_child(root: arrow)
+    }
+  )
+}
