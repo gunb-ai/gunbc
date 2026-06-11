@@ -570,6 +570,19 @@ struct PureCallMemo {
 /// quadratic term a persistent carrier removes. Fold-building an n-entry
 /// collection shows `copied ≈ n·(n−1)/2` here; that ratio (copied/calls) is
 /// the before/after receipt for the ctrl#1533 carrier work.
+///
+/// One definition per counter, chosen by operation SEMANTICS — not by which
+/// dispatch path (method, builtin function, binop) executed it:
+/// - add-one ops (`map_insert`, `list_push`, `set_insert`): `*_copied` is the
+///   receiver's pre-existing entries. The added element is excluded — it must
+///   be written under any carrier, so it is not copy-on-update overhead.
+/// - merge ops (`map_merge`, `list_concat`, `set_union`): `*_copied` is BOTH
+///   operands' entries — every element of the result is a copy of a
+///   pre-existing collection member.
+///
+/// A `.concat`/`.append`/`.push` method call is bucketed by what its argument
+/// IS: a collection argument merges (`list_concat`), an atomic argument
+/// appends one element (`list_push`).
 #[derive(Default, Clone)]
 pub struct MutationCounters {
     pub map_insert_calls: u64,
@@ -582,11 +595,13 @@ pub struct MutationCounters {
     pub list_concat_items_copied: u64,
     pub set_insert_calls: u64,
     pub set_insert_items_copied: u64,
+    pub set_union_calls: u64,
+    pub set_union_items_copied: u64,
 }
 
 impl fmt::Display for MutationCounters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let rows: [(&str, u64, u64); 5] = [
+        let rows: [(&str, u64, u64); 6] = [
             (
                 "map_insert",
                 self.map_insert_calls,
@@ -611,6 +626,11 @@ impl fmt::Display for MutationCounters {
                 "set_insert",
                 self.set_insert_calls,
                 self.set_insert_items_copied,
+            ),
+            (
+                "set_union",
+                self.set_union_calls,
+                self.set_union_items_copied,
             ),
         ];
         for (name, calls, copied) in rows {
@@ -1298,22 +1318,25 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
     // List concatenation — List<T> IS FreeMonoid<T>; flatten operands (Option-B chokepoint).
     // Str operands stay atomic when mixed with lists (ctrl#1476 B1; same as .append/.concat).
     if matches!(op, BinOp::Add) {
-        let record_concat = |copied: usize| {
+        // Counter buckets follow operation semantics (see `MutationCounters`):
+        // an atomic Str operand appends as ONE new element (push: copy-work is
+        // the list operand only), list⊕list merges (concat: both operands).
+        let record_push = |copied: usize| {
             let mut counters = ctx.mutation_counters.borrow_mut();
-            counters.list_concat_calls += 1;
-            counters.list_concat_items_copied += copied as u64;
+            counters.list_push_calls += 1;
+            counters.list_push_items_copied += copied as u64;
         };
         match (&left, &right) {
             (l, Value::Str(s)) => {
                 if let Some(mut result) = free_monoid_to_vec(l) {
-                    record_concat(result.len());
+                    record_push(result.len());
                     result.push(Value::Str(s.clone()));
                     return Ok(Value::List(Rc::new(result)));
                 }
             }
             (Value::Str(s), r) => {
                 if let Some(result) = free_monoid_to_vec(r) {
-                    record_concat(result.len());
+                    record_push(result.len());
                     let mut out = vec![Value::Str(s.clone())];
                     out.extend(result);
                     return Ok(Value::List(Rc::new(out)));
@@ -1323,7 +1346,10 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                 if let (Some(mut a), Some(b)) =
                     (free_monoid_to_vec(&left), free_monoid_to_vec(&right))
                 {
-                    record_concat(a.len() + b.len());
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.list_concat_calls += 1;
+                    counters.list_concat_items_copied += (a.len() + b.len()) as u64;
+                    drop(counters);
                     a.extend(b);
                     return Ok(Value::List(Rc::new(a)));
                 }
@@ -2423,21 +2449,36 @@ fn eval_algebra_method(
                 return Ok(Value::Str(result));
             }
             if let Ok(items) = expect_list(&receiver, "concat") {
+                let receiver_len = items.len();
                 let mut result = items.to_vec();
+                // Counter bucket is decided by what the args ARE, not which
+                // method name dispatched here (see `MutationCounters`): a
+                // flattening collection arg merges (concat: both operands'
+                // elements are copy-work), atomic args append one element each
+                // (push: receiver elements only).
+                let mut merged_items = 0usize;
                 for arg in args {
                     // Non-list Str args append as one element, not char-exploded (ctrl#1476 B1).
                     if matches!(arg, Value::Str(_)) {
                         result.push(arg.clone());
                     } else {
                         match free_monoid_to_vec(arg) {
-                            Some(other) => result.extend(other),
+                            Some(other) => {
+                                merged_items += other.len();
+                                result.extend(other);
+                            }
                             None => result.push(arg.clone()),
                         }
                     }
                 }
                 let mut counters = ctx.mutation_counters.borrow_mut();
-                counters.list_concat_calls += 1;
-                counters.list_concat_items_copied += items.len() as u64;
+                if merged_items > 0 {
+                    counters.list_concat_calls += 1;
+                    counters.list_concat_items_copied += (receiver_len + merged_items) as u64;
+                } else {
+                    counters.list_push_calls += 1;
+                    counters.list_push_items_copied += receiver_len as u64;
+                }
                 drop(counters);
                 return Ok(Value::List(Rc::new(result)));
             }
@@ -3505,16 +3546,18 @@ fn eval_builtin(
                 }
                 return Ok(Some(Value::Str(result)));
             }
-            let record_concat = |copied: usize| {
+            // Same semantic bucketing as the binop/method paths (see
+            // `MutationCounters`): atomic Str operand → push, list⊕list → concat.
+            let record_push = |copied: usize| {
                 let mut counters = ctx.mutation_counters.borrow_mut();
-                counters.list_concat_calls += 1;
-                counters.list_concat_items_copied += copied as u64;
+                counters.list_push_calls += 1;
+                counters.list_push_items_copied += copied as u64;
             };
             match positional.as_slice() {
                 [a, b] => match (a, b) {
                     (l, Value::Str(s)) => match free_monoid_to_vec(l) {
                         Some(mut result) => {
-                            record_concat(result.len());
+                            record_push(result.len());
                             result.push(Value::Str(s.clone()));
                             Ok(Some(Value::List(Rc::new(result))))
                         }
@@ -3522,7 +3565,7 @@ fn eval_builtin(
                     },
                     (Value::Str(s), r) => match free_monoid_to_vec(r) {
                         Some(result) => {
-                            record_concat(result.len());
+                            record_push(result.len());
                             let mut out = vec![Value::Str(s.clone())];
                             out.extend(result);
                             Ok(Some(Value::List(Rc::new(out))))
@@ -3531,7 +3574,11 @@ fn eval_builtin(
                     },
                     _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
                         (Some(mut a_items), Some(b_items)) => {
-                            record_concat(a_items.len() + b_items.len());
+                            let mut counters = ctx.mutation_counters.borrow_mut();
+                            counters.list_concat_calls += 1;
+                            counters.list_concat_items_copied +=
+                                (a_items.len() + b_items.len()) as u64;
+                            drop(counters);
                             a_items.extend(b_items);
                             Ok(Some(Value::List(Rc::new(a_items))))
                         }
@@ -3673,8 +3720,8 @@ fn eval_builtin(
         "set_union" => match positional.as_slice() {
             [Value::Set(a), Value::Set(b)] => {
                 let mut counters = ctx.mutation_counters.borrow_mut();
-                counters.set_insert_calls += 1;
-                counters.set_insert_items_copied += (a.len() + b.len()) as u64;
+                counters.set_union_calls += 1;
+                counters.set_union_items_copied += (a.len() + b.len()) as u64;
                 drop(counters);
                 let mut result = a.as_ref().clone();
                 result.extend(b.iter().cloned());
@@ -3757,6 +3804,10 @@ fn eval_builtin(
 
         "map_merge" => match positional.as_slice() {
             [Value::Map(base), Value::Map(overlay)] => {
+                let mut counters = ctx.mutation_counters.borrow_mut();
+                counters.map_merge_calls += 1;
+                counters.map_merge_entries_copied += (base.len() + overlay.len()) as u64;
+                drop(counters);
                 let mut result = HashMap::clone(&base);
                 for (k, v) in overlay.iter() {
                     result.insert(k.clone(), v.clone());
