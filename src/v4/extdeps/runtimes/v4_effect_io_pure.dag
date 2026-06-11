@@ -47,8 +47,13 @@ import v4.std.runtime {
 }
 import v4.std.witness { Holds, Violates, Witness }
 
-// 🟢 coproduct dissolution — resource transport backend axis (Practice 4); wave-2 gate exercises
-// FileResourceBackend; Http/Storage arms are declared honest stubs until host_run receipts land.
+// Resource transport backends (file → HTTP → storage) share one handler contract; the backend
+// arm is declared per claim and threaded into locator construction at inject-per-run time.
+// 🟡 gated — predicate-dissolution interim — feature:effect-io-backend-parameterized-store —
+// consumer: effect_io_pure_backends_match — dual backend tags on store + locator require a runtime
+// equality guard until the fixture store is parameterized by backend (Practice 2 illegal-states) or
+// eq/tag substrate makes mismatch unrepresentable. dissolve-on-arrival: backend-indexed store type
+// or structural backend equality in std/; forbidden: silent backend-tag drift without disposition.
 type EffectIoResourceBackend
   = FileResourceBackend
   | HttpResourceBackend
@@ -157,11 +162,9 @@ fn effect_io_pure_locator_from_args(
   }
 }
 
-// 🟡 gated — feature:effect-io-locator-identity-from-value — wave-2 interim: every locator
-// collapses to a single declare-per-claim pin (^effect_io_pure_default_locator); the RuntimeValue
-// argument is intentionally ignored so distinct locator args silently alias (fail-open for the gate).
-// dissolve-on-arrival: first consumer that derives fixture keys from RuntimeValue→Node reification
-// (or an explicit locator Symbol field on the request args) — identity becomes value-derived.
+// Wave-2 interim: single default locator per backend — does not discriminate distinct resources
+// (all locators collapse to ^effect_io_pure_default_locator). Multi-resource gates follow when
+// declare-per-claim locator identity threads from operation arguments.
 fn effect_io_pure_locator_identity(_value: RuntimeValue) -> Symbol {
   ^effect_io_pure_default_locator
 }
@@ -173,9 +176,6 @@ fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<R
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
-// feature:effect-io-backend-match — dissolve-on-arrival: backend equality via declared carrier
-// projection instead of nested match; forbidden: permanent untagged Bool backend-alignment predicates.
 fn effect_io_pure_backends_match(
   left: EffectIoResourceBackend,
   right: EffectIoResourceBackend
@@ -377,7 +377,8 @@ fn effect_io_pure_apply_write(
   }
 }
 
-// Orchestrate ReadResource→WriteResource round-trip through EffectHandlerBinding dispatch.
+// Wave-2 gate: ReadResource→WriteResource round-trip through EffectHandlerBinding dispatch for
+// one default locator per backend (binding dispatch + Q-R2 receipt replay; not multi-resource).
 fn effect_io_pure_read_write_roundtrip(
   backend: EffectIoResourceBackend,
   locator: EffectIoResourceLocator,
