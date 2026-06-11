@@ -5,8 +5,8 @@
 
 module v4.compiler.body_producer
 
-import v4.std.algebra { list_snoc_item }
-import v4.std.collection { Absent, Present, list_at_optional }
+import v4.std.algebra { list_append, list_snoc_item }
+import v4.std.collection { Absent, List, Present, list_at_optional }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -37,7 +37,7 @@ import v4.std.node {
   node_unanchored,
   well_formed
 }
-import v4.std.node_query { find_arrow_body_child, node_positional_child_targets }
+import v4.std.node_query { find_arrow_body_child, find_named_child }
 
 data body_producer_reason_malformed_attachment: Symbol = body_producer_reason_malformed_attachment
 data body_producer_reason_post_produce_not_well_formed: Symbol = body_producer_reason_post_produce_not_well_formed
@@ -126,6 +126,250 @@ fn produce_mvp1_add_arrow_signature() -> Node {
         target: type_atom_node(identity: ^dag_binding_type_int)
       }
     ]
+  )
+}
+
+fn mvp1_flat_atom_at(
+  atoms: List<Node>,
+  wanted: Int,
+  reason: Symbol,
+  witness: Node
+) -> Outcome<Node> {
+  match list_at_optional(xs: atoms, index: wanted) {
+    Present { value: child } => outcome_accepted(value: child)
+    Absent =>
+      outcome_rejected(
+        d: body_producer_diagnostic(reason: reason, n: witness)
+      )
+  }
+}
+
+fn mvp1_sequence_flatten_atoms(root: Node) -> Outcome<List<Node>> {
+  match root.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      outcome_accepted(value: [root])
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: find_named_child(root: root, name: ^grammar_sequence_left_node_projection),
+        f: fn(left) {
+          bind_outcome(
+            o: find_named_child(root: root, name: ^grammar_sequence_right_node_projection),
+            f: fn(right) {
+              bind_outcome(
+                o: mvp1_sequence_flatten_atoms(root: left),
+                f: fn(left_atoms) {
+                  bind_outcome(
+                    o: mvp1_sequence_flatten_atoms(root: right),
+                    f: fn(right_atoms) {
+                      outcome_accepted(
+                        value: list_append(left: left_atoms, right: right_atoms)
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: body_producer_reason_mvp1_resolved_shape,
+          n: root
+        )
+      )
+  }
+}
+
+fn mvp1_resolved_captured_atoms(resolved_root: Node) -> Outcome<List<Node>> {
+  bind_outcome(
+    o: find_named_child(
+      root: resolved_root,
+      name: ^grammar_production_captured_node_projection
+    ),
+    f: fn(captured) {
+      mvp1_sequence_flatten_atoms(root: captured)
+    }
+  )
+}
+
+fn body_producer_node_is_canonical_atom(node: Node, sym: Symbol) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == sym
+    _ => false
+  }
+}
+
+fn body_producer_node_is_ident_atom(node: Node) -> Bool {
+  body_producer_node_is_canonical_atom(node: node, sym: ^dag_token_ident)
+}
+
+// MVP1 resolved production: flatten captured token sequence; signature Int atoms at 5/9/12;
+// body expr at 14/15/16. Token order authority: dag_mvp1_concrete_tokens in v4.extdeps.languages.dag.
+fn produce_mvp1_add_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+    f: fn(atoms) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 5,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: resolved_root
+        ),
+        f: fn(domain_x) {
+          bind_outcome(
+            o: mvp1_flat_atom_at(
+              atoms: atoms,
+              wanted: 9,
+              reason: body_producer_reason_mvp1_resolved_shape,
+              witness: resolved_root
+            ),
+            f: fn(domain_y) {
+              bind_outcome(
+                o: mvp1_flat_atom_at(
+                  atoms: atoms,
+                  wanted: 12,
+                  reason: body_producer_reason_mvp1_resolved_shape,
+                  witness: resolved_root
+                ),
+                f: fn(codomain) {
+                  if body_producer_node_is_ident_atom(node: domain_x)
+                    && body_producer_node_is_ident_atom(node: domain_y)
+                    && body_producer_node_is_ident_atom(node: codomain) {
+                    outcome_accepted(
+                      value: node_unanchored(
+                        kind: TypeNode { connective: Arrow },
+                        children: [
+                          Edge {
+                            label: Positional,
+                            target: type_atom_node(identity: ^dag_binding_type_int)
+                          },
+                          Edge {
+                            label: Positional,
+                            target: type_atom_node(identity: ^dag_binding_type_int)
+                          },
+                          Edge {
+                            label: Positional,
+                            target: type_atom_node(identity: ^dag_binding_type_int)
+                          }
+                        ]
+                      )
+                    )
+                  } else {
+                    outcome_rejected(
+                      d: body_producer_diagnostic(
+                        reason: body_producer_reason_mvp1_resolved_shape,
+                        n: resolved_root
+                      )
+                    )
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produce_mvp1_add_binary_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
+    f: fn(atoms) {
+      bind_outcome(
+        o: mvp1_flat_atom_at(
+          atoms: atoms,
+          wanted: 14,
+          reason: body_producer_reason_mvp1_resolved_shape,
+          witness: resolved_root
+        ),
+        f: fn(left_operand) {
+          bind_outcome(
+            o: mvp1_flat_atom_at(
+              atoms: atoms,
+              wanted: 15,
+              reason: body_producer_reason_mvp1_resolved_shape,
+              witness: resolved_root
+            ),
+            f: fn(operator) {
+              bind_outcome(
+                o: mvp1_flat_atom_at(
+                  atoms: atoms,
+                  wanted: 16,
+                  reason: body_producer_reason_mvp1_resolved_shape,
+                  witness: resolved_root
+                ),
+                f: fn(right_operand) {
+                  if body_producer_node_is_canonical_atom(node: operator, sym: ^dag_token_plus)
+                    && body_producer_node_is_ident_atom(node: left_operand)
+                    && body_producer_node_is_ident_atom(node: right_operand) {
+                    outcome_accepted(
+                      value: node_unanchored(
+                        kind: ComputationNode { behavior: Transform },
+                        children: [
+                          Edge {
+                            label: Positional,
+                            target: type_atom_node(identity: ^dag_token_plus)
+                          },
+                          Edge {
+                            label: Positional,
+                            target: computation_param_ref_node(identity: ^dag_binding_param_x)
+                          },
+                          Edge {
+                            label: Positional,
+                            target: computation_param_ref_node(identity: ^dag_binding_param_y)
+                          }
+                        ]
+                      )
+                    )
+                  } else {
+                    outcome_rejected(
+                      d: body_producer_diagnostic(
+                        reason: body_producer_reason_mvp1_resolved_shape,
+                        n: resolved_root
+                      )
+                    )
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// resolve→body_producer bridge (node://adhoc-9a72d4fb-8c2): source-resolved MVP production
+// → clean Int,Int->Int signature + source-order Behavior body on Arrow.body.
+fn produce_mvp1_add_arrow_with_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: produce_mvp1_add_arrow_signature_from_resolved(resolved_root: resolved_root),
+    f: fn(signature) {
+      bind_outcome(
+        o: produce_mvp1_add_binary_body_from_resolved(resolved_root: resolved_root),
+        f: fn(body) {
+          bind_outcome(
+            o: attach_arrow_body(arrow: signature, body: body),
+            f: fn(arrow_with_body) {
+              if well_formed(n: arrow_with_body) {
+                outcome_accepted(value: arrow_with_body)
+              } else {
+                outcome_rejected(
+                  d: body_producer_diagnostic(
+                    reason: body_producer_reason_post_produce_not_well_formed,
+                    n: arrow_with_body
+                  )
+                )
+              }
+            }
+          )
+        }
+      )
+    }
   )
 }
 
