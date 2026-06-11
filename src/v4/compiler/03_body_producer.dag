@@ -129,6 +129,13 @@ fn produce_mvp1_add_arrow_signature() -> Node {
   )
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE — consumer:produce_mvp1_add_arrow_with_body_from_resolved
+// (executed by comprep_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 —
+// dissolve-on: body_producer reads structured normalize/resolve Behavior carriers instead of
+// flat MVP1 token-index extraction into a flattened atom list; owner/lane: Mgr-RUNTIME
+// (neat-bat-593) — trigger: structured fn-body normalize output lands; forbidden: permanent
+// untagged index-walk bridge helpers in body_producer.
 fn mvp1_flat_atom_at(
   atoms: List<Node>,
   wanted: Int,
@@ -194,6 +201,12 @@ fn mvp1_resolved_captured_atoms(resolved_root: Node) -> Outcome<List<Node>> {
   )
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10 /
+// INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE — consumer:produce_mvp1_add_*_from_resolved
+// — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: atom admission uses binding_id / grammar
+// projection facts instead of hand is_* Node.kind/Atom identity matches; owner/lane:
+// Mgr-RUNTIME (neat-bat-593) — trigger: binding_id-branded resolved param/type atoms land;
+// forbidden: permanent untagged Bool substrate-shape predicates in body_producer.
 fn body_producer_node_is_canonical_atom(node: Node, sym: Symbol) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == sym
@@ -205,8 +218,15 @@ fn body_producer_node_is_ident_atom(node: Node) -> Bool {
   body_producer_node_is_canonical_atom(node: node, sym: ^dag_token_ident)
 }
 
-// MVP1 resolved production: flatten captured token sequence; signature Int atoms at 5/9/12;
-// body expr at 14/15/16. Token order authority: dag_mvp1_concrete_tokens in v4.extdeps.languages.dag.
+// 🟡 gated — COMPREP wave-1 hard-coded bridge scaffold (docs/modeling-discipline.md
+// Practice 10 / INVARIANTS P5) — feature:COMPREP-WAVE1-BODY-BRIDGE —
+// consumer:produce_mvp1_add_arrow_with_body_from_resolved (executed by comprep_eval_by_execution
+// keystone) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: signature+body production derives
+// from the resolved Arrow's declared signature+body carriers (real body_producer dispatch)
+// rather than recognizing the fixed MVP1 flat-token indices 5/9/12/14/15/16; owner/lane:
+// Mgr-RUNTIME (neat-bat-593) — trigger: structured fn-body normalize output lands; forbidden:
+// adding a second hard-coded flat-index shape here (a third would mean building the dispatch
+// surface, not another literal index table).
 fn produce_mvp1_add_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
   bind_outcome(
     o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
@@ -343,8 +363,6 @@ fn produce_mvp1_add_binary_body_from_resolved(resolved_root: Node) -> Outcome<No
   )
 }
 
-// resolve→body_producer bridge (node://adhoc-9a72d4fb-8c2): source-resolved MVP production
-// → clean Int,Int->Int signature + source-order Behavior body on Arrow.body.
 fn produce_mvp1_add_arrow_with_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
   bind_outcome(
     o: produce_mvp1_add_arrow_signature_from_resolved(resolved_root: resolved_root),
