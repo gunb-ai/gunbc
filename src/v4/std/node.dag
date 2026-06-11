@@ -98,6 +98,16 @@ type Edge {
   label: EdgeLabel
   target: Node
 }
+// 🟢 coproduct dissolution — PROV A-pivot lifecycle: pre-stamp tree for fixtures / hand-authored
+// stubs. No occurrence_id — illegal to treat as pipeline Node until stamped via v4.std.node_shape.
+type EdgeShape {
+  label: EdgeLabel
+  target: NodeShape
+}
+type NodeShape {
+  kind: NodeKind
+  children: List<EdgeShape>
+}
 // 🟡 gated — substrate-shape bridge (docs/modeling-discipline.md Practice 2/10) — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
 data loop_bound_edge: Symbol = ^loop_bound_edge
 // 🟢 TERMINAL — E-9/DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
@@ -1186,11 +1196,10 @@ data byte_offset_proj_pred_edge: Symbol = ^byte_offset_proj_pred_edge
 
 
 fn node_offset_atom(sym: Symbol) -> Node {
-  Node {
+  node_synthetic(
     kind: TypeNode { connective: Atom { identity: sym } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
+    children: []
+  )
 }
 
 
@@ -1200,11 +1209,10 @@ fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
 
 
 fn node_offset_conj(children: List<Edge>) -> Node {
-  Node {
+  node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: children,
-    occurrence_id: SyntheticOccurrence
-  }
+    children: children
+  )
 }
 
 
