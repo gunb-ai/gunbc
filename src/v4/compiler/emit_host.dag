@@ -30,7 +30,7 @@ import v4.compiler.eval {
   test_claim_cache_receipt_node
 }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.collection { List }
+import v4.std.collection { List, optional_present }
 import v4.std.host_transport { HostTransportDescriptor }
 import v4.std.diagnostic {
   Diagnostic,
