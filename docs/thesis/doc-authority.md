@@ -87,6 +87,7 @@ gates it in CI so it can't silently go stale.
 flowchart LR
   subgraph area__root_["(root)"]
     d_BOOTSTRAP_md["BOOTSTRAP.md"]
+    d_CLAUDE_md["CLAUDE.md"]
     d_CODING_md["CODING.md"]
     d_DIRECTION_CHECKLIST_md["DIRECTION-CHECKLIST.md"]
     d_INVARIANTS_md["INVARIANTS.md"]
@@ -109,6 +110,7 @@ flowchart LR
     d_docs_design_pure_bootstrap_md["docs/design-pure-bootstrap.md"]
     d_docs_design_self_host_fixed_point_md["docs/design-self-host-fixed-point.md"]
     d_docs_error_examples_md["docs/error-examples.md"]
+    d_docs_modeling_discipline_md["docs/modeling-discipline.md"]
     d_docs_single_emitter_design_md["docs/single-emitter-design.md"]
     d_docs_v4_compiler_migration_md["docs/v4-compiler-migration.md"]
   end
@@ -117,6 +119,9 @@ flowchart LR
   end
   subgraph area_docs_briefs["docs/briefs"]
     d_docs_briefs_t_impossiblebugs_unenumerated_effects_design_md["docs/briefs/t-impossiblebugs-unenumerated-effects-design.md"]
+  end
+  subgraph area_docs_modeling["docs/modeling"]
+    d_docs_modeling_grounding_worked_examples_md["docs/modeling/grounding-worked-examples.md"]
   end
   subgraph area_docs_perf["docs/perf"]
     d_docs_perf_clone_elimination_md["docs/perf/clone-elimination.md"]
@@ -148,6 +153,7 @@ flowchart LR
   d_INVARIANTS_md --> d_docs_v4_compiler_migration_md
   d_MODELING_md --> d_INVARIANTS_md
   d_MODELING_md --> d_THESIS_md
+  d_MODELING_md --> d_docs_modeling_discipline_md
   d_MODELING_md --> d_docs_thesis_the_derived_homomorphism_md
   d_README_md --> d_INVARIANTS_md
   d_README_md --> d_MODELING_md
@@ -197,6 +203,14 @@ flowchart LR
   d_docs_design_self_host_fixed_point_md --> d_docs_design_pure_bootstrap_zero_md
   d_docs_error_examples_md --> d_ROADMAP_md
   d_docs_error_examples_md --> d_THESIS_md
+  d_docs_modeling_discipline_md --> d_CLAUDE_md
+  d_docs_modeling_discipline_md --> d_INVARIANTS_md
+  d_docs_modeling_discipline_md --> d_MODELING_md
+  d_docs_modeling_discipline_md --> d_THESIS_md
+  d_docs_modeling_discipline_md --> d_docs_modeling_grounding_worked_examples_md
+  d_docs_modeling_discipline_md --> d_docs_thesis_the_derived_homomorphism_md
+  d_docs_modeling_grounding_worked_examples_md --> d_docs_modeling_discipline_md
+  d_docs_modeling_grounding_worked_examples_md --> d_docs_thesis_the_derived_homomorphism_md
   d_docs_perf_clone_elimination_md --> d_INVARIANTS_md
   d_docs_perf_clone_elimination_md --> d_ROADMAP_md
   d_docs_perf_clone_elimination_md --> d_THESIS_md
