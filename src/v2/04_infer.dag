@@ -188,9 +188,8 @@ fn is_bootstrap_duplicate_variant_name(name: String) -> Bool {
 fn same_canonical_container_variant_parent(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let left_name = canonical_template_name(n: left, source_indices: source_indices)
   let right_name = canonical_template_name(n: right, source_indices: source_indices)
-  if left.connective == Disj && right.connective == Disj {
-    left_name == right_name
-  } else { false }
+  let same_name = left_name == right_name
+  left.connective == Disj && right.connective == Disj && same_name
 }
 
 type InferScope {
@@ -895,46 +894,48 @@ fn direct_call_carrier_transparent_alias_to(env: TypeEnv, alias_node: Node, targ
 fn direct_call_transparent_alias_to(env: TypeEnv, alias_node: Node, target_node: Node) -> Bool {
   let target_name = authored_name_at(source_indices: env.source_indices, node: target_node)
   if direct_call_carrier_transparent_alias_to(env: env, alias_node: alias_node, target_node: target_node) { true }
-  else match direct_call_node_binding(env: env, n: alias_node) {
-    Present { value: binding } =>
-      match direct_call_bare_alias_target_node(binding: binding) {
-        Present { value: alias_target_node } => direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: alias_target_node)
-        Absent =>
-          let resolved_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
-          let alias_decl_name = match alias_node.binding_id {
-            Present { value: binding_id } =>
-              match map_get(env.decl_registry, binding_id) {
-                Present { value: decl } => decl.name
-                Absent => binding.name
-              }
-            Absent => binding.name
-          }
-          let declared_or_structural_target = binding.resolved.binding_id != none || binding.resolved.connective != NoConnective
-          alias_decl_name != resolved_name
-            && declared_or_structural_target
-            && direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: binding.resolved)
-      }
-    Absent =>
-      // Some transparent bare aliases resolve their binding row to the target's
-      // BindingId (e.g. ParseTree = Node). Use the alias declaration authority
-      // plus the raw binding row; do not fall back to arbitrary same-shape nodes.
-      match alias_node.binding_id {
-        Present { value: binding_id } =>
-          match map_get(env.decl_registry, binding_id) {
-            Present { value: decl } =>
-              match map_get(env.bindings, decl.binding_key) {
-                Present { value: raw_binding } =>
-                  let raw_resolved_name = authored_name_at(source_indices: env.source_indices, node: raw_binding.resolved)
-                  let declared_or_structural_target = raw_binding.resolved.binding_id != none || raw_binding.resolved.connective != NoConnective
-                  decl.name != raw_resolved_name
-                    && declared_or_structural_target
-                    && direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: raw_binding.resolved)
-                Absent => false
-              }
-            Absent => false
-          }
-        Absent => false
-      }
+  else {
+    match direct_call_node_binding(env: env, n: alias_node) {
+      Present { value: binding } =>
+        match direct_call_bare_alias_target_node(binding: binding) {
+          Present { value: alias_target_node } => direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: alias_target_node)
+          Absent =>
+            let resolved_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
+            let alias_decl_name = match alias_node.binding_id {
+              Present { value: binding_id } =>
+                match map_get(env.decl_registry, binding_id) {
+                  Present { value: decl } => decl.name
+                  Absent => binding.name
+                }
+              Absent => binding.name
+            }
+            let declared_or_structural_target = binding.resolved.binding_id != none || binding.resolved.connective != NoConnective
+            alias_decl_name != resolved_name
+              && declared_or_structural_target
+              && direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: binding.resolved)
+        }
+      Absent =>
+        // Some transparent bare aliases resolve their binding row to the target's
+        // BindingId (e.g. ParseTree = Node). Use the alias declaration authority
+        // plus the raw binding row; do not fall back to arbitrary same-shape nodes.
+        match alias_node.binding_id {
+          Present { value: binding_id } =>
+            match map_get(env.decl_registry, binding_id) {
+              Present { value: decl } =>
+                match map_get(env.bindings, decl.binding_key) {
+                  Present { value: raw_binding } =>
+                    let raw_resolved_name = authored_name_at(source_indices: env.source_indices, node: raw_binding.resolved)
+                    let declared_or_structural_target = raw_binding.resolved.binding_id != none || raw_binding.resolved.connective != NoConnective
+                    decl.name != raw_resolved_name
+                      && declared_or_structural_target
+                      && direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: raw_binding.resolved)
+                  Absent => false
+                }
+              Absent => false
+            }
+          Absent => false
+        }
+    }
   }
 }
 
@@ -5899,12 +5900,12 @@ fn type_binding_decl_binding_id(env: TypeEnv, binding: TypeBinding) -> BindingId
   )
 }
 
-fn carrier_closure_direct_type_deps(n: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let n_name = authored_name_at(source_indices: source_indices, node: n)
-  let authored_ref = if n.ident_span != none && n_name != "" && is_kernel_type(name: n_name) == false {
+fn carrier_closure_direct_type_deps(node: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let n_name = authored_name_at(source_indices: source_indices, node: node)
+  let authored_ref = if node.ident_span != none && n_name != "" && is_kernel_type(name: n_name) == false {
     [n_name]
   } else { [] }
-  let decl_ref = match n.binding_id {
+  let decl_ref = match node.binding_id {
     Present { value: binding_id } =>
       match map_get(dep_env.decl_registry, binding_id) {
         Present { value: decl } =>
@@ -5915,18 +5916,18 @@ fn carrier_closure_direct_type_deps(n: Node, dep_env: TypeEnv, source_indices: M
       }
     Absent => []
   }
-  concat(concat(authored_ref, decl_ref), node_type_deps(n: n, source_indices: source_indices))
+  concat(concat(authored_ref, decl_ref), node_type_deps(n: node, source_indices: source_indices))
 }
 
-fn carrier_closure_node_type_deps(n: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let base = carrier_closure_direct_type_deps(n: n, dep_env: dep_env, source_indices: source_indices)
-  let child_deps = if n.connective == Conj {
-    flat_map(n.children, child =>
-      carrier_closure_node_type_deps(n: field_node_type_expr(n: child), dep_env: dep_env, source_indices: source_indices)
+fn carrier_closure_node_type_deps(node: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let base = carrier_closure_direct_type_deps(node, dep_env, source_indices)
+  let child_deps = if node.connective == Conj {
+    flat_map(node.children, child =>
+      carrier_closure_node_type_deps(field_node_type_expr(n: child), dep_env, source_indices)
     )
   } else {
-    flat_map(n.children, child =>
-      carrier_closure_node_type_deps(n: child, dep_env: dep_env, source_indices: source_indices)
+    flat_map(node.children, child =>
+      carrier_closure_node_type_deps(child, dep_env, source_indices)
     )
   }
   concat(base, child_deps)
@@ -5957,10 +5958,10 @@ fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: Type
         }
       Absent => with_binding
     }
-    let deps = concat(
-      carrier_closure_node_type_deps(n: binding.resolved, dep_env: dep_env, source_indices: source_indices),
-      carrier_closure_node_type_deps(n: stamped.resolved, dep_env: dep_env, source_indices: source_indices)
-    )
+  let deps = concat(
+    carrier_closure_node_type_deps(binding.resolved, dep_env, source_indices),
+    carrier_closure_node_type_deps(stamped.resolved, dep_env, source_indices)
+  )
     fold(deps, init: with_decl_binding, f: (acc, dep_name) =>
       match lookup_type_binding_by_name_in_env(env: dep_env, name: dep_name) {
         Present { value: dep_binding } => add_type_binding_dependency_closure(state: acc, binding: dep_binding, dep_env: dep_env, source_indices: source_indices)
@@ -5980,8 +5981,8 @@ fn add_node_dependency_closure(state: CarrierClosureState, n: Node, dep_env: Typ
     }
   } else { state }
   let deps = concat(
-    carrier_closure_node_type_deps(n: n, dep_env: dep_env, source_indices: source_indices),
-    carrier_closure_node_type_deps(n: stamped, dep_env: dep_env, source_indices: source_indices)
+    carrier_closure_node_type_deps(n, dep_env, source_indices),
+    carrier_closure_node_type_deps(stamped, dep_env, source_indices)
   )
   fold(deps, init: with_self, f: (acc, dep_name) =>
     match lookup_type_binding_by_name_in_env(env: dep_env, name: dep_name) {
