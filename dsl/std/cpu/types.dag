@@ -1,0 +1,31 @@
+// std/cpu/types.dag — shared CPU taxonomy types (no vendor catalog data).
+
+module std.cpu.types
+
+import std.types { Int }
+
+type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
+
+type CpuVendor = Intel | Amd | Ampere | Apple | Arm | Qualcomm
+
+type AmpereCpuModel = AltraMax | Altra
+
+type CpuIdentity = AmpereCpu { model: AmpereCpuModel }
+
+type CpuModelCatalogRow {
+  architecture: CpuArchitecture
+  cores: Int
+  threads: Int
+  nominal_sustained_per_thread_hz: Int
+  // TODO(P-CF-ISA): populate instruction_sets when InstructionSet dissolves
+  // from Node in std.compute_fabric (Neoverse-N1 extension set for Altra Max).
+}
+
+type CpuDeploymentFacts {
+  sustained_per_thread_hz: Int
+}
+
+type CpuFacts {
+  identity: CpuIdentity
+  deployment: CpuDeploymentFacts
+}

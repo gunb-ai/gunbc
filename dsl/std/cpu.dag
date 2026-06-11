@@ -1,27 +1,39 @@
-// std/cpu.dag — CPU silicon vendor and product-line taxonomy.
+// std/cpu.dag — CPU catalog dispatch and deployment projections.
 //
-// Authority: physical CPU identity on compute hosts. Orthogonal to
-// std.types.TargetTriple.vendor (toolchain triple vocabulary: pc, apple,
-// w64) and std.compute_fabric.CpuArchitecture (ISA surface for demand
-// matching).
-//
-// M4: vendor and model are closed coproducts — not NonEmptyStr proxies.
+// Types: std.cpu.types. Per-vendor catalog data: std.cpu.<vendor>.
 
 module std.cpu
 
-// --- Vendor axis (closed set; extend as fleet rows land) ---------------------
-
-type CpuVendor = Intel | Amd | Ampere | Apple | Arm | Qualcomm
-
-// --- Per-vendor product lines ------------------------------------------------
-
-type AmpereCpuModel = AltraMax | Altra
-
-// Joint identity: vendor tag determines which model enum applies.
-type CpuIdentity = Ampere { model: AmpereCpuModel }
+import std.cpu.types { AmpereCpuModel, CpuArchitecture, CpuDeploymentFacts, CpuFacts, CpuIdentity, CpuModelCatalogRow, CpuVendor }
+import std.cpu.ampere { altra_catalog, altra_max_catalog }
 
 fn cpu_vendor(identity: CpuIdentity) -> CpuVendor {
   match identity {
-    Ampere { model: _ } => Ampere
+    AmpereCpu { model: _ } => Ampere
   }
+}
+
+fn cpu_catalog_row(identity: CpuIdentity) -> CpuModelCatalogRow {
+  match identity {
+    AmpereCpu { model: m } => match m {
+      AltraMax => altra_max_catalog
+      Altra => altra_catalog
+    }
+  }
+}
+
+fn cpu_facts_cores(cpu: CpuFacts) -> Int {
+  cpu_catalog_row(cpu.identity).cores
+}
+
+fn cpu_facts_threads(cpu: CpuFacts) -> Int {
+  cpu_catalog_row(cpu.identity).threads
+}
+
+fn cpu_facts_architecture(cpu: CpuFacts) -> CpuArchitecture {
+  cpu_catalog_row(cpu.identity).architecture
+}
+
+fn cpu_facts_sustained_per_thread_hz(cpu: CpuFacts) -> Int {
+  cpu.deployment.sustained_per_thread_hz
 }

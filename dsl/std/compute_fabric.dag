@@ -12,7 +12,14 @@ import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.float { Float }
 import std.measure { Measure, Time, DataRate, One, ByteSize }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
-import std.cpu { CpuIdentity }
+import std.cpu {
+  CpuDeploymentFacts,
+  CpuFacts,
+  CpuIdentity,
+  CpuArchitecture,
+  cpu_facts_sustained_per_thread_hz,
+  cpu_facts_threads,
+}
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
@@ -39,7 +46,6 @@ type InstructionSet = Node
 
 // --- §1.7 supporting enums + measure carriers --------------------------------
 
-type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
 type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
 type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
@@ -74,15 +80,8 @@ type StorageMount {
   lifecycle: PersistenceKind
 }
 
-type CpuFacts {
-  architecture: CpuArchitecture
-  identity: CpuIdentity
-  cores: Int
-  threads: Int
-  // Sustained per-hardware-thread clock, SI hertz (Int carrier at v2 layer).
-  sustained_per_thread_hz: Int
-  instruction_sets: List<InstructionSet>
-}
+// CpuFacts authority: std.cpu (identity + deployment); catalog invariants
+// project via cpu_facts_* helpers — not duplicated fields here.
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
@@ -203,8 +202,8 @@ fn machine_view_label(_host: ComputeHost, surface: ExecutionSurface) -> NonEmpty
 fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: Int) -> PlacementSupplyRow {
   PlacementSupplyRow {
     identity: identity,
-    hardware_threads: cpu.threads,
-    clock_hz: cpu.sustained_per_thread_hz,
+    hardware_threads: cpu_facts_threads(cpu),
+    clock_hz: cpu_facts_sustained_per_thread_hz(cpu),
     ram_bytes: ram_bytes_total,
   }
 }
@@ -404,21 +403,13 @@ data supply_srv2_host_identity: HostIdentity = "srv2"
 
 // Operator fleet: Ampere Altra Max (srv1 degraded RAM; srv2 full 128 GiB).
 data supply_srv1_cpu: CpuFacts = CpuFacts {
-  architecture: Aarch64,
-  identity: Ampere { model: AltraMax },
-  cores: 128,
-  threads: 128,
-  sustained_per_thread_hz: 3000000000,
-  instruction_sets: [],
+  identity: AmpereCpu { model: AltraMax },
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: 3000000000 },
 }
 
 data supply_srv2_cpu: CpuFacts = CpuFacts {
-  architecture: Aarch64,
-  identity: Ampere { model: AltraMax },
-  cores: 128,
-  threads: 128,
-  sustained_per_thread_hz: 3000000000,
-  instruction_sets: [],
+  identity: AmpereCpu { model: AltraMax },
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: 3000000000 },
 }
 
 // ~93 GiB usable (degraded DIMMs); operator spec 2026-06-02.

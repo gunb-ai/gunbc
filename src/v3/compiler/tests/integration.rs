@@ -1150,6 +1150,14 @@ mod parse_stage4_prep {
             include_str!("../../../../dsl/std/cpu.dag"),
             "dsl/std/cpu.dag",
         );
+        parse_file(
+            include_str!("../../../../dsl/std/cpu/types.dag"),
+            "dsl/std/cpu/types.dag",
+        );
+        parse_file(
+            include_str!("../../../../dsl/std/cpu/ampere.dag"),
+            "dsl/std/cpu/ampere.dag",
+        );
     }
 
     #[test]
