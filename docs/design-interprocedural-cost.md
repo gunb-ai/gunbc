@@ -16,8 +16,8 @@ reads as constant at every caller. The S1/S2 gate is honest only because today's
 (COMPREP wave-1 `add`) are callee-free — `05_eval.dag` itself documents "there is no
 user-function callee path because there are no callees." The moment COMPREP's
 callee-dispatch wave lands, a budget gate without callee consult would pass O(n²)-via-helper
-as O(1): the gate would go from incomplete to *unsound*. S3 must therefore land (at least
-its fail-closed phase) no later than the first roster subject that contains a call.
+as O(1): the gate would go from incomplete to *unsound*. S3 must therefore land no later
+than the first roster subject that contains a call.
 
 ## 2. Shape: a summary map over the call graph, composed OUTSIDE cost.dag
 
@@ -96,14 +96,14 @@ inherits it for free through the Loop treatment.
   through the side door.
 - **Not eager whole-program analysis.** Summaries are computed for declarations reachable
   from roster subjects, on demand, inside the witness run — same execution boundary as
-  every other `--claim-run` gate row. No persisted summary cache in phase 1 (a cache is a
+  every other `--claim-run` gate row. No persisted summary cache initially (a cache is a
   parallel ledger until proven necessary by wall-time).
 
 ## 5. Interfaces touched, and the escalation surface
 
 | Piece | Change | Authority bar |
 |---|---|---|
-| `lens/cost_call_graph.dag` (new) | summaries, SCC handling, substitution | additive — normal PR |
+| `lens/cost_call_graph.dag` (new) | summaries, cycle backstop, substitution | additive — normal PR |
 | `lens/cost.dag` consult hook (§2a) | one parameterized point in the fold | **operator-STOP — escalate with this doc before touching** |
 | canonical Transform-callee accessor | consumed, not defined here | lands with COMPREP callee-dispatch wave; S3 blocks on it |
 | budget roster / family gate (S1/S2) | none — computed side sharpens | — |
