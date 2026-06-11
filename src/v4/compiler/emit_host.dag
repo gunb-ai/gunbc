@@ -158,7 +158,7 @@ fn emit_host_ts_i32_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: emit_host_ts_i32_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
