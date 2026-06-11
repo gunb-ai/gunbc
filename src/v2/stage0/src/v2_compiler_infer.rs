@@ -1336,9 +1336,8 @@ pub fn direct_call_bare_alias_target_name(
             match resolved.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
                     let target_name = authored_name_at(source_indices, target.clone());
-                    let declared_or_structural_target =
-                        (target.binding_id.clone().is_some()
-                            || (target.connective.clone() != Connective::NoConnective));
+                    let declared_or_structural_target = (target.binding_id.clone().is_some()
+                        || (target.connective.clone() != Connective::NoConnective));
                     if ((target_name.clone().as_str() != "".to_string().as_str())
                         && declared_or_structural_target)
                     {
@@ -1355,15 +1354,40 @@ pub fn direct_call_bare_alias_target_name(
     }
 }
 
+pub fn direct_call_target_matches_alias_target(
+    env: Rc<TypeEnv>,
+    target_node: Rc<Node>,
+    alias_target: String,
+) -> bool {
+    match target_node.binding_id.clone() {
+        Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
+            Some(decl) => decl.name.clone().as_str() == alias_target.as_str(),
+            None => {
+                authored_name_at(env.source_indices.clone(), target_node.clone()).as_str()
+                    == alias_target.as_str()
+            }
+        },
+        None => {
+            authored_name_at(env.source_indices.clone(), target_node.clone()).as_str()
+                == alias_target.as_str()
+        }
+    }
+}
+
 pub fn direct_call_transparent_alias_to(
     env: Rc<TypeEnv>,
     alias_node: Rc<Node>,
-    target_name: String,
+    target_node: Rc<Node>,
 ) -> bool {
+    let target_name = authored_name_at(env.source_indices.clone(), target_node.clone());
     match direct_call_node_binding(env.clone(), alias_node.clone()) {
         Some(binding) => {
             match direct_call_bare_alias_target_name(binding.clone(), env.source_indices.clone()) {
-                Some(alias_target) => (alias_target.clone().as_str() == target_name.as_str()),
+                Some(alias_target) => direct_call_target_matches_alias_target(
+                    env.clone(),
+                    target_node.clone(),
+                    alias_target.clone(),
+                ),
                 None => {
                     let resolved_name =
                         authored_name_at(env.source_indices.clone(), binding.resolved.clone());
@@ -1376,8 +1400,16 @@ pub fn direct_call_transparent_alias_to(
                         }
                         None => binding.name.clone(),
                     };
-                    ((alias_decl_name.clone().as_str() != target_name.as_str())
-                        && (resolved_name.clone().as_str() == target_name.as_str()))
+                    let declared_or_structural_target =
+                        (binding.resolved.binding_id.clone().is_some()
+                            || (binding.resolved.connective.clone() != Connective::NoConnective));
+                    (((alias_decl_name.clone().as_str() != resolved_name.as_str())
+                        && declared_or_structural_target)
+                        && direct_call_target_matches_alias_target(
+                            env.clone(),
+                            target_node.clone(),
+                            resolved_name.clone(),
+                        ))
                 }
             }
         }
@@ -1391,15 +1423,17 @@ pub fn direct_call_transparent_alias_to(
                                     env.source_indices.clone(),
                                     raw_binding.resolved.clone(),
                                 );
-                                (((decl.name.clone().as_str() != target_name.as_str())
-                                    && (raw_resolved_name.clone().as_str()
-                                        == target_name.as_str()))
-                                    && (authored_name_at(
-                                        env.source_indices.clone(),
-                                        alias_node.clone(),
-                                    )
-                                    .as_str()
-                                        == target_name.as_str()))
+                                let declared_or_structural_target =
+                                    (raw_binding.resolved.binding_id.clone().is_some()
+                                        || (raw_binding.resolved.connective.clone()
+                                            != Connective::NoConnective));
+                                (((decl.name.clone().as_str() != raw_resolved_name.as_str())
+                                    && declared_or_structural_target)
+                                    && direct_call_target_matches_alias_target(
+                                        env.clone(),
+                                        target_node.clone(),
+                                        raw_resolved_name.clone(),
+                                    ))
                             }
                             None => false,
                         }
@@ -1415,18 +1449,27 @@ pub fn direct_call_transparent_alias_to(
 pub fn direct_call_decl_registry_transparent_alias_to(
     env: Rc<TypeEnv>,
     alias_node: Rc<Node>,
-    target_name: String,
+    target_node: Rc<Node>,
 ) -> bool {
+    let target_name = authored_name_at(env.source_indices.clone(), target_node.clone());
     match alias_node.binding_id.clone() {
         Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
             Some(decl) => match v2_rt::map_get(&env.bindings.clone(), decl.binding_key.clone()) {
-                Some(raw_binding) => {
-                    (((decl.name.clone().as_str() != target_name.as_str())
-                        && (raw_binding.name.clone().as_str() == decl.name.clone().as_str()))
-                        && (authored_name_at(env.source_indices.clone(), alias_node.clone())
-                            .as_str()
-                            == target_name.as_str()))
-                }
+                Some(raw_binding) => match direct_call_bare_alias_target_name(
+                    raw_binding.clone(),
+                    env.source_indices.clone(),
+                ) {
+                    Some(alias_target) => {
+                        ((decl.name.clone().as_str() != target_name.as_str())
+                            && (raw_binding.name.clone().as_str() == decl.name.clone().as_str()))
+                            && direct_call_target_matches_alias_target(
+                                env.clone(),
+                                target_node.clone(),
+                                alias_target.clone(),
+                            )
+                    }
+                    None => false,
+                },
                 None => false,
             },
             None => false,
@@ -1442,16 +1485,14 @@ pub fn direct_call_transparent_alias_pair(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let left_name = authored_name_at(source_indices.clone(), left.clone());
-        let right_name = authored_name_at(source_indices.clone(), right.clone());
-        (((direct_call_transparent_alias_to(env.clone(), left.clone(), right_name.clone())
-            || direct_call_transparent_alias_to(env.clone(), right.clone(), left_name.clone()))
+        (((direct_call_transparent_alias_to(env.clone(), left.clone(), right.clone())
+            || direct_call_transparent_alias_to(env.clone(), right.clone(), left.clone()))
             || direct_call_decl_registry_transparent_alias_to(
                 env.clone(),
                 left.clone(),
-                right_name,
+                right.clone(),
             ))
-            || direct_call_decl_registry_transparent_alias_to(env, right.clone(), left_name))
+            || direct_call_decl_registry_transparent_alias_to(env, right.clone(), left.clone()))
     }
 }
 
