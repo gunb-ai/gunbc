@@ -30,7 +30,10 @@ import v4.std.diagnostic {
   port_locus
 }
 import v4.std.grammar { ParseTree }
-import v4.std.node { Node, Symbol, node_for_structural_equality }
+import v4.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
+import v4.std.node { Node, Symbol }
 import v4.std.target_model { TargetModel }
 import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate { target_serialize_source_from_model }
@@ -231,7 +234,7 @@ fn source_ir_node_artifact_provenance(
 
 
 fn source_authority_node_equal(left: Node, right: Node) -> Bool {
-  node_for_structural_equality(n: left) == node_for_structural_equality(n: right)
+  exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
 fn source_ast_equal_witness(

@@ -44,8 +44,8 @@ data lens_ci_claim_run_row_structural_resolution_binds_to_resolved: LensCiClaimR
   function: "binds_to_resolved_claim_holds"
 }
 
-// #4643 still-raven load-bearing: distinct-minted-id occurrence_id exclusion proof (both
-// exact_structural_equality_zip_fold + node_for_structural_equality authorities).
+// #4643 load-bearing: distinct-minted-id occurrence_id exclusion proof (deep zip-fold;
+// root + nested mint cases; shallow RED guard on nested).
 data lens_ci_claim_run_row_provenance_occurrence_id_model: LensCiClaimRunRow = LensCiClaimRunRow {
   label: "provenance/occurrence_id_model",
   entry: "src/v4/test/claim/provenance/occurrence_id_model.dag",

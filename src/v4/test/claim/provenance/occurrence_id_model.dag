@@ -43,14 +43,11 @@ import v4.std.witness { Holds, Violates }
 data occurrence_model_file: Symbol = ^occurrence_model_file
 data occurrence_eq_child: Symbol = ^occurrence_eq_child
 
-// #4643 still-raven HARD BLOCK (iii): two structurally-identical trees that differ ONLY in
-// their minted OccurrenceIds must compare EQUAL via BOTH equality authorities —
-// exact_structural_equality_zip_fold (deep canonical; consumed by coercion/find_witness/
-// target_model/project_to_core_predicate) and node_for_structural_equality (shallow; the
-// source_authority / edit_locus node_eq parity). occurrence_id is excluded from structural
-// equality (design-node-identity-channels.md). The bare-== RED guard shows the minted ids
-// genuinely differ.
-fn occurrence_id_excluded_from_structural_equality() -> Bool {
+// #4643: structurally-identical trees differing only in minted OccurrenceIds (root or nested)
+// must compare EQUAL via exact_structural_equality_zip_fold (deep canonical; sole live-consumer
+// authority for source_authority / edit_locus node_eq). Shallow node_for_structural_equality
+// only clears the root — nested minted ids still break bare ==; the nested RED guard witnesses that.
+fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let m0 = alloc_occurrence_id(alloc: alloc0)
   let m1 = alloc_occurrence_id(alloc: m0.alloc)
@@ -71,7 +68,39 @@ fn occurrence_id_excluded_from_structural_equality() -> Bool {
   !occurrence_id_eq(left: m0.id, right: m1.id)
     && !(left == right)
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
-    && (node_for_structural_equality(n: left) == node_for_structural_equality(n: right))
+}
+
+fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
+  let alloc0 = occurrence_id_allocator_initial()
+  let m0 = alloc_occurrence_id(alloc: alloc0)
+  let m1 = alloc_occurrence_id(alloc: m0.alloc)
+  let child_left = node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: occurrence_eq_child } },
+    children: [],
+    occurrence_id: node_occurrence_minted(id: m0.id)
+  )
+  let child_right = node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: occurrence_eq_child } },
+    children: [],
+    occurrence_id: node_occurrence_minted(id: m1.id)
+  )
+  let left = node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: child_left }]
+  )
+  let right = node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: child_right }]
+  )
+  !occurrence_id_eq(left: m0.id, right: m1.id)
+    && !(left == right)
+    && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
+    && !(node_for_structural_equality(n: left) == node_for_structural_equality(n: right))
+}
+
+fn occurrence_id_excluded_from_structural_equality() -> Bool {
+  occurrence_id_root_mint_excluded_from_structural_equality()
+    && occurrence_id_nested_mint_excluded_from_structural_equality()
 }
 
 fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
