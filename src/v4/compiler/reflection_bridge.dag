@@ -50,7 +50,7 @@ import v4.std.node_query {
 }
 
 // Authoritative source mirror of v4.compiler.parse:parse_current_position (02_parse.dag:284).
-data reflection_parse_current_position_source_text: String = "fn parse_current_position(all_tokens:List<Token>,tokens:List<Token>)->Int{length(xs:all_tokens)-length(xs:tokens)}"
+data reflection_parse_current_position_source_text: String = "fn parse_current_position(all_tokens: List<Token>, tokens: List<Token>) -> Int { length(xs: all_tokens) - length(xs: tokens) }"
 
 data reflection_bridge_reason_not_arrow: Symbol = reflection_bridge_reason_not_arrow
 data reflection_bridge_reason_body_missing: Symbol = reflection_bridge_reason_body_missing
@@ -150,7 +150,7 @@ fn reflection_arrow_body_from_resolved(resolved_root: Node) -> Outcome<Node> {
 
 fn reflection_parse_current_position_resolved() -> Outcome<Node> {
   reflection_source_resolved_fn_decl(
-    source_text: dag_parse_current_position_source_text,
+    source_text: reflection_parse_current_position_source_text,
     file: ^reflection_bridge_parse_current_position_source_file
   )
 }
