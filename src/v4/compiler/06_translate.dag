@@ -2389,85 +2389,129 @@ fn project_type_expression_children(
     acc: Empty
   )
 }
-fn project_type_expression_field_slots_go(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  edges: List<Edge>,
-  acc: List<TargetTypeExprFieldSlot>
-) -> Outcome<List<TargetTypeExprFieldSlot>> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else if is_empty(xs: edges) {
-    Accepted { value: acc, diagnostics: None }
-  } else {
-    bind_outcome(
-      o: edge_list_head_and_tail(edges: edges, node: node),
-      f: fn(split) {
-        match split.head.label {
-          Named { name: label } =>
-            bind_outcome(
-              o: project_type_expression_node_bounded(
-                remaining: node_subtree_count(n: split.head.target),
-                node: split.head.target,
-                target: target,
-                projection: projection
-              ),
-              f: fn(projected) {
-                bind_outcome(
-                  // Ownership attaches to CARRIERS, asked once each — not to a
-                  // carrier's structural fact sub-atoms. Route field-slot
-                  // ownership through the same boundary discipline as function
-                  // params/return: decode the projected wire, apply ownership ONLY
-                  // when it is an atom carrier (keyed by its canonical atom
-                  // binding), and pass non-carrier shapes through. This stops the
-                  // per-edge recursion from decorating a scalar carrier's fact
-                  // sub-atoms (surface_spelling / inhabitant / signedness tag).
-                  o: translate_apply_use_site_ownership_to_projected_boundary(
-                    projected: projected,
-                    source_for_binding: split.head.target,
-                    target: target,
-                    projection: projection,
-                    use_site: OwnershipAtStructField
-                  ),
-                  f: fn(wrapped) {
-                    project_type_expression_field_slots_go(
-                      remaining: remaining - 1,
-                      node: node,
-                      target: target,
-                      projection: projection,
-                      edges: split.tail,
-                      acc: list_snoc_item(
-                        xs: acc,
-                        item: TargetTypeExprFieldSlot { label: label, type_expr: wrapped }
-                      )
-                    )
-                  }
-                )
-              }
-            )
-          Positional =>
-            outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        }
+type TypeExprTranslateAcc
+  = TypeExprTranslateSlots { slots: List<TargetTypeExprFieldSlot> }
+  | TypeExprTranslateDone { node: Node }
+
+fn translate_algebra_conj_finalize(
+  acc: TypeExprTranslateAcc,
+  anchor: Node,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match acc {
+    TypeExprTranslateDone { node: n } => outcome_accepted(n)
+    TypeExprTranslateSlots { slots: fields } =>
+      if is_empty(xs: fields) && !is_empty(xs: anchor.children) {
+        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+      } else {
+        outcome_accepted(
+          target_type_expr_record_emitted(form: projection.conj_form, fields: fields)
+        )
       }
-    )
   }
 }
-fn project_type_expression_field_slots(
-  remaining: Int,
-  node: Node,
+
+fn translate_algebra(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
-) -> Outcome<List<TargetTypeExprFieldSlot>> {
-  project_type_expression_field_slots_go(
-    remaining: remaining,
-    node: node,
-    target: target,
-    projection: projection,
-    edges: node.children,
-    acc: Empty
-  )
+) -> NodeFold<Outcome<TypeExprTranslateAcc>> {
+  NodeFold {
+    init: fn(n) {
+      match n.kind {
+        // Atom: terminal base case (NoEdges) — init decides it, no fuel, no child traversal.
+        TypeNode { connective: Atom { identity: id } } =>
+          bind_outcome(
+            o: type_expr_projection_row_closedness_from_target(
+              target: target,
+              projection: projection,
+              connective: Atom { identity: id }
+            ),
+            f: fn(_) {
+              Accepted {
+                value: TypeExprTranslateDone {
+                  node: target_type_expr_atom_emitted(form: projection.atom_form, identity: id)
+                },
+                diagnostics: None
+              }
+            }
+          )
+        TypeNode { connective: Conj } =>
+          Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
+        TypeNode { connective: c } =>
+          bind_outcome(
+            o: project_type_expression_connective_bounded(
+              remaining: node_subtree_count(n: n),
+              node: n,
+              connective: c,
+              target: target,
+              projection: projection
+            ),
+            f: fn(emitted) {
+              Accepted {
+                value: TypeExprTranslateDone { node: emitted },
+                diagnostics: None
+              }
+            }
+          )
+        ComputationNode { behavior: _ } =>
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
+      }
+    },
+    step: fn(acc, e, child) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: done, diagnostics: d } =>
+          match done {
+            TypeExprTranslateDone { node: _ } => Accepted { value: done, diagnostics: d }
+            TypeExprTranslateSlots { slots: slots } =>
+              match e.label {
+                Named { name: label } =>
+                  match child {
+                    Rejected { diagnostics: cr } =>
+                      Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                    Accepted { value: child_acc, diagnostics: cd } =>
+                      bind_outcome(
+                        o: translate_algebra_conj_finalize(
+                          acc: child_acc,
+                          anchor: e.target,
+                          projection: projection
+                        ),
+                        f: fn(projected) {
+                          bind_outcome(
+                            o: translate_apply_use_site_ownership_to_projected_boundary(
+                              projected: projected,
+                              source_for_binding: e.target,
+                              target: target,
+                              projection: projection,
+                              use_site: OwnershipAtStructField
+                            ),
+                            f: fn(wrapped) {
+                              Accepted {
+                                value: TypeExprTranslateSlots {
+                                  slots: list_snoc_item(
+                                    xs: slots,
+                                    item: TargetTypeExprFieldSlot {
+                                      label: label,
+                                      type_expr: wrapped
+                                    }
+                                  )
+                                },
+                                diagnostics: diagnostics_merge(outer: d, inner: cd)
+                              }
+                            }
+                          )
+                        }
+                      )
+                  }
+                Positional =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
+              }
+          }
+      }
+    }
+  }
 }
 
 fn project_type_expression_variant_slots_go(
@@ -2529,32 +2573,6 @@ fn project_type_expression_variant_slots(
     projection: projection,
     edges: node.children,
     acc: Empty
-  )
-}
-fn project_type_expression_conj_fields(
-  remaining: Int,
-  node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<List<TargetTypeExprFieldSlot>> {
-  bind_outcome(
-    o: project_type_expression_field_slots(
-      remaining: remaining - 1,
-      node: node,
-      target: target,
-      projection: projection
-    ),
-    f: fn(fields) {
-      if is_empty(xs: fields) {
-        if is_empty(xs: node.children) {
-          Accepted { value: fields, diagnostics: None }
-        } else {
-          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        }
-      } else {
-        Accepted { value: fields, diagnostics: None }
-      }
-    }
   )
 }
 fn project_type_expression_disj_variants(
@@ -2661,17 +2679,9 @@ fn project_type_expression_connective_bounded(
           }
         Conj =>
           bind_outcome(
-            o: project_type_expression_conj_fields(
-              remaining: remaining - 1,
-              node: node,
-              target: target,
-              projection: projection
-            ),
-            f: fn(fields) {
-              Accepted {
-                value: target_type_expr_record_emitted(form: projection.conj_form, fields: fields),
-                diagnostics: None
-              }
+            o: fold_node(n: node, algebra: translate_algebra(target: target, projection: projection)),
+            f: fn(acc) {
+              translate_algebra_conj_finalize(acc: acc, anchor: node, projection: projection)
             }
           )
         Disj =>
@@ -2742,38 +2752,6 @@ fn project_type_expression_connective_bounded(
     }
   )
 }
-// translate_algebra — the per-connective projection algebra for fold_node (dep-graph
-// 2026-06-11 §1 W1 fan-out): each connective wave moves its row here from
-// project_type_expression_connective_bounded and repoints its dispatch arm. Atom is in:
-// terminal base case (NoEdges) — init decides it, no fuel, no child traversal. Bounded-
-// tower connectives reject fail-closed here so a premature repoint cannot double-project.
-fn translate_algebra(
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> NodeFold<Outcome<Node>> {
-  NodeFold {
-    init: fn(n0) {
-      match n0.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          bind_outcome(
-            o: type_expr_projection_row_closedness_from_target(
-              target: target,
-              projection: projection,
-              connective: Atom { identity: id }
-            ),
-            f: fn(_) {
-              Accepted {
-                value: target_type_expr_atom_emitted(form: projection.atom_form, identity: id),
-                diagnostics: None
-              }
-            }
-          )
-        _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n0))
-      }
-    },
-    step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
-  }
-}
 fn project_type_expression_node(
   node: Node,
   target: TargetModel,
@@ -2797,7 +2775,12 @@ fn project_type_expression_node_bounded(
   } else {
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } =>
-      fold_node(n: node, algebra: translate_algebra(target: target, projection: projection))
+      bind_outcome(
+        o: fold_node(n: node, algebra: translate_algebra(target: target, projection: projection)),
+        f: fn(acc) {
+          translate_algebra_conj_finalize(acc: acc, anchor: node, projection: projection)
+        }
+      )
     TypeNode { connective: c } =>
       project_type_expression_connective_bounded(
         remaining: remaining,
