@@ -5,7 +5,7 @@
 module v4.test.claim.manual.parallel_executor
 
 import v4.std.collection { List }
-import v4.std.dependency { ReadinessLayer }
+import v4.std.dependency { DependencyView, ReadinessLayer }
 import v4.std.logic { Bool }
 import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v4.workflow.executor {

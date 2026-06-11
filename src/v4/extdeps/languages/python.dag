@@ -9,7 +9,7 @@
 
 module v4.extdeps.languages.python
 
-import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { Empty, FreeMonoid, fold_list, list_append, list_snoc_item }
 import v4.std.grammar {
   ParseGrammar,
   GrammarExpr,
@@ -1110,7 +1110,7 @@ type PythonFormalAltChoiceState
   = PythonFormalAltChoiceUninitialized
   | PythonFormalAltChoiceReady { expr: GrammarExpr }
 
-fn python_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol>>) -> GrammarExpr {
+fn python_formal_alternatives_to_choice_expr(alts: FreeMonoid<List<FormalGrammarSymbol>>) -> GrammarExpr {
   match fold_list(
     xs: alts,
     empty: PythonFormalAltChoiceUninitialized,
@@ -1131,20 +1131,20 @@ fn python_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol
   }
 }
 
-fn python_formal_rhs_alternatives_accum_empty() -> List<List<FormalGrammarSymbol>> {
+fn python_formal_rhs_alternatives_accum_empty() -> FreeMonoid<List<FormalGrammarSymbol>> {
   Empty
 }
 
 fn python_formal_collect_rhs_alternative(
-  acc: List<List<FormalGrammarSymbol>>,
+  acc: FreeMonoid<List<FormalGrammarSymbol>>,
   prod: FormalProduction
-) -> List<List<FormalGrammarSymbol>> {
+) -> FreeMonoid<List<FormalGrammarSymbol>> {
   list_snoc_item(xs: acc, item: prod.rhs)
 }
 
 fn python_formal_rhs_alternatives_from_productions(
   prods: List<FormalProduction>
-) -> List<List<FormalGrammarSymbol>> {
+) -> FreeMonoid<List<FormalGrammarSymbol>> {
   fold_list(
     xs: prods,
     empty: python_formal_rhs_alternatives_accum_empty(),
