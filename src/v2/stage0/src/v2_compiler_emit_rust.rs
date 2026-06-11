@@ -574,8 +574,8 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        binding_id: None,
         ident: None,
+        binding_id: None,
     })
 }
 
@@ -13805,11 +13805,24 @@ pub fn emit_rust_generic_method_call(
 ) -> String {
     {
         let function_name = method_name;
-        if rust_receiver_has_callable_method_field(
+        let receiver_type = resolved_type(receiver.clone());
+        let receiver_type_name = authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            receiver_type.clone(),
+        );
+        let runtime_container_method =
+            (v2_rt::map_contains_key(&rt_functions(), function_name.clone())
+                && (is_container_type(receiver_type_name)
+                    || node_is_keyed_collection(
+                        receiver_type.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    )));
+        if (rust_receiver_has_callable_method_field(
             receiver.clone(),
             function_name.clone(),
             scope.clone(),
-        ) {
+        ) && !runtime_container_method)
+        {
             {
                 let recv_str = emit_typed_expr_base(
                     receiver.clone(),

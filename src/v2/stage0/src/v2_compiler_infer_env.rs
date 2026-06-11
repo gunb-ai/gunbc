@@ -164,23 +164,22 @@ pub fn lookup_decl_arity_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<i64> {
                 Some(id) => Rc::new(v2_rt::map_values(&env.decl_registry.clone()))
                     .iter()
                     .cloned()
-                    .fold(
-                        None,
-                        |acc: Option<i64>, decl: Rc<TypeDeclBinding>| match acc.clone() {
+                    .fold(None, |acc: _, decl: Rc<TypeDeclBinding>| {
+                        match acc.clone() {
                             Some(_) => acc.clone(),
                             None => {
-                                if decl.binding_key.clone() == id.clone() {
+                                if (decl.binding_key.clone() == id.clone()) {
                                     Some(decl.decl_arity.clone())
                                 } else {
                                     None
                                 }
                             }
-                        },
-                    ),
+                        }
+                    }),
                 None => None,
             };
             match by_ident.clone() {
-                Some(_) => by_ident,
+                Some(_) => by_ident.clone(),
                 None => Rc::new(v2_rt::map_values(&env.decl_registry.clone()))
                     .iter()
                     .cloned()
@@ -189,7 +188,7 @@ pub fn lookup_decl_arity_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<i64> {
                         |acc: Option<i64>, decl: Rc<TypeDeclBinding>| match acc.clone() {
                             Some(_) => acc.clone(),
                             None => {
-                                if decl.name.clone() == node_name.clone() {
+                                if (decl.name.clone().as_str() == node_name.clone().as_str()) {
                                     Some(decl.decl_arity.clone())
                                 } else {
                                     None
