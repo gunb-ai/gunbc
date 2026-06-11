@@ -2,7 +2,7 @@
 
 module v2.compiler.infer
 
-import std.types { SourceSpan, container_param_name, kernel_type_set, is_kernel_type }
+import std.types { SourceSpan, container_param_name, kernel_type_set, is_kernel_type, container_template_algebra }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
@@ -183,6 +183,21 @@ fn is_bootstrap_duplicate_variant_name(name: String) -> Bool {
   // list when variant value lookup keys by parent BindingId instead of child
   // spelling.
   name == "Rust" || name == "Go" || name == "TreeSize" || name == "Bits32"
+}
+
+fn same_canonical_container_variant_parent(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if left.connective == Disj && right.connective == Disj {
+    let left_name = authored_name_at(source_indices: source_indices, node: left)
+    let right_name = authored_name_at(source_indices: source_indices, node: right)
+    match container_template_algebra(name: left_name) {
+      Present { value: left_algebra } =>
+        match container_template_algebra(name: right_name) {
+          Present { value: right_algebra } => left_algebra == right_algebra
+          Absent => false
+        }
+      Absent => false
+    }
+  } else { false }
 }
 
 type InferScope {
@@ -6297,13 +6312,14 @@ fn build_module_context(contributions: List<ItemContribution>,
                               match map_get(env.decl_registry, prev_binding_id) {
                                 Present { value: prev_decl } => curr_decl.authority == prev_decl.authority
                                 Absent => false
-                              }
-                            Absent => false
                           }
+                        Absent => false
+                      }
                       Absent => false
                     }
                   Absent => curr_parent_name == prev_parent_name
                 }
+                let same_parent_binding = same_parent_binding || same_canonical_container_variant_parent(left: binding.resolved, right: prev.resolved, source_indices: env.source_indices)
                 if curr_variant_imported && prev_variant_imported && same_parent_binding == false && is_bootstrap_duplicate_variant_name(name: child_name) == false && curr_parent_imported == false && prev_parent_imported == false && curr_is_imported && prev_is_imported {
                   VariantFoldState {
                     locals: vacc.locals,

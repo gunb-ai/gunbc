@@ -31,7 +31,9 @@ pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{container_param_name, is_kernel_type, kernel_type_set};
+pub use crate::std_types::{
+    container_param_name, container_template_algebra, is_kernel_type, kernel_type_set,
+};
 pub use crate::v2_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v2_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v2_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -202,6 +204,30 @@ pub fn is_bootstrap_duplicate_variant_name(name: String) -> bool {
         || (name.clone().as_str() == "Go".to_string().as_str()))
         || (name.clone().as_str() == "TreeSize".to_string().as_str()))
         || (name.clone().as_str() == "Bits32".to_string().as_str()))
+}
+
+pub fn same_canonical_container_variant_parent(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if ((left.connective.clone() == Connective::Disj)
+        && (right.connective.clone() == Connective::Disj))
+    {
+        {
+            let left_name = authored_name_at(source_indices.clone(), left.clone());
+            let right_name = authored_name_at(source_indices.clone(), right.clone());
+            match container_template_algebra(left_name.clone()) {
+                Some(left_algebra) => match container_template_algebra(right_name.clone()) {
+                    Some(right_algebra) => (left_algebra.clone() == right_algebra.clone()),
+                    None => false,
+                },
+                None => false,
+            }
+        }
+    } else {
+        false
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -13722,7 +13748,19 @@ let same_parent_binding = match binding.resolved.clone().binding_id.clone() {
     },
     None => (curr_parent_name.clone() == prev_parent_name.clone()),
 };
+let same_parent_binding = (same_parent_binding.clone() || same_canonical_container_variant_parent(binding.resolved.clone(), prev.resolved.clone(), env.source_indices.clone()));
 if (((((((curr_variant_imported.clone() && prev_variant_imported.clone()) && (same_parent_binding.clone() == false)) && (is_bootstrap_duplicate_variant_name(child_name.clone()) == false)) && (curr_parent_imported.clone() == false)) && (prev_parent_imported.clone() == false)) && curr_is_imported.clone()) && prev_is_imported.clone()) {
+                                eprintln!(
+                                    "DBG variant collision child={} curr_parent={} prev_parent={} curr_bid={:?} prev_bid={:?} same_canon={} curr_conn={:?} prev_conn={:?}",
+                                    child_name,
+                                    curr_parent_name,
+                                    prev_parent_name,
+                                    binding.resolved.binding_id,
+                                    prev.resolved.binding_id,
+                                    same_canonical_container_variant_parent(binding.resolved.clone(), prev.resolved.clone(), env.source_indices.clone()),
+                                    binding.resolved.connective,
+                                    prev.resolved.connective,
+                                );
                                 Rc::new(VariantFoldState {
     locals: vacc.locals.clone(),
     collisions: v2_rt::rc_map_insert(vacc.collisions.clone(), child_name.clone(), make_error_node(Rc::new(CompilerDiagnostic::VariantCollision {

@@ -1932,6 +1932,25 @@ pub fn node_type_compatible(
 
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
+        {
+            let left_shape = node_type_shape(left.clone(), source_indices.clone());
+            let right_shape = node_type_shape(right.clone(), source_indices.clone());
+            if left_shape.contains("FreeMonoid") || right_shape.contains("FreeMonoid") {
+                eprintln!(
+                    "DBG compat left_shape={} right_shape={} left_name={} right_name={} left_conn={:?} right_conn={:?} left_children={} right_children={} left_fm={} right_fm={}",
+                    left_shape,
+                    right_shape,
+                    authored_name_at(source_indices.clone(), left.clone()),
+                    authored_name_at(source_indices.clone(), right.clone()),
+                    left.connective,
+                    right.connective,
+                    left.children.len(),
+                    right.children.len(),
+                    free_monoid_coproduct_element(left.clone(), source_indices.clone()).is_some(),
+                    free_monoid_coproduct_element(right.clone(), source_indices.clone()).is_some(),
+                );
+            }
+        }
         if (left_is_container && right_is_container) {
             if (canonical_template_name(left.clone(), source_indices.clone()).as_str()
                 != canonical_template_name(right.clone(), source_indices.clone()).as_str())
