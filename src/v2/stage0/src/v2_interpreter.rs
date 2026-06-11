@@ -543,6 +543,22 @@ pub type InterpResult<T> = Result<T, InterpError>;
 /// (service_node, operation_node) pair for service dispatch.
 type ServiceOp = (Rc<Node>, Rc<Node>);
 
+/// Memo for the explicitly-verified pure structural predicates (see
+/// `is_structural_pure_fn`), keyed by (fn node address, arg Rc addresses).
+/// The keepalive vecs are load-bearing for the address keys: a memoized arg's
+/// Rc must stay alive while its address is a live key, or a freed-and-reused
+/// allocation would alias a stale entry. Scoped to an `InterpContext`, both
+/// the map and the pins drop with the evaluation instead of growing for the
+/// life of the process.
+#[derive(Default)]
+struct PureCallMemo {
+    map: HashMap<(usize, Vec<usize>), Value>,
+    // Args kept alive so their Rc addresses (used in keys) can't be freed and aliased.
+    keepalive: Vec<Value>,
+    // Resolved fn nodes kept alive for the same reason (the key includes their address).
+    keepalive_fns: Vec<Rc<Node>>,
+}
+
 pub struct InterpContext {
     /// All typed modules from the compiler pipeline.
     pub modules: Rc<Vec<Rc<TypedModule>>>,
@@ -556,6 +572,19 @@ pub struct InterpContext {
     service_ops: HashMap<String, ServiceOp>,
     /// Dry-run mode: use mock responses instead of executing services.
     pub dry_run: bool,
+    /// Cache for evaluated `data` items (immutable global constants), keyed by
+    /// the data item's node identity. Preserves structural sharing across
+    /// references so a `data` referenced N times yields ONE Value, not N
+    /// rebuilds. Scoped to this context — a `data` item's cached value is valid
+    /// exactly as long as its resolved graph is the one being evaluated, and
+    /// the context is the owner with that lifetime. Keys (`Rc::as_ptr` of nodes
+    /// in `fn_nodes`) cannot dangle or alias across graphs: `fn_nodes` holds
+    /// the nodes alive as long as the cache, and the cache drops with the
+    /// context.
+    data_cache: std::cell::RefCell<HashMap<usize, Value>>,
+    /// Memo for pure structural predicates, with the same context scoping as
+    /// `data_cache` (see `PureCallMemo`).
+    pure_call_memo: std::cell::RefCell<PureCallMemo>,
 }
 
 impl InterpContext {
@@ -605,6 +634,8 @@ impl InterpContext {
             fn_nodes,
             service_ops,
             dry_run,
+            data_cache: std::cell::RefCell::new(HashMap::new()),
+            pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
         }
     }
 
@@ -637,7 +668,18 @@ pub fn run_with_options(
     eager_data_env: bool,
 ) -> InterpResult<Value> {
     let ctx = InterpContext::new(graph, source_indices, dry_run);
+    run_in_context(&ctx, entry_fn, eager_data_env)
+}
 
+/// Run an entry function against an existing context. Callers that evaluate
+/// many functions over the SAME resolved graph (see the `claim_batch` bin)
+/// build one `InterpContext` and loop this — sharing the per-context `data`
+/// cache and fn index across calls instead of rebuilding them per function.
+pub fn run_in_context(
+    ctx: &InterpContext,
+    entry_fn: &str,
+    eager_data_env: bool,
+) -> InterpResult<Value> {
     // Find the entry function
     let item_node = ctx
         .lookup_fn(entry_fn)
@@ -648,13 +690,13 @@ pub fn run_with_options(
     // Claim-run mode skips this — src/v4 has hundreds of TestClaim data graphs;
     // witnesses pull only what they need via lazy data-item resolution in eval_var.
     let env = if eager_data_env {
-        build_initial_env(&ctx)?
+        build_initial_env(ctx)?
     } else {
         Env::empty()
     };
 
     // Call the entry function with no arguments
-    call_function(&ctx, &item_node, &[], &env)
+    call_function(ctx, &item_node, &[], &env)
 }
 
 /// Evaluate all `data` items to build the initial environment.
@@ -850,24 +892,6 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
 // Variables
 // ---------------------------------------------------------------------------
 
-struct DataCache {
-    map: HashMap<usize, Value>,
-    // Hold the keyed data-item nodes alive so their Rc addresses can't be freed and
-    // reused by a later program in the same process (which would alias a stale entry).
-    keepalive_fns: Vec<Rc<Node>>,
-}
-thread_local! {
-    // Cache for evaluated `data` items (immutable global constants), keyed by the data
-    // item's node identity. Preserves structural sharing across references so a `data`
-    // referenced N times yields ONE Value, not N rebuilds. thread-local because Value
-    // holds Rc (!Send+!Sync) and cannot live in a static.
-    static DATA_CACHE: std::cell::RefCell<DataCache> =
-        std::cell::RefCell::new(DataCache {
-            map: HashMap::new(),
-            keepalive_fns: Vec::new(),
-        });
-}
-
 fn eval_var(
     node: &Rc<Node>,
     binding_kind: Option<&VarBindingKind>,
@@ -926,15 +950,11 @@ fn eval_var(
                     // This matches the eager-preload path (build_initial_env) which also uses
                     // Env::empty(), so lazy and eager resolution agree.
                     let key = Rc::as_ptr(fn_node) as usize;
-                    if let Some(v) = DATA_CACHE.with(|c| c.borrow().map.get(&key).cloned()) {
+                    if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
                     }
                     let v = eval_expr(body, &Env::empty(), ctx)?;
-                    DATA_CACHE.with(|c| {
-                        let mut dc = c.borrow_mut();
-                        dc.keepalive_fns.push(fn_node.clone());
-                        dc.map.insert(key, v.clone());
-                    });
+                    ctx.data_cache.borrow_mut().insert(key, v.clone());
                     return Ok(v);
                 }
             }
@@ -1582,32 +1602,16 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // predicates (content_hash/well_formed/...), collapsing the emit pipeline's redundant
     // re-derivation and re-traversal. Args are kept alive so their Rc pointers can't be reused.
     if let Some(key) = pure_call_memo_key(&fn_node, &func_name, &args) {
-        if let Some(v) = pure_call_memo_get(&key) {
+        if let Some(v) = pure_call_memo_get(ctx, &key) {
             return Ok(v);
         }
         let result = call_function(ctx, &fn_node, &args, env)?;
-        pure_call_memo_put(&fn_node, key, &args, result.clone());
+        pure_call_memo_put(ctx, &fn_node, key, &args, result.clone());
         return Ok(result);
     }
     call_function(ctx, &fn_node, &args, env)
 }
 
-struct PureCallMemo {
-    map: HashMap<(usize, Vec<usize>), Value>,
-    // Args kept alive so their Rc addresses (used in keys) can't be freed and aliased.
-    keepalive: Vec<Value>,
-    // Resolved fn nodes kept alive for the same reason (the key includes their address).
-    keepalive_fns: Vec<Rc<Node>>,
-}
-thread_local! {
-    // thread-local because Value holds Rc (!Send+!Sync) so it can't live in a static.
-    static PURE_CALL_MEMO: std::cell::RefCell<PureCallMemo> =
-        std::cell::RefCell::new(PureCallMemo {
-            map: HashMap::new(),
-            keepalive: Vec::new(),
-            keepalive_fns: Vec::new(),
-        });
-}
 fn is_structural_pure_fn(name: &str) -> bool {
     matches!(
         name,
@@ -1650,23 +1654,22 @@ fn pure_call_memo_key(
     }
     Some((fid, ids))
 }
-fn pure_call_memo_get(key: &(usize, Vec<usize>)) -> Option<Value> {
-    PURE_CALL_MEMO.with(|m| m.borrow().map.get(key).cloned())
+fn pure_call_memo_get(ctx: &InterpContext, key: &(usize, Vec<usize>)) -> Option<Value> {
+    ctx.pure_call_memo.borrow().map.get(key).cloned()
 }
 fn pure_call_memo_put(
+    ctx: &InterpContext,
     fn_node: &Rc<Node>,
     key: (usize, Vec<usize>),
     args: &[(Option<String>, Value)],
     result: Value,
 ) {
-    PURE_CALL_MEMO.with(|m| {
-        let mut st = m.borrow_mut();
-        st.keepalive_fns.push(fn_node.clone());
-        for (_, v) in args {
-            st.keepalive.push(v.clone());
-        }
-        st.map.insert(key, result);
-    });
+    let mut st = ctx.pure_call_memo.borrow_mut();
+    st.keepalive_fns.push(fn_node.clone());
+    for (_, v) in args {
+        st.keepalive.push(v.clone());
+    }
+    st.map.insert(key, result);
 }
 
 // ---------------------------------------------------------------------------

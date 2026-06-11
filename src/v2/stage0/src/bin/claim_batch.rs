@@ -36,7 +36,7 @@
 
 use std::process::ExitCode;
 
-use v2_compiler::cli_run::{resolve_entry_graph, run_claim, ClaimOutcome};
+use v2_compiler::cli_run::{make_eval_context, resolve_entry_graph, run_claim, ClaimOutcome};
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -120,10 +120,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         functions.len()
     );
 
+    // Build the evaluation context ONCE for the shared graph: every witness
+    // reuses its fn index and `data` cache, and dropping it at the end of this
+    // scope releases all cached values (the cache is context-scoped, not
+    // process-global).
+    let ctx = make_eval_context(&graph, source_indices);
+
     // Run each witness against the shared graph.
     let mut any_failed = false;
     for function in &functions {
-        match run_claim(&graph, source_indices.clone(), function) {
+        match run_claim(&ctx, function) {
             ClaimOutcome::Pass => println!("PASS {}", function),
             ClaimOutcome::Fail => {
                 println!("FAIL {}", function);
