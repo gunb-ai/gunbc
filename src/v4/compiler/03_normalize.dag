@@ -26,7 +26,6 @@ import v4.std.node {
   Connective,
   Edge,
   Node,
-  NodeFold,
   Symbol,
   TypeNode,
   is_positional,
@@ -169,13 +168,6 @@ fn normalize_fold_step(acc: Outcome<Node>, edge: Edge, child: Outcome<Node>) -> 
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
       }
-  }
-}
-
-fn normalize_algebra() -> NodeFold<Outcome<Node>> {
-  NodeFold {
-    init: normalize_fold_init,
-    step: normalize_fold_step
   }
 }
 
