@@ -105,7 +105,7 @@ type ModuleRootNameFindState
   | ModuleRootNameFoundDuplicate
 
 
-// 🟢 coproduct dissolution — C4 module-root find accumulator: local mirror of find_witness.PassingCandidateFold; import avoided to prevent transitive predicate-module pull into C9 discovery analysis.
+// 🟡 coproduct dissolution — dissolve-on-arrival: extract PassingCandidateFold to a lightweight v4.std module (Node-dep-only) so find_witness and name_resolve share one authority; import of find_witness.dag blocked by transitive predicate-module pull into C9 discovery analysis. See [[find_witness]] substrate PR.
 type PassingCandidateFold
   = NoPassingCandidate
   | OnePassingCandidate { candidate: Node }
