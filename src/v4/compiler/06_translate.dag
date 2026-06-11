@@ -203,7 +203,8 @@ import v4.std.target_model {
   target_collection_repr_from_node,
   target_collection_witness_from_node,
   target_collection_choice_from_node,
-  target_collection_fallback_from_node
+  target_collection_fallback_from_node,
+  target_collection_fold_list_from_node
 }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -2297,9 +2298,6 @@ fn project_type_expression_node_bounded(
   }
   }
 }
-fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String> {
-  lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
-}
 fn type_expr_atom_binding_from_positional(
   targets: List<Node>,
   node: Node
@@ -2336,28 +2334,6 @@ fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
     TypeNode { connective: Atom { identity: _ } } => node_atom_identity(node: node)
     _ => type_expr_atom_binding(node: node)
   }
-}
-fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: type_expr_atom_binding(node: node),
-    f: fn(binding) {
-      match map_get(target.binding_spellings, binding) {
-        Accepted { value: opt, diagnostics: pending } => match opt {
-          Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-          Absent =>
-            Rejected {
-              diagnostics: rejected_with_pending(
-                pending: pending,
-                rejected: diagnostics_singleton(
-                  d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-                )
-              )
-            }
-        }
-        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-      }
-    }
-  )
 }
 fn serialize_type_expr_emitted_positional_head_tail(node: Node) -> Outcome<TypeExprHeadTail> {
   list_head_and_tail(
@@ -2587,29 +2563,6 @@ fn serialize_type_expr_separated_bounded(
   )
 }
 
-fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetSource> {
-  match edge.label {
-    Named { name: label } =>
-      match map_get(target.binding_spellings, label) {
-        Accepted { value: opt, diagnostics: pending } => match opt {
-          Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-          Absent =>
-            Rejected {
-              diagnostics: rejected_with_pending(
-                pending: pending,
-                rejected: diagnostics_singleton(
-                  d: translate_binding_spelling_not_found_diagnostic(binding: label)
-                )
-              )
-            }
-        }
-        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-      }
-    Positional =>
-      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
-  }
-}
-
 fn serialize_type_expr_record_fields_go(
   remaining: Int,
   target: TargetModel,
@@ -2779,27 +2732,6 @@ fn serialize_type_expr_sum_bounded(
     }
   )
 }
-fn serialize_type_expr_arrow_param_spelling(
-  target: TargetModel,
-  label: Symbol
-) -> Outcome<TargetSource> {
-  match map_get(target.binding_spellings, label) {
-    Accepted { value: opt, diagnostics: pending } => match opt {
-      Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-      Absent =>
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: pending,
-            rejected: diagnostics_singleton(
-              d: translate_binding_spelling_not_found_diagnostic(binding: label)
-            )
-          )
-        }
-    }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-  }
-}
-
 fn serialize_type_expr_arrow_param_bounded(
   remaining: Int,
   target: TargetModel,
