@@ -177,8 +177,3 @@ type Measure<Q, S>
 
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One>
-
-// Dimensional alias for sustained per-thread clock rate (SI hertz).
-// v2 execution-layer carriers use bare Int hertz at projection sites until
-// value-typed Measure inhabitants land (same pattern as ByteSize).
-type Hertz = Measure<Frequency, One>
