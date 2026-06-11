@@ -2001,20 +2001,6 @@ pub fn direct_call_arg_mismatch_diags(
                                                 module_name.clone(),
                                                 source_indices.clone(),
                                             )) {
-                                                eprintln!(
-                                                    "DBG mismatch formal={} {:?} actual={} {:?} formal_id={} {:?} actual_id={} {:?} trans_id={} trans_node={} carriers={:?}",
-                                                    authored_name_at(source_indices.clone(), formal.clone()),
-                                                    formal.binding_id.clone(),
-                                                    authored_name_at(source_indices.clone(), actual.clone()),
-                                                    actual.binding_id.clone(),
-                                                    authored_name_at(source_indices.clone(), formal_identity.clone()),
-                                                    formal_identity.binding_id.clone(),
-                                                    authored_name_at(source_indices.clone(), actual_identity.clone()),
-                                                    actual_identity.binding_id.clone(),
-                                                    direct_call_transparent_alias_pair(type_env.clone(), formal_identity.clone(), actual_identity.clone(), source_indices.clone()),
-                                                    direct_call_transparent_alias_pair(type_env.clone(), formal.clone(), actual.clone(), source_indices.clone()),
-                                                    type_env.carrier_bindings.keys().cloned().collect::<Vec<_>>()
-                                                );
                                                 Rc::new(vec![type_mismatch_error(
                                                     node_type_shape(
                                                         formal.clone(),
@@ -12136,22 +12122,110 @@ pub fn type_binding_decl_binding_id(
     env: Rc<TypeEnv>,
     binding: Rc<TypeBinding>,
 ) -> Option<BindingId> {
-    Rc::new(v2_rt::map_values(&env.decl_registry.clone()))
-        .iter()
-        .cloned()
-        .fold(
-            None,
-            |acc: Option<BindingId>, decl: Rc<TypeDeclBinding>| match acc.clone() {
-                Some(_) => acc.clone(),
-                None => {
-                    if (decl.name.clone().as_str() == binding.name.clone().as_str()) {
-                        Some(decl.binding_id.clone())
-                    } else {
-                        None
-                    }
+    match binding.resolved.clone().binding_id.clone() {
+        Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
+            Some(decl) => {
+                if decl.name.clone().as_str() == binding.name.clone().as_str() {
+                    Some(binding_id.clone())
+                } else {
+                    None
                 }
-            },
-        )
+            }
+            None => None,
+        },
+        None => Rc::new(v2_rt::map_values(&env.decl_registry.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                None,
+                |acc: Option<BindingId>, decl: Rc<TypeDeclBinding>| match acc.clone() {
+                    Some(_) => acc.clone(),
+                    None => {
+                        if decl.name.clone().as_str() == binding.name.clone().as_str() {
+                            Some(decl.binding_id.clone())
+                        } else {
+                            None
+                        }
+                    }
+                },
+            ),
+    }
+}
+
+pub fn carrier_closure_direct_type_deps(
+    n: Rc<Node>,
+    dep_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    let n_name = authored_name_at(source_indices.clone(), n.clone());
+    let authored_ref = if (((n.ident_span.clone() != None)
+        && (n_name.clone().as_str() != "".to_string().as_str()))
+        && (is_kernel_type(n_name.clone()) == false))
+    {
+        Rc::new(vec![n_name.clone()])
+    } else {
+        Rc::new(vec![])
+    };
+    let decl_ref = match n.binding_id.clone() {
+        Some(binding_id) => match v2_rt::map_get(&dep_env.decl_registry.clone(), binding_id) {
+            Some(decl) => {
+                if (((decl.name.clone().as_str() != "".to_string().as_str())
+                    && (decl.name.clone().as_str() != n_name.as_str()))
+                    && (is_kernel_type(decl.name.clone()) == false))
+                {
+                    Rc::new(vec![decl.name.clone()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            None => Rc::new(vec![]),
+        },
+        None => Rc::new(vec![]),
+    };
+    v2_rt::concat(
+        v2_rt::concat(authored_ref, decl_ref),
+        node_type_deps(n.clone(), source_indices.clone()),
+    )
+}
+
+pub fn carrier_closure_node_type_deps(
+    n: Rc<Node>,
+    dep_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    let base = carrier_closure_direct_type_deps(n.clone(), dep_env.clone(), source_indices.clone());
+    let child_deps = if n.connective.clone() == Connective::Conj {
+        Rc::new({
+            let mut __result = Vec::new();
+            for child in n.children.clone().iter().cloned() {
+                __result.extend(
+                    (*carrier_closure_node_type_deps(
+                        field_node_type_expr(child.clone()),
+                        dep_env.clone(),
+                        source_indices.clone(),
+                    ))
+                    .clone(),
+                );
+            }
+            __result
+        })
+    } else {
+        Rc::new({
+            let mut __result = Vec::new();
+            for child in n.children.clone().iter().cloned() {
+                __result.extend(
+                    (*carrier_closure_node_type_deps(
+                        child.clone(),
+                        dep_env.clone(),
+                        source_indices.clone(),
+                    ))
+                    .clone(),
+                );
+            }
+            __result
+        })
+    };
+    v2_rt::concat(base, child_deps)
 }
 
 pub fn add_type_binding_dependency_closure(
@@ -12213,8 +12287,16 @@ pub fn add_type_binding_dependency_closure(
                         None => with_binding.clone(),
                     };
                 let deps = v2_rt::concat(
-                    node_type_deps(binding.resolved.clone(), source_indices.clone()),
-                    node_type_deps(stamped.resolved.clone(), source_indices.clone()),
+                    carrier_closure_node_type_deps(
+                        binding.resolved.clone(),
+                        dep_env.clone(),
+                        source_indices.clone(),
+                    ),
+                    carrier_closure_node_type_deps(
+                        stamped.resolved.clone(),
+                        dep_env.clone(),
+                        source_indices.clone(),
+                    ),
                 );
                 deps.iter().cloned().fold(
                     with_decl_binding,

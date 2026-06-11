@@ -5830,6 +5830,7 @@ fn stamp_type_binding_dependency_refs(binding: TypeBinding, dep_env: TypeEnv, so
 type CarrierClosureState {
   carrier_bindings: Map<BindingId, TypeBinding>
   seen_names: Map<String, Bool>
+  seen_binding_ids: Map<BindingId, Bool>
 }
 
 fn lookup_decl_type_binding_by_name_excluding_binding_id(env: TypeEnv, name: String, excluded_binding_id: BindingId) -> TypeBinding? {
@@ -5891,18 +5892,64 @@ fn carrier_authority_binding(binding: TypeBinding, dep_env: TypeEnv, source_indi
 }
 
 fn type_binding_decl_binding_id(env: TypeEnv, binding: TypeBinding) -> BindingId? {
-  fold(env.decl_registry |> map_values, init: none, f: (acc, decl) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if decl.name == binding.name { Present { value: decl.binding_id } }
-        else { none }
-    }
-  )
+  match binding.resolved.binding_id {
+    Present { value: binding_id } =>
+      match map_get(env.decl_registry, binding_id) {
+        Present { value: decl } =>
+          if decl.name == binding.name { Present { value: binding_id } } else { none }
+        Absent => none
+      }
+    Absent =>
+      fold(env.decl_registry |> map_values, init: none, f: (acc, decl) =>
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            if decl.name == binding.name { Present { value: decl.binding_id } }
+            else { none }
+        }
+      )
+  }
+}
+
+fn carrier_closure_direct_type_deps(n: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let n_name = authored_name_at(source_indices: source_indices, node: n)
+  let authored_ref = if n.ident_span != none && n_name != "" && is_kernel_type(name: n_name) == false {
+    [n_name]
+  } else { [] }
+  let decl_ref = match n.binding_id {
+    Present { value: binding_id } =>
+      match map_get(dep_env.decl_registry, binding_id) {
+        Present { value: decl } =>
+          if decl.name != "" && decl.name != n_name && is_kernel_type(name: decl.name) == false {
+            [decl.name]
+          } else { [] }
+        Absent => []
+      }
+    Absent => []
+  }
+  concat(concat(authored_ref, decl_ref), node_type_deps(n: n, source_indices: source_indices))
+}
+
+fn carrier_closure_node_type_deps(n: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let base = carrier_closure_direct_type_deps(n: n, dep_env: dep_env, source_indices: source_indices)
+  let child_deps = if n.connective == Conj {
+    flat_map(n.children, child =>
+      carrier_closure_node_type_deps(n: field_node_type_expr(n: child), dep_env: dep_env, source_indices: source_indices)
+    )
+  } else {
+    flat_map(n.children, child =>
+      carrier_closure_node_type_deps(n: child, dep_env: dep_env, source_indices: source_indices)
+    )
+  }
+  concat(base, child_deps)
 }
 
 fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: TypeBinding, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> CarrierClosureState {
-  if map_contains_key(state.seen_names, binding.name) {
+  let already_seen = match binding.resolved.binding_id {
+    Present { value: binding_id } => map_contains_key(state.seen_binding_ids, binding_id)
+    Absent => map_contains_key(state.seen_names, binding.name)
+  }
+  if already_seen {
     state
   } else {
     let stamped = stamp_type_binding_dependency_refs(binding: binding, dep_env: dep_env, source_indices: source_indices)
@@ -5910,23 +5957,29 @@ fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: Type
       Present { value: binding_id } =>
         CarrierClosureState {
           carrier_bindings: map_insert(state.carrier_bindings, binding_id, carrier_authority_binding(binding: stamped, dep_env: dep_env, source_indices: source_indices)),
-          seen_names: map_insert(state.seen_names, stamped.name, true)
+          seen_names: map_insert(state.seen_names, stamped.name, true),
+          seen_binding_ids: map_insert(state.seen_binding_ids, binding_id, true)
         }
       Absent =>
         CarrierClosureState {
           carrier_bindings: state.carrier_bindings,
-          seen_names: map_insert(state.seen_names, stamped.name, true)
+          seen_names: map_insert(state.seen_names, stamped.name, true),
+          seen_binding_ids: state.seen_binding_ids
         }
     }
     let with_decl_binding = match type_binding_decl_binding_id(env: dep_env, binding: binding) {
       Present { value: decl_binding_id } =>
         CarrierClosureState {
           carrier_bindings: map_insert(with_binding.carrier_bindings, decl_binding_id, carrier_authority_binding(binding: stamped, dep_env: dep_env, source_indices: source_indices)),
-          seen_names: with_binding.seen_names
+          seen_names: with_binding.seen_names,
+          seen_binding_ids: map_insert(with_binding.seen_binding_ids, decl_binding_id, true)
         }
       Absent => with_binding
     }
-  let deps = concat(node_type_deps(n: binding.resolved, source_indices: source_indices), node_type_deps(n: stamped.resolved, source_indices: source_indices))
+  let deps = concat(
+    carrier_closure_node_type_deps(n: binding.resolved, dep_env: dep_env, source_indices: source_indices),
+    carrier_closure_node_type_deps(n: stamped.resolved, dep_env: dep_env, source_indices: source_indices)
+  )
     fold(deps, init: with_decl_binding, f: (acc, dep_name) =>
       match lookup_type_binding_by_name_in_env(env: dep_env, name: dep_name) {
         Present { value: dep_binding } => add_type_binding_dependency_closure(state: acc, binding: dep_binding, dep_env: dep_env, source_indices: source_indices)
@@ -5957,16 +6010,16 @@ fn add_node_dependency_closure(state: CarrierClosureState, n: Node, dep_env: Typ
 fn carrier_closure_with_decl_rows(state: CarrierClosureState, env: TypeEnv) -> CarrierClosureState {
   fold(env.decl_registry |> map_values, init: state, f: (acc, decl) =>
     if map_contains_key(acc.seen_names, decl.name) && !map_contains_key(acc.carrier_bindings, decl.binding_id) {
-      let binding_by_name = env.bindings |> map_values |> filter(binding => binding.name == decl.name) |> first
-      let binding_for_decl = match binding_by_name {
+      let binding_for_decl = match map_get(env.bindings, decl.binding_key) {
         Present { value: binding } => Present { value: binding }
-        Absent => map_get(env.bindings, decl.binding_key)
+        Absent => env.bindings |> map_values |> filter(binding => binding.name == decl.name) |> first
       }
       match binding_for_decl {
         Present { value: binding } =>
           CarrierClosureState {
             carrier_bindings: map_insert(acc.carrier_bindings, decl.binding_id, carrier_authority_binding(binding: binding, dep_env: env, source_indices: env.source_indices)),
-            seen_names: acc.seen_names
+            seen_names: acc.seen_names,
+            seen_binding_ids: map_insert(acc.seen_binding_ids, decl.binding_id, true)
           }
         Absent => acc
       }
@@ -5975,7 +6028,7 @@ fn carrier_closure_with_decl_rows(state: CarrierClosureState, env: TypeEnv) -> C
 }
 
 fn collect_import_carrier_bindings_for_import(acc: Map<BindingId, TypeBinding>, imp: ResolvedImport, env: TypeEnv) -> Map<BindingId, TypeBinding> {
-  let closure_state = fold(env.bindings |> map_values, init: CarrierClosureState { carrier_bindings: acc, seen_names: empty_map() }, f: (state, binding) =>
+  let closure_state = fold(env.bindings |> map_values, init: CarrierClosureState { carrier_bindings: acc, seen_names: empty_map(), seen_binding_ids: empty_map() }, f: (state, binding) =>
     if imp.module_path == "std.types" && is_type_variable_name(name: binding.name) {
       state
     } else if import_allows_type_binding(imp: imp, binding: binding, env: env) {
@@ -5989,7 +6042,7 @@ fn collect_import_carrier_bindings_for_import(acc: Map<BindingId, TypeBinding>, 
 
 fn collect_import_carrier_bindings_for_imported_funcs(acc: Map<BindingId, TypeBinding>, imp: ResolvedImport, typed_parent: TypedModule) -> Map<BindingId, TypeBinding> {
   let env = typed_parent.type_env
-  let closure_state = fold(typed_parent.func_env.signatures |> map_values, init: CarrierClosureState { carrier_bindings: acc, seen_names: empty_map() }, f: (state, sig) =>
+  let closure_state = fold(typed_parent.func_env.signatures |> map_values, init: CarrierClosureState { carrier_bindings: acc, seen_names: empty_map(), seen_binding_ids: empty_map() }, f: (state, sig) =>
     if import_allows_binding_name(imp: imp, name: sig.name) {
       let with_return = add_node_dependency_closure(state: state, n: sig.inferred, dep_env: env, source_indices: env.source_indices)
       fold(sig.params, init: with_return, f: (pacc, param) =>
