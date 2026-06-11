@@ -2167,6 +2167,13 @@ fn target_inhabitant_wire_primary_atom_identity(wire: Node) -> Optional<Symbol> 
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:target-wave1-signature-declared-inhabitants — consumer:06_value_expression
+// target_wave1_add_signature_matches — bind: COMPREP wave-1 Arrow signature slots vs
+// declared_inhabitants catalog — owner: T6 value-expression (lively-badger-242) —
+// lane: std/target_model — dissolve-on-arrival: Outcome-bearing substrate signature query
+// replaces Bool fold predicates in std; forbidden: hand-rolled match/fold signature gates
+// without per-function disposition in std/.
 fn target_catalog_contains_node_shape(
   slot: Node,
   catalog_targets: List<Node>
