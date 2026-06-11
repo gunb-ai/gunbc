@@ -59,8 +59,8 @@ fn map_equality_insert_order_independent_at_scale() {
     let src = format!(
         r#"module test.carrier_scale_map
 fn order_independent() -> Bool {{
-  let ascending = [{up}] |> fold(empty_map(), |acc, x| map_insert(acc, x, x))
-  let descending = [{down}] |> fold(empty_map(), |acc, x| map_insert(acc, x, x))
+  let ascending = fold([{up}], init: empty_map(), f: fn(acc, x) {{ map_insert(acc, x, x) }})
+  let descending = fold([{down}], init: empty_map(), f: fn(acc, x) {{ map_insert(acc, x, x) }})
   ascending == descending
 }}
 "#
@@ -76,9 +76,9 @@ fn map_overwrite_path_independent_at_scale() {
     let src = format!(
         r#"module test.carrier_scale_overwrite
 fn overwrite_wins() -> Bool {{
-  let stale = [{keys}] |> fold(empty_map(), |acc, x| map_insert(acc, x, 0))
-  let overwritten = [{keys}] |> fold(stale, |acc, x| map_insert(acc, x, x))
-  let direct = [{keys}] |> fold(empty_map(), |acc, x| map_insert(acc, x, x))
+  let stale = fold([{keys}], init: empty_map(), f: fn(acc, x) {{ map_insert(acc, x, 0) }})
+  let overwritten = fold([{keys}], init: stale, f: fn(acc, x) {{ map_insert(acc, x, x) }})
+  let direct = fold([{keys}], init: empty_map(), f: fn(acc, x) {{ map_insert(acc, x, x) }})
   overwritten == direct
 }}
 "#
@@ -98,10 +98,10 @@ fn prior_versions_survive_derived_updates_at_scale() {
 fn prior_versions_valid() -> Bool {{
   let base_list = [{nums}]
   let extended = concat(base_list, [0])
-  let base_map = [{nums}] |> fold(empty_map(), |acc, x| map_insert(acc, x, x))
+  let base_map = fold([{nums}], init: empty_map(), f: fn(acc, x) {{ map_insert(acc, x, x) }})
   let updated = map_insert(base_map, 1, 0)
   let list_intact = base_list == [{nums}]
-  let map_intact = base_map == ([{nums}] |> fold(empty_map(), |acc, x| map_insert(acc, x, x)))
+  let map_intact = base_map == fold([{nums}], init: empty_map(), f: fn(acc, x) {{ map_insert(acc, x, x) }})
   let derived_differ = !(extended == base_list) && !(updated == base_map)
   list_intact && map_intact && derived_differ
 }}
