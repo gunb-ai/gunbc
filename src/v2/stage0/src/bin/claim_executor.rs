@@ -32,7 +32,9 @@
 use std::process::ExitCode;
 use std::thread;
 
-use v2_compiler::cli_run::{resolve_entry_graph, run_claim, run_value, ClaimOutcome};
+use v2_compiler::cli_run::{
+    make_eval_context, resolve_entry_graph, run_claim, run_value, ClaimOutcome,
+};
 use v2_compiler::v2_interpreter::Value;
 
 /// One runnable claim, projected from a `ClaimRef` record in the plan value.
@@ -158,7 +160,9 @@ fn run_one_claim(source_roots: Vec<String>, claim: ClaimRef) -> ClaimResult {
             }
         }
     };
-    match run_claim(&graph, source_indices, &claim.function) {
+    // Context scoped to this claim's graph: its `data` cache drops with it.
+    let ctx = make_eval_context(&graph, source_indices);
+    match run_claim(&ctx, &claim.function) {
         ClaimOutcome::Pass => ClaimResult {
             function: claim.function,
             ok: true,
@@ -234,7 +238,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
-    let plan_value = match run_value(&plan_graph, plan_indices, &plan_function) {
+    let plan_ctx = make_eval_context(&plan_graph, plan_indices);
+    let plan_value = match run_value(&plan_ctx, &plan_function) {
         Ok(v) => v,
         Err(msg) => {
             eprintln!(

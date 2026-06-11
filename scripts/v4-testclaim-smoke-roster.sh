@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # scripts/v4-testclaim-smoke-roster.sh
 #
-# Wave-A consolidated smoke-roster transport. Row authority is the mechanical
-# projection of distributed top-level BoolWitnessClaim markers under
-# src/v4/test/claim/ (scripts/v4-glob-discovery-project.sh) — not a central list.
+# Wave-A consolidated smoke-roster transport. Row authority is resolved-type owned-data
+# discovery (discover_owned_data + modeled glob_discovery witnesses) — not grep/name patterns.
 
 set -euo pipefail
 
@@ -11,23 +10,22 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
+discover_bin="${DISCOVER_OWNED_DATA:-target/release/discover_owned_data}"
+discover_sh="$root/scripts/v4-discover-owned-data.sh"
 law_model="src/v4/test/claim/workflow/glob_discovery.dag"
-project_sh="$root/scripts/v4-glob-discovery-project.sh"
+manifest=""
 
 if [[ ! -x "$bin" ]]; then
   echo "error: gunbc (v2 stage0 binary) not found at $bin" >&2
   exit 2
 fi
 
-# shellcheck source=scripts/v4-glob-discovery-project.sh
-source "$project_sh"
+if [[ ! -x "$discover_bin" ]]; then
+  echo "error: discover_owned_data binary not found at $discover_bin" >&2
+  exit 2
+fi
 
-dag_string_data() {
-  local file="$1" name="$2"
-  grep -E "^data ${name}: String = \"" "$root/$file" \
-    | sed -n "s/^data ${name}: String = \"\\(.*\\)\"/\\1/p" \
-    | head -1
-}
+manifest="$("$discover_sh")"
 
 claim_run() {
   local label="$1" entry="$2" function="$3"
@@ -36,30 +34,34 @@ claim_run() {
   echo "::endgroup::"
 }
 
-echo "::group::v4 smoke roster: glob discovery cardinality law"
-"$bin" run \
-  --source-root src/v4 \
-  --entry "$law_model" \
-  --function witness_glob_discovery_smoke_marker_count_is_positive \
-  --claim-run
+run_law_witness() {
+  local function="$1"
+  "$bin" run \
+    --source-root src/v4 \
+    --source-root "$(dirname "$manifest")" \
+    --entry "$law_model" \
+    --function "$function" \
+    --claim-run
+}
+
+echo "::group::v4 smoke roster: glob discovery nonempty law (resolved-type)"
+run_law_witness witness_glob_discovery_smoke_set_is_nonempty
+run_law_witness witness_discovered_bool_witness_claim_count_is_positive
 echo "::endgroup::"
 
-v4_glob_discovery_project_distributed_markers
-
-expected_count="$(dag_string_data "$law_model" glob_discovered_smoke_marker_count)"
-if [[ -z "$expected_count" ]]; then
-  echo "error: missing glob_discovered_smoke_marker_count in $law_model" >&2
+transport_tsv="${manifest}.transport.tsv"
+if [[ ! -s "$transport_tsv" ]]; then
+  echo "error: missing discovery transport sidecar: $transport_tsv" >&2
   exit 2
 fi
 
-if [[ "$V4_GLOB_DISCOVERY_ROW_COUNT" -ne "$expected_count" ]]; then
-  echo "error: discovery projected ${V4_GLOB_DISCOVERY_ROW_COUNT} rows; modeled count is ${expected_count}" >&2
-  exit 2
-fi
-
-while IFS=$'\t' read -r label entry function; do
+transport_count=0
+# Stream transport rows directly — command substitution strips trailing newlines and
+# `while read` then drops the final row when the buffer has no terminating newline.
+while IFS=$'\t' read -r label entry function || [[ -n "${label:-}" ]]; do
   [[ -z "$label" ]] && continue
   claim_run "$label" "$entry" "$function"
-done < <(printf '%s' "$V4_GLOB_DISCOVERY_ROWS")
+  transport_count=$((transport_count + 1))
+done <"$transport_tsv"
 
-echo "::notice title=v4 smoke roster::${V4_GLOB_DISCOVERY_ROW_COUNT} claim-run witness(es) passed"
+echo "::notice title=v4 smoke roster::${transport_count} claim-run witness(es) passed"
