@@ -642,6 +642,61 @@ pub fn resolve_node_bounded(
             });
         }
         let has_structure = (n.connective.clone() != Connective::NoConnective);
+        let env = if ((has_structure.clone() && (n.transport.clone() == None))
+            && ((n.params.clone().len() as i64) > 0))
+        {
+            n.params
+                .clone()
+                .iter()
+                .cloned()
+                .fold(env.clone(), |e: Rc<TypeEnv>, p: Rc<Node>| {
+                    let tp_name = generic_param_name_at(p.clone(), e.source_indices.clone());
+                    let tp_intern = intern(e.intern_table.clone(), tp_name.clone());
+                    Rc::new(TypeEnv {
+                        bindings: v2_rt::rc_map_insert(
+                            e.bindings.clone(),
+                            tp_intern.id.clone(),
+                            Rc::new(TypeBinding {
+                                name: tp_name.clone(),
+                                resolved: Rc::new(Node {
+                                    name: tp_name.clone(),
+                                    span: kernel_span(tp_name.clone()),
+                                    ident_span: Some(kernel_span(tp_name.clone())),
+                                    children: Rc::new(vec![]),
+                                    connective: Connective::NoConnective,
+                                    params: Rc::new(vec![]),
+                                    inferred: Some(Rc::new(InferredNode::TypeVariable {
+                                        id: tp_name.clone(),
+                                    })),
+                                    return_cardinality: Cardinality::Required,
+                                    uses: Rc::new(vec![]),
+                                    body: None,
+                                    transport: None,
+                                    properties: Rc::new(vec![]),
+                                    type_annotation: None,
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: None,
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    binding_id: None,
+                                    ident: None,
+                                }),
+                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                            }),
+                        ),
+                        carrier_bindings: e.carrier_bindings.clone(),
+                        decl_registry: e.decl_registry.clone(),
+                        duplicate_decl_ids: e.duplicate_decl_ids.clone(),
+                        recursive_types: e.recursive_types.clone(),
+                        recursive_type_set: e.recursive_type_set.clone(),
+                        inductive_fields: e.inductive_fields.clone(),
+                        source_indices: e.source_indices.clone(),
+                        intern_table: tp_intern.table.clone(),
+                    })
+                })
+        } else {
+            env.clone()
+        };
         if has_structure {
             {
                 let is_product = (n.connective.clone() == Connective::Conj);
@@ -1601,7 +1656,15 @@ pub fn resolve_node_bounded(
                                                     Some(InferredNode::Resolved {
                                                         node: target,
                                                         ..
-                                                    }) => target.clone(),
+                                                    }) => match lookup_type_for(
+                                                        env.clone(),
+                                                        target.clone(),
+                                                    ) {
+                                                        Some(target_resolved) => {
+                                                            target_resolved.clone()
+                                                        }
+                                                        None => target.clone(),
+                                                    },
                                                     _ => resolved.clone(),
                                                 }
                                             } else {

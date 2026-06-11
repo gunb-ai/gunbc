@@ -331,6 +331,27 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   }
   let has_structure = n.connective != NoConnective
+  let env = if has_structure && n.transport == none && (n.params |> count) > 0 {
+    fold(n.params, init: env, f: (e, p) =>
+      let tp_name = generic_param_name_at(n: p, source_indices: e.source_indices)
+      let tp_intern = intern(table: e.intern_table, s: tp_name)
+      TypeEnv {
+        bindings: map_insert(e.bindings, tp_intern.id, TypeBinding {
+          name: tp_name,
+          resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+          provenance: SubValueUnknown
+        }),
+        carrier_bindings: e.carrier_bindings,
+        decl_registry: e.decl_registry,
+        duplicate_decl_ids: e.duplicate_decl_ids,
+        recursive_types: e.recursive_types,
+        recursive_type_set: e.recursive_type_set,
+        inductive_fields: e.inductive_fields,
+        source_indices: e.source_indices,
+        intern_table: tp_intern.table
+      }
+    )
+  } else { env }
   if has_structure {
     let is_product = n.connective == Conj
     if is_product {
@@ -557,7 +578,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // in env). Without this, optionality is silently discarded.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
-              Present { value: Resolved { node: target } } => target
+              Present { value: Resolved { node: target } } =>
+                match lookup_type_for(env: env, node: target) {
+                  Present { value: target_resolved } => target_resolved
+                  Absent => target
+                }
               _ => resolved
             }
           } else { resolved }
