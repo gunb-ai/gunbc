@@ -2071,7 +2071,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           source_indices: scope.type_env.source_indices
         )
         let is_known_method = method_resolution.result_type != none
-        if is_known_method && typed_args |> count > 0 {
+        let is_builtin_function = infer_builtin_call_type(name: func_name) != none
+        if is_known_method && typed_args |> count > 0 && !is_builtin_function {
           let receiver = method_receiver
           let remaining = typed_args |> skip(1)
           let base_result_type = match method_resolution.result_type {
@@ -2269,7 +2270,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                   }
               }
           }
-        } else if infer_builtin_call_type(name: func_name) != none {
+        } else if is_builtin_function {
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
