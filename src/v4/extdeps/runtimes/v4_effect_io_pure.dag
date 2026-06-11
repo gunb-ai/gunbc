@@ -234,6 +234,9 @@ fn effect_io_pure_handle_read(
   }
 }
 
+// Q-R2: write handler returns the accepted payload; it does not mutate the injected fixture
+// store. Persistence/replay is orchestrator responsibility (see effect_io_pure_apply_write in
+// effect_io_pure_read_write_roundtrip, which re-binds handlers over the updated store).
 fn effect_io_pure_handle_write(
   store: EffectIoFixtureStore,
   request: EffectRequest
