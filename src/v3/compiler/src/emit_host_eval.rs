@@ -181,6 +181,313 @@ pub fn try_dispatch_emit_host_go(
     )
 }
 
+/// B3 omni-emission — generic `run_host_process` substrate row (`emit_host.dag`).
+pub fn try_dispatch_run_host_process(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Option<Result<Value, EvalError>> {
+    if !is_run_host_process_decl(dag, callee_decl) {
+        return None;
+    }
+    if operands.len() != 4 {
+        return Some(Err(EvalError::TransformArityMismatch {
+            expected: 4,
+            got: operands.len(),
+        }));
+    }
+
+    let descriptor_identity = match host_transport_descriptor_identity(&operands[0]) {
+        Some(identity) => identity,
+        None => {
+            return Some(Err(EvalError::BadTransformOperands {
+                reason: "run_host_process descriptor missing identity",
+            }));
+        }
+    };
+    let source = match expect_string_operand(&operands[2]) {
+        Ok(source) => source,
+        Err(err) => return Some(Err(err)),
+    };
+    let inputs = match emit_host_transport_inputs(dag, &operands[3], state, strategy) {
+        Ok(inputs) => inputs,
+        Err(err) => return Some(Err(err)),
+    };
+    let work_dir = emit_host_runner::unique_work_dir("gunbc_eval_run_host_process");
+    let receipt = match emit_host_runner::run_host_process(
+        &descriptor_identity,
+        source,
+        &inputs,
+        &work_dir,
+    ) {
+        Ok(receipt) => receipt,
+        Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
+    };
+    let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
+        Ok(id) => id,
+        Err(err) => return Some(Err(err)),
+    };
+    let exit = match host_exit_value(dag, &receipt.exit) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stdout = match byte_string_value(dag, &receipt.stdout_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stderr = match byte_string_value(dag, &receipt.stderr_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let build_log = match build_log_value(dag, &receipt.build_log.lines) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    Some(
+        crate::evaluator::eval_callable_declaration(
+            dag,
+            callee,
+            vec![
+                operands[1].clone(),
+                Value::LiteralValue(LiteralBits::String(receipt.source_text)),
+                exit,
+                stdout,
+                stderr,
+                build_log,
+            ],
+            state,
+            strategy,
+        )
+        .and_then(|value| accepted_variant(dag, value)),
+    )
+}
+
+/// Decode `SignedI32Le` runtime primitive bytes (codec-driven, not target-specific).
+pub fn try_dispatch_runtime_value_signed_i32_le_as_int(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    _state: &mut EvalStateStack<Value>,
+    _strategy: &EvalStrategy,
+) -> Option<Result<Value, EvalError>> {
+    if !is_runtime_value_signed_i32_le_as_int_decl(dag, callee_decl) {
+        return None;
+    }
+    if operands.len() != 1 {
+        return Some(Err(EvalError::TransformArityMismatch {
+            expected: 1,
+            got: operands.len(),
+        }));
+    }
+    let bytes = match runtime_value_primitive_bytes(dag, &operands[0]) {
+        Ok(bytes) => bytes,
+        Err(err) => return Some(Err(err)),
+    };
+    let parsed = match emit_host_runner::runtime_value_parse_signed_i32_le(&bytes) {
+        Ok(n) => n,
+        Err(_) => {
+            return Some(Ok(rejected_outcome_variant(
+                dag,
+                non_empty_diagnostics_singleton(dag, emit_host_parse_failure_diagnostic(dag)?)?,
+            )?));
+        }
+    };
+    Some(Ok(accepted_variant(
+        dag,
+        Value::LiteralValue(LiteralBits::Int(parsed.to_string())),
+    )?))
+}
+
+fn is_run_host_process_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_emit_host_fn_decl(dag, callee_decl, "run_host_process", 4)
+}
+
+fn is_runtime_value_signed_i32_le_as_int_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_emit_host_fn_decl(dag, callee_decl, "runtime_value_signed_i32_le_as_int", 1)
+}
+
+fn is_emit_host_fn_decl(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    name: &str,
+    arity: usize,
+) -> bool {
+    let Some(callee) = dag.declaration_opt(&callee_decl) else {
+        return false;
+    };
+    if callee.name.as_deref() != Some(name) {
+        return false;
+    }
+    if !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_PATH) {
+        return false;
+    }
+    let TypeConnective::Arrow { inputs, body, .. } = &callee.connective else {
+        return false;
+    };
+    inputs.len() == arity && matches!(body, ArrowBody::UserDefined(_))
+}
+
+fn host_transport_descriptor_identity(value: &Value) -> Option<String> {
+    record_fields(value).and_then(|fields| {
+        fields
+            .iter()
+            .find(|f| f.label == "identity")
+            .and_then(|f| atom_identity_literal(&f.value))
+    })
+}
+
+fn runtime_value_primitive_bytes(dag: &Dag, value: &Value) -> Result<Vec<u8>, EvalError> {
+    let payload = match value {
+        Value::VariantValue { payload, .. } => payload.as_ref(),
+        _ => {
+            return Err(EvalError::BadTransformOperands {
+                reason: "runtime value is not a variant",
+            });
+        }
+    };
+    let prim_fields = record_fields(payload).ok_or(EvalError::BadTransformOperands {
+        reason: "RuntimePrimitive payload is not a record",
+    })?;
+    let value_field = prim_fields
+        .iter()
+        .find(|f| f.label == "value")
+        .ok_or(EvalError::BadTransformOperands {
+            reason: "RuntimePrimitiveValue missing value field",
+        })?;
+    let inner = record_fields(&value_field.value).ok_or(EvalError::BadTransformOperands {
+        reason: "RuntimePrimitiveValue is not a record",
+    })?;
+    let bytes_field = inner
+        .iter()
+        .find(|f| f.label == "bytes")
+        .ok_or(EvalError::BadTransformOperands {
+            reason: "RuntimePrimitiveValue missing bytes field",
+        })?;
+    byte_list_to_vec(dag, &bytes_field.value)
+}
+
+fn byte_list_to_vec(dag: &Dag, list: &Value) -> Result<Vec<u8>, EvalError> {
+    let byte_ty = v4_carrier_decl_id(dag, V4_STD_MACHINE_AUTHORITY, "Byte")?;
+    let list_ty = list_instantiation_for_element(dag, byte_ty)?;
+    let empty_tag = find_list_variant_tag(dag, list_ty, "Empty")?;
+    let cons_tag = find_list_variant_tag(dag, list_ty, "Cons")?;
+    let mut out = Vec::new();
+    let mut current = list;
+    loop {
+        let Value::VariantValue { tag, payload } = current else {
+            return Err(EvalError::BadTransformOperands {
+                reason: "byte list is not a variant",
+            });
+        };
+        if *tag == empty_tag {
+            break;
+        }
+        if *tag != cons_tag {
+            return Err(EvalError::BadTransformOperands {
+                reason: "byte list variant is not Empty or Cons",
+            });
+        }
+        let fields = record_fields(payload).ok_or(EvalError::BadTransformOperands {
+            reason: "byte list Cons is not a record",
+        })?;
+        let head = fields
+            .iter()
+            .find(|f| f.label == "head")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "byte list Cons missing head",
+            })?;
+        out.push(byte_value_to_u8(dag, &head.value)?);
+        let tail = fields
+            .iter()
+            .find(|f| f.label == "tail")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "byte list Cons missing tail",
+            })?;
+        current = &tail.value;
+    }
+    Ok(out)
+}
+
+fn byte_value_to_u8(dag: &Dag, value: &Value) -> Result<u8, EvalError> {
+    let fields = record_fields(value).ok_or(EvalError::BadTransformOperands {
+        reason: "byte is not a record",
+    })?;
+    let bits_value = fields
+        .iter()
+        .find(|f| f.label == "bits")
+        .ok_or(EvalError::BadTransformOperands {
+            reason: "byte missing bits field",
+        })?;
+    let bits = bit_list_to_bools(dag, &bits_value.value)?;
+    if bits.len() != 8 {
+        return Err(EvalError::BadTransformOperands {
+            reason: "byte bits length is not 8",
+        });
+    }
+    let mut byte = 0u8;
+    for (shift, bit) in bits.iter().enumerate() {
+        if *bit {
+            byte |= 1 << (7 - shift);
+        }
+    }
+    Ok(byte)
+}
+
+fn bit_list_to_bools(dag: &Dag, list: &Value) -> Result<Vec<bool>, EvalError> {
+    let bit_ty = v4_carrier_decl_id(dag, V4_STD_MACHINE_AUTHORITY, "Bit")?;
+    let list_ty = list_instantiation_for_element(dag, bit_ty)?;
+    let empty_tag = find_list_variant_tag(dag, list_ty, "Empty")?;
+    let cons_tag = find_list_variant_tag(dag, list_ty, "Cons")?;
+    let mut out = Vec::new();
+    let mut current = list;
+    loop {
+        let Value::VariantValue { tag, payload } = current else {
+            return Err(EvalError::BadTransformOperands {
+                reason: "bit list is not a variant",
+            });
+        };
+        if *tag == empty_tag {
+            break;
+        }
+        if *tag != cons_tag {
+            return Err(EvalError::BadTransformOperands {
+                reason: "bit list variant is not Empty or Cons",
+            });
+        }
+        let fields = record_fields(payload).ok_or(EvalError::BadTransformOperands {
+            reason: "bit list Cons is not a record",
+        })?;
+        let head = fields
+            .iter()
+            .find(|f| f.label == "head")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "bit list Cons missing head",
+            })?;
+        match &head.value {
+            Value::LiteralValue(LiteralBits::Bool(bit)) => out.push(*bit),
+            _ => {
+                return Err(EvalError::BadTransformOperands {
+                    reason: "bit list head is not Bool",
+                });
+            }
+        }
+        let tail = fields
+            .iter()
+            .find(|f| f.label == "tail")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "bit list Cons missing tail",
+            })?;
+        current = &tail.value;
+    }
+    Ok(out)
+}
+
+fn emit_host_parse_failure_diagnostic(dag: &Dag) -> Result<Value, EvalError> {
+    emit_host_port_diagnostic(dag, "emit_host_parse_failure")
+}
+
 fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
     is_run_emit_host_decl(dag, callee_decl, "run_emit_host_rust")
 }
