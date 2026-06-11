@@ -12,6 +12,7 @@ import v4.std.grammar { ParseTree }
 
 import v4.std.diagnostic {
   Diagnostic,
+  Diagnostics,
   node_locus,
   Outcome,
   UserInputBoundary,
@@ -28,7 +29,6 @@ import v4.std.node {
   NodeFold,
   Symbol,
   TypeNode,
-  fold_node,
   is_positional,
   all_edges_named,
   all_edges_positional,
@@ -179,7 +179,7 @@ fn normalize_algebra() -> NodeFold<Outcome<Node>> {
   }
 }
 
-fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostic?) -> Outcome<Node> {
+fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
   match classify_sugar(n: n) {
     Present { value: kind } =>
       match normalize_sugar(kind: kind, n: n, children: folded.children) {
