@@ -24,14 +24,14 @@ import v4.std.node {
   Node,
   Symbol,
   TypeNode,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.witness { StructuralPropertyWitness }
 fn int_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^fixture_int_atom } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 fn int_source_grounding_fixture() -> CanonicalGrounding {

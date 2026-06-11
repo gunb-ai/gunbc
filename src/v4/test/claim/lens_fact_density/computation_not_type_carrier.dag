@@ -6,7 +6,7 @@ module v4.test.claim.lens_fact_density.computation_not_type_carrier
 
 import v4.lens.fact_density { NotATypeCarrier, carrier_spec_fact }
 import v4.std.logic { Bool }
-import v4.std.node { ComputationNode, Conj, Node, Transform, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { ComputationNode, Conj, Node, Transform, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -20,7 +20,7 @@ import v4.std.verification {
 data computation_not_type_carrier_input: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 fn computation_not_type_carrier_claim_holds() -> Bool {
@@ -34,7 +34,7 @@ fn computation_not_type_carrier_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

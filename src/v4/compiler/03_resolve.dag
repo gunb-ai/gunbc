@@ -273,7 +273,7 @@ fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
 }
 
 
-fn canonical_atom(identity: Symbol, occurrence_id: OccurrenceId) -> Node {
+fn canonical_atom(identity: Symbol, occurrence_id: NodeOccurrenceId) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],

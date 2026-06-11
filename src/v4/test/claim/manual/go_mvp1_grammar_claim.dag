@@ -20,7 +20,7 @@ import v4.extdeps.languages.go {
 import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
 import v4.std.grammar { ParseTree }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -33,10 +33,10 @@ import v4.std.verification {
 fn go_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^go_claim_bool_true } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^go_claim_bool_false } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
   }
 }

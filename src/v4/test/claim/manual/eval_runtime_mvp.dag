@@ -80,7 +80,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   Value,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.verification {
   EqualsClaim,
@@ -104,7 +104,7 @@ fn eval_mvp2_i64_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^eval_mvp2_i64_symbol } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -112,7 +112,7 @@ fn eval_mvp2_algebra_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^eval_mvp2_algebra_symbol } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -122,7 +122,7 @@ fn eval_mvp2_algebra_node() -> Node {
 data eval_mvp2_two_literal: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data eval_mvp2_add_subgraph_node: Node = Node {
@@ -131,7 +131,7 @@ data eval_mvp2_add_subgraph_node: Node = Node {
     Edge { label: Positional, target: eval_mvp2_two_literal },
     Edge { label: Positional, target: eval_mvp2_two_literal }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 fn eval_mvp2_add_subgraph() -> Node {

@@ -41,7 +41,7 @@ import v4.std.node {
   TypeNode,
   node_synthetic,
   node_with_occurrence_id,
-  substrate_synthetic_occurrence_id,
+  SyntheticOccurrence,
   well_formed
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
@@ -666,7 +666,7 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
 
 // --- Parse walk helpers ---
 
-fn parse_repeat_captured_node(acc_nodes: List<Node>, occurrence_id: OccurrenceId) -> Node {
+fn parse_repeat_captured_node(acc_nodes: List<Node>, occurrence_id: NodeOccurrenceId) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: fold_list(
@@ -890,7 +890,7 @@ fn parse_expr_run_walk(
         remaining: result.remaining,
         captured: parse_repeat_captured_node(
           acc_nodes: result.acc_nodes,
-          occurrence_id: substrate_synthetic_occurrence_id
+          occurrence_id: SyntheticOccurrence
         ),
         diagnostics: result.acc_diags
       }

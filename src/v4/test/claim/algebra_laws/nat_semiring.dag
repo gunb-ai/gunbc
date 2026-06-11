@@ -16,7 +16,7 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, substrate_synthetic_occurrence_id }
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
 import v4.std.text { String }
 import v4.std.verification {ManualAnchorAbsent,
   ManualNatAddAssociativity,
@@ -38,7 +38,7 @@ import v4.std.verification {ManualAnchorAbsent,
 }
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -50,7 +50,7 @@ fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node
       Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
       Edge { label: Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 

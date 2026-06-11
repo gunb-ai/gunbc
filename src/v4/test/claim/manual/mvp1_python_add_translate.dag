@@ -66,7 +66,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.verification {
   DiagnosticClaim,
@@ -93,7 +93,7 @@ data mvp1_python_emitted_root: Node = Node {
     Edge { label: Positional, target: mvp1_python_int_inhabitant },
     Edge { label: Positional, target: mvp1_python_int_inhabitant }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data mvp1_python_int_facts_node: Node = python_integer_facts_node(facts: python_facts_int)
@@ -110,7 +110,7 @@ data mvp1_python_poisoned_authority_target_model: TargetModel = TargetModel {
 data mvp1_python_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data mvp1_python_missing_translation_rules_target: TargetModel = TargetModel {

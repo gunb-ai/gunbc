@@ -17,7 +17,7 @@ import v4.compiler.compile {
 import v4.compiler.infer { InferredTree }
 import v4.std.diagnostic { Accepted, Diagnostics, None, Outcome, PortLocus, Rejected, Some, outcome_rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -110,7 +110,7 @@ fn apply_lens_introspect_rejection_is_advisory_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

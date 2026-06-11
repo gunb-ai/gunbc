@@ -50,7 +50,7 @@ import v4.std.node {
   Symbol,
   TypeNode,
   Value,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.runtime {
   BindInterpreter,
@@ -122,7 +122,7 @@ fn subsumption_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -167,7 +167,7 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
             target: subsumption_symbol_node(s: claim.id)
           }
         ],
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
 }
     ProducerStageDerivation { derivation_path: _ } =>
       subsumption_symbol_node(s: ^subsumption_runtime_rejected)
@@ -195,7 +195,7 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
         target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim)
       }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 

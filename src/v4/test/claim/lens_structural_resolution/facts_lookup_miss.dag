@@ -27,7 +27,7 @@ import v4.std.dependency {
   BindsTo,
   DependencyView
 }
-import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Holds, Violates, Witness }
 data sr_lookup_claim_hash: Hash = sr_lookup_claim_hash
 
@@ -35,7 +35,7 @@ fn sr_lookup_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -46,7 +46,7 @@ data sr_lookup_decl: Node = Node {
   children: [
     Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data sr_lookup_dependency: DependencyView = DependencyView {

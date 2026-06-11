@@ -14,7 +14,7 @@ import v4.lens.cost {
 import v4.std.cardinality { NonZeroNat }
 import v4.std.logic { Bool }
 import v4.std.nat { Zero }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -27,13 +27,13 @@ import v4.std.verification {
 data synthesis_poly_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_poly_x_symbol } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data synthesis_poly_y: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_poly_y_symbol } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 fn polynomial_dominates_linear_claim_holds() -> Bool {
@@ -53,7 +53,7 @@ fn polynomial_dominates_linear_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

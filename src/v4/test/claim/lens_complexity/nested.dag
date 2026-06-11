@@ -37,7 +37,7 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.nat { Zero }
 import v4.std.witness { Witness }
@@ -50,7 +50,7 @@ type LensComplexityClaim {
 data nested_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^nested_body_atom } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_body: Node = Node {
@@ -58,7 +58,7 @@ data nested_body: Node = Node {
   children: [
     Edge { label: Positional, target: nested_body_leaf }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_inner: Node = Node {
@@ -66,7 +66,7 @@ data nested_inner: Node = Node {
   children: [
     Edge { label: Positional, target: nested_body }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_input: Node = Node {
@@ -74,7 +74,7 @@ data nested_input: Node = Node {
   children: [
     Edge { label: Positional, target: nested_inner }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data nested_claim: LensComplexityClaim = LensComplexityClaim {
