@@ -176,26 +176,13 @@ fn structural_carrier_template_name(n: Node, source_indices: Map<String, Newline
 
 fn free_monoid_coproduct_element(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   if n.connective == Disj && canonical_template_name(n: n, source_indices: source_indices) == "FreeMonoid" {
-    let cons_variant = fold(n.children, init: none, f: (acc, child) =>
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if authored_name_at(source_indices: source_indices, node: child) == "Cons" {
-            Present { value: child }
-          } else { none }
-      }
-    )
+    let cons_variant = find_child_named(n: n, name: "Cons", source_indices: source_indices)
     match cons_variant {
       Present { value: cons } =>
-        let head_by_name = fold(cons.children, init: none, f: (acc, field) =>
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              if authored_name_at(source_indices: source_indices, node: field) == "head" {
-                Present { value: child_type_node(ch: field) }
-              } else { none }
-          }
-        )
+        let head_by_name = match find_child_named(n: cons, name: "head", source_indices: source_indices) {
+          Present { value: head_field } => Present { value: child_type_node(ch: head_field) }
+          Absent => none
+        }
         match head_by_name {
           Present { value: _ } => head_by_name
           Absent =>
