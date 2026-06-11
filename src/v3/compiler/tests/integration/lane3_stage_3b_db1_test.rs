@@ -1,9 +1,9 @@
+use crate::common::{cached_compile_outcome, CachedCompileOutcome};
 use v3_compiler::diagnostics::{apply_correction_and_reparse, Correction, Diagnostic};
-use v3_compiler::{compile_to_dag, CompileError};
 
 fn compile_semantic_fixture(source: &str, file: &str) -> v3_compiler::Dag {
-    match compile_to_dag(source, file) {
-        Err(CompileError::Semantic(dag)) => dag,
+    match cached_compile_outcome(source, file) {
+        CachedCompileOutcome::Semantic(dag) => dag,
         other => panic!("expected semantic failure for {file}, got {other:?}"),
     }
 }
@@ -37,18 +37,12 @@ fn assert_fixes_apply_and_recompile(
     let repaired = apply_correction_and_reparse(source, file, fix).unwrap_or_else(|error| {
         panic!("correction should apply and reparse for {file}: {fix:?}\nerror: {error:?}")
     });
-    match compile_to_dag(&repaired, file) {
-        Ok(_) => {}
-        Err(CompileError::Semantic(_)) if !require_clean_compile => {}
-        Err(CompileError::Semantic(dag)) => panic!(
+    match cached_compile_outcome(&repaired, file) {
+        CachedCompileOutcome::Clean(_) => {}
+        CachedCompileOutcome::Semantic(_) if !require_clean_compile => {}
+        CachedCompileOutcome::Semantic(dag) => panic!(
             "applied correction should compile cleanly for {file}: {fix:?}\ndiagnostics: {:?}\nrepaired source:\n{repaired}",
             dag.diagnostics().iter().collect::<Vec<_>>()
-        ),
-        Err(CompileError::Tokenize(error)) => panic!(
-            "applied correction should not tokenize-fail for {file}: {fix:?}\nerror: {error:?}\nrepaired source:\n{repaired}"
-        ),
-        Err(CompileError::Parse(error)) => panic!(
-            "applied correction should not parse-fail for {file}: {fix:?}\nerror: {error:?}\nrepaired source:\n{repaired}"
         ),
     }
 }
