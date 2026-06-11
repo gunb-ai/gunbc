@@ -845,12 +845,20 @@ fn parse_token_first(tokens: List<Token>) -> Optional<Token> {
 
 
 
+// ParseThunk: single-field carrier for a deferred parse combinator. R in fold_grammar_expr<ParseThunk>.
+// Field-dispatch (thunk.apply(...)) lets the v4 lens analysis track the callable through the typed
+// 'apply' field rather than bare function-valued variable syntax (which the lens does not track).
+// One field, not 6 variants — not a GrammarExpr mirror; Class-B preserved.
+type ParseThunk {
+  apply: fn(List<Token>, List<Token>, GrammarRoot, ParseTable, ParseProvenanceState) -> ParseExprResult
+}
+
+
 // 🟢 substrate catamorphism consumer — feature: GrammarExpr parse interpreter —
-// bind node://adhoc-2145db6b-69a — full dissolution: one fold_grammar_expr<R> call where
-// R = fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult (parse combinator).
-// fold_grammar_expr reduces children to R (closes over their sub-expression parse logic) before
-// passing them to each handler — so Choice/Optional thunks receive pre-built closures, not
-// eagerly-evaluated results; no parsing runs during construction, only when the top thunk fires.
+// bind node://adhoc-2145db6b-69a — full dissolution: one fold_grammar_expr<ParseThunk> call
+// where ParseThunk = { apply: fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult }.
+// fold_grammar_expr reduces children to ParseThunk (deferred combinators) before passing them to
+// each handler — no parsing runs during construction; only top thunk fires via .apply at the end.
 // Nonterminal arm: O(1) ParseTable lookup via parse_nonterminal_from_table (table-boundary leaf).
 // Repeat terminates via the no-progress guard length(rest) != length(acc.remaining).
 fn parse_expr(
@@ -865,7 +873,7 @@ fn parse_expr(
     expr: expr,
     algebra: GrammarExprFold {
       terminal: fn(token_class) {
-        fn(tok_in, _all_toks, _root_in, _table_in, prov_in) {
+        ParseThunk { apply: fn(tok_in, _all_toks, _root_in, _table_in, prov_in) {
           match parse_token_first(tokens: tok_in) {
             Absent => ParseExprRejected { diagnostics: [] }
             Present { value: tok } =>
@@ -884,11 +892,10 @@ fn parse_expr(
                   }
                 false => ParseExprRejected { diagnostics: [] }
               }
-          }
-        }
+          } }
       },
       nonterminal: fn(prod_name) {
-        fn(tok_in, all_toks, root_in, table_in, prov_in) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
           parse_nonterminal_from_table(
             table: table_in,
             all_tokens: all_toks,
@@ -897,15 +904,15 @@ fn parse_expr(
             prod_name: prod_name,
             prov: prov_in
           )
-        }
+        } }
       },
       sequence: fn(left_thunk, right_thunk) {
-        fn(tok_in, all_toks, root_in, table_in, prov_in) {
-          match left_thunk(tok_in, all_toks, root_in, table_in, prov_in) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          match left_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
             ParseExprRejected { diagnostics: diags } =>
               ParseExprRejected { diagnostics: diags }
             ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1 } =>
-              match right_thunk(rest1, all_toks, root_in, table_in, prov1) {
+              match right_thunk.apply(rest1, all_toks, root_in, table_in, prov1) {
                 ParseExprRejected { diagnostics: diags2 } =>
                   ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
                 ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2 } =>
@@ -918,21 +925,21 @@ fn parse_expr(
                   }
               }
           }
-        }
+        } }
       },
       choice: fn(left_thunk, right_thunk) {
-        fn(tok_in, all_toks, root_in, table_in, prov_in) {
-          match left_thunk(tok_in, all_toks, root_in, table_in, prov_in) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          match left_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
             ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
               ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
             ParseExprRejected { diagnostics: _ } =>
-              right_thunk(tok_in, all_toks, root_in, table_in, prov_in)
+              right_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in)
           }
-        }
+        } }
       },
       optional: fn(element_thunk) {
-        fn(tok_in, all_toks, root_in, table_in, prov_in) {
-          match element_thunk(tok_in, all_toks, root_in, table_in, prov_in) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
+          match element_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
             ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
               ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
             ParseExprRejected { diagnostics: _ } =>
@@ -943,10 +950,10 @@ fn parse_expr(
                 prov: prov_in
               }
           }
-        }
+        } }
       },
       repeat: fn(element_thunk) {
-        fn(tok_in, all_toks, root_in, table_in, prov_in) {
+        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
           let init = ParseRepeatAcc {
             remaining: tok_in,
             acc_nodes: [],
@@ -961,7 +968,7 @@ fn parse_expr(
               match acc.done {
                 true => acc
                 false =>
-                  match element_thunk(acc.remaining, all_toks, root_in, table_in, acc.prov) {
+                  match element_thunk.apply(acc.remaining, all_toks, root_in, table_in, acc.prov) {
                     ParseExprRejected { diagnostics: _ } =>
                       ParseRepeatAcc {
                         remaining: acc.remaining,
@@ -1000,11 +1007,11 @@ fn parse_expr(
             diagnostics: result.acc_diags,
             prov: stamped.prov
           }
-        }
+        } }
       }
     }
   )
-  thunk(tokens, all_tokens, root, table, prov)
+  thunk.apply(tokens, all_tokens, root, table, prov)
 }
 
 
