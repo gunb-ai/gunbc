@@ -1247,36 +1247,43 @@ fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Boo
 
 fn eval_bind_wave1_arguments(
   args: List<RuntimeValue>,
+  callee_arrow: Node,
   environment: EvaluationEnvironment,
   bind: BindInterpreter,
   node: Node
 ) -> Outcome<EvaluationEnvironment> {
-  // Exact arity (P3/P5): the wave-1 add callee takes exactly two actuals. A third actual
-  // must refuse — binding only [0],[1] and ignoring the rest would silently drop arguments.
-  if eval_actual_present(args: args, wanted: 2, node: node) {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_argument_arity_excess, node: node)
-    )
-  } else {
-    bind_outcome(
-      o: eval_bind_wave1_argument(
-        args: args,
-        wanted: 0,
-        environment: environment,
-        bind: bind,
-        node: node
-      ),
-      f: fn(env1) {
-        eval_bind_wave1_argument(
-          args: args,
-          wanted: 1,
-          environment: env1,
-          bind: bind,
-          node: node
+  bind_outcome(
+    o: arrow_domain_named_param_bindings(arrow: callee_arrow),
+    f: fn(param_names) {
+      // Exact arity (P3/P5): reject if excess actuals beyond the declared param count.
+      if eval_actual_present(args: args, wanted: length(param_names), node: node) {
+        outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_argument_arity_excess, node: node)
+        )
+      } else {
+        bind_outcome(
+          o: eval_bind_wave1_argument(
+            args: args,
+            wanted: 0,
+            param_names: param_names,
+            environment: environment,
+            bind: bind,
+            node: node
+          ),
+          f: fn(env1) {
+            eval_bind_wave1_argument(
+              args: args,
+              wanted: 1,
+              param_names: param_names,
+              environment: env1,
+              bind: bind,
+              node: node
+            )
+          }
         )
       }
-    )
-  }
+    }
+  )
 }
 
 fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
@@ -1358,13 +1365,15 @@ fn eval_child_absent(node: Node, wanted: Int) -> Bool {
 // callee shape here (a third would mean building the dispatch surface, not another literal).
 fn eval_wave1_add_signature(arrow: Node) -> Bool {
   eval_node_is_arrow(node: arrow)
-    && eval_positional_child_atom_is(node: arrow, wanted: 0, sym: ^dag_binding_type_int)
+    // domain: Conj with Named binding_id edges; arity check via param name count.
+    && match arrow_domain_named_param_bindings(arrow: arrow) {
+      Accepted { value: names, diagnostics: _ } => length(names) == 2
+      Rejected { diagnostics: _ } => false
+    }
+    // codomain at positional-1 must be Int.
     && eval_positional_child_atom_is(node: arrow, wanted: 1, sym: ^dag_binding_type_int)
-    && eval_positional_child_atom_is(node: arrow, wanted: 2, sym: ^dag_binding_type_int)
-    // Exact arity: the add Arrow is [Int, Int, Int, body] — exactly four children. Reject
-    // any extra signature fact (index 4+) rather than admitting it as Int,Int->Int and
-    // dropping it across dispatch (Facts Flow Forward/P5).
-    && eval_child_absent(node: arrow, wanted: 4)
+    // Exact arity: Arrow is [domain-Conj, codomain-Int, body] — no positional-2+.
+    && eval_child_absent(node: arrow, wanted: 2)
 }
 
 fn eval_wave1_add_body_operand_set(body: Node) -> Bool {
@@ -1458,6 +1467,7 @@ fn eval_transform_node(
                   bind_outcome(
                     o: eval_bind_wave1_arguments(
                       args: args,
+                      callee_arrow: callee_edge.target,
                       environment: environment,
                       bind: interpretation.bind,
                       node: node
