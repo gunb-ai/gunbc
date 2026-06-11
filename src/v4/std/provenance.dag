@@ -123,6 +123,52 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   }
 }
 
+data span_index_origin_chain_exhausted: Symbol = span_index_origin_chain_exhausted
+
+fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: span_index_origin_chain_exhausted,
+    at: port_locus(port: ^span_index_lookup_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn span_index_resolve_textual_locus_from_ids(
+  index: SpanIndex,
+  ids: List<OccurrenceId>
+) -> Witness<Locus> {
+  fold_list(
+    xs: ids,
+    empty: Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
+    cons: fn(acc, id) {
+      match acc {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          span_index_resolve_textual_locus(index: index, id: id)
+      }
+    }
+  )
+}
+
+// Walk DerivedBy/GeneratedBy chains to the source-text frontier (design-provenance-span.md §4.4).
+fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witness<Locus> {
+  match span_index_lookup(index: index, id: id) {
+    Holds { value: event } =>
+      match event {
+        FromSource { locus } =>
+          match locus {
+            Textual { file: _, extent: _ } => Holds { value: locus }
+            _ => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+          }
+        DerivedBy { producer: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+        GeneratedBy { generator: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
 fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
   NodeArtifactProvenance { node: node, artifact: artifact }
 }
