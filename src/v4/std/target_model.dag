@@ -451,6 +451,11 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:canonical-operation-wire-decode-bool — consumer:target_operator_realization_row_matches_canonical_op
+// — bind: operator-catalog row operation wire match — owner: T6 value-expression (lively-badger-242) —
+// lane: std/target_model — dissolve-on-arrival: Outcome-bearing wire decode propagates diagnostics
+// in catalog lookup; forbidden: Rejected => false silent swallow in substrate Bool matchers.
 fn canonical_operation_wire_matches_operation(
   wire: Node,
   operation: CanonicalOperation

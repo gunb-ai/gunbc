@@ -193,6 +193,12 @@ fn value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:arrow-domain-binding-list-membership — consumer:06_value_expression
+// value_expr_arrow_body_scope_binding — bind: membership in
+// arrow_domain_named_param_bindings ordered list — owner: T6 value-expression (lively-badger-242) —
+// lane: compiler 06_value_expression — dissolve-on-arrival: std.collection symbol-list
+// contains accessor; forbidden: local Bool fold membership predicates in compiler stages.
 fn value_expr_binding_in_declared_param_list(
   binding: Symbol,
   bindings: List<Symbol>
