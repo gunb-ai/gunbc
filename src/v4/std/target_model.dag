@@ -2269,6 +2269,206 @@ fn target_value_expression_to_concrete_tokens(
   }
 }
 
+fn target_declared_inhabitants_edge_targets(root: Node) -> List<Node> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold_list_right(
+        xs: root.children,
+        empty: Empty,
+        snoc: fn(acc, edge) {
+          Cons { head: edge.target, tail: acc }
+        }
+      )
+    _ => Empty
+  }
+}
+
+fn target_inhabitant_wire_primary_atom_identity(wire: Node) -> Optional<Symbol> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    TypeNode { connective: Conj } =>
+      match fold(
+        wire.children,
+        init: optional_absent(),
+        f: fn(acc, edge) {
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              match edge.label {
+                Named { name: _ } =>
+                  match edge.target.kind {
+                    TypeNode { connective: Atom { identity: id } } =>
+                      optional_present(value: id)
+                    _ => acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Present { value: id } => optional_present(value: id)
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn target_catalog_contains_node_shape(
+  slot: Node,
+  catalog_targets: List<Node>
+) -> Bool {
+  fold_list(
+    xs: catalog_targets,
+    empty: false,
+    cons: fn(acc, candidate) {
+      if acc {
+        true
+      } else if content_hash(n: slot) == content_hash(n: candidate) {
+        true
+      } else {
+        false
+      }
+    }
+  )
+}
+
+fn target_catalog_collect_arrow_positional_slots(
+  catalog_targets: List<Node>
+) -> List<Node> {
+  fold_list_right(
+    xs: catalog_targets,
+    empty: Empty,
+    snoc: fn(acc, candidate) {
+      match candidate.kind {
+        TypeNode { connective: Arrow } =>
+          fold_list_right(
+            xs: candidate.children,
+            empty: acc,
+            snoc: fn(inner_acc, edge) {
+              match edge.label {
+                Positional =>
+                  Cons { head: edge.target, tail: inner_acc }
+                Named { name: _ } => inner_acc
+              }
+            }
+          )
+        _ => acc
+      }
+    }
+  )
+}
+
+fn target_catalog_atom_identity_matches_inhabitant_wires(
+  slot_atom: Symbol,
+  catalog_targets: List<Node>
+) -> Bool {
+  fold_list(
+    xs: catalog_targets,
+    empty: false,
+    cons: fn(acc, candidate) {
+      if acc {
+        true
+      } else {
+        match target_inhabitant_wire_primary_atom_identity(wire: candidate) {
+          Present { value: inhabitant_atom } => slot_atom == inhabitant_atom
+          Absent => false
+        }
+      }
+    }
+  )
+}
+
+fn target_wave1_signature_slot_matches_declared_inhabitants(
+  slot: Node,
+  inhabitants_root: Node
+) -> Bool {
+  let catalog_targets = target_declared_inhabitants_edge_targets(root: inhabitants_root)
+  let arrow_slots = target_catalog_collect_arrow_positional_slots(
+    catalog_targets: catalog_targets
+  )
+  if target_catalog_contains_node_shape(slot: slot, catalog_targets: catalog_targets) {
+    true
+  } else if target_catalog_contains_node_shape(slot: slot, catalog_targets: arrow_slots) {
+    true
+  } else {
+    match slot.kind {
+      TypeNode { connective: Atom { identity: slot_atom } } =>
+        target_catalog_atom_identity_matches_inhabitant_wires(
+          slot_atom: slot_atom,
+          catalog_targets: catalog_targets
+        )
+      _ =>
+        match target_inhabitant_wire_primary_atom_identity(wire: slot) {
+          Present { value: slot_atom } =>
+            target_catalog_atom_identity_matches_inhabitant_wires(
+              slot_atom: slot_atom,
+              catalog_targets: catalog_targets
+            )
+          Absent => false
+        }
+    }
+  }
+}
+
+fn target_wave1_add_signature_slot_valid(
+  slot: Node,
+  inhabitants_root: Node
+) -> Bool {
+  match slot.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      id == ^dag_binding_type_int
+      || target_wave1_signature_slot_matches_declared_inhabitants(
+        slot: slot,
+        inhabitants_root: inhabitants_root
+      )
+    _ =>
+      target_wave1_signature_slot_matches_declared_inhabitants(
+        slot: slot,
+        inhabitants_root: inhabitants_root
+      )
+  }
+}
+
+fn target_wave1_add_signature_slot_at(
+  arrow: Node,
+  index: Int,
+  inhabitants_root: Node
+) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
+    Present { value: slot } =>
+      target_wave1_add_signature_slot_valid(
+        slot: slot,
+        inhabitants_root: inhabitants_root
+      )
+    Absent => false
+  }
+}
+
+fn target_wave1_add_signature_matches(
+  arrow: Node,
+  inhabitants_root: Node
+) -> Bool {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      target_wave1_add_signature_slot_at(
+        arrow: arrow,
+        index: 0,
+        inhabitants_root: inhabitants_root
+      )
+      && target_wave1_add_signature_slot_at(
+        arrow: arrow,
+        index: 1,
+        inhabitants_root: inhabitants_root
+      )
+      && target_wave1_add_signature_slot_at(
+        arrow: arrow,
+        index: 2,
+        inhabitants_root: inhabitants_root
+      )
+    _ => false
+  }
+}
+
 fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection) -> Node {
   target_model_type_conj_node(
     children: [
