@@ -1146,6 +1146,15 @@ mod parse_stage4_prep {
 
     #[test]
     fn handwritten_parser_accepts_cpu_dag() {
+        // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+        // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+        // `pb_rust_tests_outside_residual_zero`; narrow parser smoke for `std.cpu` /
+        // `std.cpu.types` / `std.cpu.ampere` (operator CPU taxonomy; P-CF supply authority)
+        // until T-PB-B hand-Rust test floor reaches zero.
+        // SG-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
+        // `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
+        // this adds one `#[test]` fn only, same pattern as
+        // `handwritten_parser_accepts_cache_interface_dag` below.
         parse_file(
             include_str!("../../../../dsl/std/cpu.dag"),
             "dsl/std/cpu.dag",
