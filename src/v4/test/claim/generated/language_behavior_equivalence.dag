@@ -36,7 +36,7 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_singleton
 }
-import v4.std.node { Atom, Hash, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Hash, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -88,7 +88,7 @@ fn lbe_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

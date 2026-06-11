@@ -26,7 +26,7 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.report { SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
 import v4.std.verification {
@@ -42,7 +42,7 @@ import v4.std.witness { Holds, Violates }
 data synthesis_gap_it_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_atom_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data synthesis_gap_it_body: Node = Node {
@@ -50,7 +50,7 @@ data synthesis_gap_it_body: Node = Node {
   children: [
     Edge { label: Positional, target: synthesis_gap_it_leaf }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data synthesis_gap_it_inner: Node = Node {
@@ -58,7 +58,7 @@ data synthesis_gap_it_inner: Node = Node {
   children: [
     Edge { label: Positional, target: synthesis_gap_it_body }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 // Nested Cardinality → O(n^2) > Ω(n); InformationTheoretic lower bound is Ω(n).
@@ -67,13 +67,13 @@ data synthesis_gap_it_input: Node = Node {
   children: [
     Edge { label: Positional, target: synthesis_gap_it_inner }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data synthesis_gap_it_sentinel: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_sentinel_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 fn synthesis_gap_it_lens_non_empty() -> Bool {

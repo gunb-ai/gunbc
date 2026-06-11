@@ -10,7 +10,7 @@ module v4.test.claim.nat_semiring.rung_l1_python_runtime
 
 
 import v4.std.collection { List }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.text { String }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -34,7 +34,7 @@ data phase1_nat_semiring_l1_python_runtime_fixture_subject: Node = Node {
     connective: Atom { identity: ^phase1_nat_semiring_l1_python_runtime_fixture_symbol }
   },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 fn phase1_l1_python_runtime_fixture_claim(label: String) -> TestClaim {

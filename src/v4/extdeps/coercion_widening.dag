@@ -25,7 +25,7 @@ import v4.std.integer_value_set {
   integer_interval_value_set_node,
   integer_unbounded_value_set_node
 }
-import v4.std.node { Atom, Node, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v4.std.node_query { find_named_child }
 import v4.std.refinement_widening_predicate { refinement_widening_predicate_algebra_for_value_sets }
 
@@ -33,7 +33,7 @@ fn coercion_widening_unknown_value_set_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^coercion_widening_unknown_value_set } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -55,7 +55,7 @@ fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) 
       match find_named_child(root: facts, name: ^python_facts_field_encoding) {
         Accepted { value: encoding, diagnostics: None } =>
           if encoding == Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 } {
             integer_unbounded_value_set_node()
           } else {

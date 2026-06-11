@@ -28,7 +28,7 @@ import v4.std.dependency {
   DependencyView
 }
 import v4.std.diagnostic { node_locus }
-import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Holds, Violates, Witness }
 data sr_infer_claim_hash: Hash = sr_infer_claim_hash
 
@@ -36,7 +36,7 @@ fn sr_infer_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -47,7 +47,7 @@ data sr_infer_decl: Node = Node {
   children: [
     Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_infer_use }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data sr_infer_dependency: DependencyView = DependencyView {

@@ -58,7 +58,7 @@ import v4.std.model_core {
 }
 import v4.std.witness { Holds, Violates }
 import v4.std.nat { Nat }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 
 
@@ -693,7 +693,7 @@ fn llvm_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -733,7 +733,7 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -754,7 +754,7 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

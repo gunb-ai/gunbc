@@ -26,7 +26,7 @@ import v4.std.leaf_model_verification {
   target_diagnostic_ts2339_property_does_not_exist
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verdict { verdict_fail }
 import v4.std.verification {
   EqualsClaim,
@@ -40,10 +40,10 @@ import v4.std.verification {
 fn typescript_r2a_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^typescript_r2a_claim_bool_true } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^typescript_r2a_claim_bool_false } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
   }
 }

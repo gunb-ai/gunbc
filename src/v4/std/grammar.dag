@@ -25,7 +25,8 @@ import v4.std.diagnostic {
 import v4.std.lexing { LexRules }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
-import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, SyntheticOccurrence, TypeNode, fold_node }
+import v4.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v4.std.target_model {
   BoundToken,
   FixedToken,
@@ -289,7 +290,7 @@ fn grammar_atom(identity: Symbol) -> Node {
       connective: Atom { identity: identity }
     },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -308,13 +309,7 @@ fn grammar_empty_sync_tokens() -> Set<Symbol> {
 
 
 fn grammar_empty_node() -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [],
-    span: Unanchored
-}
+  stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
 }
 
 
@@ -362,7 +357,7 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
     children: [
       grammar_named_edge(name: ^formal_terminal_identity_node_projection, target: grammar_atom(identity: terminal.identity))
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -384,7 +379,7 @@ fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optiona
             target: grammar_atom(identity: binding)
           )
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     Absent => formal_terminal_to_node(terminal: terminal)
   }
@@ -399,7 +394,7 @@ fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
     children: [
       grammar_named_edge(name: ^formal_nonterminal_identity_node_projection, target: grammar_atom(identity: nonterminal.identity))
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -417,7 +412,7 @@ fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
             target: formal_terminal_occurrence_to_node(terminal: terminal, binding: binding)
           )
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     FormalNonterminalOccurrence { nonterminal: nonterminal } =>
       Node {
@@ -427,7 +422,7 @@ fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
         children: [
           grammar_named_edge(name: ^formal_symbol_nonterminal_node_projection, target: formal_nonterminal_to_node(nonterminal: nonterminal))
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -461,11 +456,11 @@ fn formal_production_to_node(production: FormalProduction) -> Node {
             connective: Conj
           },
           children: formal_rhs_to_edges(symbols: production.rhs),
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -491,7 +486,7 @@ fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
       grammar_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       grammar_named_edge(name: grammar_relation_field_tokens, target: tokens)
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1093,7 +1088,7 @@ fn derive_grammar_relation_row_node(
                   connective: Conj
                 },
                 children: token_edges,
-                span: Unanchored
+                occurrence_id: SyntheticOccurrence
 }
             )
           }
@@ -1117,7 +1112,7 @@ fn grammar_expr_node(children: List<Edge>) -> Node {
       connective: Conj
     },
     children: children,
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1178,7 +1173,7 @@ fn grammar_production_to_node(production: GrammarProduction) -> Node {
       grammar_named_edge(name: ^grammar_production_expression_node_projection, target: grammar_expr_to_node(expr: production.expression)),
       grammar_named_edge(name: ^grammar_production_emitted_node_projection, target: production.emitted)
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1206,7 +1201,7 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
         grammar_production_to_list_step(acc: acc, production: production)
       }
     ),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1226,7 +1221,7 @@ fn grammar_root_to_node(root: GrammarRoot) -> Node {
       grammar_named_edge(name: ^grammar_root_start_production_node_projection, target: grammar_atom(identity: root.start)),
       grammar_named_edge(name: ^grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
