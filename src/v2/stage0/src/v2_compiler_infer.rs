@@ -4878,21 +4878,18 @@ match bare_s {
                         if node_is_element_collection(
                             exp.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                            ) {
-                                match exp.children.clone().first().cloned() {
-                                    Some(elem) => {
-                                        let child = child_type_node(elem.clone());
-                                        match lookup_type_for(
-                                            scope.type_env.clone(),
-                                            child.clone(),
-                                        ) {
-                                            Some(resolved_child) => Some(resolved_child.clone()),
-                                            None => Some(child.clone()),
-                                        }
+                        ) {
+                            match exp.children.clone().first().cloned() {
+                                Some(elem) => {
+                                    let child = child_type_node(elem.clone());
+                                    match lookup_type_for(scope.type_env.clone(), child.clone()) {
+                                        Some(resolved_child) => Some(resolved_child.clone()),
+                                        None => Some(child.clone()),
                                     }
-                                    None => None,
                                 }
-                            } else {
+                                None => None,
+                            }
+                        } else {
                             None
                         }
                     }
