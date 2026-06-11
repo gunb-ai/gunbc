@@ -8,7 +8,7 @@ pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_infer_env::{
     authored_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for,
-    lookup_type, lookup_type_by_name, lookup_type_for,
+    lookup_decl_arity_for, lookup_type, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_types::{
@@ -79,35 +79,6 @@ pub fn preserve_nominal_brand_on_resolve(
     } else {
         structural
     }
-}
-
-pub fn lookup_decl_surface_for_arity(n: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
-    let result = match n.ident.clone() {
-        Some(id) => match lookup_type(env.clone(), id.clone()) {
-            Some(resolved) => Some(resolved.clone()),
-            None => lookup_type_by_name(env.clone(), authored_name(env.clone(), n.clone())),
-        },
-        None => lookup_type_by_name(env.clone(), authored_name(env.clone(), n.clone())),
-    };
-    let n_name = authored_name(env.clone(), n.clone());
-    if n_name.as_str() == "Int" || n_name.as_str() == "String" {
-        match result.clone() {
-            Some(r) => eprintln!(
-                "DBG surface name={} ident={:?} result={} params={} inferred={} conn={:?}",
-                n_name,
-                n.ident,
-                authored_name(env.clone(), r.clone()),
-                r.params.len(),
-                r.inferred.is_some(),
-                r.connective
-            ),
-            None => eprintln!(
-                "DBG surface name={} ident={:?} result=none",
-                n_name, n.ident
-            ),
-        }
-    }
-    result
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -312,23 +283,32 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
         if has_structure {
             false
         } else {
-            match lookup_type_for(env.clone(), n.clone()) {
-                Some(decl) => {
-                    if ((decl.params.clone().len() as i64) > 0) {
+            match lookup_decl_arity_for(env.clone(), n.clone()) {
+                Some(arity) => {
+                    if arity.clone() > 0 {
                         if is_container_type(authored_name(env.clone(), n.clone())) {
                             false
                         } else {
-                            if (decl.inferred.clone() != None) {
-                                true
-                            } else {
-                                true
-                            }
+                            true
                         }
                     } else {
                         false
                     }
                 }
-                None => false,
+                None => match lookup_type_for(env.clone(), n.clone()) {
+                    Some(decl) => {
+                        if ((decl.params.clone().len() as i64) > 0) {
+                            if is_container_type(authored_name(env.clone(), n.clone())) {
+                                false
+                            } else {
+                                true
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                    None => false,
+                },
             }
         }
     }
@@ -1218,11 +1198,14 @@ pub fn resolve_node_bounded(
             {
                 {
                     let type_name = authored_name(env.clone(), n.clone());
-                    let decl = match lookup_decl_surface_for_arity(n.clone(), env.clone()) {
+                    let decl = match lookup_type_for(env.clone(), n.clone()) {
                         Some(d) => d.clone(),
                         None => n.clone(),
                     };
-                    let expected_arity = (decl.params.clone().len() as i64);
+                    let expected_arity = match lookup_decl_arity_for(env.clone(), n.clone()) {
+                        Some(arity) => arity.clone(),
+                        None => (decl.params.clone().len() as i64),
+                    };
                     let actual_arity = (n.children.clone().len() as i64);
                     let arity_diags = if (expected_arity.clone() != actual_arity.clone()) {
                         Rc::new(vec![make_error_node(
@@ -1790,11 +1773,13 @@ pub fn missing_generic_args_diagnostics(
     {
         {
             let type_name = authored_name(env.clone(), n.clone());
-            let decl = match lookup_decl_surface_for_arity(n.clone(), env.clone()) {
-                Some(d) => d.clone(),
-                None => n.clone(),
+            let expected_arity = match lookup_decl_arity_for(env.clone(), n.clone()) {
+                Some(arity) => arity.clone(),
+                None => match lookup_type_for(env.clone(), n.clone()) {
+                    Some(decl) => (decl.params.clone().len() as i64),
+                    None => (n.params.clone().len() as i64),
+                },
             };
-            let expected_arity = (decl.params.clone().len() as i64);
             if (expected_arity.clone() > 0) {
                 Rc::new(vec![make_error_node(
                     Rc::new(CompilerDiagnostic::ArityMismatch {

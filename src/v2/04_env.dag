@@ -38,6 +38,7 @@ type TypeDeclBinding {
   binding_id: BindingId
   authority: TypeDeclAuthority
   binding_key: Int
+  decl_arity: Int
   name: String
   provenance: SubValueRelation
 }
@@ -127,6 +128,38 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   match intern_find(table: env.intern_table, s: name) {
     Present { value: id } => lookup_type(env: env, ident: id)
     Absent => Absent
+  }
+}
+
+fn lookup_decl_arity_for(env: TypeEnv, node: Node) -> Int? {
+  match node.binding_id {
+    Present { value: binding_id } =>
+      match map_get(env.decl_registry, binding_id) {
+        Present { value: decl } => Present { value: decl.decl_arity }
+        Absent => none
+      }
+    Absent =>
+      let node_name = authored_name(env: env, node: node)
+      let by_ident = match node.ident {
+        Present { value: id } =>
+          fold(env.decl_registry |> map_values, init: none, f: (acc, decl) =>
+            match acc {
+              Present { value: _ } => acc
+              Absent => if decl.binding_key == id { Present { value: decl.decl_arity } } else { none }
+            }
+          )
+        Absent => none
+      }
+      match by_ident {
+        Present { value: _ } => by_ident
+        Absent =>
+          fold(env.decl_registry |> map_values, init: none, f: (acc, decl) =>
+            match acc {
+              Present { value: _ } => acc
+              Absent => if decl.name == node_name { Present { value: decl.decl_arity } } else { none }
+            }
+          )
+      }
   }
 }
 

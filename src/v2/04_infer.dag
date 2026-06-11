@@ -5808,6 +5808,7 @@ fn register_type_decl_binding(
       binding_id: binding_alloc.binding_id,
       authority: TypeDeclAuthority { module_name: module_name, decl_name: name, decl_span: decl_span },
       binding_key: item_ident,
+      decl_arity: resolved.params |> count,
       name: name,
       provenance: provenance
     }),
@@ -6286,7 +6287,15 @@ fn build_module_context(contributions: List<ItemContribution>,
                 let prev_parent_imported = map_get(imported_enum_names, prev_parent_name) != none
                 let prev_variant_imported = map_get(imported_variant_parent_names, concat(prev_parent_name, "::", child_name)) != none
                 let prev_is_imported = prev_parent_imported || prev_variant_imported
-                if curr_variant_imported && prev_variant_imported && is_bootstrap_duplicate_variant_name(name: child_name) == false && curr_parent_imported == false && prev_parent_imported == false && curr_is_imported && prev_is_imported {
+                let same_parent_binding = match binding.resolved.binding_id {
+                  Present { value: curr_binding_id } =>
+                    match prev.resolved.binding_id {
+                      Present { value: prev_binding_id } => curr_binding_id == prev_binding_id
+                      Absent => false
+                    }
+                  Absent => curr_parent_name == prev_parent_name
+                }
+                if curr_variant_imported && prev_variant_imported && same_parent_binding == false && is_bootstrap_duplicate_variant_name(name: child_name) == false && curr_parent_imported == false && prev_parent_imported == false && curr_is_imported && prev_is_imported {
                   VariantFoldState {
                     locals: vacc.locals,
                     collisions: map_insert(vacc.collisions, child_name, make_error_node(diagnostic: VariantCollision { variant: child_name, enum1: prev_parent_name, enum2: curr_parent_name, span: no_span() }, module_name: module_name))

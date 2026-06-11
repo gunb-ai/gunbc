@@ -44,6 +44,7 @@ pub struct TypeDeclBinding {
     pub binding_id: BindingId,
     pub authority: Rc<TypeDeclAuthority>,
     pub binding_key: i64,
+    pub decl_arity: i64,
     pub name: String,
     pub provenance: Rc<SubValueRelation>,
 }
@@ -148,6 +149,56 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match intern_find(env.intern_table.clone(), name) {
         Some(id) => lookup_type(env.clone(), id.clone()),
         None => None,
+    }
+}
+
+pub fn lookup_decl_arity_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<i64> {
+    match node.binding_id.clone() {
+        Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
+            Some(decl) => Some(decl.decl_arity.clone()),
+            None => None,
+        },
+        None => {
+            let node_name = authored_name(env.clone(), node.clone());
+            let by_ident = match node.ident.clone() {
+                Some(id) => Rc::new(v2_rt::map_values(&env.decl_registry.clone()))
+                    .iter()
+                    .cloned()
+                    .fold(
+                        None,
+                        |acc: Option<i64>, decl: Rc<TypeDeclBinding>| match acc.clone() {
+                            Some(_) => acc.clone(),
+                            None => {
+                                if decl.binding_key.clone() == id.clone() {
+                                    Some(decl.decl_arity.clone())
+                                } else {
+                                    None
+                                }
+                            }
+                        },
+                    ),
+                None => None,
+            };
+            match by_ident.clone() {
+                Some(_) => by_ident,
+                None => Rc::new(v2_rt::map_values(&env.decl_registry.clone()))
+                    .iter()
+                    .cloned()
+                    .fold(
+                        None,
+                        |acc: Option<i64>, decl: Rc<TypeDeclBinding>| match acc.clone() {
+                            Some(_) => acc.clone(),
+                            None => {
+                                if decl.name.clone() == node_name.clone() {
+                                    Some(decl.decl_arity.clone())
+                                } else {
+                                    None
+                                }
+                            }
+                        },
+                    ),
+            }
+        }
     }
 }
 

@@ -38,7 +38,7 @@ import v2.compiler.infer_types {
 }
 import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {
-  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
+  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, lookup_decl_arity_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -65,17 +65,6 @@ fn preserve_nominal_brand_on_resolve(
     && !is_declared_container_alias_spelling(name: brand_name) {
     with_preserved_binding_id(identity: identity, structural: structural)
   } else { structural }
-}
-
-fn lookup_decl_surface_for_arity(n: Node, env: TypeEnv) -> Node? {
-  match n.ident {
-    Present { value: id } =>
-      match lookup_type(env: env, ident: id) {
-        Present { value: resolved } => Present { value: resolved }
-        Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: n))
-      }
-    Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: n))
-  }
 }
 
 type AliasPeelResult {
@@ -203,19 +192,26 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
   else {
-    match lookup_type_for(env: env, node: n) {
-      Present { value: decl } =>
-        if decl.params |> count > 0 {
+    match lookup_decl_arity_for(env: env, node: n) {
+      Present { value: arity } =>
+        if arity > 0 {
           // Container types (Map, List, Set, etc.) stay unexpanded regardless
           // of alias (INVARIANTS.md: "container_types controls which types stay
           // unexpanded during resolve"). Map = PartialFunction<K,V> is an
           // inhabitation declaration, not an alias to expand. Algebra fields
           // are added on demand via enrich_kernel_type during method lookup.
           if is_container_type(name: authored_name(env: env, node: n)) { false }
-          else if decl.inferred != none { true }
           else { true }
         } else { false }
-      Absent => false
+      Absent =>
+        match lookup_type_for(env: env, node: n) {
+          Present { value: decl } =>
+            if decl.params |> count > 0 {
+              if is_container_type(name: authored_name(env: env, node: n)) { false }
+              else { true }
+            } else { false }
+          Absent => false
+        }
     }
   }
 }
@@ -487,8 +483,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
-    let decl = match lookup_decl_surface_for_arity(n: n, env: env) { Present { value: d } => d  Absent => n }
-    let expected_arity = decl.params |> count
+    let decl = match lookup_type_for(env: env, node: n) { Present { value: d } => d  Absent => n }
+    let expected_arity = match lookup_decl_arity_for(env: env, node: n) {
+      Present { value: arity } => arity
+      Absent => decl.params |> count
+    }
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
       [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: expected_arity, got: actual_arity, span: n.span }, module_name: module_name)]
@@ -627,8 +626,14 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
 fn missing_generic_args_diagnostics(n: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
   if n.children |> count == 0 && n.params |> count == 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
-    let decl = match lookup_decl_surface_for_arity(n: n, env: env) { Present { value: d } => d  Absent => n }
-    let expected = decl.params |> count
+    let expected = match lookup_decl_arity_for(env: env, node: n) {
+      Present { value: arity } => arity
+      Absent =>
+        match lookup_type_for(env: env, node: n) {
+          Present { value: decl } => decl.params |> count
+          Absent => n.params |> count
+        }
+    }
     if expected > 0 {
       [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: expected, got: 0, span: n.span }, module_name: module_name)]
     } else {

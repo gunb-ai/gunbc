@@ -12023,6 +12023,7 @@ pub fn register_type_decl_binding(
                         decl_span: decl_span,
                     }),
                     binding_key: item_ident.clone(),
+                    decl_arity: (resolved.params.clone().len() as i64),
                     name: name.clone(),
                     provenance: provenance.clone(),
                 }),
@@ -13708,7 +13709,14 @@ match v2_rt::map_get(&vacc.locals.clone(), child_name.clone()) {
 let prev_parent_imported = (v2_rt::map_get(&imported_enum_names, prev_parent_name.clone()) != None);
 let prev_variant_imported = (v2_rt::map_get(&imported_variant_parent_names, v2_rt::concat(v2_rt::concat(prev_parent_name.clone(), "::".to_string()), child_name.clone())) != None);
 let prev_is_imported = (prev_parent_imported.clone() || prev_variant_imported.clone());
-if ((((((curr_variant_imported.clone() && prev_variant_imported.clone()) && (is_bootstrap_duplicate_variant_name(child_name.clone()) == false)) && (curr_parent_imported.clone() == false)) && (prev_parent_imported.clone() == false)) && curr_is_imported.clone()) && prev_is_imported.clone()) {
+let same_parent_binding = match binding.resolved.clone().binding_id.clone() {
+    Some(curr_binding_id) => match prev.resolved.clone().binding_id.clone() {
+        Some(prev_binding_id) => (curr_binding_id.clone() == prev_binding_id.clone()),
+        None => false,
+    },
+    None => (curr_parent_name.clone() == prev_parent_name.clone()),
+};
+if (((((((curr_variant_imported.clone() && prev_variant_imported.clone()) && (same_parent_binding.clone() == false)) && (is_bootstrap_duplicate_variant_name(child_name.clone()) == false)) && (curr_parent_imported.clone() == false)) && (prev_parent_imported.clone() == false)) && curr_is_imported.clone()) && prev_is_imported.clone()) {
                                 Rc::new(VariantFoldState {
     locals: vacc.locals.clone(),
     collisions: v2_rt::rc_map_insert(vacc.collisions.clone(), child_name.clone(), make_error_node(Rc::new(CompilerDiagnostic::VariantCollision {
