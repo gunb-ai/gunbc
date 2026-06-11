@@ -2001,6 +2001,23 @@ pub fn direct_call_arg_mismatch_diags(
                                                 module_name.clone(),
                                                 source_indices.clone(),
                                             )) {
+                                                eprintln!(
+                                                    "DBG mismatch formal={} {:?} actual={} {:?}",
+                                                    authored_name_at(source_indices.clone(), formal.clone()),
+                                                    formal.binding_id.clone(),
+                                                    authored_name_at(source_indices.clone(), actual.clone()),
+                                                    actual.binding_id.clone()
+                                                );
+                                                for decl in v2_rt::map_values(&type_env.decl_registry.clone()) {
+                                                    if decl.name.as_str() == "ParseTree" || decl.name.as_str() == "Node" || decl.binding_id == actual.binding_id.unwrap_or(crate::v2_std_core::BindingId::mint(-1)) {
+                                                        eprintln!("DBG decl {} {:?} key={}", decl.name, decl.binding_id, decl.binding_key);
+                                                    }
+                                                }
+                                                for binding in v2_rt::map_values(&type_env.carrier_bindings.clone()) {
+                                                    if binding.name.as_str() == "ParseTree" || binding.name.as_str() == "Node" {
+                                                        eprintln!("DBG carrier {} {:?}", binding.name, binding.resolved.binding_id);
+                                                    }
+                                                }
                                                 Rc::new(vec![type_mismatch_error(
                                                     node_type_shape(
                                                         formal.clone(),
@@ -11985,6 +12002,7 @@ pub fn stamp_type_binding_dependency_refs(
 pub struct CarrierClosureState {
     pub carrier_bindings: Rc<HashMap<BindingId, Rc<TypeBinding>>>,
     pub seen_names: Rc<HashMap<String, bool>>,
+    pub seen_binding_ids: Rc<HashMap<BindingId, bool>>,
 }
 
 pub fn lookup_decl_type_binding_by_name_excluding_binding_id(
@@ -12235,7 +12253,13 @@ pub fn add_type_binding_dependency_closure(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CarrierClosureState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if v2_rt::map_contains_key(&state.seen_names.clone(), binding.name.clone()) {
+        let already_seen = match binding.resolved.clone().binding_id.clone() {
+            Some(binding_id) => {
+                v2_rt::map_contains_key(&state.seen_binding_ids.clone(), binding_id)
+            }
+            None => v2_rt::map_contains_key(&state.seen_names.clone(), binding.name.clone()),
+        };
+        if already_seen {
             state.clone()
         } else {
             {
@@ -12260,6 +12284,11 @@ pub fn add_type_binding_dependency_closure(
                             stamped.name.clone(),
                             true,
                         ),
+                        seen_binding_ids: v2_rt::rc_map_insert(
+                            state.seen_binding_ids.clone(),
+                            binding_id.clone(),
+                            true,
+                        ),
                     }),
                     None => Rc::new(CarrierClosureState {
                         carrier_bindings: state.carrier_bindings.clone(),
@@ -12268,6 +12297,7 @@ pub fn add_type_binding_dependency_closure(
                             stamped.name.clone(),
                             true,
                         ),
+                        seen_binding_ids: state.seen_binding_ids.clone(),
                     }),
                 };
                 let with_decl_binding =
@@ -12283,6 +12313,11 @@ pub fn add_type_binding_dependency_closure(
                                 ),
                             ),
                             seen_names: with_binding.seen_names.clone(),
+                            seen_binding_ids: v2_rt::rc_map_insert(
+                                with_binding.seen_binding_ids.clone(),
+                                decl_binding_id.clone(),
+                                true,
+                            ),
                         }),
                         None => with_binding.clone(),
                     };
@@ -12379,24 +12414,26 @@ pub fn carrier_closure_with_decl_rows(
                     ))
                 {
                     {
-                        let binding_by_name = Rc::new({
-                            let mut __result = Vec::new();
-                            for binding in Rc::new(v2_rt::map_values(&env.bindings.clone()))
-                                .iter()
-                                .cloned()
-                            {
-                                if (binding.name.clone().as_str() == decl.name.clone().as_str()) {
-                                    __result.push(binding);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned();
-                        let binding_for_decl = match binding_by_name.clone() {
-                            Some(binding) => Some(binding.clone()),
-                            None => v2_rt::map_get(&env.bindings.clone(), decl.binding_key.clone()),
-                        };
+                        let binding_for_decl =
+                            match v2_rt::map_get(&env.bindings.clone(), decl.binding_key.clone()) {
+                                Some(binding) => Some(binding.clone()),
+                                None => Rc::new({
+                                    let mut __result = Vec::new();
+                                    for binding in Rc::new(v2_rt::map_values(&env.bindings.clone()))
+                                        .iter()
+                                        .cloned()
+                                    {
+                                        if (binding.name.clone().as_str()
+                                            == decl.name.clone().as_str())
+                                        {
+                                            __result.push(binding);
+                                        }
+                                    }
+                                    __result
+                                })
+                                .first()
+                                .cloned(),
+                            };
                         match binding_for_decl.clone() {
                             Some(binding) => Rc::new(CarrierClosureState {
                                 carrier_bindings: v2_rt::rc_map_insert(
@@ -12409,6 +12446,11 @@ pub fn carrier_closure_with_decl_rows(
                                     ),
                                 ),
                                 seen_names: acc.seen_names.clone(),
+                                seen_binding_ids: v2_rt::rc_map_insert(
+                                    acc.seen_binding_ids.clone(),
+                                    decl.binding_id.clone(),
+                                    true,
+                                ),
                             }),
                             None => acc.clone(),
                         }
@@ -12433,6 +12475,7 @@ pub fn collect_import_carrier_bindings_for_import(
                 Rc::new(CarrierClosureState {
                     carrier_bindings: acc,
                     seen_names: v2_rt::rc_empty_map::<String, bool>(),
+                    seen_binding_ids: v2_rt::rc_empty_map::<BindingId, bool>(),
                 }),
                 |state: Rc<CarrierClosureState>, binding: Rc<TypeBinding>| {
                     if ((imp.module_path.clone().as_str() == "std.types".to_string().as_str())
@@ -12475,6 +12518,7 @@ pub fn collect_import_carrier_bindings_for_imported_funcs(
             Rc::new(CarrierClosureState {
                 carrier_bindings: acc,
                 seen_names: v2_rt::rc_empty_map::<String, bool>(),
+                seen_binding_ids: v2_rt::rc_empty_map::<BindingId, bool>(),
             }),
             |state: Rc<CarrierClosureState>, sig: Rc<ResolvedFuncSig>| {
                 if import_allows_binding_name(imp.clone(), sig.name.clone()) {
