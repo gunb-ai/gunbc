@@ -700,7 +700,12 @@ token layout coded in the compiler instead of carried on the realization
 row; and boundary violations — target-layer atoms (`^ts_inhabitant_number`)
 and fixture binding names (`^dag_binding_param_x`) compared literally in
 compiler code. Every one is a named row above; none was citable during
-review because the registry was unreadable. The four dissolves are
+review because the registry was unreadable. (Live corroboration,
+2026-06-11: a later #4627 revision reintroduced literal
+`^ts_inhabitant_number` / `^ts_inhabitant_field_atom` atoms at new
+compiler sites, self-marked 🟡 — this time caught and blocked under the
+restored INVARIANTS P2 "Target knowledge in compiler code" rule, with the
+fix routed through `declared_inhabitants`.) The four dissolves are
 blocking preconditions of the emit-breadth milestone.
 
 **Dissolution findings.** A *dissolution finding* names a hand-rolled
