@@ -291,70 +291,20 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
         } }
       },
       repeat: fn(elem_r) {
-        // C3: zero-width guard — string_is_empty(consumed) → done:true; fold_list(xs:s) bounds.
+        // C3: zero-width guard delegated to lex_repeat_loop (string_is_empty(consumed) → done:true).
         LexMatchThunk { apply: fn(s) {
-          let init = RepeatState { remaining: s, lexeme: Empty, done: false }
-          let result = fold_list(
-            xs: s,
-            empty: init,
-            cons: fn(state, _) {
-              match state.done {
-                true => state
-                false =>
-                  match elem_r.apply(state.remaining) {
-                    LexMatchRejected =>
-                      RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
-                    LexMatchAccepted { remaining: rest, lexeme: consumed } =>
-                      match string_is_empty(s: consumed) {
-                        true =>
-                          RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
-                        false =>
-                          RepeatState {
-                            remaining: rest,
-                            lexeme: list_append(left: state.lexeme, right: consumed),
-                            done: false
-                          }
-                      }
-                  }
-              }
-            }
-          )
+          let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: s, lexeme: Empty, done: false })
           LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
         } }
       },
       one_or_more: fn(elem_r) {
         // C2: ≥1 required — first apply rejects → reject immediately.
-        // C3: zero-width guard on subsequent iterations.
+        // C3: zero-width guard delegated to lex_repeat_loop on subsequent iterations.
         LexMatchThunk { apply: fn(s) {
           match elem_r.apply(s) {
             LexMatchRejected => LexMatchRejected
             LexMatchAccepted { remaining: rest, lexeme: lex } =>
-              let init = RepeatState { remaining: rest, lexeme: lex, done: false }
-              let result = fold_list(
-                xs: rest,
-                empty: init,
-                cons: fn(state, _) {
-                  match state.done {
-                    true => state
-                    false =>
-                      match elem_r.apply(state.remaining) {
-                        LexMatchRejected =>
-                          RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
-                        LexMatchAccepted { remaining: r, lexeme: c } =>
-                          match string_is_empty(s: c) {
-                            true =>
-                              RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
-                            false =>
-                              RepeatState {
-                                remaining: r,
-                                lexeme: list_append(left: state.lexeme, right: c),
-                                done: false
-                              }
-                          }
-                      }
-                  }
-                }
-              )
+              let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: rest, lexeme: lex, done: false })
               LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
           }
         } }
