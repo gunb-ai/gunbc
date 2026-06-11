@@ -462,24 +462,7 @@ fn subject_module_root_for_name(
   roots: FreeMonoid<Node>,
   name: QualifiedName
 ) -> Outcome<Node> {
-  match module_root_for_name_fold(
-    roots: roots,
-    name: name,
-    acc: ModuleRootNotFound
-  ) {
-    ModuleRootFoundOnce { root: subject_root } =>
-      Accepted { value: subject_root, diagnostics: None }
-    ModuleRootNotFound =>
-      Rejected {
-        diagnostics: resolve_diagnostics(reason: resolve_module_not_found)
-      }
-    ModuleRootFoundDuplicate =>
-      Rejected {
-        diagnostics: resolve_diagnostics(reason: resolve_duplicate_module_name)
-      }
-    ModuleRootProjectionRejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
-  }
+  module_root_find(roots: roots, name: name)
 }
 
 
