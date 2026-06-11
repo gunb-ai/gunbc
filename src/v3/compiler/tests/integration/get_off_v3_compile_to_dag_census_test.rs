@@ -80,6 +80,14 @@ const TARGET_IDENT: &str = "compile_to_dag";
 /// versions, which contribute 0); `tools` catches the CI/ratchet helpers.
 const SCAN_ROOTS: &[&str] = &["src", "tools"];
 
+/// This census file is the discovery *instrument*, not a caller. Its own
+/// source carries literal `compile_to_dag(` text (the scanner unit-test
+/// cases and doc comments) that the scanner would otherwise count against
+/// the budget. Exclude it to keep discovery acyclic — the same posture
+/// `discover_owned_data` takes toward its own manifest/consumers (#4633).
+const SELF_EXCLUDE_REL: &str =
+    "src/v3/compiler/tests/integration/get_off_v3_compile_to_dag_census_test.rs";
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -188,15 +196,18 @@ fn discover_census() -> Census {
         let Ok(text) = fs::read_to_string(&path) else {
             continue;
         };
-        let n = count_direct_callers_in_text(&text);
-        if n == 0 {
-            continue;
-        }
         let rel = path
             .strip_prefix(&root)
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
+        if rel == SELF_EXCLUDE_REL {
+            continue;
+        }
+        let n = count_direct_callers_in_text(&text);
+        if n == 0 {
+            continue;
+        }
         total += n;
         if is_test_surface(&rel) {
             test_surface_total += n;

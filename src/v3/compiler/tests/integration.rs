@@ -85,6 +85,8 @@ mod extdeps_sql_transport_test;
 mod file_attachment_substrate_carrier_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
+#[path = "integration/get_off_v3_compile_to_dag_census_test.rs"]
+mod get_off_v3_compile_to_dag_census_test;
 #[path = "integration/idempotency_lens_instance_blocker_test.rs"]
 mod idempotency_lens_instance_blocker_test;
 #[path = "integration/int_literal_cardinality_test.rs"]
