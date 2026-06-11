@@ -5,7 +5,7 @@
 
 module v4.compiler.value_expression
 
-import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_snoc_item }
+import v4.std.algebra { fold_list, length }
 import v4.std.collection {
   Absent,
   List,
@@ -97,50 +97,30 @@ fn surface_op_atom_to_canonical(op_atom: Symbol) -> Optional<CanonicalOperation>
   }
 }
 
-fn transform_positional_operand_binding_at(
-  source: Node,
-  targets: FreeMonoid<Node>,
-  wanted: Int,
-  cursor: Int
-) -> Outcome<Symbol> {
-  match targets {
-    Empty =>
+fn transform_positional_operand_binding_atom(child: Node) -> Outcome<Symbol> {
+  match child.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ =>
       outcome_rejected(
         value_expr_diagnostic(
           reason: value_expr_reason_transform_shape_invalid,
-          node: source
+          node: child
         )
       )
-    Cons { head: child, tail: rest } =>
-      if cursor == wanted {
-        match child.kind {
-          TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
-          _ =>
-            outcome_rejected(
-              value_expr_diagnostic(
-                reason: value_expr_reason_transform_shape_invalid,
-                node: child
-              )
-            )
-        }
-      } else {
-        transform_positional_operand_binding_at(
-          source: source,
-          targets: rest,
-          wanted: wanted,
-          cursor: cursor + 1
-        )
-      }
   }
 }
 
 fn transform_positional_operand_binding(node: Node, index: Int) -> Outcome<Symbol> {
-  transform_positional_operand_binding_at(
-    source: node,
-    targets: node_positional_child_targets(node: node),
-    wanted: index,
-    cursor: 0
-  )
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: index) {
+    Present { value: child } => transform_positional_operand_binding_atom(child: child)
+    Absent =>
+      outcome_rejected(
+        value_expr_diagnostic(
+          reason: value_expr_reason_transform_shape_invalid,
+          node: node
+        )
+      )
+  }
 }
 
 fn transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
