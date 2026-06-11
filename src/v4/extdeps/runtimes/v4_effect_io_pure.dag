@@ -9,12 +9,12 @@ import v4.std.algebra { Cons, Empty }
 import v4.std.collection {
   List,
   Map,
+  Present,
   Absent,
   empty_map,
   list_nth,
   map_get,
-  map_insert,
-  optional_present
+  map_insert
 }
 import v4.std.diagnostic {
   Accepted,
@@ -29,7 +29,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.logic { Bool }
-import v4.std.model_core { EffectSignature, PrimitiveOperationRef, ResourceAccess }
+import v4.std.model_core { EffectSignature, PrimitiveOperationRef }
 import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.runtime {
   EffectHandler,
@@ -151,10 +151,8 @@ fn effect_io_pure_locator_from_args(
 }
 
 // Wave-2: locator identity is the operation node's connective Symbol (declare-per-claim pin).
-fn effect_io_pure_locator_identity(value: RuntimeValue) -> Symbol {
-  match value {
-    _ => ^effect_io_pure_default_locator
-  }
+fn effect_io_pure_locator_identity(_value: RuntimeValue) -> Symbol {
+  ^effect_io_pure_default_locator
 }
 
 fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<RuntimeValue> {
@@ -164,22 +162,48 @@ fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<R
   }
 }
 
+fn effect_io_pure_backends_match(
+  left: EffectIoResourceBackend,
+  right: EffectIoResourceBackend
+) -> Bool {
+  match left {
+    FileResourceBackend =>
+      match right {
+        FileResourceBackend => true
+        _ => false
+      }
+    HttpResourceBackend =>
+      match right {
+        HttpResourceBackend => true
+        _ => false
+      }
+    StorageResourceBackend =>
+      match right {
+        StorageResourceBackend => true
+        _ => false
+      }
+  }
+}
+
 fn effect_io_pure_store_lookup(
   store: EffectIoFixtureStore,
   locator: EffectIoResourceLocator
 ) -> Outcome<RuntimeValue> {
-  if locator.backend == store.backend {
+  if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
     match map_get(m: store.entries, key: locator.identity) {
-      Accepted { value: optional_present(value: payload), diagnostics: None } =>
-        Accepted { value: payload, diagnostics: None }
-      Accepted { value: Absent, diagnostics: None } =>
-        outcome_rejected(
-          d: Diagnostic {
-            reason: ^effect_io_pure_resource_absent,
-            at: node_locus(node: effect_io_pure_operation_node()),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        )
+      Accepted { value: opt, diagnostics: None } =>
+        match opt {
+          Present { value: payload } =>
+            Accepted { value: payload, diagnostics: None }
+          Absent =>
+            outcome_rejected(
+              d: Diagnostic {
+                reason: ^effect_io_pure_resource_absent,
+                at: node_locus(node: effect_io_pure_operation_node()),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              }
+            )
+        }
       Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     }
   } else {
@@ -193,48 +217,60 @@ fn effect_io_pure_store_lookup(
   }
 }
 
-fn effect_io_pure_read_handler_for_store(store: EffectIoFixtureStore) -> EffectHandler {
-  EffectHandler {
-    handle: fn(request: EffectRequest) -> Outcome<RuntimeValue> {
-      match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
-        Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
-        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
-      }
-    }
+fn effect_io_pure_handle_read(
+  store: EffectIoFixtureStore,
+  request: EffectRequest
+) -> Outcome<RuntimeValue> {
+  match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
+    Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
-fn effect_io_pure_write_handler_for_store(store: EffectIoFixtureStore) -> EffectHandler {
-  EffectHandler {
-    handle: fn(request: EffectRequest) -> Outcome<RuntimeValue> {
-      match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
-        Holds { value: locator } =>
-          match effect_io_pure_write_payload_from_args(args: request.arguments) {
-            Holds { value: payload } =>
-              if locator.backend == store.backend {
-                Accepted { value: payload, diagnostics: None }
-              } else {
-                outcome_rejected(
-                  d: Diagnostic {
-                    reason: ^effect_io_pure_backend_mismatch,
-                    at: node_locus(node: effect_io_pure_operation_node()),
-                    correction: Unavailable { reason: ExternalContractUnknown }
-                  }
-                )
+fn effect_io_pure_handle_write(
+  store: EffectIoFixtureStore,
+  request: EffectRequest
+) -> Outcome<RuntimeValue> {
+  match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
+    Holds { value: locator } =>
+      match effect_io_pure_write_payload_from_args(args: request.arguments) {
+        Holds { value: payload } =>
+          if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
+            Accepted { value: payload, diagnostics: None }
+          } else {
+            outcome_rejected(
+              d: Diagnostic {
+                reason: ^effect_io_pure_backend_mismatch,
+                at: node_locus(node: effect_io_pure_operation_node()),
+                correction: Unavailable { reason: ExternalContractUnknown }
               }
-            Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+            )
           }
         Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
-    }
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
+}
+
+// Declare-per-claim default fixture (empty); inject-per-run overwrites via binding construction.
+data effect_io_pure_declared_fixture: EffectIoFixtureStore = EffectIoFixtureStore {
+  backend: FileResourceBackend,
+  entries: empty_map()
+}
+
+fn effect_io_pure_read_handler(request: EffectRequest) -> Outcome<RuntimeValue> {
+  effect_io_pure_handle_read(store: effect_io_pure_declared_fixture, request: request)
+}
+
+fn effect_io_pure_write_handler(request: EffectRequest) -> Outcome<RuntimeValue> {
+  effect_io_pure_handle_write(store: effect_io_pure_declared_fixture, request: request)
 }
 
 // Inject-per-run: construct a flat binding over the run's declared fixture store.
 fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectHandlerBinding {
   EffectHandlerBinding {
-    read_resource: effect_io_pure_read_handler_for_store(store: store),
-    write_resource: effect_io_pure_write_handler_for_store(store: store)
+    read_resource: EffectHandler { handle: effect_io_pure_read_handler },
+    write_resource: EffectHandler { handle: effect_io_pure_write_handler }
   }
 }
 
@@ -315,7 +351,7 @@ fn effect_io_pure_apply_write(
   }
 }
 
-// Orchestrate ReadResource→WriteResource round-trip through real handlers (gate consumer).
+// Orchestrate ReadResource→WriteResource round-trip through real handler bodies (gate consumer).
 fn effect_io_pure_read_write_roundtrip(
   backend: EffectIoResourceBackend,
   locator: EffectIoResourceLocator,
@@ -323,11 +359,9 @@ fn effect_io_pure_read_write_roundtrip(
   locator_arg: RuntimeValue
 ) -> Bool {
   let store0 = effect_io_pure_empty_fixture_store(backend: backend)
-  let binding0 = effect_io_pure_handler_binding(store: store0)
   let write_args = Cons { head: locator_arg, tail: Cons { head: payload, tail: Empty } }
   let write_request = effect_io_pure_write_request(args: write_args)
-  let write_handler = effect_handler_for_kind(binding: binding0, kind: WriteResource)
-  match write_handler.handle(request: write_request) {
+  match effect_io_pure_handle_write(store: store0, request: write_request) {
     Accepted { value: written, diagnostics: None } =>
       if written == payload {
         let store1 = effect_io_pure_apply_write(
@@ -335,11 +369,9 @@ fn effect_io_pure_read_write_roundtrip(
           locator: locator,
           payload: written
         )
-        let binding1 = effect_io_pure_handler_binding(store: store1)
         let read_args = Cons { head: locator_arg, tail: Empty }
         let read_request = effect_io_pure_read_request(args: read_args)
-        let read_handler = effect_handler_for_kind(binding: binding1, kind: ReadResource)
-        match read_handler.handle(request: read_request) {
+        match effect_io_pure_handle_read(store: store1, request: read_request) {
           Accepted { value: read_back, diagnostics: None } => read_back == written
           _ => false
         }

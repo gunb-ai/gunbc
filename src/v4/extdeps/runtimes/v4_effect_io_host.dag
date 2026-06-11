@@ -6,19 +6,7 @@
 
 module v4.extdeps.runtimes.v4_effect_io_host
 
-import v4.extdeps.file_system {
-  FileBody,
-  FileContent,
-  FilePath,
-  FileRead,
-  FileResource,
-  FileWrite,
-  Filesystem,
-  FilesystemPath,
-  Absolute,
-  AbsolutePath,
-  ModeledFileEffects
-}
+import v4.extdeps.file_system { Filesystem, ModeledFileEffects }
 import v4.extdeps.runtimes.v4_effect_io_pure {
   EffectIoFixtureStore,
   EffectIoResourceBackend,
@@ -26,18 +14,12 @@ import v4.extdeps.runtimes.v4_effect_io_pure {
   FileResourceBackend,
   HttpResourceBackend,
   StorageResourceBackend,
-  effect_io_pure_apply_write,
   effect_io_pure_empty_fixture_store,
-  effect_io_pure_handler_binding,
   effect_io_pure_locator_from_args,
   effect_io_pure_operation_node,
-  effect_io_pure_read_request,
-  effect_io_pure_store_lookup,
-  effect_io_pure_write_payload_from_args,
-  effect_io_pure_write_request
+  effect_io_pure_write_payload_from_args
 }
-import v4.std.algebra { Cons, Empty }
-import v4.std.collection { List, Map }
+import v4.std.collection { Absent, List, Map }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -50,19 +32,13 @@ import v4.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v4.std.model_core { EffectSignature, PrimitiveOperationRef, ResourceAccess }
-import v4.std.network { UriAuthority, UriHost, UriPath, UriHierAuthorityPath, rfc3986_host_abnf }
-import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.network { UriAuthority, UriHost, rfc3986_host_abnf }
 import v4.std.runtime {
   EffectHandler,
   EffectHandlerBinding,
   EffectRequest,
-  ReadResource,
-  RuntimeValue,
-  WriteResource,
-  effect_handler_for_kind
+  RuntimeValue
 }
-import v4.std.text { String }
 import v4.std.witness { Holds, Violates }
 
 type EffectIoHostFileContext {
@@ -98,155 +74,131 @@ fn effect_io_host_deferred_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-// Host file read routes through ModeledFileEffects (single host door discipline).
+// Host file read/write route through ModeledFileEffects (single host door discipline).
+// Wave-2: fail-closed until host_run transport receipts land for file I/O.
 fn effect_io_host_file_read(
-  ctx: EffectIoHostFileContext,
-  locator: EffectIoResourceLocator
+  _ctx: EffectIoHostFileContext,
+  _locator: EffectIoResourceLocator
 ) -> Outcome<RuntimeValue> {
-  let read = FileRead {
-    resource: FileResource { filesystem: ctx.filesystem },
-    path: FilePath {
-      path: FilesystemPath {
-        Absolute {
-          path: AbsolutePath {
-            components: []
-          }
-        }
-      }
-    }
-  }
-  match ctx.effects.file_read(request: read) {
-    Accepted { value: _content, diagnostics: None } =>
-      outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_file_read_deferred))
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-  }
+  outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_file_read_deferred))
 }
 
 fn effect_io_host_file_write(
-  ctx: EffectIoHostFileContext,
-  locator: EffectIoResourceLocator,
-  payload: RuntimeValue
+  _ctx: EffectIoHostFileContext,
+  _locator: EffectIoResourceLocator,
+  _payload: RuntimeValue
 ) -> Outcome<RuntimeValue> {
-  let write = FileWrite {
-    resource: FileResource { filesystem: ctx.filesystem },
-    path: FilePath {
-      path: FilesystemPath {
-        Absolute {
-          path: AbsolutePath {
-            components: []
-          }
-        }
-      }
-    },
-    content: FileContent {}
-  }
-  match ctx.effects.file_write(request: write) {
-    Accepted { value: _, diagnostics: None } =>
-      outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_file_write_deferred))
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-  }
+  outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_file_write_deferred))
 }
 
-fn effect_io_host_http_read(_ctx: EffectIoHostHttpContext, _locator: EffectIoResourceLocator) -> Outcome<RuntimeValue> {
+fn effect_io_host_http_read(
+  _ctx: EffectIoHostHttpContext,
+  _locator: EffectIoResourceLocator
+) -> Outcome<RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_http_read_deferred))
 }
 
 fn effect_io_host_http_write(
   _ctx: EffectIoHostHttpContext,
   _locator: EffectIoResourceLocator,
-  payload: RuntimeValue
+  _payload: RuntimeValue
 ) -> Outcome<RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_http_write_deferred))
 }
 
-fn effect_io_host_storage_read(_ctx: EffectIoHostStorageContext, _locator: EffectIoResourceLocator) -> Outcome<RuntimeValue> {
+fn effect_io_host_storage_read(
+  _ctx: EffectIoHostStorageContext,
+  _locator: EffectIoResourceLocator
+) -> Outcome<RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_storage_read_deferred))
 }
 
 fn effect_io_host_storage_write(
   _ctx: EffectIoHostStorageContext,
   _locator: EffectIoResourceLocator,
-  payload: RuntimeValue
+  _payload: RuntimeValue
 ) -> Outcome<RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_storage_write_deferred))
 }
 
-fn effect_io_host_read_handler(
+data effect_io_host_declared_backend: EffectIoResourceBackend = FileResourceBackend
+
+fn effect_io_host_dispatch_read(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
-  fixture: EffectIoFixtureStore
-) -> EffectHandler {
-  EffectHandler {
-    handle: fn(request: EffectRequest) -> Outcome<RuntimeValue> {
-      match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
-        Holds { value: locator } =>
-          match host_ctx {
-            HostFileContext { context: ctx } =>
-              effect_io_host_file_read(ctx: ctx, locator: locator)
-            HostHttpContext { context: ctx } =>
-              effect_io_host_http_read(ctx: ctx, locator: locator)
-            HostStorageContext { context: ctx } =>
-              effect_io_host_storage_read(ctx: ctx, locator: locator)
-          }
-        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+  request: EffectRequest
+) -> Outcome<RuntimeValue> {
+  match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
+    Holds { value: locator } =>
+      match host_ctx {
+        HostFileContext { context: ctx } =>
+          effect_io_host_file_read(ctx: ctx, locator: locator)
+        HostHttpContext { context: ctx } =>
+          effect_io_host_http_read(ctx: ctx, locator: locator)
+        HostStorageContext { context: ctx } =>
+          effect_io_host_storage_read(ctx: ctx, locator: locator)
       }
-    }
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
-fn effect_io_host_write_handler(
+fn effect_io_host_dispatch_write(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
-  fixture: EffectIoFixtureStore
-) -> EffectHandler {
-  EffectHandler {
-    handle: fn(request: EffectRequest) -> Outcome<RuntimeValue> {
-      match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
-        Holds { value: locator } =>
-          match effect_io_pure_write_payload_from_args(args: request.arguments) {
-            Holds { value: payload } =>
-              match host_ctx {
-                HostFileContext { context: ctx } =>
-                  effect_io_host_file_write(ctx: ctx, locator: locator, payload: payload)
-                HostHttpContext { context: ctx } =>
-                  effect_io_host_http_write(ctx: ctx, locator: locator, payload: payload)
-                HostStorageContext { context: ctx } =>
-                  effect_io_host_storage_write(ctx: ctx, locator: locator, payload: payload)
-              }
-            Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+  request: EffectRequest
+) -> Outcome<RuntimeValue> {
+  match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
+    Holds { value: locator } =>
+      match effect_io_pure_write_payload_from_args(args: request.arguments) {
+        Holds { value: payload } =>
+          match host_ctx {
+            HostFileContext { context: ctx } =>
+              effect_io_host_file_write(ctx: ctx, locator: locator, payload: payload)
+            HostHttpContext { context: ctx } =>
+              effect_io_host_http_write(ctx: ctx, locator: locator, payload: payload)
+            HostStorageContext { context: ctx } =>
+              effect_io_host_storage_write(ctx: ctx, locator: locator, payload: payload)
           }
         Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
-    }
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
+}
+
+fn effect_io_host_read_handler(request: EffectRequest) -> Outcome<RuntimeValue> {
+  effect_io_host_dispatch_read(
+    backend: effect_io_host_declared_backend,
+    host_ctx: effect_io_host_declared_context,
+    request: request
+  )
+}
+
+fn effect_io_host_write_handler(request: EffectRequest) -> Outcome<RuntimeValue> {
+  effect_io_host_dispatch_write(
+    backend: effect_io_host_declared_backend,
+    host_ctx: effect_io_host_declared_context,
+    request: request
+  )
 }
 
 fn effect_io_host_handler_binding(
-  backend: EffectIoResourceBackend,
-  host_ctx: EffectIoHostBackendContext,
-  fixture: EffectIoFixtureStore
+  _backend: EffectIoResourceBackend,
+  _host_ctx: EffectIoHostBackendContext,
+  _fixture: EffectIoFixtureStore
 ) -> EffectHandlerBinding {
   EffectHandlerBinding {
-    read_resource: effect_io_host_read_handler(
-      backend: backend,
-      host_ctx: host_ctx,
-      fixture: fixture
-    ),
-    write_resource: effect_io_host_write_handler(
-      backend: backend,
-      host_ctx: host_ctx,
-      fixture: fixture
-    )
+    read_resource: EffectHandler { handle: effect_io_host_read_handler },
+    write_resource: EffectHandler { handle: effect_io_host_write_handler }
   }
 }
 
 data effect_io_host_placeholder_filesystem: Filesystem = Filesystem {}
 
 data effect_io_host_placeholder_file_effects: ModeledFileEffects = ModeledFileEffects {
-  file_read: fn(_request: FileRead) -> Outcome<FileBody> {
+  file_read: fn(_) {
     outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_file_read_deferred))
   },
-  file_write: fn(_request: FileWrite) -> Outcome<Filesystem> {
+  file_write: fn(_) {
     outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_file_write_deferred))
   }
 }
@@ -254,6 +206,10 @@ data effect_io_host_placeholder_file_effects: ModeledFileEffects = ModeledFileEf
 data effect_io_host_file_context: EffectIoHostFileContext = EffectIoHostFileContext {
   filesystem: effect_io_host_placeholder_filesystem,
   effects: effect_io_host_placeholder_file_effects
+}
+
+data effect_io_host_declared_context: EffectIoHostBackendContext = HostFileContext {
+  context: effect_io_host_file_context
 }
 
 data effect_io_host_http_context: EffectIoHostHttpContext = EffectIoHostHttpContext {
