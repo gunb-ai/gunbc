@@ -1361,7 +1361,12 @@ pub fn direct_call_transparent_alias_to(
         Some(binding) => {
             match direct_call_bare_alias_target_name(binding.clone(), env.source_indices.clone()) {
                 Some(alias_target) => (alias_target.clone().as_str() == target_name.as_str()),
-                None => false,
+                None => {
+                    let resolved_name =
+                        authored_name_at(env.source_indices.clone(), binding.resolved.clone());
+                    ((binding.name.clone().as_str() != target_name.as_str())
+                        && (resolved_name.clone().as_str() == target_name.as_str()))
+                }
             }
         }
         None => false,
@@ -1729,12 +1734,17 @@ pub fn direct_call_arg_mismatch_diags(
                                     {
                                         Rc::new(vec![])
                                     } else {
-                                        if direct_call_transparent_alias_pair(
+                                        if (direct_call_transparent_alias_pair(
                                             type_env.clone(),
                                             formal_identity.clone(),
                                             actual_identity.clone(),
                                             source_indices.clone(),
-                                        ) {
+                                        ) || direct_call_transparent_alias_pair(
+                                            type_env.clone(),
+                                            formal.clone(),
+                                            actual.clone(),
+                                            source_indices.clone(),
+                                        )) {
                                             Rc::new(vec![])
                                         } else {
                                             if (direct_call_decl_identity_mismatch(

@@ -827,7 +827,9 @@ fn direct_call_transparent_alias_to(env: TypeEnv, alias_node: Node, target_name:
     Present { value: binding } =>
       match direct_call_bare_alias_target_name(binding: binding, source_indices: env.source_indices) {
         Present { value: alias_target } => alias_target == target_name
-        Absent => false
+        Absent =>
+          let resolved_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
+          binding.name != target_name && resolved_name == target_name
       }
     Absent => false
   }
@@ -1029,7 +1031,8 @@ fn direct_call_arg_mismatch_diags(
             || node_contains_generic_name(n: formal_subst, generic_names: generic_names, source_indices: source_indices)
             || node_contains_generic_name(n: actual_raw, generic_names: generic_names, source_indices: source_indices) {
             []
-          } else if direct_call_transparent_alias_pair(env: type_env, left: formal_identity, right: actual_identity, source_indices: source_indices) {
+          } else if direct_call_transparent_alias_pair(env: type_env, left: formal_identity, right: actual_identity, source_indices: source_indices)
+            || direct_call_transparent_alias_pair(env: type_env, left: formal, right: actual, source_indices: source_indices) {
             []
           } else if direct_call_decl_identity_mismatch(
             formal_identity: formal_identity,
