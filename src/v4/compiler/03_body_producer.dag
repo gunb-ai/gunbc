@@ -112,11 +112,19 @@ fn produce_mvp1_add_arrow_signature() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: type_atom_node(identity: ^dag_binding_type_int)
+        target: node_unanchored(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Named { name: ^dag_binding_param_x },
+              target: type_atom_node(identity: ^dag_binding_type_int)
+            },
+            Edge {
+              label: Named { name: ^dag_binding_param_y },
+              target: type_atom_node(identity: ^dag_binding_type_int)
+            }
+          ]
+        )
       },
       Edge {
         label: Positional,

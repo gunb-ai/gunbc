@@ -488,8 +488,17 @@ fn comprep_swapped_add_arrow() -> Node {
     kind: TypeNode { connective: Arrow },
     span: node_span_unanchored(),
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          span: node_span_unanchored(),
+          children: [
+            Edge { label: Named { name: ^dag_binding_param_x }, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+            Edge { label: Named { name: ^dag_binding_param_y }, target: comprep_eval_atom(s: ^dag_binding_type_int) }
+          ]
+        }
+      },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Named { name: arrow_body_edge }, target: comprep_swapped_operand_body() }
     ]
