@@ -10,8 +10,9 @@ module std.compute_fabric
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.float { Float }
-import std.measure { Measure, Time, DataRate, One, ByteSize }
+import std.measure { Measure, Time, DataRate, Frequency, One, Hertz, ByteSize }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
+import std.placement_supply { HostIdentity, PlacementSupplyRow, cpu_capacity_hz_row }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
@@ -56,7 +57,6 @@ type OomSignalClass = KillProcess | Throttle | ReportOnly
 
 type Bandwidth = Measure<DataRate, One>
 type Duration = Measure<Time, One>
-type HostIdentity = NonEmptyStr where brand("HostIdentity")
 type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
 
 type ComputeArtifactLocality
@@ -79,8 +79,13 @@ type CpuFacts {
   model: NonEmptyStr
   cores: Int
   threads: Int
+  // Sustained per-hardware-thread clock, SI hertz. Int carrier at the v2
+  // execution layer; dimensional authority is std.measure.Hertz.
+  sustained_per_thread_hz: Int
   instruction_sets: List<InstructionSet>
 }
+
+fn cpu_capacity_hz(cpu: CpuFacts) -> Int { cpu.threads * cpu.sustained_per_thread_hz }
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
@@ -190,6 +195,44 @@ fn machine_view(host: ComputeHost, surface: ExecutionSurface) -> MachineView {
 fn machine_view_label(_host: ComputeHost, surface: ExecutionSurface) -> NonEmptyStr {
   // Label from execution surface; host identity is on MachineView.host (Worksheet A §1.4).
   surface.os.distro_or_product
+}
+
+// --- §1.4b placement projection (derived — NOT a parallel authority) ----------
+//
+// PlacementSupplyRow authority: std.placement_supply. ram_bytes_total is an
+// explicit projection parameter because ByteSize unwrap is not yet value-typed
+// on the v2 interpreter; dissolve when Measure carriers gain inhabitants.
+
+fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: Int) -> PlacementSupplyRow {
+  PlacementSupplyRow {
+    identity: identity,
+    hardware_threads: cpu.threads,
+    clock_hz: cpu.sustained_per_thread_hz,
+    ram_bytes: ram_bytes_total,
+  }
+}
+
+fn first_cpu_from_host(host: ComputeHost) -> CpuFacts {
+  host.processors
+    |> flat_map(p => match p {
+      CpuProcessor { cpu: c } => [c]
+      _ => []
+    })
+    |> fold(
+      init: CpuFacts {
+        architecture: Aarch64,
+        vendor: "",
+        model: "",
+        cores: 0,
+        threads: 0,
+        sustained_per_thread_hz: 0,
+        instruction_sets: [],
+      },
+      f: (acc, c) => if acc.threads == 0 { c } else { acc })
+}
+
+fn placement_supply_row_from_host(host: ComputeHost, ram_bytes_total: Int) -> PlacementSupplyRow {
+  placement_supply_row(host.identity, first_cpu_from_host(host), ram_bytes_total)
 }
 
 // --- §1.2 demand -------------------------------------------------------------
@@ -384,3 +427,46 @@ type ExecutionReceipt<T> {
 
 data supply_srv1_host_identity: HostIdentity = "srv1"
 data supply_srv2_host_identity: HostIdentity = "srv2"
+
+// Operator fleet: Ampere Altra Max (srv1 degraded RAM; srv2 full 128 GiB).
+data supply_srv1_cpu: CpuFacts = CpuFacts {
+  architecture: Aarch64,
+  vendor: "Ampere",
+  model: "Altra Max",
+  cores: 128,
+  threads: 128,
+  sustained_per_thread_hz: 3000000000,
+  instruction_sets: [],
+}
+
+data supply_srv2_cpu: CpuFacts = CpuFacts {
+  architecture: Aarch64,
+  vendor: "Ampere",
+  model: "Altra Max",
+  cores: 128,
+  threads: 128,
+  sustained_per_thread_hz: 3000000000,
+  instruction_sets: [],
+}
+
+data supply_srv1_compute_host: ComputeHost = ComputeHost {
+  identity: supply_srv1_host_identity,
+  processors: [CpuProcessor { cpu: supply_srv1_cpu }],
+  memory: [],
+  storage: [],
+  network_interfaces: [],
+}
+
+data supply_srv2_compute_host: ComputeHost = ComputeHost {
+  identity: supply_srv2_host_identity,
+  processors: [CpuProcessor { cpu: supply_srv2_cpu }],
+  memory: [],
+  storage: [],
+  network_interfaces: [],
+}
+
+// ~93 GiB usable (degraded DIMMs); operator spec 2026-06-02.
+data supply_srv1_placement_row: PlacementSupplyRow = placement_supply_row_from_host(supply_srv1_compute_host, 99857989632)
+
+// ~125 GiB usable.
+data supply_srv2_placement_row: PlacementSupplyRow = placement_supply_row_from_host(supply_srv2_compute_host, 134217728000)
