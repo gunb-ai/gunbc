@@ -44,7 +44,8 @@ fn resolve(src: &str) -> Rc<ResolvedPipelineResult> {
 fn fold_built_map_counts_triangular_copy_work() {
     let src = r#"module test.stats_map
 fn build() -> Int {
-  map_insert(map_insert(map_insert(map_insert(empty_map(), "a", 1), "b", 2), "c", 3), "d", 4).length()
+  let m = empty_map() |> map_insert("a", 1) |> map_insert("b", 2) |> map_insert("c", 3) |> map_insert("d", 4)
+  m.length()
 }
 "#;
     let resolved = resolve(src);
@@ -65,7 +66,8 @@ fn build() -> Int {
 fn list_push_counts_receiver_copies() {
     let src = r#"module test.stats_list
 fn build() -> Int {
-  list_push(list_push([1, 2, 3], 4), 5).length()
+  let xs = [1, 2, 3] |> list_push(4) |> list_push(5)
+  xs.length()
 }
 "#;
     let resolved = resolve(src);
