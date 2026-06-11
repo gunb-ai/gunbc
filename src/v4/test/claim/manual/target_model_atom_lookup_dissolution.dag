@@ -9,15 +9,15 @@ import v4.extdeps.languages.typescript {
   ts_sg2_type_expr_target_model,
   ts_target_atom_realization_catalog
 }
+import v4.std.algebra { fold_list }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.find_witness {
   ManyPassingCandidates,
   NoPassingCandidate,
-  OnePassingCandidate,
-  PassingCandidateFold
+  OnePassingCandidate
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, TypeNode, Unanchored }
 import v4.std.target_model {
   symbol_kernel_type_node,
   target_atom_realization_catalog_row_decode_invalid,
