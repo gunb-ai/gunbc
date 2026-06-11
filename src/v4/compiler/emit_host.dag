@@ -30,14 +30,7 @@ import v4.compiler.eval {
   test_claim_cache_receipt_node
 }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.collection {
-  Absent,
-  List,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
+import v4.std.collection { List }
 import v4.std.host_transport { HostTransportDescriptor }
 import v4.std.diagnostic {
   Diagnostic,
@@ -245,14 +238,6 @@ fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
   outcome_rejected(d: emit_host_parse_unsupported_target_diagnostic())
 }
 
-fn host_transport_descriptor_for_target(target: TargetModel) -> Optional<HostTransportDescriptor> {
-  if target.authority_source_text == ts_mvp1_source_text_authority() {
-    optional_present(value: ts_host_transport_mvp1_descriptor())
-  } else {
-    optional_absent()
-  }
-}
-
 // Substrate row: body stays fail-closed; T-22 eval intercepts Callable dispatch to
 // `tools/emit_host_runner` (no fabricated receipt in `.dag`). Executable proof: `emit_host_eval.rs`.
 fn run_emit_host_rust(
@@ -305,26 +290,23 @@ fn run_emit_host(
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
-  match host_transport_descriptor_for_target(target: target) {
-    Present { value: descriptor } =>
-      run_host_process(
-        descriptor: descriptor,
-        target: target,
-        source: source,
-        fixture_inputs: fixture_inputs
-      )
-    Absent =>
-      if target.authority_source_text == emit_host_rust_authority_pin {
-        run_emit_host_rust(target: target, source: source, fixture_inputs: fixture_inputs)
-      } else if target.authority_source_text == emit_host_python_authority_pin {
-        run_emit_host_python(target: target, source: source, fixture_inputs: fixture_inputs)
-      } else if target.authority_source_text == emit_host_go_authority_pin {
-        run_emit_host_go(target: target, source: source, fixture_inputs: fixture_inputs)
-      } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(d: emit_host_run_unsupported_target_diagnostic())
-        }
-      }
+  if target.authority_source_text == ts_mvp1_source_text_authority() {
+    run_host_process(
+      descriptor: ts_host_transport_mvp1_descriptor(),
+      target: target,
+      source: source,
+      fixture_inputs: fixture_inputs
+    )
+  } else if target.authority_source_text == emit_host_rust_authority_pin {
+    run_emit_host_rust(target: target, source: source, fixture_inputs: fixture_inputs)
+  } else if target.authority_source_text == emit_host_python_authority_pin {
+    run_emit_host_python(target: target, source: source, fixture_inputs: fixture_inputs)
+  } else if target.authority_source_text == emit_host_go_authority_pin {
+    run_emit_host_go(target: target, source: source, fixture_inputs: fixture_inputs)
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: emit_host_run_unsupported_target_diagnostic())
+    }
   }
 }
 
