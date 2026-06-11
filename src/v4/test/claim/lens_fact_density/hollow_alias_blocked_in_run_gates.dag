@@ -12,7 +12,7 @@ import v4.compiler.infer { InferredTree }
 
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -30,7 +30,7 @@ import v4.test.claim.lens_common.infer_fixture {
 data hollow_alias_run_gates_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_run_gates_subject } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data hollow_alias_run_gates_authority: Node = claim_atom_node(s: ^hollow_alias_run_gates_symbol)
@@ -63,7 +63,7 @@ fn hollow_alias_blocked_in_run_gates_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

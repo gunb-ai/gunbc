@@ -7,7 +7,7 @@ module v4.test.claim.lens_affected_set.projection_dep_in_frontier
 import v4.lens.affected_set { dependency_in_lens_frontier }
 import v4.std.dependency { DependencyView, ProjectionDependsOn }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -21,7 +21,7 @@ fn projection_dep_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -45,7 +45,7 @@ fn projection_dep_in_frontier_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

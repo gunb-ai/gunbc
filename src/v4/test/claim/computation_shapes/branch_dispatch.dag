@@ -20,7 +20,7 @@ import v4.std.node {
   TypeNode,
   content_hash,
   well_formed,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -34,7 +34,7 @@ import v4.std.verification {
 }
 fn branch_dispatch_leaf(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -45,7 +45,7 @@ fn branch_dispatch_arm(s: Symbol) -> Node {
     children: [
       Edge { label: Positional, target: branch_dispatch_leaf(s: s) }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -60,7 +60,7 @@ data branch_dispatch_subject: Node = Node {
     Edge { label: Positional, target: branch_dispatch_arm_then },
     Edge { label: Positional, target: branch_dispatch_arm_else }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -109,7 +109,7 @@ data branch_dispatch_subject_rebuilt: Node = Node {
     Edge { label: Positional, target: branch_dispatch_arm_then },
     Edge { label: Positional, target: branch_dispatch_arm_else }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 // Distinct node (arms swapped) — sensitivity: a distinct input must yield a distinct hash.
@@ -119,7 +119,7 @@ data branch_dispatch_subject_arms_swapped: Node = Node {
     Edge { label: Positional, target: branch_dispatch_arm_else },
     Edge { label: Positional, target: branch_dispatch_arm_then }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data witness_branch_dispatch_content_hash_stable: Bool = (content_hash(n: branch_dispatch_subject) == content_hash(n: branch_dispatch_subject_rebuilt)) && (content_hash(n: branch_dispatch_subject) != content_hash(n: branch_dispatch_subject_arms_swapped))

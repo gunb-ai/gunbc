@@ -28,7 +28,7 @@ import v4.std.grammar {
 
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
-import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, content_hash, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, content_hash, SyntheticOccurrence }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -44,7 +44,7 @@ fn ts_grammar_relation_round_trip_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_pass_sym } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -52,7 +52,7 @@ fn ts_grammar_relation_round_trip_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_fail_sym } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -89,7 +89,7 @@ fn ts_wave2a_task_type_alias_emitted_surplus_conj_slot() -> Node {
       Edge { label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 

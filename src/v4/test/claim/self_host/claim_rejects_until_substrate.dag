@@ -11,7 +11,7 @@ import v4.std.diagnostic {
   Rejected,
   diagnostics_singleton
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -27,7 +27,7 @@ import v4.std.verification {
 data rejects_until_substrate_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^rejects_until_substrate_subject_symbol } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 

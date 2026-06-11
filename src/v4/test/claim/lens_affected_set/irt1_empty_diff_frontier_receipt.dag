@@ -28,7 +28,7 @@ import v4.std.algebra { length }
 import v4.std.change { DependencyDependent, DependencySource }
 import v4.std.dependency { Contains, DataDependsOn, DependencyView }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -57,7 +57,7 @@ data irt1_public_pure_boundary_receipt: Node = affected_set_boundary_pure_receip
 data irt1_public_malformed_pure_boundary_receipt: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_pure_boundary_node: Node = Node {
@@ -68,7 +68,7 @@ data irt1_public_pure_boundary_node: Node = Node {
       target: irt1_public_pure_boundary_receipt
     }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_malformed_pure_boundary_node: Node = Node {
@@ -79,7 +79,7 @@ data irt1_public_malformed_pure_boundary_node: Node = Node {
       target: irt1_public_malformed_pure_boundary_receipt
     }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_changed_edit: Edit = Edit {
@@ -108,13 +108,13 @@ data irt1_public_missing_path_edit: Edit = Edit {
 data irt1_public_dimension_not_read_receipt_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^affected_set_default_dimension } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_mismatched_dimension_not_read_receipt_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^irt1_public_other_dimension } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_receipted_usage_site: Node = Node {
@@ -125,7 +125,7 @@ data irt1_public_receipted_usage_site: Node = Node {
       target: irt1_public_dimension_not_read_receipt_node
     }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_mismatched_receipted_usage_site: Node = Node {
@@ -136,7 +136,7 @@ data irt1_public_mismatched_receipted_usage_site: Node = Node {
       target: irt1_public_mismatched_dimension_not_read_receipt_node
     }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data irt1_public_nonfrontier_dependency_without_receipt: DependencyView = DependencyView {

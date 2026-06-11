@@ -7,7 +7,7 @@ module v4.test.claim.lens_application.substitute_at_depth_two
 import v4.lens.application { substitute_at }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -20,13 +20,13 @@ import v4.std.verification {
 data substitute_original_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_original_leaf_symbol } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_replacement_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_replacement_leaf_symbol } },
   children: [],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_middle: Node = Node {
@@ -37,7 +37,7 @@ data substitute_middle: Node = Node {
       target: substitute_original_leaf
     }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_root: Node = Node {
@@ -48,7 +48,7 @@ data substitute_root: Node = Node {
       target: substitute_middle
     }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 data substitute_expected_root: Node = Node {
@@ -64,11 +64,11 @@ data substitute_expected_root: Node = Node {
             target: substitute_replacement_leaf
           }
         ],
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
 }
     }
   ],
-  occurrence_id: substrate_synthetic_occurrence_id
+  occurrence_id: SyntheticOccurrence
 }
 
 fn substitute_at_depth_two_claim_holds() -> Bool {
@@ -89,7 +89,7 @@ fn substitute_at_depth_two_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

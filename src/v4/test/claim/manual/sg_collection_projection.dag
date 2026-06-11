@@ -14,7 +14,7 @@ import v4.extdeps.languages.rust {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, substrate_synthetic_occurrence_id }
+import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.target_model {
   target_carrier_free_monoid_node,
   target_carrier_node_node
@@ -35,7 +35,7 @@ fn sg_collection_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_collection_pass_sym } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -43,7 +43,7 @@ fn sg_collection_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_collection_fail_sym } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -62,7 +62,7 @@ fn sg_collection_free_monoid_node_source_type() -> Node {
       Edge { label: Positional, target: target_carrier_free_monoid_node() },
       Edge { label: Positional, target: target_carrier_node_node() }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 

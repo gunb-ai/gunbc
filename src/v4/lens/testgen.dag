@@ -75,7 +75,7 @@ import v4.std.node {
   Bind,
   Symbol,
   TypeNode,
-  substrate_synthetic_occurrence_id
+  SyntheticOccurrence
 }
 import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.extdeps.file_system {
@@ -517,7 +517,7 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
     empty: Node {
       kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_empty_node } },
       children: [],
-      occurrence_id: substrate_synthetic_occurrence_id
+      occurrence_id: SyntheticOccurrence
 },
     snoc: fn(tail_node, h) {
       Node {
@@ -529,7 +529,7 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
             target: tail_node
           }
         ],
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
 }
     }
   )
@@ -806,7 +806,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
 
 fn algebra_law_subject_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: substrate_synthetic_occurrence_id
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -818,7 +818,7 @@ fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
       Edge { label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
       Edge { label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -829,7 +829,7 @@ fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node 
       Edge { label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
       Edge { label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -838,7 +838,7 @@ fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -852,7 +852,7 @@ fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
         target: witness_validity_symbol_atom_node(s: p.preservation_rule)
       }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -866,7 +866,7 @@ fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
       },
       Edge { label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -913,7 +913,7 @@ fn witness_validity_subject_node(
               target: oracle_outcome
             }
           ],
-          occurrence_id: substrate_synthetic_occurrence_id
+          occurrence_id: SyntheticOccurrence
 },
         diagnostics: None
       }
@@ -940,7 +940,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
         children: [
           Edge { label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
         ],
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
 }
     Unavailable { reason: r } =>
       Node {
@@ -951,7 +951,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
             target: witness_validity_no_correction_reason_node(r: r)
           }
         ],
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -994,11 +994,11 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
                       target: en
                     }
                   ],
-                  occurrence_id: substrate_synthetic_occurrence_id
+                  occurrence_id: SyntheticOccurrence
 }
               }
             ],
-            occurrence_id: substrate_synthetic_occurrence_id
+            occurrence_id: SyntheticOccurrence
 },
           diagnostics: None
         }
@@ -1010,7 +1010,7 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
           children: [
             Edge { label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
           ],
-          occurrence_id: substrate_synthetic_occurrence_id
+          occurrence_id: SyntheticOccurrence
 },
         diagnostics: None
       }
@@ -1024,7 +1024,7 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
               target: witness_validity_symbol_atom_node(s: a.at)
             }
           ],
-          occurrence_id: substrate_synthetic_occurrence_id
+          occurrence_id: SyntheticOccurrence
 },
         diagnostics: None
       }
@@ -1050,7 +1050,7 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
             target: witness_validity_correction_node(c: d.correction)
           }
         ],
-        occurrence_id: substrate_synthetic_occurrence_id
+        occurrence_id: SyntheticOccurrence
 },
       diagnostics: None
     }
@@ -1075,7 +1075,7 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
                 Edge { label: Named { name: ^witness_validity_list_cons_head }, target: hn },
                 Edge { label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
               ],
-              occurrence_id: substrate_synthetic_occurrence_id
+              occurrence_id: SyntheticOccurrence
 },
             diagnostics: None
           }
@@ -1101,7 +1101,7 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcom
               target: tn
             }
           ],
-          occurrence_id: substrate_synthetic_occurrence_id
+          occurrence_id: SyntheticOccurrence
 },
         diagnostics: None
       }
@@ -1127,7 +1127,7 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
                 target: ndn
               }
             ],
-            occurrence_id: substrate_synthetic_occurrence_id
+            occurrence_id: SyntheticOccurrence
 },
           diagnostics: None
         }
@@ -1157,11 +1157,11 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
                       target: dsn
                     }
                   ],
-                  occurrence_id: substrate_synthetic_occurrence_id
+                  occurrence_id: SyntheticOccurrence
 }
               }
             ],
-            occurrence_id: substrate_synthetic_occurrence_id
+            occurrence_id: SyntheticOccurrence
 },
           diagnostics: None
         }
@@ -1177,7 +1177,7 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
                 target: dn
               }
             ],
-            occurrence_id: substrate_synthetic_occurrence_id
+            occurrence_id: SyntheticOccurrence
 },
           diagnostics: None
         }
@@ -1636,7 +1636,7 @@ fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> 
       connective: Atom { identity: discriminant(v: variant) }
     },
     children: [],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1653,7 +1653,7 @@ fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
         )
       }
     ],
-    occurrence_id: substrate_synthetic_occurrence_id
+    occurrence_id: SyntheticOccurrence
 }
 }
 
