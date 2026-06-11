@@ -2538,14 +2538,6 @@ pub fn node_type_deps(
         };
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         let n_name = authored_name_at(source_indices.clone(), n.clone());
-        let self_decl_dep = if (((has_structure.clone() && (n.ident_span.clone() != None))
-            && (is_kernel_type(n_name.clone()) == false))
-            && (n_name.clone().as_str() != "None".to_string().as_str()))
-        {
-            Rc::new(vec![n_name.clone()])
-        } else {
-            Rc::new(vec![])
-        };
         if __is_named_ref {
             match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -2555,31 +2547,28 @@ pub fn node_type_deps(
             }
         } else {
             if has_structure.clone() {
-                {
-                    let child_deps = Rc::new({
-                        let mut __result = Vec::new();
-                        for child in n.children.clone().iter().cloned() {
-                            __result.extend(
-                                (*match child.inferred.clone().as_deref().cloned() {
-                                    Some(InferredNode::Resolved { node: rt, .. }) => {
-                                        node_type_deps(rt.clone(), source_indices.clone())
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for child in n.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*match child.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: rt, .. }) => {
+                                    node_type_deps(rt.clone(), source_indices.clone())
+                                }
+                                _ => {
+                                    if (child.inferred.clone() == None) {
+                                        node_type_deps(child.clone(), source_indices.clone())
+                                    } else {
+                                        Rc::new(vec![])
                                     }
-                                    _ => {
-                                        if (child.inferred.clone() == None) {
-                                            node_type_deps(child.clone(), source_indices.clone())
-                                        } else {
-                                            Rc::new(vec![])
-                                        }
-                                    }
-                                })
-                                .iter()
-                                .cloned(),
-                            );
-                        }
-                        __result
-                    });
-                    v2_rt::concat(self_decl_dep, child_deps)
-                }
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                })
             } else {
                 if (n.inferred.clone() != None) {
                     match n.inferred.clone().as_deref().cloned() {
