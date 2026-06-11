@@ -637,6 +637,25 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs",
     "src/v3/compiler/tests/integration/file_attachment_substrate_carrier_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
+    // get-off-v3 by-execution caller census + down-only ratchet for
+    // `v3_compiler::compile_to_dag` (the v3 whole-source compile entry). A narrow
+    // hand-Rust instrument: it walks the live source tree at test time and counts
+    // direct calls to `compile_to_dag`, holding the discovered total at/under a
+    // single ceiling that ratchets toward zero (no per-caller pinned ledger; E-10 /
+    // #4633 by-execution lineage).
+    //
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the
+    // checkable receipt is this registration itself (per-PR mechanism (b)) — the
+    // `EXPECTED_HAND_AUTHORED_TEST` census moves by exactly +1 now and must shrink by
+    // 1 at dissolution; the sorted/unique and disk-vs-list census tests in this file
+    // mechanically enforce it. Deferral lane — `src/v3/SELF_HOSTING.md` self-host
+    // trajectory (hand-Rust v3 surface → 0) plus the M-CI / CI-via-dag lane that owns
+    // CI-enforcing this ratchet. Concrete dissolution trigger: this instrument
+    // dissolves with its own subject — when the ceiling reaches 0 (no direct
+    // `compile_to_dag` callers remain) and v3 retires, or earlier if the census is
+    // re-expressed as a `.dag` `TestClaim` under the CI-via-dag lane — at which point
+    // this hand-Rust test is deleted and the entry removed from this list (−1).
+    "src/v3/compiler/tests/integration/get_off_v3_compile_to_dag_census_test.rs",
     // Idempotency Lens<C> instance blocker ratchet (R2 Substrate): focused
     // hand-Rust receipt proving the actual idempotency lens instance must
     // wait for generic function-valued data-field matching, while imported
