@@ -2272,13 +2272,9 @@ fn target_value_expression_to_concrete_tokens(
 fn target_declared_inhabitants_edge_targets(root: Node) -> List<Node> {
   match root.kind {
     TypeNode { connective: Conj } =>
-      fold_list_right(
-        xs: root.children,
-        empty: Empty,
-        snoc: fn(acc, edge) {
-          Cons { head: edge.target, tail: acc }
-        }
-      )
+      fold(root.children, init: Empty, f: fn(acc, edge) {
+        list_snoc_item(xs: acc, item: edge.target)
+      })
     _ => Empty
   }
 }
@@ -2332,32 +2328,6 @@ fn target_catalog_contains_node_shape(
   )
 }
 
-fn target_catalog_collect_arrow_positional_slots(
-  catalog_targets: List<Node>
-) -> List<Node> {
-  fold_list_right(
-    xs: catalog_targets,
-    empty: Empty,
-    snoc: fn(acc, candidate) {
-      match candidate.kind {
-        TypeNode { connective: Arrow } =>
-          fold_list_right(
-            xs: candidate.children,
-            empty: acc,
-            snoc: fn(inner_acc, edge) {
-              match edge.label {
-                Positional =>
-                  Cons { head: edge.target, tail: inner_acc }
-                Named { name: _ } => inner_acc
-              }
-            }
-          )
-        _ => acc
-      }
-    }
-  )
-}
-
 fn target_catalog_atom_identity_matches_inhabitant_wires(
   slot_atom: Symbol,
   catalog_targets: List<Node>
@@ -2383,12 +2353,7 @@ fn target_wave1_signature_slot_matches_declared_inhabitants(
   inhabitants_root: Node
 ) -> Bool {
   let catalog_targets = target_declared_inhabitants_edge_targets(root: inhabitants_root)
-  let arrow_slots = target_catalog_collect_arrow_positional_slots(
-    catalog_targets: catalog_targets
-  )
   if target_catalog_contains_node_shape(slot: slot, catalog_targets: catalog_targets) {
-    true
-  } else if target_catalog_contains_node_shape(slot: slot, catalog_targets: arrow_slots) {
     true
   } else {
     match slot.kind {
@@ -2410,25 +2375,6 @@ fn target_wave1_signature_slot_matches_declared_inhabitants(
   }
 }
 
-fn target_wave1_add_signature_slot_valid(
-  slot: Node,
-  inhabitants_root: Node
-) -> Bool {
-  match slot.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      id == ^dag_binding_type_int
-      || target_wave1_signature_slot_matches_declared_inhabitants(
-        slot: slot,
-        inhabitants_root: inhabitants_root
-      )
-    _ =>
-      target_wave1_signature_slot_matches_declared_inhabitants(
-        slot: slot,
-        inhabitants_root: inhabitants_root
-      )
-  }
-}
-
 fn target_wave1_add_signature_slot_at(
   arrow: Node,
   index: Int,
@@ -2436,7 +2382,7 @@ fn target_wave1_add_signature_slot_at(
 ) -> Bool {
   match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
     Present { value: slot } =>
-      target_wave1_add_signature_slot_valid(
+      target_wave1_signature_slot_matches_declared_inhabitants(
         slot: slot,
         inhabitants_root: inhabitants_root
       )
