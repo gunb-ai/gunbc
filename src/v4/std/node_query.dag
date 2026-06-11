@@ -19,7 +19,8 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.algebra { Empty, list_snoc_item }
+import v4.std.algebra { Empty, is_empty, list_snoc_item }
+import v4.std.collection { Absent, List, Present, list_at_optional }
 import v4.std.node {
   Ambiguous,
   Arrow,
@@ -127,6 +128,77 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
       outcome_rejected(d: Diagnostic {
         reason: ^arrow_body_child_not_arrow,
         at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+  }
+}
+
+fn node_query_domain_malformed_diagnostic(domain: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^arrow_domain_named_param_bindings_malformed,
+    at: node_locus(node: domain),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// Lifted from compiler/03_resolve harvest_conj_named_bindings — ordered List (Map acc loses order).
+fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      match fold(domain.children, init: outcome_accepted(value: Empty), f: fn(acc, edge) {
+        match acc {
+          Accepted { value: bindings, diagnostics: d } =>
+            match edge.label {
+              Named { name: sym } =>
+                outcome_accepted(
+                  value: list_snoc_item(xs: bindings, item: sym),
+                  diagnostics: d
+                )
+              Positional =>
+                outcome_rejected(
+                  d: node_query_domain_malformed_diagnostic(domain: domain)
+                )
+            }
+          Rejected { diagnostics: _ } => acc
+        }
+      }) {
+        Accepted { value: bindings, diagnostics: d } =>
+          if is_empty(xs: bindings) {
+            outcome_rejected(
+              d: node_query_domain_malformed_diagnostic(domain: domain)
+            )
+          } else {
+            outcome_accepted(value: bindings, diagnostics: d)
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    _ =>
+      outcome_rejected(
+        d: node_query_domain_malformed_diagnostic(domain: domain)
+      )
+  }
+}
+
+// 🟢 grounded — Arrow positional-0 domain Conj harvest; sibling to find_arrow_body_child.
+// Order is load-bearing (05_eval index-binds args against this list). M9 attach: lifted from
+// compiler/03_resolve add_arrow_domain_named_params / harvest_conj_named_bindings.
+fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Present { value: domain } =>
+          conj_ordered_named_param_binding_ids(domain: domain)
+        Absent =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^arrow_domain_named_param_bindings_missing,
+            at: node_locus(node: arrow),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+      }
+    _ =>
+      outcome_rejected(d: Diagnostic {
+        reason: ^arrow_domain_named_param_bindings_not_arrow,
+        at: node_locus(node: arrow),
         correction: Unavailable { reason: ExternalContractUnknown }
       })
   }
