@@ -1,11 +1,13 @@
 //! Phase-0 measurement harness (ctrl#1533): the interpreter counts the copy
-//! work its copy-on-update collection primitives perform, and can produce a
-//! sharing-aware byte accounting of what a context retains.
+//! work its collection primitives perform, and can produce a sharing-aware
+//! byte accounting of what a context retains.
 //!
-//! These tests pin the measurement semantics, not the performance: fold-built
-//! collections must show the triangular-number copy term (the quadratic
-//! signature the persistent-carrier work removes), and shared structure must
-//! be accounted exactly once.
+//! These tests pin the measurement semantics, not the performance. Under the
+//! phase-2 persistent carriers, native-carrier updates share structure and
+//! copy NOTHING — the *_entries_copied/_items_copied counters must read 0
+//! (the triangular-number copy term phase 0 measured is gone; what remains
+//! countable is the FreeMonoid chain flatten). Shared structure must be
+//! accounted exactly once.
 
 use std::rc::Rc;
 
@@ -37,11 +39,11 @@ fn resolve(src: &str) -> Rc<ResolvedPipelineResult> {
     resolved
 }
 
-/// Building a 4-entry map by successive inserts copies 0+1+2+3 = 6 entries —
-/// the triangular-number term. Per-call average grows with collection size;
-/// that ratio is the quadratic-allocation receipt.
+/// Building a 4-entry map by successive inserts performs 4 persistent
+/// updates and copies ZERO entries — the triangular-number term (0+1+2+3 = 6
+/// under the ephemeral carrier) is gone. This is the phase-2 receipt.
 #[test]
-fn fold_built_map_counts_triangular_copy_work() {
+fn fold_built_map_copies_no_entries() {
     let src = r#"module test.stats_map
 fn build() -> Int {
   let m = empty_map() |> map_insert("a", 1) |> map_insert("b", 2) |> map_insert("c", 3) |> map_insert("d", 4)
@@ -58,15 +60,14 @@ fn build() -> Int {
     }
     let counters = ctx.mutation_counters_snapshot();
     assert_eq!(counters.map_insert_calls, 4);
-    assert_eq!(counters.map_insert_entries_copied, 6);
+    assert_eq!(counters.map_insert_entries_copied, 0);
 }
 
-/// Concat is a merge: BOTH operands' elements are copy-work (every element of
-/// the result is a copy of a pre-existing collection member). [1,2,3]⊕[4]
-/// copies 4, then the 4-list⊕[5] copies 5 — the same triangular growth on the
-/// list side.
+/// Concat of native lists is persistent RRB concatenation: both calls are
+/// counted as merges, but no items are copied (under the ephemeral carrier
+/// [1,2,3]⊕[4] copied 4 and the 4-list⊕[5] copied 5 — triangular growth).
 #[test]
-fn list_concat_counts_both_operands() {
+fn list_concat_copies_no_native_items() {
     let src = r#"module test.stats_list
 fn build() -> Int {
   let a = [1, 2, 3].concat([4])
@@ -84,14 +85,14 @@ fn build() -> Int {
     }
     let counters = ctx.mutation_counters_snapshot();
     assert_eq!(counters.list_concat_calls, 2);
-    assert_eq!(counters.list_concat_items_copied, 9);
+    assert_eq!(counters.list_concat_items_copied, 0);
     assert_eq!(counters.list_push_calls, 0, "merge must not leak into push");
 }
 
-/// Appending an atomic element is a push regardless of dispatch surface: only
-/// the receiver's pre-existing elements are copy-work (the new element must be
-/// written under any carrier). Same primitive, one bucket — never split
-/// between `list_push` and `list_concat` by method-vs-builtin path.
+/// Appending an atomic element is a push regardless of dispatch surface, and
+/// a persistent push_back copies none of the receiver's elements. Same
+/// primitive, one bucket — never split between `list_push` and `list_concat`
+/// by method-vs-builtin path.
 #[test]
 fn atomic_append_counts_as_push_not_concat() {
     let src = r#"module test.stats_push
@@ -110,7 +111,7 @@ fn build() -> Int {
     }
     let counters = ctx.mutation_counters_snapshot();
     assert_eq!(counters.list_push_calls, 1);
-    assert_eq!(counters.list_push_items_copied, 3);
+    assert_eq!(counters.list_push_items_copied, 0);
     assert_eq!(
         counters.list_concat_calls, 0,
         "push must not leak into concat"

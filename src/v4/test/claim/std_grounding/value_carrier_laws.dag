@@ -83,6 +83,29 @@ fn declared_carriers_are_persistent_holds() -> Bool {
   map_persistent && list_persistent
 }
 
+// ── Persistence law (M-A, phase-2 swap probe): prior versions stay valid ─
+// Driscoll–Sarnak–Sleator–Tarjan 1989: a Persistent carrier leaves every
+// prior version valid after an update. `extended`/`updated` are derived FROM
+// the base values; the bases must still equal independently built structural
+// twins afterwards. The failure class a carrier swap can introduce is
+// in-place mutation observed through a shared handle — this is its witness.
+// Large-n twins (past the carriers' inline-chunk thresholds) run host-side
+// in src/v2/tests/src/value_carrier_swap_test.rs.
+
+fn list_prior_version_survives_concat_holds() -> Bool {
+  let base = [1, 2, 3]
+  let extended = concat(base, [4])
+  (base == [1, 2, 3]) && (extended == [1, 2, 3, 4])
+}
+
+fn map_prior_version_survives_insert_holds() -> Bool {
+  let base = empty_map() |> map_insert("k", 1)
+  let updated = base |> map_insert("k", 2)
+  let base_intact = base == (empty_map() |> map_insert("k", 1))
+  let update_took = updated == (empty_map() |> map_insert("k", 2))
+  base_intact && update_took && !(updated == base)
+}
+
 // ── Glob-discovery registrations (consolidation #4553 Phase 2) ────────────
 // Co-located BoolWitnessClaim markers so discovery finds each witness
 // without a central roster.
@@ -133,5 +156,19 @@ data unified_claim_declared_carriers_are_persistent: UnifiedTestClaim = BoolWitn
   witness: BoolWitness {
     entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
     function: declared_carriers_are_persistent_holds
+  }
+}
+
+data unified_claim_list_prior_version_survives_concat: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: list_prior_version_survives_concat_holds
+  }
+}
+
+data unified_claim_map_prior_version_survives_insert: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/std_grounding/value_carrier_laws.dag",
+    function: map_prior_version_survives_insert_holds
   }
 }

@@ -62,4 +62,6 @@ mod sub_value_lattice_factor_test;
 #[cfg(test)]
 mod v2_compiler_lib_test;
 #[cfg(test)]
+mod value_carrier_swap_test;
+#[cfg(test)]
 mod witness_option_bridge_test;

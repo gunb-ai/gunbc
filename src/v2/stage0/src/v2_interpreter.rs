@@ -7,6 +7,15 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
+// Persistent value carriers (ctrl#1533 phase 2), implementing the
+// v4.std.value_carrier declarations: HamtMap is a hash array mapped trie
+// (map_carrier), RrbVector a relaxed radix balanced tree (list_carrier).
+// Both are Rc-backed (im-rc), matching the thread-confined Rc-discipline of
+// Value. Updates share structure with the prior version instead of copying
+// it — the quadratic-allocation term ctrl#1533 phase 0 measured.
+use im_rc::HashMap as HamtMap;
+use im_rc::Vector as RrbVector;
+
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v2_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
@@ -258,8 +267,13 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Str(String),
-    List(Rc<Vec<Value>>),
-    Map(Rc<HashMap<CanonKey, Value>>),
+    // List/Map keep an Rc handle around the persistent carrier: Rc::as_ptr
+    // remains the value-identity used by pure-call memo keys
+    // (value_rc_identity) and the accounting walker's sharing dedup. The
+    // carrier inside the Rc shares structure across versions; the handle
+    // clone needed before an update is O(1).
+    List(Rc<RrbVector<Value>>),
+    Map(Rc<HamtMap<CanonKey, Value>>),
     /// String membership sets (`Set<String>` in .dag).
     Set(Rc<BTreeSet<String>>),
     Record {
@@ -281,6 +295,17 @@ pub enum Value {
         node: Rc<Node>,
     },
     Unit,
+}
+
+/// Wrap a list carrier (or anything convertible to one, e.g. `Vec<Value>`)
+/// into a `Value::List`.
+fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
+    Value::List(Rc::new(items.into()))
+}
+
+/// Wrap a map carrier into a `Value::Map`.
+fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
+    Value::Map(Rc::new(entries))
 }
 
 impl Value {
@@ -1155,7 +1180,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                 .iter()
                 .map(|child| eval_expr(child, env, ctx))
                 .collect::<InterpResult<_>>()?;
-            Ok(Value::List(Rc::new(items)))
+            Ok(list_value((items)))
         }
 
         ExprData::ExprLambda => {
@@ -1331,7 +1356,7 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                 if let Some(mut result) = free_monoid_to_vec(l) {
                     record_push(result.len());
                     result.push(Value::Str(s.clone()));
-                    return Ok(Value::List(Rc::new(result)));
+                    return Ok(list_value((result)));
                 }
             }
             (Value::Str(s), r) => {
@@ -1339,7 +1364,7 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                     record_push(result.len());
                     let mut out = vec![Value::Str(s.clone())];
                     out.extend(result);
-                    return Ok(Value::List(Rc::new(out)));
+                    return Ok(list_value((out)));
                 }
             }
             _ => {
@@ -1351,7 +1376,7 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                     counters.list_concat_items_copied += (a.len() + b.len()) as u64;
                     drop(counters);
                     a.extend(b);
-                    return Ok(Value::List(Rc::new(a)));
+                    return Ok(list_value((a)));
                 }
             }
         }
@@ -1721,7 +1746,10 @@ fn match_pattern(
                             None
                         } else {
                             let head = items[0].clone();
-                            let tail = Value::List(Rc::new(items[1..].to_vec()));
+                            let tail = {
+                                let mut rest = (**items).clone();
+                                list_value(rest.split_off(1))
+                            };
                             let mut bindings = HashMap::new();
                             for fb in field_bindings.iter() {
                                 let field_name =
@@ -2098,7 +2126,7 @@ fn eval_field_access(
             // Map entry: (key, value).first → key
             // Or list: first element
             match expect_list(&base_val, "tuple.first") {
-                Ok(items) => Ok(items.first().cloned().unwrap_or(Value::Null)),
+                Ok(items) => Ok(items.front().cloned().unwrap_or(Value::Null)),
                 Err(_) => extract_field(&base_val, &field_name, env, ctx),
             }
         }
@@ -2243,7 +2271,7 @@ fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpR
         let iter_env = Env::with_binding(env, var_name.clone(), item.clone());
         results.push(eval_expr(&body_node, &iter_env, ctx)?);
     }
-    Ok(Value::List(Rc::new(results)))
+    Ok(list_value((results)))
 }
 
 // ---------------------------------------------------------------------------
@@ -2302,7 +2330,8 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             let items = expect_list(base_val, "slice")?;
             let s = *s as usize;
             let e = (*e as usize).min(items.len());
-            Ok(Value::List(Rc::new(items[s..e].to_vec())))
+            let mut work = (*items).clone();
+            Ok(list_value(work.slice(s..e)))
         }
         (Value::Str(str_val), Value::Int(s), Value::Int(e)) => {
             let s = *s as usize;
@@ -2346,7 +2375,7 @@ fn eval_algebra_method(
                 .iter()
                 .map(|item| apply_closure(f, &[item.clone()], env, ctx))
                 .collect::<InterpResult<Vec<Value>>>()
-                .map(|v| Value::List(Rc::new(v)))
+                .map(|v| list_value((v)))
         }),
 
         "filter" => {
@@ -2358,7 +2387,7 @@ fn eval_algebra_method(
                         result.push(item.clone());
                     }
                 }
-                Ok(Value::List(Rc::new(result)))
+                Ok(list_value((result)))
             })
         }
 
@@ -2399,7 +2428,7 @@ fn eval_algebra_method(
                         }
                     }
                 }
-                Ok(Value::List(Rc::new(result)))
+                Ok(list_value((result)))
             },
         ),
 
@@ -2431,9 +2460,9 @@ fn eval_algebra_method(
                     })
                     .collect::<InterpResult<_>>()?;
                 keyed.sort_by(|(ka, _), (kb, _)| cmp_values(ka, kb));
-                Ok(Value::List(Rc::new(
-                    keyed.into_iter().map(|(_, v)| v).collect(),
-                )))
+                Ok(list_value(
+                    keyed.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+                ))
             })
         }
 
@@ -2449,38 +2478,41 @@ fn eval_algebra_method(
                 return Ok(Value::Str(result));
             }
             if let Ok(items) = expect_list(&receiver, "concat") {
-                let receiver_len = items.len();
-                let mut result = items.to_vec();
+                let mut result = (*items).clone();
                 // Counter bucket is decided by what the args ARE, not which
                 // method name dispatched here (see `MutationCounters`): a
                 // flattening collection arg merges (concat: both operands'
                 // elements are copy-work), atomic args append one element each
-                // (push: receiver elements only).
+                // (push: receiver elements only). Under the persistent carrier
+                // (ctrl#1533 phase 2) native-List operands concatenate by
+                // structural sharing, so *_items_copied counts only elements
+                // actually copied through the FreeMonoid flatten.
                 let mut merged_items = 0usize;
+                let mut copied_items = 0usize;
                 for arg in args {
                     // Non-list Str args append as one element, not char-exploded (ctrl#1476 B1).
                     if matches!(arg, Value::Str(_)) {
-                        result.push(arg.clone());
+                        result.push_back(arg.clone());
                     } else {
-                        match free_monoid_to_vec(arg) {
-                            Some(other) => {
+                        match value_to_list_carrier(arg) {
+                            Some((other, copied)) => {
                                 merged_items += other.len();
-                                result.extend(other);
+                                copied_items += copied as usize;
+                                result.append((*other).clone());
                             }
-                            None => result.push(arg.clone()),
+                            None => result.push_back(arg.clone()),
                         }
                     }
                 }
                 let mut counters = ctx.mutation_counters.borrow_mut();
                 if merged_items > 0 {
                     counters.list_concat_calls += 1;
-                    counters.list_concat_items_copied += (receiver_len + merged_items) as u64;
+                    counters.list_concat_items_copied += copied_items as u64;
                 } else {
                     counters.list_push_calls += 1;
-                    counters.list_push_items_copied += receiver_len as u64;
                 }
                 drop(counters);
-                return Ok(Value::List(Rc::new(result)));
+                return Ok(list_value(result));
             }
             Err(InterpError::TypeError {
                 msg: format!("cannot concat on {}", receiver.type_label()),
@@ -2499,7 +2531,7 @@ fn eval_algebra_method(
 
         "first" => {
             let items = expect_list(&receiver, "first")?;
-            Ok(items.first().cloned().unwrap_or(Value::Null))
+            Ok(items.front().cloned().unwrap_or(Value::Null))
         }
 
         "last" => {
@@ -2509,25 +2541,23 @@ fn eval_algebra_method(
 
         "reverse" => {
             let items = expect_list(&receiver, "reverse")?;
-            let mut result = items.to_vec();
-            result.reverse();
-            Ok(Value::List(Rc::new(result)))
+            Ok(list_value(items.iter().rev().cloned().collect::<Vec<_>>()))
         }
 
         "skip" => {
             let items = expect_list(&receiver, "skip")?;
             let n = expect_int(args.first(), "skip")?;
-            Ok(Value::List(Rc::new(
-                items.iter().skip(n as usize).cloned().collect(),
-            )))
+            Ok(list_value(
+                items.iter().skip(n as usize).cloned().collect::<Vec<_>>(),
+            ))
         }
 
         "take" => {
             let items = expect_list(&receiver, "take")?;
             let n = expect_int(args.first(), "take")?;
-            Ok(Value::List(Rc::new(
-                items.iter().take(n as usize).cloned().collect(),
-            )))
+            Ok(list_value(
+                items.iter().take(n as usize).cloned().collect::<Vec<_>>(),
+            ))
         }
 
         "enumerate" => {
@@ -2545,7 +2575,7 @@ fn eval_algebra_method(
                     }
                 })
                 .collect();
-            Ok(Value::List(Rc::new(result)))
+            Ok(list_value((result)))
         }
 
         // String/Map membership is checked BEFORE the FreeMonoid list path: a String IS a
@@ -2622,39 +2652,38 @@ fn eval_algebra_method(
             let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
                 msg: "insert key is not a valid map key (closure/fn/NaN)".to_string(),
             })?;
+            // Persistent update (ctrl#1533 phase 2): O(log32 n) path copy with
+            // structural sharing — no entries are copied, so the
+            // *_entries_copied counter is not incremented.
             let mut counters = ctx.mutation_counters.borrow_mut();
             counters.map_insert_calls += 1;
-            counters.map_insert_entries_copied += m.len() as u64;
             drop(counters);
-            let mut new_map = HashMap::clone(&m);
-            new_map.insert(ck, val);
-            Ok(Value::Map(Rc::new(new_map)))
+            Ok(map_value(m.update(ck, val)))
         }
 
         "merge" => {
             let base = expect_map(&receiver, "merge")?;
             let overlay = expect_map(args.first().unwrap_or(&Value::Null), "merge")?;
+            // Persistent merge (ctrl#1533 phase 2): structural union sharing
+            // unchanged subtrees — no entries are copied. im union keeps
+            // self's value on key collision, so overlay-as-self preserves the
+            // overlay-wins (last-write-wins) semantics.
             let mut counters = ctx.mutation_counters.borrow_mut();
             counters.map_merge_calls += 1;
-            counters.map_merge_entries_copied += (base.len() + overlay.len()) as u64;
             drop(counters);
-            let mut result = HashMap::clone(&base);
-            for (k, v) in overlay.iter() {
-                result.insert(k.clone(), v.clone());
-            }
-            Ok(Value::Map(Rc::new(result)))
+            Ok(map_value((*overlay).clone().union((*base).clone())))
         }
 
         "keys" => {
             let m = expect_map(&receiver, "keys")?;
             let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
-            Ok(Value::List(Rc::new(keys)))
+            Ok(list_value((keys)))
         }
 
         "values" => {
             let m = expect_map(&receiver, "values")?;
             let vals: Vec<Value> = m.values().cloned().collect();
-            Ok(Value::List(Rc::new(vals)))
+            Ok(list_value((vals)))
         }
 
         // String-specific methods
@@ -2676,7 +2705,7 @@ fn eval_algebra_method(
             let s = expect_string(&receiver, "split")?;
             let sep = expect_str(args.first(), "split")?;
             let parts: Vec<Value> = s.split(&sep).map(|p| Value::Str(p.to_string())).collect();
-            Ok(Value::List(Rc::new(parts)))
+            Ok(list_value((parts)))
         }
 
         "trim" => {
@@ -2731,7 +2760,7 @@ fn eval_algebra_method(
             env,
             ctx,
             |items, f, env, ctx| {
-                let mut m = HashMap::new();
+                let mut m = HamtMap::new();
                 for item in items.iter() {
                     let key = apply_closure(f, &[item.clone()], env, ctx)?;
                     let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
@@ -2739,7 +2768,7 @@ fn eval_algebra_method(
                     })?;
                     m.insert(ck, item.clone());
                 }
-                Ok(Value::Map(Rc::new(m)))
+                Ok(map_value(m))
             },
         ),
 
@@ -2927,7 +2956,7 @@ fn map_shell_outputs(
                     .lines()
                     .map(|l| Value::Str(l.to_string()))
                     .collect();
-                Value::List(Rc::new(lines))
+                list_value((lines))
             }
             _ => {
                 // Default: map by field name
@@ -3467,16 +3496,16 @@ fn json_to_value(json: &serde_json::Value) -> Value {
         }
         serde_json::Value::String(s) => Value::Str(s.clone()),
         serde_json::Value::Array(arr) => {
-            Value::List(Rc::new(arr.iter().map(json_to_value).collect()))
+            list_value(arr.iter().map(json_to_value).collect::<Vec<_>>())
         }
         serde_json::Value::Object(obj) => {
-            let fields: HashMap<CanonKey, Value> = obj
+            let fields: HamtMap<CanonKey, Value> = obj
                 .iter()
                 .filter_map(|(k, v)| {
                     CanonKey::new(Value::Str(k.clone())).map(|ck| (ck, json_to_value(v)))
                 })
                 .collect();
-            Value::Map(Rc::new(fields))
+            map_value(fields)
         }
     }
 }
@@ -3559,7 +3588,7 @@ fn eval_builtin(
                         Some(mut result) => {
                             record_push(result.len());
                             result.push(Value::Str(s.clone()));
-                            Ok(Some(Value::List(Rc::new(result))))
+                            Ok(Some(list_value((result))))
                         }
                         None => Ok(None),
                     },
@@ -3568,7 +3597,7 @@ fn eval_builtin(
                             record_push(result.len());
                             let mut out = vec![Value::Str(s.clone())];
                             out.extend(result);
-                            Ok(Some(Value::List(Rc::new(out))))
+                            Ok(Some(list_value((out))))
                         }
                         None => Ok(None),
                     },
@@ -3580,7 +3609,7 @@ fn eval_builtin(
                                 (a_items.len() + b_items.len()) as u64;
                             drop(counters);
                             a_items.extend(b_items);
-                            Ok(Some(Value::List(Rc::new(a_items))))
+                            Ok(Some(list_value((a_items))))
                         }
                         _ => Ok(None),
                     },
@@ -3605,7 +3634,7 @@ fn eval_builtin(
                 Some(items) => {
                     let mut r = items;
                     r.reverse();
-                    Ok(Some(Value::List(Rc::new(r))))
+                    Ok(Some(list_value((r))))
                 }
                 None => Ok(None),
             },
@@ -3668,15 +3697,18 @@ fn eval_builtin(
 
         "list_push" | "append" => match positional.as_slice() {
             [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
-            [list_val, item] => match free_monoid_to_vec(list_val) {
-                Some(items) => {
+            // Persistent O(log n) push_back (ctrl#1533 phase 2): a native
+            // List shares structure with the prior version — only a chain
+            // form copies (through the flatten), and only that is counted.
+            [list_val, item] => match value_to_list_carrier(list_val) {
+                Some((items, copied)) => {
                     let mut counters = ctx.mutation_counters.borrow_mut();
                     counters.list_push_calls += 1;
-                    counters.list_push_items_copied += items.len() as u64;
+                    counters.list_push_items_copied += copied;
                     drop(counters);
-                    let mut result = items;
-                    result.push((*item).clone());
-                    Ok(Some(Value::List(Rc::new(result))))
+                    let mut result = (*items).clone();
+                    result.push_back((*item).clone());
+                    Ok(Some(list_value(result)))
                 }
                 None => Ok(None),
             },
@@ -3685,22 +3717,25 @@ fn eval_builtin(
 
         "list_concat" => match positional.as_slice() {
             [a, b] if matches!(a, Value::Str(_)) || matches!(b, Value::Str(_)) => Ok(None),
-            [a, b] => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
-                (Some(a_items), Some(b_items)) => {
+            // Persistent O(log(n+m)) RRB concatenation (ctrl#1533 phase 2):
+            // native Lists share structure — only chain-form operands copy
+            // (through the flatten), and only those items are counted.
+            [a, b] => match (value_to_list_carrier(a), value_to_list_carrier(b)) {
+                (Some((a_items, a_copied)), Some((b_items, b_copied))) => {
                     let mut counters = ctx.mutation_counters.borrow_mut();
                     counters.list_concat_calls += 1;
-                    counters.list_concat_items_copied += (a_items.len() + b_items.len()) as u64;
+                    counters.list_concat_items_copied += a_copied + b_copied;
                     drop(counters);
-                    let mut result = a_items;
-                    result.extend(b_items);
-                    Ok(Some(Value::List(Rc::new(result))))
+                    let mut result = (*a_items).clone();
+                    result.append((*b_items).clone());
+                    Ok(Some(list_value(result)))
                 }
                 _ => Ok(None),
             },
             _ => Ok(None),
         },
 
-        "empty_map" => Ok(Some(Value::Map(Rc::new(HashMap::new())))),
+        "empty_map" => Ok(Some(map_value(HamtMap::new()))),
 
         "empty_set" => Ok(Some(Value::Set(Rc::new(BTreeSet::new())))),
 
@@ -3746,13 +3781,12 @@ fn eval_builtin(
             // "not this builtin shape" (a non-Map receiver).
             [Value::Map(m), k, v] => match CanonKey::new((*k).clone()) {
                 Some(ck) => {
+                    // Persistent update (ctrl#1533 phase 2): O(log32 n) path
+                    // copy with structural sharing — no entries are copied.
                     let mut counters = ctx.mutation_counters.borrow_mut();
                     counters.map_insert_calls += 1;
-                    counters.map_insert_entries_copied += m.len() as u64;
                     drop(counters);
-                    let mut result = HashMap::clone(m);
-                    result.insert(ck, (*v).clone());
-                    Ok(Some(Value::Map(Rc::new(result))))
+                    Ok(Some(map_value(m.update(ck, (*v).clone()))))
                 }
                 None => Err(InterpError::TypeError {
                     msg: format!(
@@ -3781,7 +3815,7 @@ fn eval_builtin(
         "map_keys" => match positional.first() {
             Some(Value::Map(m)) => {
                 let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
-                Ok(Some(Value::List(Rc::new(keys))))
+                Ok(Some(list_value((keys))))
             }
             _ => Ok(None),
         },
@@ -3789,7 +3823,7 @@ fn eval_builtin(
         "map_values" => match positional.first() {
             Some(Value::Map(m)) => {
                 let vals: Vec<Value> = m.values().cloned().collect();
-                Ok(Some(Value::List(Rc::new(vals))))
+                Ok(Some(list_value((vals))))
             }
             _ => Ok(None),
         },
@@ -3804,15 +3838,13 @@ fn eval_builtin(
 
         "map_merge" => match positional.as_slice() {
             [Value::Map(base), Value::Map(overlay)] => {
+                // Persistent merge (ctrl#1533 phase 2): structural union, no
+                // entry copies. im union keeps self's value on key collision,
+                // so overlay-as-self preserves overlay-wins semantics.
                 let mut counters = ctx.mutation_counters.borrow_mut();
                 counters.map_merge_calls += 1;
-                counters.map_merge_entries_copied += (base.len() + overlay.len()) as u64;
                 drop(counters);
-                let mut result = HashMap::clone(&base);
-                for (k, v) in overlay.iter() {
-                    result.insert(k.clone(), v.clone());
-                }
-                Ok(Some(Value::Map(Rc::new(result))))
+                Ok(Some(map_value((**overlay).clone().union((**base).clone()))))
             }
             _ => Ok(None),
         },
@@ -3894,7 +3926,7 @@ fn list_method_with_closure<F>(
     f: F,
 ) -> InterpResult<Value>
 where
-    F: FnOnce(&Rc<Vec<Value>>, &Value, &Rc<Env>, &InterpContext) -> InterpResult<Value>,
+    F: FnOnce(&RrbVector<Value>, &Value, &Rc<Env>, &InterpContext) -> InterpResult<Value>,
 {
     let items = expect_list(&receiver, method_name)?;
     let closure = args.first().ok_or_else(|| InterpError::TypeError {
@@ -3972,11 +4004,27 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     }
 }
 
-fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<Vec<Value>>> {
+/// Bridge a list-denoting value (native List, FreeMonoid Variant chain, or
+/// Str-as-FreeMonoid<Char>) to the list carrier, honoring the B1 alias
+/// transparency through ONE code path. A native List hands back its carrier
+/// handle without copying; chain forms flatten through free_monoid_to_vec —
+/// the second tuple element reports how many items that flatten copied (the
+/// phase-0 *_items_copied accounting). Non-list values return None.
+fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
+    match val {
+        Value::List(items) => Some((items.clone(), 0)),
+        _ => free_monoid_to_vec(val).map(|items| {
+            let copied = items.len() as u64;
+            (Rc::new(RrbVector::from(items)), copied)
+        }),
+    }
+}
+
+fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
     match val {
         Value::List(items) => Ok(items.clone()),
         _ => match free_monoid_to_vec(val) {
-            Some(items) => Ok(Rc::new(items)),
+            Some(items) => Ok(Rc::new(RrbVector::from(items))),
             None => Err(InterpError::TypeError {
                 msg: format!("{} expects a list, got {}", context, val.type_label()),
             }),
@@ -4033,7 +4081,7 @@ fn raw_map_lookup(
     }
 }
 
-fn expect_map(val: &Value, context: &str) -> InterpResult<Rc<HashMap<CanonKey, Value>>> {
+fn expect_map(val: &Value, context: &str) -> InterpResult<Rc<HamtMap<CanonKey, Value>>> {
     match val {
         Value::Map(m) => Ok(m.clone()),
         _ => Err(InterpError::TypeError {
