@@ -12008,7 +12008,7 @@ pub fn register_type_decl_binding(
                 item_ident.clone(),
                 Rc::new(TypeBinding {
                     name: name.clone(),
-                    resolved: stamped,
+                    resolved: stamped.clone(),
                     provenance: provenance.clone(),
                 }),
             ),
@@ -12023,7 +12023,7 @@ pub fn register_type_decl_binding(
                         decl_span: decl_span,
                     }),
                     binding_key: item_ident.clone(),
-                    decl_arity: (resolved.params.clone().len() as i64),
+                    decl_arity: (stamped.params.clone().len() as i64),
                     name: name.clone(),
                     provenance: provenance.clone(),
                 }),
@@ -13711,7 +13711,13 @@ let prev_variant_imported = (v2_rt::map_get(&imported_variant_parent_names, v2_r
 let prev_is_imported = (prev_parent_imported.clone() || prev_variant_imported.clone());
 let same_parent_binding = match binding.resolved.clone().binding_id.clone() {
     Some(curr_binding_id) => match prev.resolved.clone().binding_id.clone() {
-        Some(prev_binding_id) => (curr_binding_id.clone() == prev_binding_id.clone()),
+        Some(prev_binding_id) => ((curr_binding_id.clone() == prev_binding_id.clone()) || match v2_rt::map_get(&env.decl_registry.clone(), curr_binding_id.clone()) {
+            Some(curr_decl) => match v2_rt::map_get(&env.decl_registry.clone(), prev_binding_id.clone()) {
+                Some(prev_decl) => (curr_decl.authority.clone() == prev_decl.authority.clone()),
+                None => false,
+            },
+            None => false,
+        }),
         None => false,
     },
     None => (curr_parent_name.clone() == prev_parent_name.clone()),

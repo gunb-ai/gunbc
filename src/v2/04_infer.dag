@@ -6290,7 +6290,16 @@ fn build_module_context(contributions: List<ItemContribution>,
                 let same_parent_binding = match binding.resolved.binding_id {
                   Present { value: curr_binding_id } =>
                     match prev.resolved.binding_id {
-                      Present { value: prev_binding_id } => curr_binding_id == prev_binding_id
+                      Present { value: prev_binding_id } =>
+                        curr_binding_id == prev_binding_id ||
+                          match map_get(env.decl_registry, curr_binding_id) {
+                            Present { value: curr_decl } =>
+                              match map_get(env.decl_registry, prev_binding_id) {
+                                Present { value: prev_decl } => curr_decl.authority == prev_decl.authority
+                                Absent => false
+                              }
+                            Absent => false
+                          }
                       Absent => false
                     }
                   Absent => curr_parent_name == prev_parent_name

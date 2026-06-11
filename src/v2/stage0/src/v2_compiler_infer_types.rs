@@ -1978,7 +1978,7 @@ pub fn node_type_compatible(
                                         }
                                     }
                                 } else {
-                                    if (((((canonical_template_name(
+                                    if ((((canonical_template_name(
                                         left.clone(),
                                         source_indices.clone(),
                                     )
@@ -1988,16 +1988,6 @@ pub fn node_type_compatible(
                                             source_indices.clone(),
                                         )
                                         .as_str())
-                                        && (authored_name_at(
-                                            source_indices.clone(),
-                                            left.clone(),
-                                        )
-                                        .as_str()
-                                            != authored_name_at(
-                                                source_indices.clone(),
-                                                right.clone(),
-                                            )
-                                            .as_str()))
                                         && ((left.children.clone().len() as i64) == 1))
                                         && ((right.children.clone().len() as i64) == 1))
                                         && (is_declared_container_alias_spelling(

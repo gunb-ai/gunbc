@@ -66,6 +66,10 @@ fn child_type_node(ch: Node) -> Node {
   if ch.inferred != none { resolved_type(n: ch) } else { ch }
 }
 
+// 🟡 phase-1 alias-transparency predicate — owner/lane:
+// Mgr-SOUNDNESS bare-alias carrier dissolution. Remove when Node exposes a
+// canonical bare_alias_target accessor, so transparency reads that fact instead
+// of rechecking the NoConnective/empty-children shape.
 fn node_is_bare_type_ref(n: Node) -> Bool {
   n.connective == NoConnective
     && n.children |> count == 0
@@ -181,8 +185,9 @@ fn is_unit_like(n: Node) -> Bool {
   (n.connective == Conj && n.children |> count == 0)
     || (n.connective == NoConnective
       && n.children |> count == 0
-      // Bootstrap kernel Unit appears as a bare leaf before full env lookup in
-      // stage0 branch joins; this is bounded to the canonical kernel name.
+      // 🟡 bootstrap-kernel Unit bridge — owner/lane: Mgr-SOUNDNESS
+      // branch-join env lookup completion. Remove this name arm when stage0
+      // branch joins resolve kernel Unit through TypeEnv before comparison.
       && n.name == "Unit")
 }
 
@@ -816,17 +821,15 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
         }
       }
     }
-    else if (((canonical_template_name(n: left, source_indices: source_indices) == canonical_template_name(n: right, source_indices: source_indices))
-      && (authored_name_at(source_indices: source_indices, node: left) != authored_name_at(source_indices: source_indices, node: right)))
+    else if ((canonical_template_name(n: left, source_indices: source_indices) == canonical_template_name(n: right, source_indices: source_indices))
       && (left.children |> count == 1)) && (right.children |> count == 1)
       && (is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: left))
         || is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: right))) {
       // Aliased sequence spellings — e.g. List<T> (Container) vs FreeMonoid<T>
       // (Node), which collection.dag declares the SAME type (List = FreeMonoid).
-      // They canonicalize to the same template but carry different surface
-      // names. Compare element types across the two reps. Fires
-      // ONLY when the names DIFFER but canonicalize equal, so same-named and
-      // genuinely-distinct types are untouched (minimal blast radius).
+      // Container shells are structural; compare element types across the two
+      // reps, including duplicate FreeMonoid shells reached through imported
+      // carriers. Element binding_id still enforces brand distinctions.
       match left.children |> first {
         Present { value: left_ch } =>
           match right.children |> first {
@@ -863,6 +866,9 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
         Absent =>
           match right.binding_id {
             Present { value: _ } => false
+            // Phase-1 fallback is only for still-unbranded kernel/synthetic
+            // leaves. register_type_decl_binding stamps all user declarations
+            // at build_type_env authority; stamped nodes fail closed above.
             Absent => authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right)
           }
       }
