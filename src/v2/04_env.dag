@@ -14,8 +14,10 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 // `carrier_bindings` holds imported/hidden structural carriers keyed by
 // BindingId when no local decl_registry row exists. `lookup_type_for`
 // consults decl_registry first, verifies binding_id on the resolved node,
-// and treats registry/intern disagreement as a compiler error. It falls back
-// to carrier_bindings only when the registry has no local authority row.
+// and only accepts the legacy intern row when it carries the same BindingId.
+// If that intern row is shadowed by another visible same-name import,
+// carrier_bindings may still supply the exact BindingId-keyed hidden row;
+// without that exact carrier row, lookup returns a compiler error.
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
   carrier_bindings: Map<BindingId, TypeBinding>
@@ -191,7 +193,10 @@ fn lookup_binding_id_type_for(env: TypeEnv, node: Node) -> Node? {
               if node_has_binding_id(n: resolved, binding_id: binding_id) {
                 Present { value: resolved }
               } else {
-                Present { value: error_type }
+                match lookup_carrier_type_for(env: env, node: node) {
+                  Present { value: carrier } => Present { value: carrier }
+                  Absent => Present { value: error_type }
+                }
               }
             Absent => lookup_carrier_type_for(env: env, node: node)
           }

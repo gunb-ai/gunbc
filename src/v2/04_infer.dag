@@ -5783,6 +5783,20 @@ type CarrierClosureState {
   seen_names: Map<String, Bool>
 }
 
+fn carrier_authority_binding(binding: TypeBinding) -> TypeBinding {
+  let resolved = binding.resolved
+  if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.params |> count == 0 {
+    match resolved.inferred {
+      Present { value: Resolved { node: target } } =>
+        let declared_or_structural_target = target.binding_id != none || target.connective != NoConnective
+        if declared_or_structural_target {
+          TypeBinding { name: binding.name, resolved: target, provenance: binding.provenance }
+        } else { binding }
+      _ => binding
+    }
+  } else { binding }
+}
+
 fn type_binding_decl_binding_id(env: TypeEnv, binding: TypeBinding) -> BindingId? {
   fold(env.decl_registry |> map_values, init: none, f: (acc, decl) =>
     match acc {
@@ -5847,7 +5861,7 @@ fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: Type
     let with_decl_binding = match type_binding_decl_binding_id(env: dep_env, binding: binding) {
       Present { value: decl_binding_id } =>
         CarrierClosureState {
-          carrier_bindings: map_insert(with_binding.carrier_bindings, decl_binding_id, stamped),
+          carrier_bindings: map_insert(with_binding.carrier_bindings, decl_binding_id, carrier_authority_binding(binding: stamped)),
           seen_names: with_binding.seen_names
         }
       Absent => with_binding
@@ -5897,7 +5911,7 @@ fn carrier_closure_with_decl_rows(state: CarrierClosureState, env: TypeEnv) -> C
       match binding_for_decl {
         Present { value: binding } =>
           CarrierClosureState {
-            carrier_bindings: map_insert(acc.carrier_bindings, decl.binding_id, binding),
+            carrier_bindings: map_insert(acc.carrier_bindings, decl.binding_id, carrier_authority_binding(binding: binding)),
             seen_names: acc.seen_names
           }
         Absent => acc

@@ -1533,26 +1533,6 @@ pub fn direct_call_decl_identity_mismatch(
         match formal_identity.binding_id.clone() {
             Some(formal_binding_id) => match actual_identity.binding_id.clone() {
                 Some(actual_binding_id) => {
-                    let formal_dbg =
-                        authored_name_at(source_indices.clone(), formal_identity.clone());
-                    let actual_dbg =
-                        authored_name_at(source_indices.clone(), actual_identity.clone());
-                    if formal_dbg.as_str() == "Id" && actual_dbg.as_str() == "Id" {
-                        eprintln!(
-                            "DBG pd3 id mismatch fbid={:?} abid={:?} same={} fc={} ac={} transp={}",
-                            formal_binding_id,
-                            actual_binding_id,
-                            same_structural_carrier,
-                            formal_container,
-                            actual_container,
-                            direct_call_transparent_alias_pair(
-                                env.clone(),
-                                formal_identity.clone(),
-                                actual_identity.clone(),
-                                source_indices.clone(),
-                            )
-                        );
-                    }
                     (((((formal_binding_id.clone() != actual_binding_id.clone())
                         && same_structural_carrier)
                         && !formal_container)
@@ -1851,21 +1831,10 @@ pub fn direct_call_arg_mismatch_diags(
                                     module_name.clone(),
                                 );
                                 let actual_peeled = actual_peeled_result.node.clone();
-                                            let actual_identity = direct_call_arg_decl_identity(
-                                                actual_peeled.clone(),
-                                                type_env.clone(),
-                                            );
-                                            if module_name.starts_with("pd3adv.same_name.use") {
-                                                eprintln!(
-                                                    "DBG use identities formal_name={} actual_name={} formal_id={:?} actual_id={:?} formal_raw={} actual_raw={}",
-                                                    authored_name_at(source_indices.clone(), formal_identity.clone()),
-                                                    authored_name_at(source_indices.clone(), actual_identity.clone()),
-                                                    formal_identity.binding_id,
-                                                    actual_identity.binding_id,
-                                                    authored_name_at(source_indices.clone(), formal_raw.clone()),
-                                                    authored_name_at(source_indices.clone(), actual_raw.clone())
-                                                );
-                                            }
+                                let actual_identity = direct_call_arg_decl_identity(
+                                    actual_peeled.clone(),
+                                    type_env.clone(),
+                                );
                                 let actual = stamp_hidden_dependency_refs(
                                     actual_peeled.clone(),
                                     type_env.clone(),
@@ -11912,6 +11881,35 @@ pub struct CarrierClosureState {
     pub seen_names: Rc<HashMap<String, bool>>,
 }
 
+pub fn carrier_authority_binding(binding: Rc<TypeBinding>) -> Rc<TypeBinding> {
+    {
+        let resolved = binding.resolved.clone();
+        if (((resolved.connective.clone() == Connective::NoConnective)
+            && ((resolved.children.clone().len() as i64) == 0))
+            && ((resolved.params.clone().len() as i64) == 0))
+        {
+            match resolved.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: target, .. }) => {
+                    let declared_or_structural_target = (target.binding_id.clone().is_some()
+                        || (target.connective.clone() != Connective::NoConnective));
+                    if declared_or_structural_target {
+                        Rc::new(TypeBinding {
+                            name: binding.name.clone(),
+                            resolved: target.clone(),
+                            provenance: binding.provenance.clone(),
+                        })
+                    } else {
+                        binding.clone()
+                    }
+                }
+                _ => binding.clone(),
+            }
+        } else {
+            binding.clone()
+        }
+    }
+}
+
 pub fn type_binding_decl_binding_id(
     env: Rc<TypeEnv>,
     binding: Rc<TypeBinding>,
@@ -12069,7 +12067,7 @@ pub fn add_type_binding_dependency_closure(
                             carrier_bindings: v2_rt::rc_map_insert(
                                 with_binding.carrier_bindings.clone(),
                                 decl_binding_id.clone(),
-                                stamped.clone(),
+                                carrier_authority_binding(stamped.clone()),
                             ),
                             seen_names: with_binding.seen_names.clone(),
                         }),
@@ -12172,7 +12170,7 @@ pub fn carrier_closure_with_decl_rows(
                             carrier_bindings: v2_rt::rc_map_insert(
                                 acc.carrier_bindings.clone(),
                                 decl.binding_id.clone(),
-                                binding.clone(),
+                                carrier_authority_binding(binding.clone()),
                             ),
                             seen_names: acc.seen_names.clone(),
                         }),
@@ -14216,13 +14214,6 @@ pub fn typecheck_module(
     allocator: BindingIdAllocator,
 ) -> Rc<TypecheckModuleResult> {
     {
-        let dbg_module = authored_name_at(source_indices.clone(), resolved.module.clone());
-        if dbg_module.starts_with("pd3adv.same_name") {
-            eprintln!(
-                "DBG module {} incoming_allocator={:?}",
-                dbg_module, allocator
-            );
-        }
         let env_result = build_type_env(
             resolved.clone(),
             parent_index.clone(),
@@ -14232,18 +14223,6 @@ pub fn typecheck_module(
         );
         let env = env_result.env.clone();
         let allocator = env_result.allocator.clone();
-        if dbg_module.starts_with("pd3adv.same_name") {
-            eprintln!(
-                "DBG module {} outgoing_allocator={:?}",
-                dbg_module, allocator
-            );
-            for decl in env.decl_registry.values() {
-                eprintln!(
-                    "DBG decl {} {} id={:?}",
-                    dbg_module, decl.name, decl.binding_id
-                );
-            }
-        }
         let env_diags = env_result.diagnostics.clone();
         let env_errors = Rc::new({
             let mut __result = Vec::new();
