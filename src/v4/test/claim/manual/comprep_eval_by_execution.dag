@@ -99,6 +99,10 @@ import v4.std.verification {
   manual_claim_anchor
 }
 
+fn comprep_eval_parse_tree_to_node(tree: ParseTree) -> Node {
+  tree
+}
+
 fn comprep_eval_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -279,7 +283,7 @@ fn comprep_source_resolved_add_arrow() -> Outcome<Node> {
         o: comprep_eval_parse_mvp1_add_tokens(tokens: tokens.tokens),
         f: fn(parsed) {
           bind_outcome(
-            o: normalize(parse_tree: parsed),
+            o: normalize(parse_tree: comprep_eval_parse_tree_to_node(tree: parsed)),
             f: fn(normalized) {
               resolve(tree: normalized, lm: lm)
             }
@@ -308,7 +312,7 @@ fn comprep_source_ingested_add_infers() -> Outcome<InferredTree> {
         o: comprep_eval_parse_mvp1_add_tokens(tokens: tokens.tokens),
         f: fn(parsed) {
           bind_outcome(
-            o: normalize(parse_tree: parsed),
+            o: normalize(parse_tree: comprep_eval_parse_tree_to_node(tree: parsed)),
             f: fn(normalized) {
               bind_outcome(
                 o: resolve(tree: normalized, lm: lm),
@@ -382,7 +386,7 @@ fn comprep_eval_normalize_holds() -> Bool {
     Accepted { value: tokens, diagnostics: _ } =>
       match comprep_eval_parse_mvp1_add_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
+          match normalize(parse_tree: comprep_eval_parse_tree_to_node(tree: parsed)) {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }
@@ -398,7 +402,7 @@ fn comprep_eval_resolve_holds() -> Bool {
     Accepted { value: tokens, diagnostics: _ } =>
       match comprep_eval_parse_mvp1_add_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
+          match normalize(parse_tree: comprep_eval_parse_tree_to_node(tree: parsed)) {
             Accepted { value: normalized, diagnostics: _ } =>
               match resolve(tree: normalized, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true

@@ -15,9 +15,9 @@ import v4.compiler.name_resolve {
   ResolutionSubject,
   resolve_with_admission
 }
-import v4.compiler.normalize { normalize }
+import v4.compiler.normalize { normalize, NormalizedTree }
 import v4.compiler.parse { parse }
-import v4.compiler.resolve { resolve }
+import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.compiler.tokenize { tokenize }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
@@ -42,6 +42,7 @@ import v4.std.diagnostic {
   outcome_with_diagnostics
 }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
+import v4.std.grammar { ParseTree }
 import v4.std.target_model { TargetModelBundle }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
@@ -61,11 +62,19 @@ fn core_node_to_node(source: CoreNode) -> Node {
   source
 }
 
-fn normalized_tree_to_node(tree: Node) -> Node {
+fn normalized_tree_to_node(tree: NormalizedTree) -> Node {
   tree
 }
 
-fn resolved_tree_to_core_node(tree: Node) -> CoreNode {
+fn parse_tree_to_node(tree: ParseTree) -> Node {
+  tree
+}
+
+fn node_to_core_node(tree: Node) -> CoreNode {
+  tree
+}
+
+fn resolved_tree_to_core_node(tree: ResolvedTree) -> CoreNode {
   tree
 }
 
@@ -391,15 +400,15 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
         o: parse(tokens: token_stream, grammar: lm.grammar),
         f: fn(parse_tree) {
           bind_outcome(
-            o: normalize(parse_tree: parse_tree),
+            o: normalize(parse_tree: parse_tree_to_node(tree: parse_tree)),
             f: fn(normalized) {
               // 🟡 gate: T-8 parse fidelity maps all identifiers to dag_token_ident — namespace lookup is vacuously satisfied. Dissolve-on: T-8 lands per-identifier hashing; at that point the static registry (Option A) or recursive loader (Option B) must call compiler/03_name_resolve.dag for cross-file admission.
               bind_outcome(
-                o: resolve(tree: normalized_tree_to_node(tree: normalized), lm: lm),
+                o: resolve(tree: normalized, lm: lm),
                 f: fn(resolved) {
                   bind_outcome(
                     o: validate_then_compile(
-                      source: resolved_tree_to_core_node(tree: resolved),
+                      source: node_to_core_node(tree: resolved),
                       lenses: [],
                       mode: TranslateTo { target: target }
                     ),
