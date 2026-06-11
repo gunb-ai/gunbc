@@ -1681,19 +1681,6 @@ pub fn direct_call_arg_type_mismatch(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if authored_name_at(source_indices.clone(), formal.clone()).as_str() == "Node"
-        && authored_name_at(source_indices.clone(), actual.clone()).as_str() == "Node"
-        && formal.binding_id != actual.binding_id
-    {
-        eprintln!(
-            "DBG type_mismatch transparent={} formal_decl={:?} actual_decl={:?} formal_bind={:?} actual_bind={:?}",
-            direct_call_transparent_alias_pair(type_env.clone(), formal.clone(), actual.clone(), source_indices.clone()),
-            formal.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).map(|d| d.name.clone())),
-            actual.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).map(|d| d.name.clone())),
-            formal.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).and_then(|d| v2_rt::map_get(&type_env.bindings.clone(), d.binding_key.clone()).map(|b| b.name.clone()))),
-            actual.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).and_then(|d| v2_rt::map_get(&type_env.bindings.clone(), d.binding_key.clone()).map(|b| b.name.clone()))),
-        );
-    }
     if direct_call_transparent_alias_pair(
         type_env.clone(),
         formal.clone(),
