@@ -32,8 +32,7 @@ fn complexity_declared_budget_for_row(row: LensSubjectComplexityBudgetRow) -> Co
 }
 
 // Wave-1 COMPREP keystone: tokenize→parse→normalize→resolve→body_producer over dag_mvp1_source_text.
-data complexity_budget_row_comprep_source_bridged_add: LensSubjectComplexityBudgetRow =
-  LensSubjectComplexityBudgetRow {
+data complexity_budget_row_comprep_source_bridged_add: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
     subject_producer: comprep_source_bridged_add_arrow_with_body,
     budget: ConstantComplexity
   }
