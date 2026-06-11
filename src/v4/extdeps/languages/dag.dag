@@ -194,6 +194,7 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
   }
 }
 
+// `lm` is reserved for a model-derived canonicalization table; wave-1 delegates to _member.
 fn dag_surface_operator_canonicalization_lookup(
   lm: DagLanguageModel,
   surface_token: Symbol
