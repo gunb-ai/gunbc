@@ -2337,6 +2337,24 @@ fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
     node: node
   )
 }
+
+fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<String> {
+  bind_outcome(
+    o: type_expr_atom_binding(node: node),
+    f: fn(binding) {
+      target_binding_spelling_lookup(target: target, binding: binding)
+    }
+  )
+}
+
+fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<String> {
+  match edge.label {
+    Named { name: label } => target_binding_spelling_lookup(target: target, binding: label)
+    Positional =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
+  }
+}
+
 // A use-site carrier's identity. Ownership attaches to CARRIERS, each asked ONCE by
 // its OWN identity: a bare-atom carrier (e.g. a scalar inhabitant `rust_inhabitant_i32`)
 // IS its own identity, so take it directly via node_atom_identity. A composite/wrapper
