@@ -13,6 +13,15 @@ import std.float { Float }
 import std.measure { Measure, Time, DataRate, Frequency, One, Hertz, ByteSize }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 import std.placement_supply { HostIdentity, PlacementSupplyRow, cpu_capacity_hz_row }
+import std.cpu {
+  CpuArchitecture,
+  CpuModel,
+  CpuVendor,
+  InstructionSet,
+  ampere_altra_max_model,
+  cpu_model_facts,
+  cpu_vendor,
+}
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
@@ -34,11 +43,8 @@ type Associativity = Node
 type Commutativity = Node
 type Idempotency = Node
 type IdentityElement = Node
-type InstructionSet = Node
-
 // --- §1.7 supporting enums + measure carriers --------------------------------
 
-type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
 type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
 type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
@@ -73,19 +79,62 @@ type StorageMount {
   lifecycle: PersistenceKind
 }
 
+// Host-level CPU facts: model datum is authority for invariant physical
+// fields; deployment-only overrides stay here (BIOS-limited clock, etc.).
 type CpuFacts {
-  architecture: CpuArchitecture
-  vendor: NonEmptyStr
-  model: NonEmptyStr
-  cores: Int
-  threads: Int
-  // Sustained per-hardware-thread clock, SI hertz. Int carrier at the v2
-  // execution layer; dimensional authority is std.measure.Hertz.
-  sustained_per_thread_hz: Int
-  instruction_sets: List<InstructionSet>
+  model: Option<CpuModel>
+  sustained_per_thread_hz_override: Option<Int>
 }
 
-fn cpu_capacity_hz(cpu: CpuFacts) -> Int { cpu.threads * cpu.sustained_per_thread_hz }
+fn cpu_facts_architecture(cpu: CpuFacts) -> CpuArchitecture {
+  match cpu.model {
+    Some(m) => cpu_model_facts(m).architecture
+    None => Aarch64
+  }
+}
+
+fn cpu_facts_vendor(cpu: CpuFacts) -> Option<CpuVendor> {
+  match cpu.model {
+    Some(m) => Some(cpu_vendor(m))
+    None => None
+  }
+}
+
+fn cpu_facts_cores(cpu: CpuFacts) -> Int {
+  match cpu.model {
+    Some(m) => cpu_model_facts(m).cores
+    None => 0
+  }
+}
+
+fn cpu_facts_threads(cpu: CpuFacts) -> Int {
+  match cpu.model {
+    Some(m) => cpu_model_facts(m).threads
+    None => 0
+  }
+}
+
+fn cpu_facts_sustained_per_thread_hz(cpu: CpuFacts) -> Int {
+  match cpu.sustained_per_thread_hz_override {
+    Some(hz) => hz
+    None =>
+      match cpu.model {
+        Some(m) => cpu_model_facts(m).sustained_per_thread_hz
+        None => 0
+      }
+  }
+}
+
+fn cpu_facts_instruction_sets(cpu: CpuFacts) -> List<InstructionSet> {
+  match cpu.model {
+    Some(m) => cpu_model_facts(m).instruction_sets
+    None => []
+  }
+}
+
+fn cpu_capacity_hz(cpu: CpuFacts) -> Int {
+  cpu_facts_threads(cpu) * cpu_facts_sustained_per_thread_hz(cpu)
+}
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
@@ -206,8 +255,8 @@ fn machine_view_label(_host: ComputeHost, surface: ExecutionSurface) -> NonEmpty
 fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: Int) -> PlacementSupplyRow {
   PlacementSupplyRow {
     identity: identity,
-    hardware_threads: cpu.threads,
-    clock_hz: cpu.sustained_per_thread_hz,
+    hardware_threads: cpu_facts_threads(cpu),
+    clock_hz: cpu_facts_sustained_per_thread_hz(cpu),
     ram_bytes: ram_bytes_total,
   }
 }
@@ -219,16 +268,11 @@ fn first_cpu_from_host(host: ComputeHost) -> CpuFacts {
       _ => []
     })
     |> fold(
-      init: CpuFacts {
-        architecture: Aarch64,
-        vendor: "",
-        model: "",
-        cores: 0,
-        threads: 0,
-        sustained_per_thread_hz: 0,
-        instruction_sets: [],
-      },
-      f: (acc, c) => if acc.threads == 0 { c } else { acc })
+      init: CpuFacts { model: None, sustained_per_thread_hz_override: None },
+      f: (acc, c) => match acc.model {
+        None => c
+        Some(_) => acc
+      })
 }
 
 fn placement_supply_row_from_host(host: ComputeHost, ram_bytes_total: Int) -> PlacementSupplyRow {
@@ -429,24 +473,15 @@ data supply_srv1_host_identity: HostIdentity = "srv1"
 data supply_srv2_host_identity: HostIdentity = "srv2"
 
 // Operator fleet: Ampere Altra Max (srv1 degraded RAM; srv2 full 128 GiB).
+// Model-invariant facts (cores/threads/clock/ISA) live in std.cpu.ampere_altra_max.
 data supply_srv1_cpu: CpuFacts = CpuFacts {
-  architecture: Aarch64,
-  vendor: "Ampere",
-  model: "Altra Max",
-  cores: 128,
-  threads: 128,
-  sustained_per_thread_hz: 3000000000,
-  instruction_sets: [],
+  model: Some(ampere_altra_max_model),
+  sustained_per_thread_hz_override: None,
 }
 
 data supply_srv2_cpu: CpuFacts = CpuFacts {
-  architecture: Aarch64,
-  vendor: "Ampere",
-  model: "Altra Max",
-  cores: 128,
-  threads: 128,
-  sustained_per_thread_hz: 3000000000,
-  instruction_sets: [],
+  model: Some(ampere_altra_max_model),
+  sustained_per_thread_hz_override: None,
 }
 
 data supply_srv1_compute_host: ComputeHost = ComputeHost {

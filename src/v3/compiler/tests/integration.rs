@@ -1145,6 +1145,14 @@ mod parse_stage4_prep {
     }
 
     #[test]
+    fn handwritten_parser_accepts_cpu_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/cpu.dag"),
+            "dsl/std/cpu.dag",
+        );
+    }
+
+    #[test]
     fn handwritten_parser_accepts_compute_fabric_dag() {
         // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
         // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /

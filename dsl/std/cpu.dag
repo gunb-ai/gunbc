@@ -1,0 +1,65 @@
+// std/cpu.dag — CPU vendor/model taxonomy (types, not strings).
+//
+// Each CpuModel variant is the single data authority for model-invariant
+// physical facts (cores, threads, architecture, base clock, ISA). Host-level
+// CpuFacts in std.compute_fabric carries deployment overrides only.
+//
+// Slice (2026-06-11): CpuVendor coproduct + Ampere / Altra Max. Extend per
+// vendor module as fleet grows.
+
+module std.cpu
+
+import std.types { Int }
+
+// 🟡 forward — ISA extension catalog lands with InstructionSet substrate.
+type InstructionSet = Node
+
+type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
+
+type CpuVendor = Ampere | Intel | Amd | Apple
+
+// Per-vendor model coproducts (slice: Ampere only).
+type AmpereCpuModel = AltraMax
+
+type CpuModel = Ampere { model: AmpereCpuModel }
+
+// Model-invariant physical facts — one row per CpuModel variant.
+type CpuModelFacts {
+  vendor: CpuVendor
+  architecture: CpuArchitecture
+  cores: Int
+  threads: Int
+  sustained_per_thread_hz: Int
+  instruction_sets: List<InstructionSet>
+}
+
+// Ampere Altra Max (Neoverse-N1, 128c/128t). instruction_sets: 🟡 TODO —
+// populate when InstructionSet substrate lands (ARMv8.2 + Neoverse-N1 extensions).
+data ampere_altra_max: CpuModelFacts = CpuModelFacts {
+  vendor: Ampere,
+  architecture: Aarch64,
+  cores: 128,
+  threads: 128,
+  sustained_per_thread_hz: 3000000000,
+  instruction_sets: [],
+}
+
+data ampere_altra_max_model: CpuModel = Ampere { model: AltraMax }
+
+fn ampere_cpu_model_facts(m: AmpereCpuModel) -> CpuModelFacts {
+  match m {
+    AltraMax => ampere_altra_max
+  }
+}
+
+fn cpu_vendor(model: CpuModel) -> CpuVendor {
+  match model {
+    Ampere { model: _ } => Ampere
+  }
+}
+
+fn cpu_model_facts(model: CpuModel) -> CpuModelFacts {
+  match model {
+    Ampere { model: m } => ampere_cpu_model_facts(m)
+  }
+}
