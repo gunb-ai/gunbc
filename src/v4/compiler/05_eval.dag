@@ -153,6 +153,7 @@ import v4.extdeps.languages.dag { dag_round_trip_wave1_authorities_ready }
 import v4.extdeps.runtimes.v4_effect_io_pure {
   EffectIoFixtureStore,
   EffectIoResourceBackend,
+  effect_io_pure_append_receipt,
   effect_io_pure_apply_write,
   effect_io_pure_handler_binding,
   effect_io_pure_invoke_handler,
@@ -225,6 +226,11 @@ type EffectIoEvalBundle {
   store: EffectIoFixtureStore
   handlers: EffectHandlerBinding
   receipt_log: EffectReceiptLog
+}
+
+type EffectIoYieldOutcome {
+  bundle: EffectIoEvalBundle
+  value: RuntimeValue
 }
 
 // 🟡 gated — feature:eval-with-context-only — consumer-internal run bundle selector; Absent is the
@@ -1485,12 +1491,43 @@ fn eval_invoke_effect_handler(
   effect_io_pure_invoke_handler(handler: handler, request: request)
 }
 
+fn eval_bundle_with_receipt_appended(
+  bundle: EffectIoEvalBundle,
+  request: EffectRequest,
+  result: Outcome<RuntimeValue>
+) -> EffectIoEvalBundle {
+  EffectIoEvalBundle {
+    backend: bundle.backend,
+    store: bundle.store,
+    handlers: bundle.handlers,
+    receipt_log: effect_io_pure_append_receipt(
+      log: bundle.receipt_log,
+      request: request,
+      result: result
+    )
+  }
+}
+
 // Eval yields a typed EffectRequest to the inject-per-run handler binding; handler-returns-value resumes the fold (Q-R2).
+// Appends each yield to receipt_log (design §4.4 replay surface).
 fn eval_yield_effect_request(
   bundle: EffectIoEvalBundle,
   request: EffectRequest
-) -> Outcome<RuntimeValue> {
-  eval_invoke_effect_handler(bundle: bundle, request: request)
+) -> Outcome<EffectIoYieldOutcome> {
+  let result = eval_invoke_effect_handler(bundle: bundle, request: request)
+  let logged_bundle = eval_bundle_with_receipt_appended(
+    bundle: bundle,
+    request: request,
+    result: result
+  )
+  match result {
+    Accepted { value: v, diagnostics: None } =>
+      Accepted {
+        value: EffectIoYieldOutcome { bundle: logged_bundle, value: v },
+        diagnostics: None
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
 }
 
 fn eval_effect_io_roundtrip_args_present(args: List<RuntimeValue>) -> Bool {
@@ -1519,7 +1556,8 @@ fn eval_effect_io_roundtrip(
             let write_request = effect_io_pure_write_request(args: write_args)
             bind_outcome(
               o: eval_yield_effect_request(bundle: bundle, request: write_request),
-              f: fn(written) {
+              f: fn(write_yield) {
+                let written = write_yield.value
                 if written == payload {
                   match effect_io_pure_locator_from_args(
                     backend: bundle.backend,
@@ -1536,11 +1574,16 @@ fn eval_effect_io_roundtrip(
                         backend: bundle.backend,
                         store: store1,
                         handlers: rebound.handlers,
-                        receipt_log: bundle.receipt_log
+                        receipt_log: write_yield.bundle.receipt_log
                       }
                       let read_args = Cons { head: locator_arg, tail: Empty }
                       let read_request = effect_io_pure_read_request(args: read_args)
-                      eval_yield_effect_request(bundle: read_bundle, request: read_request)
+                      bind_outcome(
+                        o: eval_yield_effect_request(bundle: read_bundle, request: read_request),
+                        f: fn(read_yield) {
+                          Accepted { value: read_yield.value, diagnostics: None }
+                        }
+                      )
                     Violates { diagnostic: d } =>
                       Rejected { diagnostics: diagnostics_singleton(d: d) }
                   }
