@@ -10,7 +10,9 @@ use v3_compiler::dag::{Behavior, Dag, PortState, TransformTarget};
 use v3_compiler::diagnostics::{render_diagnostic_for_target, Correction, DiagnosticStyleTarget};
 use v3_compiler::lens_cost::cost_of;
 
-use crate::common::{cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome};
+use crate::common::{
+    cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
+};
 use v3_compiler::types::TypeShape;
 use v3_compiler::Diagnostic;
 
@@ -563,7 +565,8 @@ fn lens_cost_nested_program_counts_more_structure_than_flat_program() {
 
 #[test]
 fn t1_5_4_structural_recursive_loop_cost_exceeds_literal_body_cost() {
-    let literal = cached_compile_to_dag("fn constant(n: Int) -> Int = 0", "lens_cost_literal_fn.v3");
+    let literal =
+        cached_compile_to_dag("fn constant(n: Int) -> Int = 0", "lens_cost_literal_fn.v3");
     let recursive = cached_compile_to_dag(
         "\
 fn countdown(n: Int) -> Int =
@@ -636,16 +639,14 @@ fn kf_1_structural_list_operation_ordering_holds() {
 
 #[test]
 fn kf_1_non_max_branch_work_does_not_change_cost() {
-    let baseline = compile_to_dag(
+    let baseline = cached_compile_to_dag(
         "let r: Int = if 1 > 0 then 10 + 20 + 30 + 40 + 50 else 60 + 70",
         "lens_cost_branch_baseline.v3",
-    )
-    .expect("baseline branch compiles");
-    let extra_dead_work = compile_to_dag(
+    );
+    let extra_dead_work = cached_compile_to_dag(
         "let r: Int = if 1 > 0 then 10 + 20 + 30 + 40 + 50 else 60 + 70 + 80",
         "lens_cost_branch_dead_work.v3",
-    )
-    .expect("branch with larger non-max path compiles");
+    );
 
     let baseline_cost = bind_cost(&baseline, "r");
     let extra_dead_work_cost = bind_cost(&extra_dead_work, "r");
