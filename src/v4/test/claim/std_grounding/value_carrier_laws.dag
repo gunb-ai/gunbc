@@ -8,6 +8,7 @@
 
 module v4.test.claim.std_grounding.value_carrier_laws
 
+import v4.std.collection { empty_map, map_insert }
 import v4.std.runtime { ReferenceIdentical, StructurallyCompared, identity_evidence_equal }
 import v4.std.value_carrier { Ephemeral, Persistent, list_carrier, map_carrier }
 import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
@@ -18,7 +19,7 @@ import v4.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
 fn sharing_unobservable_list_holds() -> Bool {
   let shared = [1, 2, 3]
-  let aliased = shared.concat(shared)
+  let aliased = concat(shared, shared)
   let fresh = [1, 2, 3, 1, 2, 3]
   aliased == fresh
 }
@@ -33,9 +34,10 @@ fn sharing_unobservable_map_holds() -> Bool {
 // The same entries yield equal maps regardless of insertion order.
 
 fn map_equality_insert_order_independent_holds() -> Bool {
-  let ab = empty_map() |> map_insert("a", 1) |> map_insert("b", 2)
-  let ba = empty_map() |> map_insert("b", 2) |> map_insert("a", 1)
-  ab == ba
+  let abc = empty_map() |> map_insert("a", 1) |> map_insert("b", 2) |> map_insert("c", 3)
+  let cba = empty_map() |> map_insert("c", 3) |> map_insert("b", 2) |> map_insert("a", 1)
+  let bca = empty_map() |> map_insert("b", 2) |> map_insert("c", 3) |> map_insert("a", 1)
+  (abc == cba) && (abc == bca)
 }
 
 // Upsert is last-write-wins independent of the path taken to the same final
@@ -52,8 +54,8 @@ fn map_equality_overwrite_path_independent_holds() -> Bool {
 // concatenation as structure (no per-site flattening through the
 // free_monoid_to_vec chokepoint — the actual copy path phase-0 measured).
 fn freemonoid_association_unobservable_holds() -> Bool {
-  let left_assoc = [1].concat([2]).concat([3])
-  let right_assoc = [1].concat([2].concat([3]))
+  let left_assoc = concat(concat([1], [2]), [3])
+  let right_assoc = concat([1], concat([2], [3]))
   let flat = [1, 2, 3]
   (left_assoc == flat) && (right_assoc == flat)
 }
