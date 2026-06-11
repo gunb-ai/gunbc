@@ -147,40 +147,6 @@ fn transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   transform_positional_operand_binding(node: node, index: 0)
 }
 
-fn value_expr_positional_child_atom_is_at(
-  targets: FreeMonoid<Node>,
-  wanted: Int,
-  sym: Symbol,
-  cursor: Int
-) -> Bool {
-  match targets {
-    Empty => false
-    Cons { head: child, tail: rest } =>
-      if cursor == wanted {
-        match child.kind {
-          TypeNode { connective: Atom { identity: id } } => id == sym
-          _ => false
-        }
-      } else {
-        value_expr_positional_child_atom_is_at(
-          targets: rest,
-          wanted: wanted,
-          sym: sym,
-          cursor: cursor + 1
-        )
-      }
-  }
-}
-
-fn value_expr_positional_child_atom_is(node: Node, index: Int, sym: Symbol) -> Bool {
-  value_expr_positional_child_atom_is_at(
-    targets: node_positional_child_targets(node: node),
-    wanted: index,
-    sym: sym,
-    cursor: 0
-  )
-}
-
 fn value_expr_declared_inhabitants_from_target(target: TargetModel) -> Outcome<Node> {
   target_bundle_named_child(
     target: target,
@@ -188,6 +154,13 @@ fn value_expr_declared_inhabitants_from_target(target: TargetModel) -> Outcome<N
   )
 }
 
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:target-wave1-signature-declared-inhabitants — consumer:06_value_expression
+// value_expr_arrow_body_scope_binding — bind: COMPREP wave-1 Arrow signature vs
+// TargetModel.declared_inhabitants — owner: T6 value-expression (lively-badger-242) —
+// lane: compiler 06_value_expression — dissolve-on-arrival: substrate Outcome-bearing
+// signature query replaces Bool fold + silent Rejected swallow; forbidden: parallel
+// compiler-stage wave-1 signature matchers.
 fn value_expr_wave1_add_signature_matches_for_target(
   arrow: Node,
   target: TargetModel
@@ -202,6 +175,13 @@ fn value_expr_wave1_add_signature_matches_for_target(
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:t6-value-expr-bodied-arrow-serialize — consumer:06_value_expression
+// value_expr_arrow_body_scope_binding — bind: PR #4627 / docs/design-value-emit-schema.md §4.5 —
+// owner: T6 value-expression (lively-badger-242) — lane: compiler 06_value_expression +
+// 06_translate — dissolve-on-arrival: bodied Arrow serialize routes through grammar
+// relation-row / connective dispatch; delete transform-body Bool predicate steady-state;
+// forbidden: ComputationNode behavior Transform match for binding-validation dispatch.
 fn value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
@@ -213,32 +193,19 @@ fn value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   }
 }
 
-fn value_expr_binding_in_arrow_domain(arrow: Node, binding: Symbol) -> Bool {
-  match arrow_domain_named_param_bindings(arrow: arrow) {
-    Accepted { value: bindings, diagnostics: _ } =>
-      fold_list(xs: bindings, empty: false, cons: fn(acc, sym) {
-        if acc {
-          true
-        } else if sym == binding {
-          true
-        } else {
-          false
-        }
-      })
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn value_expr_arrow_body_scope_binding_valid(
-  arrow: Node,
+fn value_expr_binding_in_declared_param_list(
   binding: Symbol,
-  target: TargetModel
+  bindings: List<Symbol>
 ) -> Bool {
-  value_expr_binding_in_arrow_domain(arrow: arrow, binding: binding)
-    && (
-      value_expr_wave1_add_signature_matches_for_target(arrow: arrow, target: target)
-      || value_expr_arrow_has_transform_body(arrow: arrow)
-    )
+  fold_list(xs: bindings, empty: false, cons: fn(acc, sym) {
+    if acc {
+      true
+    } else if sym == binding {
+      true
+    } else {
+      false
+    }
+  })
 }
 
 fn value_expr_arrow_body_scope_binding(
@@ -247,20 +214,25 @@ fn value_expr_arrow_body_scope_binding(
   binding: Symbol,
   target: TargetModel
 ) -> Outcome<Symbol> {
-  if value_expr_arrow_body_scope_binding_valid(
-    arrow: arrow,
-    binding: binding,
-    target: target
-  ) {
-    outcome_accepted(binding)
-  } else {
-    outcome_rejected(
-      value_expr_diagnostic(
-        reason: value_expr_reason_body_scope_binding_invalid,
-        node: body
-      )
-    )
-  }
+  bind_outcome(
+    o: arrow_domain_named_param_bindings(arrow: arrow),
+    f: fn(bindings) {
+      if value_expr_binding_in_declared_param_list(binding: binding, bindings: bindings)
+        && (
+          value_expr_wave1_add_signature_matches_for_target(arrow: arrow, target: target)
+          || value_expr_arrow_has_transform_body(arrow: arrow)
+        ) {
+        outcome_accepted(binding)
+      } else {
+        outcome_rejected(
+          value_expr_diagnostic(
+            reason: value_expr_reason_body_scope_binding_invalid,
+            node: body
+          )
+        )
+      }
+    }
+  )
 }
 
 fn project_transform_primitive_apply_in_arrow_scope(
@@ -406,14 +378,7 @@ fn value_expression_to_concrete_tokens(
   )
 }
 
-// 🟡 gated — predicate-dissolution interim (INVARIANTS.md P3 / modeling-discipline Practice 10) —
-// feature:t6-value-expr-bodied-arrow-serialize — consumer:06_translate bodied-arrow translate/serialize
-// dispatch — bind: PR #4627 / docs/design-value-emit-schema.md §4.5 (#4623 vetting consumer) —
-// owner: T6 value-expression skeleton (lively-badger-242) — lane: compiler 06_value_expression +
-// 06_translate — dissolve-on-arrival: bodied Arrow serialize routes through grammar relation-row /
-// connective dispatch (TargetBodiedArrowStatementScaffold absorbed into translation_rules); delete
-// arrow_has_transform_body, translate_node bodied bypass, and serialize bodied branches — forbidden:
-// steady-state Bool predicates over ComputationNode behavior Transform for emit dispatch.
+// Export wrapper — disposition on value_expr_arrow_has_transform_body (Practice 10 consumer site).
 fn arrow_has_transform_body(arrow: Node) -> Bool {
   value_expr_arrow_has_transform_body(arrow: arrow)
 }
