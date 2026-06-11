@@ -163,6 +163,59 @@ fn lex_rule_pattern(rule: LexRule) -> LexPattern {
 }
 
 
+// M11 char-class kernel: single-char predicate match; factors char + char_class arms.
+fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult {
+  match string_is_empty(s: source) {
+    true => LexMatchRejected
+    false =>
+      match string_head(s: source) {
+        CharAbsent => LexMatchRejected
+        CharFound { value: c } =>
+          match pred(c) {
+            true =>
+              match string_tail(s: source) {
+                TailFound { tail: rest } =>
+                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: c, tail: Empty } }
+                TailAbsent => LexMatchRejected
+              }
+            false => LexMatchRejected
+          }
+      }
+  }
+}
+
+
+// M11 iteration kernel: greedy fold loop; factors repeat + one_or_more arms.
+// C3 zero-width guard: string_is_empty(consumed) → done:true; fold_list(xs:init.remaining) bounds.
+fn lex_repeat_loop(elem_r: LexMatchThunk, init: RepeatState) -> RepeatState {
+  fold_list(
+    xs: init.remaining,
+    empty: init,
+    cons: fn(state, _) {
+      match state.done {
+        true => state
+        false =>
+          match elem_r.apply(state.remaining) {
+            LexMatchRejected =>
+              RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+            LexMatchAccepted { remaining: rest, lexeme: consumed } =>
+              match string_is_empty(s: consumed) {
+                true =>
+                  RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+                false =>
+                  RepeatState {
+                    remaining: rest,
+                    lexeme: list_append(left: state.lexeme, right: consumed),
+                    done: false
+                  }
+              }
+          }
+      }
+    }
+  )
+}
+
+
 // lex_try_rule: grammar-generic tokenizer — delegates ALL per-variant logic to fold_lex_pattern<LexMatchThunk>.
 // No per-variant hand arms remain; lex_match_pattern deleted (§1.8 Class-B dissolution).
 // C1-C4 fail-safe arms embedded in algebra handlers; parity verified by BoolWitnessClaim (C6).
@@ -200,46 +253,10 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
         } }
       },
       char: fn(expected) {
-        LexMatchThunk { apply: fn(s) {
-          match string_is_empty(s: s) {
-            true => LexMatchRejected
-            false =>
-              match string_head(s: s) {
-                CharAbsent => LexMatchRejected
-                CharFound { value: c } =>
-                  match c == expected {
-                    true =>
-                      match string_tail(s: s) {
-                        TailFound { tail: rest } =>
-                          LexMatchAccepted { remaining: rest, lexeme: Cons { head: c, tail: Empty } }
-                        TailAbsent => LexMatchRejected
-                      }
-                    false => LexMatchRejected
-                  }
-              }
-          }
-        } }
+        LexMatchThunk { apply: fn(s) { lex_match_char_pred(pred: fn(c) { c == expected }, source: s) } }
       },
       char_class: fn(class) {
-        LexMatchThunk { apply: fn(s) {
-          match string_is_empty(s: s) {
-            true => LexMatchRejected
-            false =>
-              match string_head(s: s) {
-                CharAbsent => LexMatchRejected
-                CharFound { value: c } =>
-                  match char_in_class(c: c, class: class) {
-                    true =>
-                      match string_tail(s: s) {
-                        TailFound { tail: rest } =>
-                          LexMatchAccepted { remaining: rest, lexeme: Cons { head: c, tail: Empty } }
-                        TailAbsent => LexMatchRejected
-                      }
-                    false => LexMatchRejected
-                  }
-              }
-          }
-        } }
+        LexMatchThunk { apply: fn(s) { lex_match_char_pred(pred: fn(c) { char_in_class(c: c, class: class) }, source: s) } }
       },
       sequence: fn(left_r, right_r) {
         LexMatchThunk { apply: fn(s) {
