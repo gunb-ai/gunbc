@@ -650,9 +650,28 @@ fn target_atom_realization_lookup_step(
   }
 }
 
+// Named step for the second-pass Optional fold: explicit row type pins v2 type inference.
+// The v2 type-inferencer cannot resolve field access on a closure element whose type is
+// constrained only through a polymorphic accumulator (optional_absent()); routing through
+// a named function with an explicit 'row: TargetAtomRealization' annotation fixes it.
+fn target_atom_realization_lookup_extract_row_step(
+  acc: Optional<TargetAtomRealization>,
+  row: TargetAtomRealization,
+  source_carrier: Node
+) -> Optional<TargetAtomRealization> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+        optional_present(value: row)
+      } else {
+        acc
+      }
+  }
+}
+
 // Second-pass extraction for the typed-list path: after PassingCandidateFold confirms exactly
-// one matching row, re-scan to retrieve the typed TargetAtomRealization. Named helper avoids
-// nested fn(acc, row) closures that confuse the v2 type-inference engine.
+// one matching row, re-scan to retrieve the typed TargetAtomRealization.
 fn target_atom_realization_lookup_extract_row(
   catalog: List<TargetAtomRealization>,
   source_carrier: Node
@@ -661,15 +680,11 @@ fn target_atom_realization_lookup_extract_row(
     xs: catalog,
     empty: optional_absent(),
     cons: fn(acc, item) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if content_hash(n: item.source_carrier) == content_hash(n: source_carrier) {
-            optional_present(value: item)
-          } else {
-            acc
-          }
-      }
+      target_atom_realization_lookup_extract_row_step(
+        acc: acc,
+        row: item,
+        source_carrier: source_carrier
+      )
     }
   )
 }
