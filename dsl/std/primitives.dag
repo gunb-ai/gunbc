@@ -13,6 +13,9 @@
 // The `work` field is a symbolic CostExpr describing total work.
 // The `output_size` field describes the size of the result.
 // The `certainty` field marks whether the bound is proven or amortized.
+// The `carrier_cost` field (ctrl#1533 M-B) declares whether — and how —
+// the cost depends on the persistence kind of the declared value carrier
+// (v4.std.value_carrier).
 //
 // Size variables follow the ROADMAP Track D convention:
 //   n = primary input size (e.g., string length, list length)
@@ -31,11 +34,38 @@ module std.primitives
 
 type Certainty = Proven | Amortized | Expected | Conservative
 
+// Carrier-cost sensitivity (ctrl#1533 M-B): whether a primitive's work
+// depends on the persistence kind of the M-A value carrier declared in
+// v4.std.value_carrier (Map: hash array mapped trie, List: relaxed radix
+// balanced tree). For sensitive primitives both arms are declared:
+// `ephemeral_work` is the cost when an immutable-value host implements the
+// collection with an Ephemeral carrier (full copy before update — what the
+// v2 interpreter does today; the quadratic-allocation term ctrl#1533
+// phase 0 measured), `persistent_work` the cost under the declared
+// Persistent carrier (what the phase-2 host swap implements). The
+// persistent arms must agree with the CarrierCost data on the M-A carrier
+// declarations (update_work "log32 n" / "log n"); disagreement resolves by
+// reading those declarations. `work`/`output_size` above keep their
+// historical convention: they describe the ownership-aware emitted-code
+// path (move + copy-on-write), which does not share the ephemeral
+// pathology. A claim asserting "fold-built collections are sub-quadratic"
+// resolves against `persistent_work` by execution — this field is the
+// structural gate, not RSS anecdotes.
+// 🟢 terminal — Practice 4 (docs/modeling-discipline.md §4) — the arms are
+// presence/absence of carrier-conditional cost structure. Variant-is-data
+// N/A: the payload is meaningless for insensitive primitives, and an
+// empty-string sentinel record would be worse vocabulary (dead fields on
+// 49 contracts). No richer named source; arms mutually exclusive.
+type CarrierCostSensitivity
+  = CarrierInsensitive
+  | CarrierSensitive { ephemeral_work: String, persistent_work: String }
+
 type PrimitiveContract {
   name: String
   work: String
   output_size: String
   certainty: Certainty
+  carrier_cost: CarrierCostSensitivity
   notes: String
 }
 
@@ -52,6 +82,7 @@ data char_at_contract: PrimitiveContract = {
   work: "pos",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Linear scan to pos in UTF-8; O(1) if backed by a char array"
 }
 
@@ -64,6 +95,7 @@ data string_length_contract: PrimitiveContract = {
   work: "n",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "O(n) char count in UTF-8; O(1) with cached length"
 }
 
@@ -75,6 +107,7 @@ data substring_contract: PrimitiveContract = {
   work: "end",
   output_size: "end - start",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Must iterate chars to find byte boundaries; output allocated"
 }
 
@@ -85,6 +118,7 @@ data string_contains_contract: PrimitiveContract = {
   work: "n * m",
   output_size: "1",
   certainty: Conservative,
+  carrier_cost: CarrierInsensitive,
   notes: "Naive search O(n*m); Rust std uses Two-Way which is O(n+m) typical"
 }
 
@@ -95,6 +129,7 @@ data starts_with_contract: PrimitiveContract = {
   work: "m",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Compare first m characters"
 }
 
@@ -105,6 +140,7 @@ data ends_with_contract: PrimitiveContract = {
   work: "m",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Compare last m characters"
 }
 
@@ -115,6 +151,7 @@ data concat_contract: PrimitiveContract = {
   work: "n + m",
   output_size: "n + m",
   certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "log(n + m)" },
   notes: "Allocates new sequence of combined length"
 }
 
@@ -125,6 +162,7 @@ data split_contract: PrimitiveContract = {
   work: "n",
   output_size: "k",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Single pass over input; k = number of resulting segments"
 }
 
@@ -135,6 +173,7 @@ data repeat_contract: PrimitiveContract = {
   work: "m * n",
   output_size: "m * n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "m = length of string, n = repetition count"
 }
 
@@ -145,6 +184,7 @@ data chars_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "One allocation per character"
 }
 
@@ -155,6 +195,7 @@ data to_string_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Conservative,
+  carrier_cost: CarrierInsensitive,
   notes: "Depends on value structure; n = serialized size"
 }
 
@@ -165,6 +206,7 @@ data parse_int_contract: PrimitiveContract = {
   work: "n",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Single pass over digit characters"
 }
 
@@ -175,6 +217,7 @@ data str_eq_contract: PrimitiveContract = {
   work: "min(n, m)",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Short-circuits on first mismatch or length difference"
 }
 
@@ -185,6 +228,7 @@ data replace_section_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Conservative,
+  carrier_cost: CarrierInsensitive,
   notes: "Must scan for section, then rebuild string"
 }
 
@@ -199,6 +243,7 @@ data code_point_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Extract first char's code point"
 }
 
@@ -209,6 +254,7 @@ data from_code_point_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Construct single-char string from code point"
 }
 
@@ -223,6 +269,7 @@ data scan_while_contract: PrimitiveContract = {
   work: "k",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "k = number of chars satisfying predicate; pred called per char"
 }
 
@@ -233,6 +280,7 @@ data skip_horizontal_ws_contract: PrimitiveContract = {
   work: "k",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "k = number of whitespace chars skipped"
 }
 
@@ -243,6 +291,7 @@ data scan_to_eol_contract: PrimitiveContract = {
   work: "k",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "k = distance from start to next newline or end"
 }
 
@@ -253,6 +302,7 @@ data scan_string_end_contract: PrimitiveContract = {
   work: "k",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "k = distance from start to closing quote; handles backslash escapes"
 }
 
@@ -267,6 +317,7 @@ data map_contract: PrimitiveContract = {
   work: "n * f_work",
   output_size: "n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "n = input length; f_work = cost of applying f to one element"
 }
 
@@ -277,6 +328,7 @@ data filter_contract: PrimitiveContract = {
   work: "n * pred_work",
   output_size: "k <= n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "n = input length; k = number of elements passing predicate"
 }
 
@@ -287,6 +339,7 @@ data filter_map_contract: PrimitiveContract = {
   work: "n * f_work",
   output_size: "k <= n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "n = input length; k = number of non-unit results"
 }
 
@@ -297,6 +350,7 @@ data flat_map_contract: PrimitiveContract = {
   work: "n * f_work",
   output_size: "sum(f_output_sizes)",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "n = input length; total output is sum of per-element outputs"
 }
 
@@ -307,6 +361,7 @@ data fold_contract: PrimitiveContract = {
   work: "n * f_work",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "n = input length; accumulator cost depends on f semantics"
 }
 
@@ -317,6 +372,7 @@ data any_contract: PrimitiveContract = {
   work: "k * pred_work",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "k <= n; short-circuits on first true; worst case k = n"
 }
 
@@ -327,6 +383,7 @@ data all_contract: PrimitiveContract = {
   work: "k * pred_work",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "k <= n; short-circuits on first false; worst case k = n"
 }
 
@@ -337,6 +394,7 @@ data contains_contract: PrimitiveContract = {
   work: "n",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Linear scan; short-circuits on match"
 }
 
@@ -347,6 +405,7 @@ data join_contract: PrimitiveContract = {
   work: "n + total_length",
   output_size: "total_length + (n - 1) * sep_length",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Must convert each element to string and concatenate"
 }
 
@@ -357,6 +416,7 @@ data sort_contract: PrimitiveContract = {
   work: "n * log(n)",
   output_size: "n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Comparison-based sort"
 }
 
@@ -367,6 +427,7 @@ data sort_by_contract: PrimitiveContract = {
   work: "n * (key_work + log(n))",
   output_size: "n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Computes key for each element, then sorts by key"
 }
 
@@ -377,6 +438,7 @@ data dedup_contract: PrimitiveContract = {
   work: "n * n",
   output_size: "k <= n",
   certainty: Conservative,
+  carrier_cost: CarrierInsensitive,
   notes: "Current impl checks all prior elements (quadratic); sorted input would be O(n)"
 }
 
@@ -387,6 +449,7 @@ data len_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Vec::len is O(1)"
 }
 
@@ -397,6 +460,7 @@ data count_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Alias for len; Vec::len is O(1)"
 }
 
@@ -407,6 +471,7 @@ data sum_contract: PrimitiveContract = {
   work: "n",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Single pass accumulation"
 }
 
@@ -417,6 +482,7 @@ data first_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log n" },
   notes: "Direct index access"
 }
 
@@ -427,6 +493,7 @@ data last_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log n" },
   notes: "Direct index access on Vec"
 }
 
@@ -437,6 +504,7 @@ data get_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log n" },
   notes: "Direct index access on Vec"
 }
 
@@ -447,6 +515,7 @@ data max_by_contract: PrimitiveContract = {
   work: "n * f_work",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Single pass with key computation per element"
 }
 
@@ -457,6 +526,7 @@ data reverse_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Clone and reverse in place"
 }
 
@@ -467,6 +537,7 @@ data list_push_contract: PrimitiveContract = {
   work: "1",
   output_size: "n + 1",
   certainty: Amortized,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n", persistent_work: "log n" },
   notes: "O(1) amortized with RcVec; O(n) if Rc has multiple refs (clone)"
 }
 
@@ -477,6 +548,7 @@ data append_contract: PrimitiveContract = {
   work: "m",
   output_size: "n + m",
   certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "log(n + m)" },
   notes: "Extends base list by m elements"
 }
 
@@ -487,6 +559,7 @@ data skip_contract: PrimitiveContract = {
   work: "n",
   output_size: "max(0, len - n)",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Collects remaining elements after skip"
 }
 
@@ -497,6 +570,7 @@ data zip_contract: PrimitiveContract = {
   work: "min(n, m)",
   output_size: "min(n, m)",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Produces pairs up to shorter list length"
 }
 
@@ -507,6 +581,7 @@ data enumerate_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Wraps each element with its index"
 }
 
@@ -521,6 +596,7 @@ data empty_map_contract: PrimitiveContract = {
   work: "1",
   output_size: "0",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Allocates empty HashMap"
 }
 
@@ -531,6 +607,7 @@ data map_insert_contract: PrimitiveContract = {
   work: "1",
   output_size: "n + 1",
   certainty: Amortized,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n", persistent_work: "log32 n" },
   notes: "O(1) amortized for HashMap; O(n) if Rc clone needed"
 }
 
@@ -541,6 +618,7 @@ data map_get_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Expected,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log32 n" },
   notes: "O(1) expected for HashMap; O(n) worst case"
 }
 
@@ -551,6 +629,7 @@ data map_contains_key_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Expected,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log32 n" },
   notes: "O(1) expected for HashMap"
 }
 
@@ -561,6 +640,7 @@ data lookup_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Expected,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log32 n" },
   notes: "O(1) expected for HashMap; wraps result in Some/None"
 }
 
@@ -571,6 +651,7 @@ data map_merge_contract: PrimitiveContract = {
   work: "m",
   output_size: "n + m",
   certainty: Amortized,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "m * log32(n + m)" },
   notes: "Extends base by m overlay entries; O(n + m) if Rc clone needed"
 }
 
@@ -581,6 +662,7 @@ data map_keys_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Iterates all entries to collect keys"
 }
 
@@ -591,6 +673,7 @@ data map_values_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "Iterates all entries to collect values"
 }
 
@@ -601,6 +684,7 @@ data index_by_contract: PrimitiveContract = {
   work: "n * key_fn_work",
   output_size: "n",
   certainty: Amortized,
+  carrier_cost: CarrierInsensitive,
   notes: "One hash insert per element; last writer wins on duplicate keys"
 }
 
@@ -615,6 +699,7 @@ data with_contract: PrimitiveContract = {
   work: "n + m",
   output_size: "n + m",
   certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "m * log32 n" },
   notes: "n = base fields, m = update fields; merges maps"
 }
 
@@ -629,6 +714,7 @@ data filesystem_read_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "n = file size in bytes; I/O bound, not CPU bound"
 }
 
@@ -643,6 +729,7 @@ data to_bytes_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Conservative,
+  carrier_cost: CarrierInsensitive,
   notes: "n = serialized size; depends on value structure"
 }
 
@@ -653,6 +740,7 @@ data to_json_contract: PrimitiveContract = {
   work: "n",
   output_size: "n",
   certainty: Conservative,
+  carrier_cost: CarrierInsensitive,
   notes: "n = serialized size; depends on value structure"
 }
 
@@ -663,6 +751,7 @@ data hash_contract: PrimitiveContract = {
   work: "n",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "n = serialized size of value; output is fixed-length hash string"
 }
 
@@ -671,6 +760,7 @@ data hash_combine_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "returns opaque Hash carrier (16-hex digest, not String); FNV-1a 64-bit content-addressing fingerprint — digest equality is cache lookup, not proof-grade structural injectivity (docs/thesis/what-else-falls-out.md §Content-hash caching); hash_combine rejects non-digest inputs at runtime boundary"
 }
 
@@ -679,5 +769,6 @@ data atom_identity_hash_contract: PrimitiveContract = {
   work: "n",
   output_size: "1",
   certainty: Proven,
+  carrier_cost: CarrierInsensitive,
   notes: "returns opaque Hash carrier (not String); n = Symbol spelling length at runtime boundary"
 }

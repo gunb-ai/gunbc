@@ -31,3 +31,15 @@ fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult 
 fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
   left.value == right.value
 }
+
+// Wave-2: advance allocator floor when composing memoized parse cells (parse_prov_merge).
+fn occurrence_id_allocator_advance_to(
+  alloc: OccurrenceIdAllocator,
+  min_next: Int
+) -> OccurrenceIdAllocator {
+  if alloc.next_id < min_next {
+    OccurrenceIdAllocator { next_id: min_next }
+  } else {
+    alloc
+  }
+}

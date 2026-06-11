@@ -18,7 +18,7 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.verification {
   EqualsClaim,
@@ -33,7 +33,7 @@ import v4.std.witness { Holds }
 data disj_max_cheap_body: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^disj_max_cheap_body_atom } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data disj_max_expensive_body: Node = Node {
@@ -49,15 +49,15 @@ data disj_max_expensive_body: Node = Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: ^disj_max_expensive_body_atom } },
               children: [],
-              span: Unanchored
+              occurrence_id: SyntheticOccurrence
             }
           }
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
       }
     }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data disj_max_input: Node = Node {
@@ -66,7 +66,7 @@ data disj_max_input: Node = Node {
     Edge { label: Positional, target: disj_max_cheap_body },
     Edge { label: Positional, target: disj_max_expensive_body }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 fn disj_max_claim_holds() -> Bool {
@@ -84,7 +84,7 @@ fn disj_max_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

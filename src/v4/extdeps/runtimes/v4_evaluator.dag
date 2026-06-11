@@ -25,7 +25,7 @@ import v4.std.model_core {
   ResourceAccess,
   wave1_model_core
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.runtime {
   AllocationSemantics,
   BindInterpreter,
@@ -66,7 +66,7 @@ fn v4_eval_wave1_unit_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v4_eval_wave1_unit_type_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -74,7 +74,7 @@ fn v4_eval_wave1_boundary_operation_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v4_eval_wave1_boundary_operation_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -82,7 +82,7 @@ fn v4_eval_wave1_effect_signature_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v4_eval_wave1_boundary_effect_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

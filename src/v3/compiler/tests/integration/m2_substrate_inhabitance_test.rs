@@ -120,14 +120,6 @@ fn positional_payload(
     conj_field_by_id(dag, id, "_0")
 }
 
-fn workspace_root() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("expected src/v3/compiler -> workspace root")
-        .to_path_buf()
-}
-
 fn runtime_value_variant_payload(dag: &Dag, variant: &str) -> v3_compiler::dag::DeclarationId {
     let value = dag
         .declaration_by_name("Value")

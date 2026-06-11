@@ -1,54 +1,25 @@
 // src/v4/std/provenance.dag
 // Scope: source-text provenance substrate (T-8 / PROV A-pivot).
-// Status: transitional — on-tree Node.span (#4604) dissolves Phase 1+2; off-tree SpanIndex
-//   (OccurrenceId → OriginEvent) is the A-pivot target (design-provenance-span.md §4.5).
+// Status: Phase 1+2 landed — on-tree Node.span dissolved (#4604 revert); off-tree SpanIndex
+//   (OccurrenceId → OriginEvent) carrier + record/lookup/merge substrate
+//   (design-provenance-span.md §4.5).
 
 module v4.std.provenance
 
 import v4.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
-import v4.std.collection {
-  Absent,
-  List,
-  Map,
-  Present,
-  empty_map,
-  map_get,
-  map_insert
-}
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, list_snoc_item }
+import v4.std.collection { List }
 import v4.std.diagnostic {
-  Accepted,
   ByteRange,
   Diagnostic,
   ExternalContractUnknown,
   Locus,
-  Outcome,
-  Rejected,
   Textual,
-  UserInputBoundary,
   Unavailable,
-  diagnostics_merge,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus,
-  rejected_with_pending
+  port_locus
 }
-import v4.std.node {
-  Anchored,
-  Edge,
-  Node,
-  NodeFold,
-  NodeSpan,
-  OccurrenceId,
-  SourceSpan,
-  Symbol,
-  Unanchored,
-  fold_node,
-  merge_node_span_same_file,
-  node_span_has_byte_extent,
-  node_span_is_anchored,
-  node_span_same_file,
-  source_span_byte_extent_admits
-}
+import v4.std.node { Node, OccurrenceId, Symbol }
+import v4.std.occurrence_id { occurrence_id_eq }
 import v4.std.witness { Holds, Violates, Witness }
 
 // --- A-pivot off-tree provenance (design-provenance-span.md §4.5) ---
@@ -62,16 +33,27 @@ fn origin_event_from_source(locus: Locus) -> OriginEvent {
   FromSource { locus: locus }
 }
 
+type SpanIndexEntry {
+  occurrence: OccurrenceId
+  event: OriginEvent
+}
+
+// List-backed index — linear lookup/merge (design-provenance-span.md §4.4 wave-1 scale).
 type SpanIndex {
-  events: Map<OccurrenceId, OriginEvent>
+  entries: FreeMonoid<SpanIndexEntry>
 }
 
 fn span_index_empty() -> SpanIndex {
-  SpanIndex { events: empty_map() }
+  SpanIndex { entries: Empty }
 }
 
 fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> SpanIndex {
-  SpanIndex { events: map_insert(m: index.events, key: id, value: event) }
+  SpanIndex {
+    entries: list_snoc_item(
+      xs: index.entries,
+      item: SpanIndexEntry { occurrence: id, event: event }
+    )
+  }
 }
 
 data span_index_occurrence_absent: Symbol = span_index_occurrence_absent
@@ -84,137 +66,95 @@ fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
   }
 }
 
-fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
-  match map_get(m: index.events, key: id) {
-    Accepted { value: opt, diagnostics: _ } =>
-      match opt {
-        Present { value: event } => Holds { value: event }
-        Absent => Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
+fn span_index_lookup_entries(
+  entries: FreeMonoid<SpanIndexEntry>,
+  id: OccurrenceId
+) -> Witness<OriginEvent> {
+  match entries {
+    Empty => Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
+    Cons { head: head, tail: rest } =>
+      if occurrence_id_eq(left: head.occurrence, right: id) {
+        Holds { value: head.event }
+      } else {
+        span_index_lookup_entries(entries: rest, id: id)
       }
-    Rejected { diagnostics: d } => Violates { diagnostic: d.head }
   }
 }
 
-// --- Transitional on-tree span (#4604; dissolves Phase 1+2) ---
+fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
+  span_index_lookup_entries(entries: index.entries, id: id)
+}
 
-data provenance_span_file_mismatch: Symbol = provenance_span_file_mismatch
-data provenance_invalid_source_span: Symbol = provenance_invalid_source_span
+fn span_index_merge_entries(
+  base: FreeMonoid<SpanIndexEntry>,
+  incoming: FreeMonoid<SpanIndexEntry>
+) -> FreeMonoid<SpanIndexEntry> {
+  fold_list(
+    xs: incoming,
+    empty: base,
+    cons: fn(acc, entry) {
+      match span_index_lookup_entries(entries: acc, id: entry.occurrence) {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          list_snoc_item(xs: acc, item: entry)
+      }
+    }
+  )
+}
 
-fn provenance_invalid_source_span_diagnostic(file: Symbol, start: Int, end: Int) -> Diagnostic {
+// Wave-2: compose memoized parse-cell indices (left wins on id collision).
+fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
+  SpanIndex {
+    entries: span_index_merge_entries(base: base.entries, incoming: incoming.entries)
+  }
+}
+
+data span_index_origin_chain_exhausted: Symbol = span_index_origin_chain_exhausted
+
+fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: provenance_invalid_source_span,
-    at: Textual {
-      file: file,
-      extent: ByteRange { start: start, end: end }
-    },
-    correction: Unavailable { reason: UserInputBoundary }
+    reason: span_index_origin_chain_exhausted,
+    at: port_locus(port: ^span_index_lookup_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn provenance_span_file_mismatch_diagnostic(span: SourceSpan) -> Diagnostic {
-  Diagnostic {
-    reason: provenance_span_file_mismatch,
-    at: Textual {
-      file: span.file,
-      extent: ByteRange { start: span.start, end: span.end }
-    },
-    correction: Unavailable { reason: UserInputBoundary }
-  }
+fn span_index_resolve_textual_locus_from_ids(
+  index: SpanIndex,
+  ids: List<OccurrenceId>
+) -> Witness<Locus> {
+  fold_list(
+    xs: ids,
+    empty: Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
+    cons: fn(acc, id) {
+      match acc {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          span_index_resolve_textual_locus(index: index, id: id)
+      }
+    }
+  )
 }
 
-fn make_source_span(file: Symbol, start: Int, end: Int) -> Outcome<SourceSpan> {
-  if source_span_byte_extent_admits(start: start, end: end) {
-    outcome_accepted(
-      value: SourceSpan { file: file, start: start, end: end }
-    )
-  } else {
-    outcome_rejected(
-      d: provenance_invalid_source_span_diagnostic(file: file, start: start, end: end)
-    )
+// Walk DerivedBy/GeneratedBy chains to the source-text frontier (design-provenance-span.md §4.4).
+fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witness<Locus> {
+  match span_index_lookup(index: index, id: id) {
+    Holds { value: event } =>
+      match event {
+        FromSource { locus } =>
+          match locus {
+            Textual { file: _, extent: _ } => Holds { value: locus }
+            _ => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+          }
+        DerivedBy { producer: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+        GeneratedBy { generator: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
-}
-
-fn make_node_span_anchored(file: Symbol, start: Int, end: Int) -> Outcome<NodeSpan> {
-  match make_source_span(file: file, start: start, end: end) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: span, diagnostics: d } =>
-      Accepted { value: Anchored { span: span }, diagnostics: d }
-  }
-}
-
-fn node_has_anchored_span(node: Node) -> Bool {
-  node_span_is_anchored(span: node.span)
 }
 
 fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
   NodeArtifactProvenance { node: node, artifact: artifact }
-}
-
-fn node_span_byte_extent(span: NodeSpan) -> Bool {
-  node_span_has_byte_extent(span: span)
-}
-
-fn merge_node_spans(left: NodeSpan, right: NodeSpan) -> Outcome<NodeSpan> {
-  if node_span_same_file(left: left, right: right) {
-    outcome_accepted(value: merge_node_span_same_file(left: left, right: right))
-  } else {
-    match left {
-      Anchored { span: ls } =>
-        outcome_rejected(d: provenance_span_file_mismatch_diagnostic(span: ls))
-      Unanchored =>
-        match right {
-          Anchored { span: rs } =>
-            outcome_rejected(d: provenance_span_file_mismatch_diagnostic(span: rs))
-          Unanchored => outcome_accepted(value: Unanchored)
-        }
-    }
-  }
-}
-
-fn fold_node_tree_span_init(n: Node) -> Outcome<NodeSpan> {
-  outcome_accepted(value: n.span)
-}
-
-fn fold_node_tree_span_step(
-  acc: Outcome<NodeSpan>,
-  _: Edge,
-  child: Outcome<NodeSpan>
-) -> Outcome<NodeSpan> {
-  match acc {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: left, diagnostics: ad } =>
-      match child {
-        Rejected { diagnostics: r } =>
-          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
-        Accepted { value: right, diagnostics: cd } =>
-          match merge_node_spans(left: left, right: right) {
-            Rejected { diagnostics: r } =>
-              Rejected {
-                diagnostics: rejected_with_pending(
-                  pending: diagnostics_merge(outer: ad, inner: cd),
-                  rejected: r
-                )
-              }
-            Accepted { value: merged, diagnostics: md } =>
-              Accepted {
-                value: merged,
-                diagnostics: diagnostics_merge(
-                  outer: diagnostics_merge(outer: ad, inner: cd),
-                  inner: md
-                )
-              }
-          }
-      }
-  }
-}
-
-fn fold_node_tree_span_algebra() -> NodeFold<Outcome<NodeSpan>> {
-  NodeFold {
-    init: fold_node_tree_span_init,
-    step: fold_node_tree_span_step
-  }
-}
-
-fn fold_node_tree_span(n: Node) -> Outcome<NodeSpan> {
-  fold_node(n: n, algebra: fold_node_tree_span_algebra())
 }

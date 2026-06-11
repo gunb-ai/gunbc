@@ -44,11 +44,38 @@ data lens_ci_claim_run_row_structural_resolution_binds_to_resolved: LensCiClaimR
   function: "binds_to_resolved_claim_holds"
 }
 
+// #4643 load-bearing: distinct-minted-id occurrence_id exclusion proof (deep zip-fold;
+// root + nested mint cases; shallow RED guard on nested).
+data lens_ci_claim_run_row_provenance_occurrence_id_model: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "provenance/occurrence_id_model",
+  entry: "src/v4/test/claim/provenance/occurrence_id_model.dag",
+  function: "witness_occurrence_id_model_substrate_holds"
+}
+
+// #4643 wave-1 local parse-stamping successor to #4651 span-morphism witness (removed with
+// dissolved Node.span); terminal FromSource ByteRange + sequence DerivedBy child-id pair.
+data lens_ci_claim_run_row_provenance_parse_stamp_span_index: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "provenance/parse_stamp_span_index",
+  entry: "src/v4/test/claim/provenance/parse_stamp_span_index.dag",
+  function: "witness_parse_stamp_span_index_holds"
+}
+
+// complexity-gate S1a — source-bridged COMPREP wave-1 `add` body (design-lens-subject-supply §3);
+// cost_lens → complexity projection; declared budget dominates computed class.
+data lens_ci_claim_run_row_complexity_gate_source_bridged_add: LensCiClaimRunRow = LensCiClaimRunRow {
+  label: "complexity_gate/source_bridged_add_budget",
+  entry: "src/v4/test/claim/complexity_gate/source_bridged_add_budget.dag",
+  function: "source_bridged_add_budget_claim_holds"
+}
+
 data lens_ci_claim_run_rows: List<LensCiClaimRunRow> = [
   lens_ci_claim_run_row_cost_atom_zero,
   lens_ci_claim_run_row_synthesis_polynomial_dominates_linear,
   lens_ci_claim_run_row_coverage_hollow_type_defect_key,
-  lens_ci_claim_run_row_structural_resolution_binds_to_resolved
+  lens_ci_claim_run_row_structural_resolution_binds_to_resolved,
+  lens_ci_claim_run_row_provenance_occurrence_id_model,
+  lens_ci_claim_run_row_provenance_parse_stamp_span_index,
+  lens_ci_claim_run_row_complexity_gate_source_bridged_add
 ]
 
-data lens_ci_claim_run_row_count: String = "4"
+data lens_ci_claim_run_row_count: String = "7"

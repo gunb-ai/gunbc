@@ -6,20 +6,24 @@
 // the claim id from `docs/thesis-validation-plan.md` so the plan can
 // point at concrete regression coverage.
 
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortState, TransformTarget};
 use v3_compiler::diagnostics::{render_diagnostic_for_target, Correction, DiagnosticStyleTarget};
 use v3_compiler::lens_cost::cost_of;
 
-use crate::common::cached_compile_to_dag;
+use crate::common::{
+    cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
+};
 use v3_compiler::types::TypeShape;
-use v3_compiler::{CompileError, Diagnostic};
+use v3_compiler::Diagnostic;
 
 fn compile_any(src: &str, file: &str) -> Dag {
-    match compile_to_dag(src, file) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => dag,
-        Err(other) => panic!("unexpected structural error: {other:?}"),
+    cached_compile_any(src, file)
+}
+
+fn compile_semantic_fixture(src: &str, file: &str) -> Dag {
+    match cached_compile_outcome(src, file) {
+        CachedCompileOutcome::Semantic(dag) => dag,
+        other => panic!("expected semantic failure for {file}, got {other:?}"),
     }
 }
 
@@ -86,10 +90,7 @@ fn t1_2_nonexistent_field_diagnostic_names_the_missing_field() {
 type Point { a: Int b: Int }
 fn read(point: Point) -> Int = point.c
 ";
-    let dag = match compile_to_dag(src, "t1_2_missing_field.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture(src, "t1_2_missing_field.v3");
     let bind = bind_named(&dag, "read");
     assert!(
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
@@ -142,10 +143,7 @@ type Outer { ok: Inner }
 fn read(x: Outer) -> Int = x.bad.leaf
 ";
     let bad_start = src.find("bad").expect("fixture contains missing field") as u32;
-    let dag = match compile_to_dag(src, "t1_2_chained_missing_field.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture(src, "t1_2_chained_missing_field.v3");
     let diag = dag
         .diagnostics()
         .iter()
@@ -180,10 +178,7 @@ fn t1_3_non_exhaustive_match_diagnostic_names_the_missing_variant() {
 type AB = A | B
 fn read(x: AB) -> Int = match x { A => 1 }
 ";
-    let dag = match compile_to_dag(src, "t1_3_non_exhaustive.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture(src, "t1_3_non_exhaustive.v3");
     let bind = bind_named(&dag, "read");
     assert!(
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
@@ -219,10 +214,7 @@ fn t1_3_empty_match_correction_seeds_first_arm_without_leading_comma() {
 type AB = A | B
 fn read(x: AB) -> Int = match x {}
 ";
-    let dag = match compile_to_dag(src, "t1_3_empty_match.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture(src, "t1_3_empty_match.v3");
     let diag = dag
         .diagnostics()
         .iter()
@@ -263,10 +255,7 @@ fn read(x: AB) -> Int = match x { A => 1, B => 2 }
 
 #[test]
 fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
-    let dag = match compile_to_dag("let x: Bool = 1", "t1_4_type_mismatch.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture("let x: Bool = 1", "t1_4_type_mismatch.v3");
     let bind = bind_named(&dag, "x");
     assert!(
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
@@ -319,10 +308,7 @@ fn t1_4_named_payload_sum_fix_renders_supported_constructor_syntax() {
 type MaybeInt = Some { value: Int } | None
 let x: MaybeInt = true
 ";
-    let dag = match compile_to_dag(src, "t1_4_named_payload_sum_fix.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture(src, "t1_4_named_payload_sum_fix.v3");
     let bind = bind_named(&dag, "x");
     let diag = dag
         .diagnostics()
@@ -345,10 +331,7 @@ fn t1_4_refined_declarations_do_not_get_shape_only_fix_witnesses() {
 fn div(n: Int, d: Int where d != 0) -> Int = n
 fn bad() -> Int = div(1, nope)
 ";
-    let dag = match compile_to_dag(src, "t1_4_refined_no_fix_witness.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture(src, "t1_4_refined_no_fix_witness.v3");
     let diag = dag
         .diagnostics()
         .iter()
@@ -402,13 +385,10 @@ fn count(list: List<Int>) -> Int =
 
 #[test]
 fn t1_5_missing_descent_is_rejected() {
-    let dag = match compile_to_dag(
+    let dag = compile_semantic_fixture(
         "fn diverge(x: Int) -> Int = diverge(x)",
         "t1_5_no_descent.v3",
-    ) {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    );
     let bind = bind_named(&dag, "diverge");
     assert!(
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
@@ -452,10 +432,7 @@ fn t2_4_option_like_values_without_match_are_rejected() {
 type Maybe<T> = Some(T) | None
 fn bad(m: Maybe<Int>) -> Int = m
 ";
-    let dag = match compile_to_dag(src, "t2_4_missing_match.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture(src, "t2_4_missing_match.v3");
     let bind = bind_named(&dag, "bad");
     assert!(
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
@@ -488,10 +465,7 @@ fn t2_4_no_force_unwrap_primitive_exists() {
 type Maybe<T> = Some(T) | None
 fn bad(m: Maybe<Int>) -> Int = unwrap(m)
 ";
-    let dag = match compile_to_dag(src, "t2_4_no_unwrap.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture(src, "t2_4_no_unwrap.v3");
     let bind = bind_named(&dag, "bad");
     assert!(
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
@@ -522,10 +496,7 @@ fn t2_4_unresolved_calls_still_lower_argument_diagnostics() {
 type Maybe<T> = Some(T) | None
 fn bad(m: Maybe<Int>) -> Int = unknown(unwrap(m))
 ";
-    let dag = match compile_to_dag(src, "t2_4_unresolved_call_keeps_arg_diags.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture(src, "t2_4_unresolved_call_keeps_arg_diags.v3");
     let diagnostics = dag.diagnostics().iter().map(|(_, d)| d).collect::<Vec<_>>();
     assert!(
         diagnostics
@@ -551,10 +522,7 @@ let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)
 
 #[test]
 fn kf_5_unbounded_zero_arg_recursion_is_rejected() {
-    let dag = match compile_to_dag("fn endless() -> Int = endless()", "kf_5_unbounded.v3") {
-        Err(CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
+    let dag = compile_semantic_fixture("fn endless() -> Int = endless()", "kf_5_unbounded.v3");
     let bind = bind_named(&dag, "endless");
     assert!(
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
@@ -573,16 +541,14 @@ fn kf_5_unbounded_zero_arg_recursion_is_rejected() {
 
 #[test]
 fn lens_cost_nested_program_counts_more_structure_than_flat_program() {
-    let flat = compile_to_dag(
+    let flat = cached_compile_to_dag(
         "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
         "lens_cost_flat.v3",
-    )
-    .expect("flat program compiles");
-    let nested = compile_to_dag(
+    );
+    let nested = cached_compile_to_dag(
         "let total: Int = fold(map(singleton(1), |x| x + 1), 0, |acc, x| acc + x)",
         "lens_cost_nested.v3",
-    )
-    .expect("nested program compiles");
+    );
 
     let flat_cost = bind_cost(&flat, "total");
     let nested_cost = bind_cost(&nested, "total");
@@ -599,16 +565,15 @@ fn lens_cost_nested_program_counts_more_structure_than_flat_program() {
 
 #[test]
 fn t1_5_4_structural_recursive_loop_cost_exceeds_literal_body_cost() {
-    let literal = compile_to_dag("fn constant(n: Int) -> Int = 0", "lens_cost_literal_fn.v3")
-        .expect("literal-bodied function compiles");
-    let recursive = compile_to_dag(
+    let literal =
+        cached_compile_to_dag("fn constant(n: Int) -> Int = 0", "lens_cost_literal_fn.v3");
+    let recursive = cached_compile_to_dag(
         "\
 fn countdown(n: Int) -> Int =
   if n == 0 then 0 else countdown(n - 1)
 ",
         "lens_cost_recursive_fn.v3",
-    )
-    .expect("recursive function compiles");
+    );
 
     let literal_cost = bind_cost(&literal, "constant");
     let recursive_cost = bind_cost(&recursive, "countdown");
@@ -622,16 +587,14 @@ fn countdown(n: Int) -> Int =
 
 #[test]
 fn t1_5_4_branch_cost_tracks_the_most_expensive_path() {
-    let cheaper = compile_to_dag(
+    let cheaper = cached_compile_to_dag(
         "let r: Int = if 1 > 0 then 20 + 30 else 40 + 50 + 60",
         "lens_cost_branch_cheaper.v3",
-    )
-    .expect("cheaper branch program compiles");
-    let pricier = compile_to_dag(
+    );
+    let pricier = cached_compile_to_dag(
         "let r: Int = if 1 > 0 then 20 + 30 + 40 + 50 else 60 + 70 + 80",
         "lens_cost_branch_pricier.v3",
-    )
-    .expect("pricier branch program compiles");
+    );
 
     let cheaper_cost = bind_cost(&cheaper, "r");
     let pricier_cost = bind_cost(&pricier, "r");
@@ -644,20 +607,16 @@ fn t1_5_4_branch_cost_tracks_the_most_expensive_path() {
 
 #[test]
 fn kf_1_structural_list_operation_ordering_holds() {
-    let singleton = compile_to_dag("let xs = singleton(1)", "lens_cost_singleton.v3")
-        .expect("singleton compiles");
-    let cons = compile_to_dag("let xs = cons(1, singleton(2))", "lens_cost_cons.v3")
-        .expect("cons compiles");
-    let fold = compile_to_dag(
+    let singleton = cached_compile_to_dag("let xs = singleton(1)", "lens_cost_singleton.v3");
+    let cons = cached_compile_to_dag("let xs = cons(1, singleton(2))", "lens_cost_cons.v3");
+    let fold = cached_compile_to_dag(
         "let total: Int = fold(cons(1, singleton(2)), 0, |acc, x| acc + x)",
         "lens_cost_fold.v3",
-    )
-    .expect("fold compiles");
-    let map_fold = compile_to_dag(
+    );
+    let map_fold = cached_compile_to_dag(
         "let total: Int = fold(map(cons(1, singleton(2)), |x| x + 1), 0, |acc, x| acc + x)",
         "lens_cost_map_fold.v3",
-    )
-    .expect("map+fold compiles");
+    );
 
     let singleton_cost = bind_cost(&singleton, "xs");
     let cons_cost = bind_cost(&cons, "xs");
@@ -680,16 +639,14 @@ fn kf_1_structural_list_operation_ordering_holds() {
 
 #[test]
 fn kf_1_non_max_branch_work_does_not_change_cost() {
-    let baseline = compile_to_dag(
+    let baseline = cached_compile_to_dag(
         "let r: Int = if 1 > 0 then 10 + 20 + 30 + 40 + 50 else 60 + 70",
         "lens_cost_branch_baseline.v3",
-    )
-    .expect("baseline branch compiles");
-    let extra_dead_work = compile_to_dag(
+    );
+    let extra_dead_work = cached_compile_to_dag(
         "let r: Int = if 1 > 0 then 10 + 20 + 30 + 40 + 50 else 60 + 70 + 80",
         "lens_cost_branch_dead_work.v3",
-    )
-    .expect("branch with larger non-max path compiles");
+    );
 
     let baseline_cost = bind_cost(&baseline, "r");
     let extra_dead_work_cost = bind_cost(&extra_dead_work, "r");

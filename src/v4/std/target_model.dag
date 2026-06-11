@@ -10,13 +10,18 @@ import v4.std.algebra {
   Empty,
   FreeMonoid,
   fold_list,
+  fold_list_node,
+  fold_list_node_head,
+  fold_list_node_tail,
   free_monoid_field_head,
   free_monoid_field_tail,
   free_monoid_variant_empty,
   is_empty,
   list_snoc_item,
   length,
-  list_append
+  list_append,
+  fold_list_right,
+  ring_field_add
 }
 import v4.std.collection {
   Absent,
@@ -38,6 +43,7 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_merge,
   node_locus,
+  bind_outcome,
   outcome_accepted,
   outcome_rejected
 }
@@ -78,8 +84,9 @@ import v4.std.node {
   connective_edge_discipline,
   content_hash,
   fold_node,
+  name_occurrences,
   node_rebuild,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.witness { StructuralPropertyWitness }
 import v4.std.type_expr_projection_row_schema {
@@ -93,13 +100,13 @@ import v4.std.node_query { find_named_child, node_labeled_child_edges, node_posi
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
 
-type TargetModelBundle {
+type TargetModel {
   bundle: Node
   lex: LexRules
   binding_spellings: Map<Symbol, String>
   authority_source_text: String
 }
-type TargetModel = TargetModelBundle
+type TargetModelBundle = TargetModel
 
 data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
 data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
@@ -110,6 +117,8 @@ data target_model_edge_fidelity_quotient: Symbol = target_model_edge_fidelity_qu
 data grammar_relation_field_production: Symbol = grammar_relation_field_production
 data grammar_relation_field_emitted: Symbol = grammar_relation_field_emitted
 data grammar_relation_field_tokens: Symbol = grammar_relation_field_tokens
+data grammar_relation_field_bodied_scaffold: Symbol = grammar_relation_field_bodied_scaffold
+data grammar_relation_bodied_scaffold_missing: Symbol = grammar_relation_bodied_scaffold_missing
 data concrete_syntax_token_field_kind: Symbol = concrete_syntax_token_field_kind
 data concrete_syntax_token_field_class: Symbol = concrete_syntax_token_field_class
 data concrete_syntax_token_field_binding: Symbol = concrete_syntax_token_field_binding
@@ -152,7 +161,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: concrete_syntax_token_kind_fixed } },
               children: [],
-              span: Unanchored
+              occurrence_id: SyntheticOccurrence
 }
           },
           Edge {
@@ -160,11 +169,11 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
-              span: Unanchored
+              occurrence_id: SyntheticOccurrence
 }
           }
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     BoundToken { token_class: c, binding: b } =>
       Node {
@@ -175,7 +184,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: concrete_syntax_token_kind_bound } },
               children: [],
-              span: Unanchored
+              occurrence_id: SyntheticOccurrence
 }
           },
           Edge {
@@ -183,7 +192,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
-              span: Unanchored
+              occurrence_id: SyntheticOccurrence
 }
           },
           Edge {
@@ -191,11 +200,11 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: b } },
               children: [],
-              span: Unanchored
+              occurrence_id: SyntheticOccurrence
 }
           }
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -226,6 +235,8 @@ type SourceAtomValue
   // carrier or adding another string/FreeMonoid raw-node bridge outside this receipt.
   | SourceAtomString { value: Node }
 
+// 🟢 coproduct dissolution — T6 value-expression Behavior arm-shape axis; BindingRef and
+// PrimitiveApply are genuine one-at-a-time alternatives keyed to ComputationNode behavior forms.
 type TargetValueExpressionKind
   = TargetValueExprSymbolIdentity
   | TargetValueExprSymbolToOwnedString
@@ -234,6 +245,8 @@ type TargetValueExpressionKind
   | TargetValueExprStringLiteral
   | TargetValueExprReferenceRcNew
   | TargetValueExprReferenceBoxNew
+  | TargetValueExprBindingRef
+  | TargetValueExprPrimitiveApply
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -241,16 +254,865 @@ type TargetValueExpression {
 }
 
 // Bidirectional templates: emission and ingestion share the same row (§10.6).
+// 🟢 coproduct dissolution — T6 value-expression ingestion twin axis; each arm pairs with
+// its TargetValueExpressionKind emission counterpart on the shared template row.
 type TargetValueTemplateKind
   = ValueSymbolIdentityPassthrough
   | ValueSymbolToOwnedString
   | ValueBoolLiteral
   | ValueCharUnicodeScalar
   | ValueStringLiteral
+  | ValueBindingRef
+  | ValuePrimitiveApply
 
 type TargetValueTemplate {
   kind: TargetValueTemplateKind
   node: Node
+}
+
+// T6 — closed canonical operation vocabulary (substrate-owned; arms land with producers).
+// Q-V1 (design-value-emit-schema.md §7): each arm carries its algebra-field witness (M9).
+type CanonicalOperation
+  = OpAdd { algebra_field: Symbol }
+
+fn canonical_operation_op_add() -> CanonicalOperation {
+  OpAdd { algebra_field: ring_field_add }
+}
+
+// T6 — per-language operator spelling shape axis.
+// 🟢 coproduct dissolution — InfixToken, PrefixToken, CallIdent, and MethodIdent are genuine
+// one-at-a-time alternatives for how a canonical operation is realized on a target surface; each
+// arm carries a distinct spelling payload and none reduces to record coordinates.
+type TargetOperatorShape
+  = InfixToken { token: Symbol }
+  | PrefixToken { token: Symbol }
+  | CallIdent { ident: Symbol }
+  | MethodIdent { ident: Symbol }
+
+type TargetOperatorRealization {
+  operation: CanonicalOperation
+  shape: TargetOperatorShape
+}
+
+// T6 — per-language value-expression projection row (mirrors TargetTypeExpressionProjection).
+type TargetBindingRefShape {
+  ident_token: Symbol
+}
+
+type TargetPrimitiveApplyShape {
+  open: Symbol
+  close: Symbol
+  separator: Symbol
+}
+
+type TargetCallApplyShape {
+  callee_ident_token: Symbol
+  open: Symbol
+  separator: Symbol
+  close: Symbol
+}
+
+type TargetValueExpressionProjection {
+  binding_ref_form: TargetBindingRefShape
+  primitive_apply_form: TargetPrimitiveApplyShape
+  callable_apply_form: TargetCallApplyShape
+}
+
+// T6 — per-language bodied-arrow statement scaffold (prefix/suffix around dynamic body tokens).
+type TargetBodiedArrowStatementScaffold {
+  prefix: List<ConcreteSyntaxToken>
+  suffix: List<ConcreteSyntaxToken>
+}
+
+data target_model_edge_value_expression_projection: Symbol = target_model_edge_value_expression_projection
+data target_model_edge_bodied_arrow_statement_scaffold: Symbol = target_model_edge_bodied_arrow_statement_scaffold
+data target_bodied_arrow_scaffold_field_prefix: Symbol = target_bodied_arrow_scaffold_field_prefix
+data target_bodied_arrow_scaffold_field_suffix: Symbol = target_bodied_arrow_scaffold_field_suffix
+data target_bodied_arrow_scaffold_bundle_malformed: Symbol = target_bodied_arrow_scaffold_bundle_malformed
+data concrete_syntax_token_wire_malformed: Symbol = concrete_syntax_token_wire_malformed
+data target_model_edge_operator_realizations: Symbol = target_model_edge_operator_realizations
+
+data target_value_expr_field_binding_ref: Symbol = target_value_expr_field_binding_ref
+data target_value_expr_field_primitive_apply: Symbol = target_value_expr_field_primitive_apply
+data target_value_expr_field_callable_apply: Symbol = target_value_expr_field_callable_apply
+data target_value_expr_field_ident_token: Symbol = target_value_expr_field_ident_token
+data target_value_expr_field_operation: Symbol = target_value_expr_field_operation
+data target_value_expr_field_operand: Symbol = target_value_expr_field_operand
+data target_value_expr_field_binding: Symbol = target_value_expr_field_binding
+data target_value_expr_field_open: Symbol = target_value_expr_field_open
+data target_value_expr_field_close: Symbol = target_value_expr_field_close
+data target_value_expr_field_separator: Symbol = target_value_expr_field_separator
+data target_value_expr_operand_wire_malformed: Symbol = target_value_expr_operand_wire_malformed
+
+data target_operator_realization_field_operation: Symbol = target_operator_realization_field_operation
+data target_operator_realization_field_shape: Symbol = target_operator_realization_field_shape
+data target_operator_shape_field_token: Symbol = target_operator_shape_field_token
+data target_canonical_operation_field_algebra_field: Symbol = target_canonical_operation_field_algebra_field
+data target_canonical_operation_wire_malformed: Symbol = target_canonical_operation_wire_malformed
+data target_operator_shape_wire_malformed: Symbol = target_operator_shape_wire_malformed
+data target_operator_realization_wire_malformed: Symbol = target_operator_realization_wire_malformed
+data target_operator_realizations_catalog_wire_malformed: Symbol = target_operator_realizations_catalog_wire_malformed
+data target_operator_realization_catalog_miss: Symbol = target_operator_realization_catalog_miss
+data target_operator_realization_catalog_ambiguous: Symbol = target_operator_realization_catalog_ambiguous
+
+fn target_model_type_atom_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn target_model_type_conj_node(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_canonical_operation_wire_malformed,
+    at: node_locus(node: wire),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optional<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_canonical_operation_field_algebra_field {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: field } => optional_present(value: field)
+    Absent => optional_absent()
+  }
+}
+
+fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
+  match operation {
+    OpAdd { algebra_field: f } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: OpAdd {}) } },
+        children: [
+          target_model_named_edge(
+            name: target_canonical_operation_field_algebra_field,
+            target: target_model_type_atom_node(identity: f)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+fn canonical_operation_equal(
+  left: CanonicalOperation,
+  right: CanonicalOperation
+) -> Bool {
+  match left {
+    OpAdd { algebra_field: lf } =>
+      match right {
+        OpAdd { algebra_field: rf } => lf == rf
+      }
+  }
+}
+
+fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == discriminant(v: OpAdd {}) {
+        match target_model_canonical_operation_algebra_field_from_wire(wire: wire) {
+          Present { value: algebra_field } =>
+            outcome_accepted(OpAdd { algebra_field: algebra_field })
+          Absent =>
+            outcome_rejected(
+              target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      } else {
+        outcome_rejected(
+          target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:canonical-operation-wire-decode-bool — consumer:target_operator_realization_row_matches_canonical_op
+// — bind: operator-catalog row operation wire match — owner: T6 value-expression (lively-badger-242) —
+// lane: std/target_model — dissolve-on-arrival: Outcome-bearing wire decode propagates diagnostics
+// in catalog lookup; forbidden: Rejected => false silent swallow in substrate Bool matchers.
+fn canonical_operation_wire_matches_operation(
+  wire: Node,
+  operation: CanonicalOperation
+) -> Bool {
+  match canonical_operation_from_wire_node(wire: wire) {
+    Accepted { value: decoded, diagnostics: _ } =>
+      canonical_operation_equal(left: decoded, right: operation)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
+  match shape {
+    InfixToken { token: t } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: InfixToken {}) } },
+        children: [
+          target_model_named_edge(
+            name: target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: t)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    PrefixToken { token: t } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: PrefixToken {}) } },
+        children: [
+          target_model_named_edge(
+            name: target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: t)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    CallIdent { ident: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: CallIdent {}) } },
+        children: [
+          target_model_named_edge(
+            name: target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    MethodIdent { ident: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: MethodIdent {}) } },
+        children: [
+          target_model_named_edge(
+            name: target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+fn target_operator_shape_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_operator_shape_wire_malformed,
+    at: node_locus(node: wire),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_operator_shape_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      if name_occurrences(
+        name: target_operator_shape_field_token,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+      } else {
+        match fold(
+          wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } => n == target_operator_shape_field_token
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+        }
+      }
+    _ =>
+      outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+  }
+}
+
+fn target_operator_shape_token_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_operator_shape_field_token {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: token } } =>
+                    optional_present(value: token)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: token } => outcome_accepted(token)
+    Absent =>
+      outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+  }
+}
+
+fn target_operator_shape_from_wire_node(wire: Node) -> Outcome<TargetOperatorShape> {
+  bind_outcome(
+    o: target_operator_shape_wire_schema_valid(wire: wire),
+    f: fn(_) {
+      match wire.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          bind_outcome(
+            o: target_operator_shape_token_from_wire(wire: wire),
+            f: fn(token) {
+              if id == discriminant(v: InfixToken {}) {
+                outcome_accepted(InfixToken { token: token })
+              } else if id == discriminant(v: PrefixToken {}) {
+                outcome_accepted(PrefixToken { token: token })
+              } else if id == discriminant(v: CallIdent {}) {
+                outcome_accepted(CallIdent { ident: token })
+              } else if id == discriminant(v: MethodIdent {}) {
+                outcome_accepted(MethodIdent { ident: token })
+              } else {
+                outcome_rejected(
+                  target_operator_shape_wire_malformed_diagnostic(wire: wire)
+                )
+              }
+            }
+          )
+        _ =>
+          outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+      }
+    }
+  )
+}
+
+fn target_operator_realization_wire_malformed_diagnostic(row: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_operator_realization_wire_malformed,
+    at: node_locus(node: row),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool> {
+  match row.kind {
+    TypeNode { connective: Conj } =>
+      if name_occurrences(
+        name: target_operator_realization_field_operation,
+        children: row.children
+      ) != 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else if name_occurrences(
+        name: target_operator_realization_field_shape,
+        children: row.children
+      ) != 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else {
+        match fold(
+          row.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == target_operator_realization_field_operation
+                  || n == target_operator_realization_field_shape
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+        }
+      }
+    _ =>
+      outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+  }
+}
+
+fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperatorRealization> {
+  bind_outcome(
+    o: target_operator_realization_row_wire_schema_valid(row: row),
+    f: fn(_) {
+      bind_outcome(
+        o: find_named_child(root: row, name: target_operator_realization_field_operation),
+        f: fn(operation_wire) {
+          bind_outcome(
+            o: canonical_operation_from_wire_node(wire: operation_wire),
+            f: fn(canonical_op) {
+              bind_outcome(
+                o: find_named_child(root: row, name: target_operator_realization_field_shape),
+                f: fn(shape_wire) {
+                  bind_outcome(
+                    o: target_operator_shape_from_wire_node(wire: shape_wire),
+                    f: fn(shape) {
+                      outcome_accepted(
+                        TargetOperatorRealization {
+                          operation: canonical_op,
+                          shape: shape
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_operator_realization_node(
+  operation: CanonicalOperation,
+  shape: TargetOperatorShape
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: operation)
+      ),
+      target_model_named_edge(
+        name: target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: shape)
+      )
+    ]
+  )
+}
+
+data target_operator_realization_row_edge: Symbol = target_operator_realization_row_edge
+
+fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
+  target_model_type_conj_node(
+    children: fold_list(
+      xs: rows,
+      empty: Empty,
+      cons: fn(acc, row) {
+        Cons {
+          head: target_model_named_edge(
+            name: target_operator_realization_row_edge,
+            target: row
+          ),
+          tail: acc
+        }
+      }
+    )
+  )
+}
+
+fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_projection_field_missing,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn projection_bundle_child(bundle: Node, name: Symbol) -> Outcome<Node> {
+  find_named_child(root: bundle, name: name)
+}
+
+fn projection_bundle_symbol_field(bundle: Node, field: Symbol) -> Outcome<Symbol> {
+  bind_outcome(
+    o: find_named_child(root: bundle, name: field),
+    f: fn(child) {
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+        _ =>
+          outcome_rejected(
+            target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
+          )
+      }
+    }
+  )
+}
+
+fn decode_binding_ref_shape_bundle(bundle: Node) -> Outcome<TargetBindingRefShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: target_value_expr_field_ident_token
+    ),
+    f: fn(ident_token) {
+      outcome_accepted(
+        TargetBindingRefShape { ident_token: ident_token }
+      )
+    }
+  )
+}
+
+fn decode_primitive_apply_shape_bundle(bundle: Node) -> Outcome<TargetPrimitiveApplyShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+    f: fn(open) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_close),
+        f: fn(close) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: target_value_expr_field_separator
+            ),
+            f: fn(separator) {
+              outcome_accepted(
+                TargetPrimitiveApplyShape {
+                  open: open,
+                  close: close,
+                  separator: separator
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplyShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: target_value_expr_field_ident_token
+    ),
+    f: fn(callee_ident_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: target_value_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: target_value_expr_field_separator
+            ),
+            f: fn(separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: target_value_expr_field_close
+                ),
+                f: fn(close) {
+                  outcome_accepted(
+                    TargetCallApplyShape {
+                      callee_ident_token: callee_ident_token,
+                      open: open,
+                      separator: separator,
+                      close: close
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_value_expression_projection_bundle(
+  bundle: Node
+) -> Outcome<TargetValueExpressionProjection> {
+  match bundle.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: projection_bundle_child(
+          bundle: bundle,
+          name: target_value_expr_field_binding_ref
+        ),
+        f: fn(binding_ref_bundle) {
+          bind_outcome(
+            o: decode_binding_ref_shape_bundle(bundle: binding_ref_bundle),
+            f: fn(binding_ref_form) {
+              bind_outcome(
+                o: projection_bundle_child(
+                  bundle: bundle,
+                  name: target_value_expr_field_primitive_apply
+                ),
+                f: fn(primitive_bundle) {
+                  bind_outcome(
+                    o: decode_primitive_apply_shape_bundle(bundle: primitive_bundle),
+                    f: fn(primitive_apply_form) {
+                      bind_outcome(
+                        o: projection_bundle_child(
+                          bundle: bundle,
+                          name: target_value_expr_field_callable_apply
+                        ),
+                        f: fn(callable_bundle) {
+                          bind_outcome(
+                            o: decode_callable_apply_shape_bundle(bundle: callable_bundle),
+                            f: fn(callable_apply_form) {
+                              outcome_accepted(
+                                TargetValueExpressionProjection {
+                                  binding_ref_form: binding_ref_form,
+                                  primitive_apply_form: primitive_apply_form,
+                                  callable_apply_form: callable_apply_form
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
+      )
+  }
+}
+
+fn concrete_syntax_token_list_to_node(tokens: List<ConcreteSyntaxToken>) -> Node {
+  fold_list_node(xs: tokens, item_node: concrete_syntax_token_to_node)
+}
+
+fn grammar_relation_row_attach_bodied_scaffold(
+  row: Node,
+  scaffold: TargetBodiedArrowStatementScaffold
+) -> Node {
+  target_model_type_conj_node(
+    children: list_append(
+      left: row.children,
+      right: Cons {
+        head: target_model_named_edge(
+          name: grammar_relation_field_bodied_scaffold,
+          target: bodied_arrow_statement_scaffold_bundle_node(scaffold: scaffold)
+        ),
+        tail: Empty
+      }
+    )
+  )
+}
+
+fn bodied_arrow_statement_scaffold_bundle_node(
+  scaffold: TargetBodiedArrowStatementScaffold
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: target_bodied_arrow_scaffold_field_prefix,
+        target: concrete_syntax_token_list_to_node(tokens: scaffold.prefix)
+      ),
+      target_model_named_edge(
+        name: target_bodied_arrow_scaffold_field_suffix,
+        target: concrete_syntax_token_list_to_node(tokens: scaffold.suffix)
+      )
+    ]
+  )
+}
+
+fn wire_conj_named_binding_atom(parent: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: find_named_child(root: parent, name: concrete_syntax_token_field_binding),
+    f: fn(binding_node) {
+      match binding_node.kind {
+        TypeNode { connective: Atom { identity: binding } } =>
+          outcome_accepted(binding)
+        _ =>
+          outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
+      }
+    }
+  )
+}
+
+fn concrete_syntax_token_wire_malformed_diagnostic(token: Node) -> Diagnostic {
+  Diagnostic {
+    reason: concrete_syntax_token_wire_malformed,
+    at: node_locus(node: token),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
+  match token.kind {
+    TypeNode { connective: Conj } =>
+      if name_occurrences(
+        name: concrete_syntax_token_field_kind,
+        children: token.children
+      ) != 1 {
+        outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+      } else if name_occurrences(
+        name: concrete_syntax_token_field_class,
+        children: token.children
+      ) != 1 {
+        outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+      } else {
+        match fold(
+          token.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == concrete_syntax_token_field_kind
+                  || n == concrete_syntax_token_field_class
+                  || n == concrete_syntax_token_field_binding
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          false =>
+            outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+          true =>
+            bind_outcome(
+              o: find_named_child(root: token, name: concrete_syntax_token_field_kind),
+              f: fn(kind_node) {
+                match kind_node.kind {
+                  TypeNode { connective: Atom { identity: kind } } =>
+                    if kind == concrete_syntax_token_kind_fixed {
+                      if name_occurrences(
+                        name: concrete_syntax_token_field_binding,
+                        children: token.children
+                      ) == 0 {
+                        outcome_accepted(true)
+                      } else {
+                        outcome_rejected(
+                          concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                        )
+                      }
+                    } else if kind == concrete_syntax_token_kind_bound {
+                      if name_occurrences(
+                        name: concrete_syntax_token_field_binding,
+                        children: token.children
+                      ) == 1 {
+                        outcome_accepted(true)
+                      } else {
+                        outcome_rejected(
+                          concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                        )
+                      }
+                    } else {
+                      outcome_rejected(
+                        concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                      )
+                    }
+                  _ =>
+                    outcome_rejected(
+                      concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                    )
+                }
+              }
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+  }
+}
+
+fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
+  bind_outcome(
+    o: concrete_syntax_token_wire_schema_valid(token: token),
+    f: fn(_) {
+      bind_outcome(
+        o: projection_bundle_child(bundle: token, name: concrete_syntax_token_field_kind),
+        f: fn(kind_node) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: token,
+              field: concrete_syntax_token_field_class
+            ),
+            f: fn(token_class) {
+              match kind_node.kind {
+                TypeNode { connective: Atom { identity: kind } } =>
+                  if kind == concrete_syntax_token_kind_fixed {
+                    outcome_accepted(
+                      FixedToken { token_class: token_class }
+                    )
+                  } else if kind == concrete_syntax_token_kind_bound {
+                    bind_outcome(
+                      o: wire_conj_named_binding_atom(parent: token),
+                      f: fn(binding) {
+                        outcome_accepted(
+                          BoundToken {
+                            token_class: token_class,
+                            binding: binding
+                          }
+                        )
+                      }
+                    )
+                  } else {
+                    outcome_rejected(
+                      concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                    )
+                  }
+                _ =>
+                  outcome_rejected(
+                    concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                  )
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+data target_value_projection_field_missing: Symbol = target_value_projection_field_missing
+data target_value_projection_bundle_malformed: Symbol = target_value_projection_bundle_malformed
+
+fn target_value_projection_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_projection_bundle_malformed,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
 type TargetConstructorTemplate
@@ -278,7 +1140,7 @@ fn symbol_kernel_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: symbol_kernel_type_atom } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -286,7 +1148,7 @@ fn char_kernel_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: char_kernel_type_atom } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -419,6 +1281,10 @@ fn source_atom_value_for_value_template(
       source_atom_char_projection_from_node(source: source)
     ValueStringLiteral =>
       source_atom_string_projection_from_node(source: source)
+    ValueBindingRef =>
+      optional_absent()
+    ValuePrimitiveApply =>
+      optional_absent()
   }
 }
 
@@ -470,7 +1336,7 @@ fn target_value_template_tag_node(kind: TargetValueTemplateKind) -> Node {
       connective: Atom { identity: discriminant(v: kind) }
     },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -487,11 +1353,11 @@ fn target_value_expression_symbol_identity(identity: Symbol) -> TargetValueExpre
           target: Node {
             kind: TypeNode { connective: Atom { identity: identity } },
             children: [],
-            span: Unanchored
+            occurrence_id: SyntheticOccurrence
 }
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -509,11 +1375,11 @@ fn target_value_expression_symbol_to_owned_string(identity: Symbol) -> TargetVal
           target: Node {
             kind: TypeNode { connective: Atom { identity: identity } },
             children: [],
-            span: Unanchored
+            occurrence_id: SyntheticOccurrence
 }
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -531,7 +1397,7 @@ fn target_value_expression_bool_literal(value: Bool) -> TargetValueExpression {
           target: target_value_expression_bool_atom(value: value)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -549,11 +1415,11 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
           target: Node {
             kind: TypeNode { connective: Atom { identity: codepoint } },
             children: [],
-            span: Unanchored
+            occurrence_id: SyntheticOccurrence
 }
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -571,9 +1437,895 @@ fn target_value_expression_string_literal(value: Node) -> TargetValueExpression 
           target: value
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
+}
+
+fn target_value_expression_binding_ref(binding: Symbol) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprBindingRef,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_binding_ref_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: target_value_expr_field_binding,
+          target: target_model_type_atom_node(identity: binding)
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+fn target_value_expr_primitive_apply_operand_edges(
+  operands: List<TargetValueExpression>
+) -> List<Edge> {
+  fold_list_right(
+    xs: operands,
+    empty: Empty,
+    snoc: fn(acc, operand) {
+      Cons {
+        head: target_model_named_edge(
+          name: target_value_expr_field_operand,
+          target: target_value_expression_node(expr: operand)
+        ),
+        tail: acc
+      }
+    }
+  )
+}
+
+fn target_value_expr_operand_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_expr_operand_wire_malformed,
+    at: node_locus(node: wire),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_value_expr_binding_ref_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_value_expression_binding_ref_atom {
+        if name_occurrences(
+          name: target_value_expr_field_binding,
+          children: wire.children
+        ) != 1 {
+          outcome_rejected(
+            target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+          )
+        } else {
+          match fold(
+            wire.children,
+            init: true,
+            f: fn(acc, edge) {
+              if acc {
+                match edge.label {
+                  Named { name: n } => n == target_value_expr_field_binding
+                  Positional => false
+                }
+              } else {
+                false
+              }
+            }
+          ) {
+            true => outcome_accepted(true)
+            false =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+        }
+      } else {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_binding_ref_binding_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_binding {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: binding } => outcome_accepted(binding)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_operand_wire_binding(operand_wire: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: target_value_expr_binding_ref_wire_schema_valid(wire: operand_wire),
+    f: fn(_) {
+      target_value_expr_binding_ref_binding_from_wire(wire: operand_wire)
+    }
+  )
+}
+
+fn target_value_expr_primitive_apply_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_primitive_apply_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: target_value_expr_field_operation,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        match fold(
+          wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == target_value_expr_field_operation
+                  || n == target_value_expr_field_operand
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(
+              target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: target_value_expr_primitive_apply_wire_schema_valid(wire: wire),
+    f: fn(_) {
+      match fold(
+        wire.children,
+        init: Accepted { value: Empty, diagnostics: None },
+        f: fn(acc, edge) {
+          match acc {
+            Rejected { diagnostics: r } => acc
+            Accepted { value: bindings, diagnostics: d } =>
+              match edge.label {
+                Named { name: n } =>
+                  if n == target_value_expr_field_operation {
+                    acc
+                  } else if n == target_value_expr_field_operand {
+                    bind_outcome(
+                      o: target_value_expr_operand_wire_binding(operand_wire: edge.target),
+                      f: fn(binding) {
+                        outcome_accepted(
+                          list_snoc_item(xs: bindings, item: binding)
+                        )
+                      }
+                    )
+                  } else {
+                    outcome_rejected(
+                      target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                    )
+                  }
+                Positional =>
+                  outcome_rejected(
+                    target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+          }
+        }
+      ) {
+        Accepted { value: bindings, diagnostics: d } =>
+          Accepted { value: bindings, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+
+fn target_value_expression_primitive_apply(
+  operation: CanonicalOperation,
+  operands: List<TargetValueExpression>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprPrimitiveApply,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_primitive_apply_atom }
+      },
+      children: list_append(
+        left: [
+          target_model_named_edge(
+            name: target_value_expr_field_operation,
+            target: target_model_canonical_operation_wire_node(operation: operation)
+          )
+        ],
+        right: target_value_expr_primitive_apply_operand_edges(operands: operands)
+      ),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+data target_value_expression_emit_unsupported_kind: Symbol = target_value_expression_emit_unsupported_kind
+data target_value_expression_emit_operator_shape_unsupported: Symbol = target_value_expression_emit_operator_shape_unsupported
+data target_value_expression_emit_primitive_apply_arity_invalid: Symbol = target_value_expression_emit_primitive_apply_arity_invalid
+
+fn target_value_expression_emit_unsupported_kind_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_expression_emit_unsupported_kind,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_expression_emit_operator_shape_unsupported,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_expression_emit_primitive_apply_arity_invalid,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_operator_realization_catalog_miss_diagnostic(catalog: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_operator_realization_catalog_miss,
+    at: node_locus(node: catalog),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_operator_realization_catalog_ambiguous_diagnostic(catalog: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_operator_realization_catalog_ambiguous,
+    at: node_locus(node: catalog),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_operator_realization_row_matches_canonical_op(
+  row: Node,
+  canonical_op: CanonicalOperation
+) -> Bool {
+  match find_named_child(root: row, name: target_operator_realization_field_operation) {
+    Accepted { value: operation_wire, diagnostics: _ } =>
+      canonical_operation_wire_matches_operation(
+        wire: operation_wire,
+        operation: canonical_op
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outcome<Bool> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: true,
+        f: fn(acc, e) {
+          if acc {
+            match e.label {
+              Positional => false
+              Named { name: n } => n == target_operator_realization_row_edge
+            }
+          } else {
+            false
+          }
+        }
+      ) {
+        true => outcome_accepted(true)
+        false =>
+          outcome_rejected(
+            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+      )
+  }
+}
+
+fn target_operator_realization_catalog_lookup_step(
+  acc: PassingCandidateFold,
+  row_node: Node,
+  canonical_op: CanonicalOperation
+) -> PassingCandidateFold {
+  match target_operator_realization_row_wire_schema_valid(row: row_node) {
+    Accepted { value: _, diagnostics: _ } =>
+      if target_operator_realization_row_matches_canonical_op(
+        row: row_node,
+        canonical_op: canonical_op
+      ) {
+        match acc {
+          NoPassingCandidate => OnePassingCandidate { candidate: row_node }
+          OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+          ManyPassingCandidates => ManyPassingCandidates
+        }
+      } else {
+        acc
+      }
+    Rejected { diagnostics: _ } => acc
+  }
+}
+
+fn target_operator_realization_catalog_lookup(
+  catalog: Node,
+  canonical_op: CanonicalOperation
+) -> Outcome<TargetOperatorRealization> {
+  bind_outcome(
+    o: target_operator_realization_catalog_wire_schema_valid(catalog: catalog),
+    f: fn(_) {
+      match catalog.kind {
+        TypeNode { connective: Conj } =>
+          match fold(
+            catalog.children,
+            init: NoPassingCandidate,
+            f: fn(acc, e) {
+              match e.label {
+                Named { name: n } =>
+                  if n == target_operator_realization_row_edge {
+                    target_operator_realization_catalog_lookup_step(
+                      acc: acc,
+                      row_node: e.target,
+                      canonical_op: canonical_op
+                    )
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+            }
+          ) {
+            NoPassingCandidate =>
+              outcome_rejected(
+                target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+              )
+            OnePassingCandidate { candidate: row_node } =>
+              target_operator_realization_from_wire_row(row: row_node)
+            ManyPassingCandidates =>
+              outcome_rejected(
+                target_operator_realization_catalog_ambiguous_diagnostic(catalog: catalog)
+              )
+          }
+        _ =>
+          outcome_rejected(
+            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+          )
+      }
+    }
+  )
+}
+
+fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<CanonicalOperation> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match e.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_operation {
+                match canonical_operation_from_wire_node(wire: e.target) {
+                  Accepted { value: canonical_op, diagnostics: _ } =>
+                    optional_present(value: canonical_op)
+                  Rejected { diagnostics: _ } => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: canonical_op } => outcome_accepted(canonical_op)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expression_binding_ref_token(
+  binding: Symbol,
+  projection: TargetValueExpressionProjection
+) -> ConcreteSyntaxToken {
+  BoundToken {
+    token_class: projection.binding_ref_form.ident_token,
+    binding: binding
+  }
+}
+
+fn target_value_expression_binding_refs_intersperse_separator(
+  bindings: List<Symbol>,
+  projection: TargetValueExpressionProjection,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  fold_list_right(
+    xs: bindings,
+    empty: Empty,
+    snoc: fn(acc, binding) {
+      let token = target_value_expression_binding_ref_token(
+        binding: binding,
+        projection: projection
+      )
+      match acc {
+        Empty => Cons { head: token, tail: Empty }
+        _ =>
+          Cons {
+            head: token,
+            tail: Cons {
+              head: FixedToken { token_class: separator },
+              tail: acc
+            }
+          }
+      }
+    }
+  )
+}
+
+fn target_operator_shape_emit_primitive_apply_tokens(
+  shape: TargetOperatorShape,
+  projection: TargetValueExpressionProjection,
+  bindings: List<Symbol>,
+  expr: TargetValueExpression
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match shape {
+    InfixToken { token: op_token } =>
+      if length(xs: bindings) != 2 {
+        outcome_rejected(
+          target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+        )
+      } else {
+        match list_at_optional(xs: bindings, index: 0) {
+          Absent =>
+            outcome_rejected(
+              target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+            )
+          Present { value: left_binding } =>
+            match list_at_optional(xs: bindings, index: 1) {
+              Absent =>
+                outcome_rejected(
+                  target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+                )
+              Present { value: right_binding } =>
+                outcome_accepted(
+                  Cons {
+                    head: target_value_expression_binding_ref_token(
+                      binding: left_binding,
+                      projection: projection
+                    ),
+                    tail: Cons {
+                      head: FixedToken { token_class: op_token },
+                      tail: Cons {
+                        head: target_value_expression_binding_ref_token(
+                          binding: right_binding,
+                          projection: projection
+                        ),
+                        tail: Empty
+                      }
+                    }
+                  }
+                )
+            }
+        }
+      }
+    PrefixToken { token: op_token } =>
+      if length(xs: bindings) != 1 {
+        outcome_rejected(
+          target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+        )
+      } else {
+        match list_at_optional(xs: bindings, index: 0) {
+          Absent =>
+            outcome_rejected(
+              target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+            )
+          Present { value: binding } =>
+            outcome_accepted(
+              Cons {
+                head: FixedToken { token_class: op_token },
+                tail: Cons {
+                  head: target_value_expression_binding_ref_token(
+                    binding: binding,
+                    projection: projection
+                  ),
+                  tail: Empty
+                }
+              }
+            )
+        }
+      }
+    CallIdent { ident: callee } =>
+      outcome_accepted(
+        list_append(
+          left: list_append(
+            left: Cons {
+              head: FixedToken { token_class: projection.primitive_apply_form.open },
+              tail: Cons {
+                head: FixedToken { token_class: callee },
+                tail: Empty
+              }
+            },
+            right: target_value_expression_binding_refs_intersperse_separator(
+              bindings: bindings,
+              projection: projection,
+              separator: projection.primitive_apply_form.separator
+            )
+          ),
+          right: Cons {
+            head: FixedToken { token_class: projection.primitive_apply_form.close },
+            tail: Empty
+          }
+        )
+      )
+    MethodIdent { ident: _ } =>
+      outcome_rejected(
+        target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: expr)
+      )
+  }
+}
+
+fn target_value_expression_primitive_apply_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_primitive_apply_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_primitive_apply_operation_from_wire(wire: expr.node),
+        f: fn(canonical_op) {
+          bind_outcome(
+            o: target_value_expr_primitive_apply_operand_bindings(wire: expr.node),
+            f: fn(bindings) {
+              bind_outcome(
+                o: target_operator_realization_catalog_lookup(
+                  catalog: catalog,
+                  canonical_op: canonical_op
+                ),
+                f: fn(operator_row) {
+                  target_operator_shape_emit_primitive_apply_tokens(
+                    shape: operator_row.shape,
+                    projection: projection,
+                    bindings: bindings,
+                    expr: expr
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expression_binding_ref_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_binding_ref_binding_from_wire(wire: expr.node),
+    f: fn(binding) {
+      outcome_accepted(
+        Cons {
+          head: target_value_expression_binding_ref_token(
+            binding: binding,
+            projection: projection
+          ),
+          tail: Empty
+        }
+      )
+    }
+  )
+}
+
+// Substrate fold — exhaustive match over TargetValueExpressionKind (design-value-emit-schema.md §4.4).
+fn target_value_expression_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match expr.kind {
+    TargetValueExprBindingRef =>
+      target_value_expression_binding_ref_to_concrete_tokens(
+        expr: expr,
+        projection: projection
+      )
+    TargetValueExprPrimitiveApply =>
+      target_value_expression_primitive_apply_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    _ =>
+      outcome_rejected(
+        target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
+      )
+  }
+}
+
+fn target_declared_inhabitants_edge_targets(root: Node) -> List<Node> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: Empty, f: fn(acc, edge) {
+        list_snoc_item(xs: acc, item: edge.target)
+      })
+    _ => Empty
+  }
+}
+
+fn target_inhabitant_wire_primary_atom_identity(wire: Node) -> Optional<Symbol> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    TypeNode { connective: Conj } =>
+      match fold(
+        wire.children,
+        init: optional_absent(),
+        f: fn(acc, edge) {
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              match edge.label {
+                Named { name: _ } =>
+                  match edge.target.kind {
+                    TypeNode { connective: Atom { identity: id } } =>
+                      optional_present(value: id)
+                    _ => acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Present { value: id } => optional_present(value: id)
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P3 / modeling-discipline Practice 10) —
+// feature:target-wave1-signature-declared-inhabitants — consumer:06_value_expression
+// target_wave1_add_signature_matches — bind: COMPREP wave-1 Arrow signature slots vs
+// declared_inhabitants catalog — owner: T6 value-expression (lively-badger-242) —
+// lane: std/target_model — dissolve-on-arrival: Outcome-bearing substrate signature query
+// replaces Bool fold predicates in std; forbidden: hand-rolled match/fold signature gates
+// without per-function disposition in std/.
+fn target_catalog_contains_node_shape(
+  slot: Node,
+  catalog_targets: List<Node>
+) -> Bool {
+  fold_list(
+    xs: catalog_targets,
+    empty: false,
+    cons: fn(acc, candidate) {
+      if acc {
+        true
+      } else if content_hash(n: slot) == content_hash(n: candidate) {
+        true
+      } else {
+        false
+      }
+    }
+  )
+}
+
+fn target_catalog_atom_identity_matches_inhabitant_wires(
+  slot_atom: Symbol,
+  catalog_targets: List<Node>
+) -> Bool {
+  fold_list(
+    xs: catalog_targets,
+    empty: false,
+    cons: fn(acc, candidate) {
+      if acc {
+        true
+      } else {
+        match target_inhabitant_wire_primary_atom_identity(wire: candidate) {
+          Present { value: inhabitant_atom } => slot_atom == inhabitant_atom
+          Absent => false
+        }
+      }
+    }
+  )
+}
+
+fn target_wave1_signature_slot_matches_declared_inhabitants(
+  slot: Node,
+  inhabitants_root: Node
+) -> Bool {
+  let catalog_targets = target_declared_inhabitants_edge_targets(root: inhabitants_root)
+  if target_catalog_contains_node_shape(slot: slot, catalog_targets: catalog_targets) {
+    true
+  } else {
+    match slot.kind {
+      TypeNode { connective: Atom { identity: slot_atom } } =>
+        slot_atom == ^dag_binding_type_int
+        || target_catalog_atom_identity_matches_inhabitant_wires(
+          slot_atom: slot_atom,
+          catalog_targets: catalog_targets
+        )
+      _ =>
+        match target_inhabitant_wire_primary_atom_identity(wire: slot) {
+          Present { value: slot_atom } =>
+            target_catalog_atom_identity_matches_inhabitant_wires(
+              slot_atom: slot_atom,
+              catalog_targets: catalog_targets
+            )
+          Absent => false
+        }
+    }
+  }
+}
+
+fn target_wave1_add_signature_slot_at(
+  arrow: Node,
+  index: Int,
+  inhabitants_root: Node
+) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
+    Present { value: slot } =>
+      target_wave1_signature_slot_matches_declared_inhabitants(
+        slot: slot,
+        inhabitants_root: inhabitants_root
+      )
+    Absent => false
+  }
+}
+
+fn target_wave1_add_signature_matches(
+  arrow: Node,
+  inhabitants_root: Node
+) -> Bool {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      target_wave1_add_signature_slot_at(
+        arrow: arrow,
+        index: 0,
+        inhabitants_root: inhabitants_root
+      )
+      && target_wave1_add_signature_slot_at(
+        arrow: arrow,
+        index: 1,
+        inhabitants_root: inhabitants_root
+      )
+      && target_wave1_add_signature_slot_at(
+        arrow: arrow,
+        index: 2,
+        inhabitants_root: inhabitants_root
+      )
+    _ => false
+  }
+}
+
+fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: target_value_expr_field_binding_ref,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: target_value_expr_field_ident_token,
+              target: target_model_type_atom_node(
+                identity: projection.binding_ref_form.ident_token
+              )
+            )
+          ]
+        )
+      ),
+      target_model_named_edge(
+        name: target_value_expr_field_primitive_apply,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: target_value_expr_field_open,
+              target: target_model_type_atom_node(
+                identity: projection.primitive_apply_form.open
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_close,
+              target: target_model_type_atom_node(
+                identity: projection.primitive_apply_form.close
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_separator,
+              target: target_model_type_atom_node(
+                identity: projection.primitive_apply_form.separator
+              )
+            )
+          ]
+        )
+      ),
+      target_model_named_edge(
+        name: target_value_expr_field_callable_apply,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: target_value_expr_field_ident_token,
+              target: target_model_type_atom_node(
+                identity: projection.callable_apply_form.callee_ident_token
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_open,
+              target: target_model_type_atom_node(
+                identity: projection.callable_apply_form.open
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_close,
+              target: target_model_type_atom_node(
+                identity: projection.callable_apply_form.close
+              )
+            ),
+            target_model_named_edge(
+              name: target_value_expr_field_separator,
+              target: target_model_type_atom_node(
+                identity: projection.callable_apply_form.separator
+              )
+            )
+          ]
+        )
+      )
+    ]
+  )
 }
 
 fn target_value_template_apply(
@@ -626,6 +2378,14 @@ fn target_value_template_apply(
         Present { value: s } =>
           outcome_accepted(target_value_expression_string_literal(value: s))
       }
+    ValueBindingRef =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValuePrimitiveApply =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
   }
 }
 
@@ -761,7 +2521,7 @@ fn target_value_expression_bool_atom(value: Bool) -> Node {
           connective: Atom { identity: ^target_value_expression_bool_true }
         },
         children: [],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     false =>
       Node {
@@ -769,7 +2529,7 @@ fn target_value_expression_bool_atom(value: Bool) -> Node {
           connective: Atom { identity: ^target_value_expression_bool_false }
         },
         children: [],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -790,7 +2550,7 @@ fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -
           connective: Atom { identity: ^target_constructor_template_optional_absent }
         },
         children: [],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     Present { value: template } =>
       match template {
@@ -800,7 +2560,7 @@ fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -
               connective: Atom { identity: ^target_constructor_template_constructor_absent }
             },
             children: [],
-            span: Unanchored
+            occurrence_id: SyntheticOccurrence
 }
       }
   }
@@ -863,7 +2623,7 @@ fn target_model_bundle_core(host: TargetModel) -> Node {
             target_model_bundle_core_keep_edge(acc: acc, edge: edge)
           }
         ),
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     _ => host.bundle
   }
@@ -910,11 +2670,11 @@ fn target_atom_realization_to_node(row: TargetAtomRealization, host_bundle: Node
         target: Node {
           kind: TypeNode { connective: Atom { identity: row.display_name } },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -956,7 +2716,7 @@ fn target_atom_realization_catalog_node(
         )
       }
     ),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1284,7 +3044,7 @@ fn target_function_boundary_site_to_node(site: FunctionBoundarySite) -> Node {
       connective: Atom { identity: discriminant(v: site) }
     },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1387,7 +3147,7 @@ fn target_function_signature_realization_to_node(
         target: row.signature_type_form.node
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1429,7 +3189,7 @@ fn target_function_signature_realization_catalog_node(
         )
       }
     ),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1699,7 +3459,7 @@ fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
     target: Node {
       kind: TypeNode { connective: Atom { identity: surface } },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -1809,7 +3569,7 @@ fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
         connective: Atom { identity: discriminant(v: kind) }
       },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -1841,7 +3601,7 @@ fn target_type_expr_wrapped_emitted(
       ),
       item: target_type_expr_kind_edge(kind: kind)
     ),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1853,7 +3613,7 @@ fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: Symbol) ->
       Node {
         kind: TypeNode { connective: Atom { identity: identity } },
         children: [],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     ]
   )
@@ -1883,7 +3643,7 @@ fn target_type_expr_wrapped_emitted_labeled(
       ),
       right: Cons { head: target_type_expr_kind_edge(kind: kind), tail: Empty }
     ),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -2512,7 +4272,7 @@ fn target_collection_set_carrier_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: target_collection_set_carrier } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -2752,7 +4512,7 @@ fn target_carrier_type_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -3170,7 +4930,7 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
             }
           },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       ),
       target_model_named_edge(
@@ -3180,7 +4940,7 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
             connective: Atom { identity: discriminant(v: row.use_site) }
           },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       ),
       target_model_named_edge(
@@ -3190,11 +4950,11 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
             connective: Atom { identity: discriminant(v: row.reference_layer) }
           },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -3222,7 +4982,7 @@ fn target_use_site_ownership_catalog_node(
       empty: Empty,
       cons: fn(acc, row) { target_use_site_ownership_catalog_snoc_edge(acc: acc, row: row) }
     ),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -3231,7 +4991,7 @@ fn target_use_site_ownership_catalog_node(
 // Copy carrier atom-identities for the bundle; the lookup decodes + matches.
 fn target_value_semantics_carrier_atom_node(id: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: id } }, children: Empty,
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -3248,7 +5008,7 @@ fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
         )
       }
     ),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -3351,7 +5111,7 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.rc_type_head } },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       ),
       target_model_named_edge(
@@ -3359,7 +5119,7 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.box_type_head } },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       ),
       target_model_named_edge(
@@ -3367,7 +5127,7 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.rc_new_ctor } },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       ),
       target_model_named_edge(
@@ -3375,11 +5135,11 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.box_new_ctor } },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -3426,7 +5186,7 @@ fn target_value_expression_reference_rc_new(
           target: target_value_expression_node(expr: inner)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -3447,7 +5207,7 @@ fn target_value_expression_reference_box_new(
           target: target_value_expression_node(expr: inner)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -3525,7 +5285,7 @@ fn target_type_expr_symbol_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -3542,7 +5302,7 @@ fn target_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
         target: target_type_expr_symbol_atom(id: form.ident_token)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -3595,7 +5355,7 @@ fn target_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
           )
         ]
     },
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -3612,7 +5372,7 @@ fn target_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
         target: target_type_expr_symbol_atom(id: form.variant_separator)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -3649,7 +5409,7 @@ fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
         target: target_type_expr_symbol_atom(id: form.param_list_separator)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -3752,7 +5512,7 @@ fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection)
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
   }
 }
 

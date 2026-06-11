@@ -57,7 +57,7 @@ import v4.test.claim.manual.mvp1_rust_add_translate {
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
 import v4.std.text { String }
 import v4.std.verification {
   CompilesClaim,
@@ -81,7 +81,7 @@ fn sg2_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg2_pass_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -89,7 +89,7 @@ fn sg2_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg2_fail_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

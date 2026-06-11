@@ -27,8 +27,8 @@ env:
   # it parses as the string "true" (an unquoted bare `true` is a YAML bool). Drop this once every
   # pinned action ships a Node24 default. Ref: github.blog/changelog/2025-09-19-deprecation-of-node-20.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity, parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate (lens witnesses, parallel) + v4_lens_ci (node-frontier witnesses) + doc_refs (doc-authority reference gate)
-# Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness (ci_floor), DAG parity (ci_floor_parity), M1 rust+dag emit (ci_floor_emit), v4 lens witnesses (v4_lens_gate + v4_lens_ci). Branch protection names ci_floor + ci_floor_emit; new parallel jobs are enforced via the `ci` aggregator unless the operator adds them as required checks. doc_refs rolls into the `ci` aggregator.
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet, parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate (lens witnesses, parallel) + v4_lens_ci (node-frontier witnesses) + doc_refs (doc-authority reference gate)
+# Required on every PR: fmt, affected-set component receipt, stage0 freshness (ci_floor), DAG parity (ci_floor_parity), M1 rust+dag emit (ci_floor_emit), v4 lens witnesses (v4_lens_gate + v4_lens_ci). Branch protection names ci_floor + ci_floor_emit; new parallel jobs are enforced via the `ci` aggregator unless the operator adds them as required checks. doc_refs rolls into the `ci` aggregator.
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR -- authority: this workflow (.github/workflows/ci.yml) is the
   # direct hand-edited CI authority; the prior src/v4/workflow/ci.dag runner-isolation model was deleted.
@@ -56,7 +56,6 @@ jobs:
         { test -r /var/run/docker.sock || test -w /var/run/docker.sock; } && fail "can read or write docker.sock"
         echo "OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, docker.sock inaccessible"
   fmt:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     steps:
@@ -126,7 +125,6 @@ jobs:
   # consolidation cleared (doc-authority.md itself had drifted to cite a nonexistent ROADMAP
   # structure). Pure stdlib Python; no build, no toolchain. Rolled into the `ci` aggregator.
   doc_refs:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -146,7 +144,6 @@ jobs:
   # must not import v3.compiler / v4.compiler). Clean-tree scan plus perturb-check plants
   # std->compiler and extdeps->compiler imports in a temp tree and requires detection.
   layering_imports:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -163,7 +160,6 @@ jobs:
   # Affected-set component host transport -- live fail-closed receipt.
   # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     outputs:
@@ -259,7 +255,6 @@ jobs:
   # parallel `ci_floor_parity` job; the M1 rust+dag emit probe runs in `ci_floor_emit` (gunb-ai/ctrl#1458).
   # Job id `ci_floor` is unchanged for branch protection.
   ci_floor:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -372,7 +367,6 @@ jobs:
   # so the parity test compiles only v2-compiler-tests (~5s) rather than cold-compiling the closure
   # (~64s+). Enforced via the `ci` aggregator; operator may add `ci_floor_parity` to branch protection.
   ci_floor_parity:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -465,15 +459,22 @@ jobs:
     # fail-closed (RR-L).
     - name: v2 DAG emit parity receipt (shared closure)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
+    # get-off-v3 census ratchet: every direct compile_to_dag( call site must stay at or below the
+    # ceiling defined in get_off_v3_compile_to_dag_census_test.rs (PR #4652). Running under
+    # ci_floor_parity for infra reuse (shared Cargo cache, sccache). CI-enforcement authority:
+    # this step (the only CI wire for v3-compiler tests — CLAUDE.md documents all other
+    # v3-compiler tests as dormant in CI). sccache warms the v3-compiler debug compile; the test
+    # itself is fast file I/O (source tree walk + text scan, no runtime compilation).
+    - name: get-off-v3 compile_to_dag caller ceiling (census ratchet, #4652)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v3-compiler --test integration get_off_v3_compile_to_dag_census_test::get_off_v3_compile_to_dag_caller_count_is_at_or_below_ceiling -- --exact --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
   # Split out of `ci_floor` so it runs CONCURRENTLY with stage0 freshness + DAG parity: the probe
   # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
   # them only added wall-clock. This job needs only the `gunbc` binary (restored from the shared
   # gunbc-bin cache, or cold-built on miss); it does NOT run stage0/parity. Required on every
-  # non-draft PR -- branch protection references `ci_floor_emit` by name (unchanged).
+  # PR -- branch protection references `ci_floor_emit` by name (unchanged).
   # Authority/plan: gunb-ai/ctrl#1458 (Phase 3).
   ci_floor_emit:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -569,7 +570,6 @@ jobs:
   # lens gate (~39s) runs CONCURRENTLY with node-frontier witnesses (~253s) left in `v4_lens_ci`.
   # Enforced via the `ci` aggregator; operator may add `v4_lens_gate` to branch protection.
   v4_lens_gate:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 35
     steps:
@@ -639,7 +639,6 @@ jobs:
   # Affected-set node-frontier selection CI gate. Lens witnesses run CONCURRENTLY in `v4_lens_gate`;
   # this job retains the node-frontier step only. Job id `v4_lens_ci` unchanged for any existing refs.
   v4_lens_ci:
-    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
     steps:
@@ -712,7 +711,7 @@ jobs:
     - name: v4 executor batch-runner dogfood (must-pass, discriminating)
       run: bash scripts/v4-batch-executor-gate.sh --perturb-check
   ci:
-    if: ${{ always() && github.event.pull_request.draft != true }}
+    if: always()
     needs: [affected, ci_floor, ci_floor_parity, ci_floor_emit, v4_lens_gate, v4_lens_ci, infra_isolation, doc_refs, layering_imports]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
@@ -759,4 +758,4 @@ jobs:
         echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + stage0 freshness in ci_floor + DAG parity in ci_floor_parity + M1 rust+dag emit in ci_floor_emit; v4_lens_gate + v4_lens_ci discriminating witnesses green; infra_isolation de-priv guard green; layering_imports cross-layer import gate green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (discriminating v4 lens witnesses)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate + v4_lens_ci (discriminating v4 lens witnesses)"
