@@ -1470,7 +1470,10 @@ fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   }
 }
 
-// Wave-2 effect-IO consumer: callee-free 2-arg Transform under EffectIoEvalPresent only (never inline).
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature:V4-EFFECTS-IO — consumer:eval_with_context effect-IO roundtrip arm (E-10) —
+// dissolve-on-arrival: EffectIoRoundtrip behavior variant or declared roundtrip carrier replaces
+// callee-free 2-arg Transform shape match; forbidden: permanent untagged Bool roundtrip predicates in 05_eval.
 fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) -> Bool {
   match effect_io {
     EffectIoEvalAbsent => false
