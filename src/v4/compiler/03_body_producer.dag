@@ -41,7 +41,9 @@ import v4.extdeps.languages.dag {
   dag_mvp1_add_arrow_signature_node,
   dag_mvp1_add_arrow_with_body_swapped_operands_fixture,
   dag_mvp1_add_operator_node,
-  dag_mvp1_int_type_binding
+  dag_mvp1_captured_flat_atom_binding_for_ident,
+  dag_mvp1_int_type_binding,
+  dag_mvp1_resolved_operator_node_for_eval
 }
 import v4.std.node_query {
   arrow_domain_named_param_bindings,
@@ -93,20 +95,6 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
         d: body_producer_diagnostic(
           reason: body_producer_reason_malformed_attachment,
           n: arrow
-        )
-      )
-  }
-}
-
-fn body_producer_binding_id_from_ident_atom(node: Node) -> Outcome<Symbol> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      outcome_accepted(id)
-    _ =>
-      outcome_rejected(
-        d: body_producer_diagnostic(
-          reason: body_producer_reason_mvp1_resolved_shape,
-          n: node
         )
       )
   }
@@ -302,13 +290,22 @@ fn produce_mvp1_add_arrow_signature_from_resolved(resolved_root: Node) -> Outcom
                 ),
                 f: fn(codomain) {
                   bind_outcome(
-                    o: body_producer_binding_id_from_ident_atom(node: domain_x),
+                    o: dag_mvp1_captured_flat_atom_binding_for_ident(
+                      flat_index: 5,
+                      ident_atom: domain_x
+                    ),
                     f: fn(left_binding) {
                       bind_outcome(
-                        o: body_producer_binding_id_from_ident_atom(node: domain_y),
+                        o: dag_mvp1_captured_flat_atom_binding_for_ident(
+                          flat_index: 9,
+                          ident_atom: domain_y
+                        ),
                         f: fn(right_binding) {
                           bind_outcome(
-                            o: body_producer_binding_id_from_ident_atom(node: codomain),
+                            o: dag_mvp1_captured_flat_atom_binding_for_ident(
+                              flat_index: 12,
+                              ident_atom: codomain
+                            ),
                             f: fn(codomain_binding) {
                               bind_outcome(
                                 o: body_producer_arrow_domain_conj_from_binding_ids(
@@ -371,24 +368,29 @@ fn produce_mvp1_add_arrow_with_body_from_resolved(resolved_root: Node) -> Outcom
                 ),
                 f: fn(operator) {
                   bind_outcome(
-                    o: body_producer_transform_body_from_bindings(
-                      operator: operator,
-                      param_bindings: param_bindings
-                    ),
-                    f: fn(body) {
+                    o: dag_mvp1_resolved_operator_node_for_eval(atom: operator),
+                    f: fn(eval_operator) {
                       bind_outcome(
-                        o: attach_arrow_body(arrow: signature, body: body),
-                        f: fn(arrow_with_body) {
-                          if well_formed(n: arrow_with_body) {
-                            outcome_accepted(value: arrow_with_body)
-                          } else {
-                            outcome_rejected(
-                              d: body_producer_diagnostic(
-                                reason: body_producer_reason_post_produce_not_well_formed,
-                                n: arrow_with_body
-                              )
-                            )
-                          }
+                        o: body_producer_transform_body_from_bindings(
+                          operator: eval_operator,
+                          param_bindings: param_bindings
+                        ),
+                        f: fn(body) {
+                          bind_outcome(
+                            o: attach_arrow_body(arrow: signature, body: body),
+                            f: fn(arrow_with_body) {
+                              if well_formed(n: arrow_with_body) {
+                                outcome_accepted(value: arrow_with_body)
+                              } else {
+                                outcome_rejected(
+                                  d: body_producer_diagnostic(
+                                    reason: body_producer_reason_post_produce_not_well_formed,
+                                    n: arrow_with_body
+                                  )
+                                )
+                              }
+                            }
+                          )
                         }
                       )
                     }
