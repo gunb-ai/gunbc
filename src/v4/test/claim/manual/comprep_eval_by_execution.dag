@@ -668,7 +668,6 @@ fn comprep_eval_swapped_operands_claim_passes() -> Bool {
   )
 }
 
-<<<<<<< HEAD
 // Source-bridge conjunct: source pipeline admission GATES execution of the body_producer
 // Arrow. comprep_source_ingested_add_infers() must accept before the produced Arrow is run.
 fn comprep_eval_source_driven_executes_holds() -> Bool {
@@ -684,7 +683,10 @@ fn comprep_eval_source_driven_executes_holds() -> Bool {
           )
         Rejected { diagnostics: _ } => false
       }
-=======
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // Exact-arity discriminating reds (P3/P5 / Facts Flow Forward): each presents an input that
 // prefix-matching would have admitted while silently dropping a beyond-shape fact. With the
 // exact-arity gates, every one must FAIL the run rather than execute to 5.
@@ -724,20 +726,15 @@ fn comprep_excess_actual_executes_to_five() -> Bool {
         Rejected { diagnostics: _ } => false
       }
     }
->>>>>>> origin/main
     Rejected { diagnostics: _ } => false
   }
 }
 
-<<<<<<< HEAD
-// COMPREP wave-1 runtime keystone, single Bool witness. Four honest conjuncts:
-=======
 fn comprep_excess_actual_red_holds() -> Bool {
   comprep_excess_actual_executes_to_five() == false
 }
 
-// COMPREP wave-1 runtime keystone, single Bool witness. Three honest conjuncts:
->>>>>>> origin/main
+// COMPREP wave-1 runtime keystone, single Bool witness. Eight honest conjuncts:
 //   1. produced-body-executes — the #4608 COMPREP-produced add Arrow.body executes through
 //      eval callee dispatch to result == 5 BY EXECUTION (retiring call_primitive-as-only-arm);
 //   2. direct-runtime — direct runtime eval holds for the produced Arrow;
@@ -745,7 +742,10 @@ fn comprep_excess_actual_red_holds() -> Bool {
 //      (a SEPARATE admission gate, NOT a driver of the executed body);
 //   4. swapped-operands-red — the discriminating red: a swapped-operand body fails the run;
 //   5. source-driven-executes — source admission gates execution of body_producer Arrow
-//      (resolve->body_producer bridge, node://adhoc-9a72d4fb-8c2).
+//      (resolve->body_producer bridge, node://adhoc-9a72d4fb-8c2);
+//   6. excess-signature-red — oversized signature Arrow REFUSES rather than dropping the extra fact;
+//   7. excess-body-red — oversized body REFUSES rather than dropping the extra operand;
+//   8. excess-actual-red — 3 actuals on a 2-param callee REFUSES rather than silently dropping.
 // The co-located BoolWitnessClaim marker below makes this the glob-discovered executed
 // consumer (INVARIANTS E-10).
 fn comprep_eval_by_execution_keystone_holds() -> Bool {
@@ -753,15 +753,12 @@ fn comprep_eval_by_execution_keystone_holds() -> Bool {
     && comprep_eval_direct_runtime_holds()
     && comprep_eval_source_pipeline_admits_add_holds()
     && comprep_eval_swapped_operands_red_holds()
-<<<<<<< HEAD
     && comprep_eval_source_driven_executes_holds()
-=======
     // Exact-arity fail-closed reds: oversized signature / body / actuals each refuse rather
     // than dropping the extra fact (P3/P5 / Facts Flow Forward).
     && comprep_excess_signature_red_holds()
     && comprep_excess_body_red_holds()
     && comprep_excess_actual_red_holds()
->>>>>>> origin/main
 }
 
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
