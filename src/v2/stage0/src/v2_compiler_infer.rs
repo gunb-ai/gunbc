@@ -12326,6 +12326,7 @@ pub fn build_type_env(
         } else {
             Rc::new(vec![])
         };
+        eprintln!("DEBUG build_type_env: imported parents start {}", module_name_str.clone());
         let imported_parent_envs = Rc::new({
             let mut __result = Vec::new();
             for imp in module.resolved_imports.clone().iter().cloned() {
@@ -12340,7 +12341,9 @@ pub fn build_type_env(
             }
             __result
         });
+        eprintln!("DEBUG build_type_env: imported parents done {}", module_name_str.clone());
         let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs);
+        eprintln!("DEBUG build_type_env: import bindings start {}", module_name_str.clone());
         let std_import_bindings = collect_parent_bindings_filtered(std_types_parent_env.clone());
         let import_bindings = module.resolved_imports.clone().iter().cloned().fold(
             std_import_bindings,
@@ -12356,6 +12359,8 @@ pub fn build_type_env(
                 None => acc.clone(),
             },
         );
+        eprintln!("DEBUG build_type_env: import bindings done {}", module_name_str.clone());
+        eprintln!("DEBUG build_type_env: carrier bindings start {}", module_name_str.clone());
         let std_import_carrier_bindings =
             collect_parent_carrier_bindings(std_types_parent_env.clone());
         let import_carrier_bindings = module.resolved_imports.clone().iter().cloned().fold(
@@ -12375,6 +12380,7 @@ pub fn build_type_env(
                 }
             },
         );
+        eprintln!("DEBUG build_type_env: carrier bindings done {}", module_name_str.clone());
         let import_recursive = parent_envs
             .clone()
             .iter()
@@ -13787,6 +13793,8 @@ pub fn typecheck_module(
     allocator: BindingIdAllocator,
 ) -> Rc<TypecheckModuleResult> {
     {
+        let debug_module_name = authored_name_at(source_indices.clone(), resolved.module.clone());
+        eprintln!("DEBUG typecheck_module: env start {}", debug_module_name.clone());
         let env_result = build_type_env(
             resolved.clone(),
             parent_index.clone(),
@@ -13794,6 +13802,7 @@ pub fn typecheck_module(
             intern_table,
             allocator.clone(),
         );
+        eprintln!("DEBUG typecheck_module: env done {}", debug_module_name.clone());
         let env = env_result.env.clone();
         let allocator = env_result.allocator.clone();
         let env_diags = env_result.diagnostics.clone();
@@ -13824,6 +13833,10 @@ pub fn typecheck_module(
         }
         let resolved_module_name =
             authored_name_at(source_indices.clone(), resolved.module.clone());
+        eprintln!(
+            "DEBUG typecheck_module: contributions start {}",
+            debug_module_name.clone()
+        );
         let contributions = Rc::new({
             let mut __result = Vec::new();
             for item in module_items(resolved.module.clone()).iter().cloned() {
@@ -13835,12 +13848,24 @@ pub fn typecheck_module(
             }
             __result
         });
+        eprintln!(
+            "DEBUG typecheck_module: contributions done {}",
+            debug_module_name.clone()
+        );
+        eprintln!(
+            "DEBUG typecheck_module: context start {}",
+            debug_module_name.clone()
+        );
         let ctx = build_module_context(
             contributions,
             parent_index.clone(),
             resolved.resolved_imports.clone(),
             env.clone(),
             resolved_module_name.clone(),
+        );
+        eprintln!(
+            "DEBUG typecheck_module: context done {}",
+            debug_module_name.clone()
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
@@ -13874,7 +13899,9 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             lambda_param_provenance: v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         });
+        eprintln!("DEBUG typecheck_module: infer start {}", debug_module_name.clone());
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope);
+        eprintln!("DEBUG typecheck_module: infer done {}", debug_module_name.clone());
         let typed_items = Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.clone().iter().cloned() {
@@ -13889,11 +13916,23 @@ pub fn typecheck_module(
             }
             __result
         });
+        eprintln!(
+            "DEBUG typecheck_module: output provenance start {}",
+            debug_module_name.clone()
+        );
         let updated_func_env = populate_output_provenance(
             typed_items.clone(),
             ctx.func_env.clone(),
             env.clone(),
             data_locals.clone(),
+        );
+        eprintln!(
+            "DEBUG typecheck_module: output provenance done {}",
+            debug_module_name.clone()
+        );
+        eprintln!(
+            "DEBUG typecheck_module: reannotate start {}",
+            debug_module_name.clone()
         );
         let reannotated_items = Rc::new({
             let mut __result = Vec::new();
@@ -13935,6 +13974,10 @@ pub fn typecheck_module(
             }
             __result
         });
+        eprintln!(
+            "DEBUG typecheck_module: reannotate done {}",
+            debug_module_name.clone()
+        );
         let typed_base = module_node(
             resolved_module_name.clone(),
             module_imports(resolved.module.clone()),
