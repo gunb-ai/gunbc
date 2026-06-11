@@ -571,7 +571,7 @@ jobs:
   v4_lens_gate:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
@@ -612,17 +612,26 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-    - name: Cache gunbc binary (v4 lens CI)
+    - name: Cache gunbc + discover_owned_data binaries (v4 lens gate)
       id: v4-v2-bin
       uses: actions/cache@v5
       with:
-        path: target/release/gunbc
-        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        # Substrate-equivalence (C9) needs discover_owned_data; never restore a
+        # gunbc-only cache and skip the host binary (gunbc-lens-gate-bin- namespace).
+        path: |
+          target/release/gunbc
+          target/release/discover_owned_data
+        key: gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
-    - name: Build v2 compiler (v4 lens CI)
+          gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build v2 compiler (v4 lens gate)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+    - name: Ensure discover_owned_data binary (v4 lens gate C9)
+      run: |
+        if [[ ! -x target/release/discover_owned_data ]]; then
+          bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release --bin discover_owned_data
+        fi
     - name: v4 lens analysis must-pass discriminating witnesses
       run: bash scripts/v4-lens-ci-gate.sh --perturb-check
     - name: v4 glob-discovery substrate equivalence (C9)
