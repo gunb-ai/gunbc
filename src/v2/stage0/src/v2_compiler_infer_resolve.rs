@@ -90,6 +90,11 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
     {
         let source_indices = env.source_indices.clone();
         let brand = authored_name_at(source_indices.clone(), n.clone());
+        if (is_declared_container_alias_spelling(brand.clone())
+            && ((n.children.clone().len() as i64) > 0))
+        {
+            return n.clone();
+        }
         match lookup_type_for(env.clone(), n.clone()) {
             Some(resolved) => {
                 let structural = if (((resolved.connective.clone() == Connective::NoConnective)

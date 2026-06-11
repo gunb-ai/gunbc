@@ -1957,6 +1957,10 @@ type EdgeHeadTail {
   head: Edge
   tail: List<Edge>
 }
+type TargetTypeExprArrowParamSlotHeadTail {
+  head: TargetTypeExprArrowParamSlot
+  tail: List<TargetTypeExprArrowParamSlot>
+}
 fn edge_list_head_and_tail(edges: List<Edge>, node: Node) -> Outcome<EdgeHeadTail> {
   match list_at_optional(xs: edges, index: 0) {
     Present { value: head } =>
@@ -1965,6 +1969,25 @@ fn edge_list_head_and_tail(edges: List<Edge>, node: Node) -> Outcome<EdgeHeadTai
           outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
         TailFound { tail: t } =>
           Accepted { value: EdgeHeadTail { head: head, tail: t }, diagnostics: None }
+      }
+    Absent =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
+}
+fn target_type_expr_arrow_param_slot_head_and_tail(
+  xs: List<TargetTypeExprArrowParamSlot>,
+  node: Node
+) -> Outcome<TargetTypeExprArrowParamSlotHeadTail> {
+  match list_at_optional(xs: xs, index: 0) {
+    Present { value: head } =>
+      match list_tail(xs: xs) {
+        TailAbsent =>
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        TailFound { tail: t } =>
+          Accepted {
+            value: TargetTypeExprArrowParamSlotHeadTail { head: head, tail: t },
+            diagnostics: None
+          }
       }
     Absent =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
@@ -3028,7 +3051,7 @@ fn serialize_type_expr_arrow_params_go(
     Accepted { value: acc, diagnostics: None }
   } else {
     bind_outcome(
-      o: list_head_and_tail(xs: params, node: anchor),
+      o: target_type_expr_arrow_param_slot_head_and_tail(xs: params, node: anchor),
       f: fn(split) {
         bind_outcome(
           o: serialize_type_expr_arrow_param_bounded(

@@ -77,6 +77,9 @@ type AliasPeelResult {
 fn peel_nominal_alias_identity_result(n: Node, env: TypeEnv, module_name: String) -> AliasPeelResult {
   let source_indices = env.source_indices
   let brand = authored_name_at(source_indices: source_indices, node: n)
+  if is_declared_container_alias_spelling(name: brand) && n.children |> count > 0 {
+    AliasPeelResult { node: n, diagnostics: [] }
+  } else {
   match lookup_type_for(env: env, node: n) {
     Present { value: resolved } =>
       let structural_result = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
@@ -110,6 +113,7 @@ fn peel_nominal_alias_identity_result(n: Node, env: TypeEnv, module_name: String
         }
       } else { AliasPeelResult { node: resolved, diagnostics: structural_result.diagnostics } }
     Absent => AliasPeelResult { node: n, diagnostics: [] }
+  }
   }
 }
 
