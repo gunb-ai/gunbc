@@ -16,14 +16,14 @@ import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 fn claim_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

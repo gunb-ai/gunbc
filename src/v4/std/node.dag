@@ -16,6 +16,16 @@ type Hash
 type OccurrenceId {
   value: Int
 }
+// 🟢 coproduct dissolution — PROV A-pivot (feature:T-8-source-provenance): closed carrier for
+// Node.occurrence_id — SyntheticOccurrence = pre-parse / substrate literal (no minted id);
+// MintedOccurrence = allocator-issued id (sole mint in v4.std.occurrence_id).
+type NodeOccurrenceId
+  = SyntheticOccurrence
+  | MintedOccurrence { id: OccurrenceId }
+
+fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
+  MintedOccurrence { id: id }
+}
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Connective
   = Atom { identity: Symbol }
@@ -88,174 +98,60 @@ type Edge {
   label: EdgeLabel
   target: Node
 }
+// 🟢 coproduct dissolution — PROV A-pivot lifecycle: pre-stamp tree for fixtures / hand-authored
+// stubs. No occurrence_id — illegal to treat as pipeline Node until stamped via v4.std.node_shape.
+type EdgeShape {
+  label: EdgeLabel
+  target: NodeShape
+}
+type NodeShape {
+  kind: NodeKind
+  children: List<EdgeShape>
+}
 // 🟡 gated — substrate-shape bridge (docs/modeling-discipline.md Practice 2/10) — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
 data loop_bound_edge: Symbol = ^loop_bound_edge
 // 🟢 TERMINAL — E-9/DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
 data arrow_body_edge: Symbol = ^arrow_body_edge
 
-// T-8 source-text anchor — byte extent within one compilation unit (R3 gate #31 discipline:
-// file + start/end only; no parallel file authority on lens-produced surfaces).
-// 🟢 coproduct dissolution — T-8 TERMINAL (feature:T-8-source-provenance): single-file byte
-// extent carrier; file authority is Symbol only (R3 gate #31); no parallel path surface.
-type SourceSpan {
-  file: Symbol
-  start: Int
-  end: Int
+fn node_with_occurrence_id(
+  kind: NodeKind,
+  children: List<Edge>,
+  occurrence_id: NodeOccurrenceId
+) -> Node {
+  Node { kind: kind, children: children, occurrence_id: occurrence_id }
 }
 
-// Closed optional carrier for Node.span — avoids node↔collection import cycle.
-// 🟢 coproduct dissolution — T-8 TERMINAL (feature:T-8-source-provenance): Unanchored =
-// no parse-time anchor (synthetic / pre-parse substrate); Anchored = SourceSpan witness.
-// Fail-closed cross-file merge: v4.std.provenance.merge_node_spans (Outcome + diagnostic).
-type NodeSpan
-  = Unanchored
-  | Anchored { span: SourceSpan }
-
-fn node_span_unanchored() -> NodeSpan {
-  Unanchored
-}
-
-// Precondition: span satisfies non-negative start/end with start < end; parse authority:
-// v4.std.provenance.make_node_span_anchored (Outcome + provenance_invalid_source_span).
-fn node_span_anchored(span: SourceSpan) -> NodeSpan {
-  Anchored { span: span }
-}
-
-// Precondition: node_span_same_file(left, right); cross-file callers must use v4.std.provenance.merge_node_spans.
-fn merge_node_span_same_file(left: NodeSpan, right: NodeSpan) -> NodeSpan {
-  match left {
-    Unanchored => right
-    Anchored { span: ls } =>
-      match right {
-        Unanchored => left
-        Anchored { span: rs } =>
-          Anchored {
-            span: SourceSpan {
-              file: ls.file,
-              start: if ls.start < rs.start { ls.start } else { rs.start },
-              end: if ls.end > rs.end { ls.end } else { rs.end }
-            }
-          }
-      }
-  }
-}
-
-type NodeSpanFold<R> {
-  on_unanchored: fn() -> R
-  on_anchored: fn(SourceSpan) -> R
-}
-
-fn fold_node_span_coproduct<R>(span: NodeSpan, algebra: NodeSpanFold<R>) -> R {
-  match span {
-    Unanchored => algebra.on_unanchored()
-    Anchored { span: s } => algebra.on_anchored(s)
-  }
-}
-
-// 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): canonical NodeSpan same-file query surface.
-fn node_span_same_file(left: NodeSpan, right: NodeSpan) -> Bool {
-  fold_node_span_coproduct(
-    span: left,
-    algebra: NodeSpanFold {
-      on_unanchored: fn() {
-        true
-      },
-      on_anchored: fn(ls) {
-        fold_node_span_coproduct(
-          span: right,
-          algebra: NodeSpanFold {
-            on_unanchored: fn() {
-              true
-            },
-            on_anchored: fn(rs) {
-              ls.file == rs.file
-            }
-          }
-        )
-      }
-    }
-  )
-}
-
-// 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): compilation-unit file equality query.
-fn node_span_file_eq(span: NodeSpan, file: Symbol) -> Bool {
-  fold_node_span_coproduct(
-    span: span,
-    algebra: NodeSpanFold {
-      on_unanchored: fn() {
-        false
-      },
-      on_anchored: fn(s) {
-        s.file == file
-      }
-    }
-  )
-}
-
-// 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): canonical NodeSpan coproduct query surface.
-fn node_span_is_anchored(span: NodeSpan) -> Bool {
-  fold_node_span_coproduct(
-    span: span,
-    algebra: NodeSpanFold {
-      on_unanchored: fn() {
-        false
-      },
-      on_anchored: fn(_) {
-        true
-      }
-    }
-  )
-}
-
-fn source_span_byte_extent_admits(start: Int, end: Int) -> Bool {
-  (start >= 0) && (end >= 0) && (start < end)
-}
-
-fn source_span_well_formed(span: SourceSpan) -> Bool {
-  source_span_byte_extent_admits(start: span.start, end: span.end)
-}
-
-// 🟢 predicate dissolution — T-8 TERMINAL (feature:T-8-source-provenance): well_formed span gate; Unanchored synthetic substrate; Anchored requires source_span_well_formed.
-fn node_span_well_formed(span: NodeSpan) -> Bool {
-  fold_node_span_coproduct(
-    span: span,
-    algebra: NodeSpanFold {
-      on_unanchored: fn() {
-        true
-      },
-      on_anchored: fn(s) {
-        source_span_well_formed(span: s)
-      }
-    }
-  )
-}
-
-// Derived from receipted canonical queries — Anchored ∧ well_formed; Unanchored has no byte extent.
-fn node_span_has_byte_extent(span: NodeSpan) -> Bool {
-  node_span_is_anchored(span: span) && node_span_well_formed(span: span)
-}
-
-fn node_span_from_node(n: Node) -> NodeSpan {
-  n.span
-}
-
-fn node_with_span(kind: NodeKind, children: List<Edge>, span: NodeSpan) -> Node {
-  Node { kind: kind, children: children, span: span }
-}
-
-// T-8 provenance discipline — rebuild transformed Nodes without dropping span.
 fn node_rebuild(n: Node, children: List<Edge>) -> Node {
-  node_with_span(kind: n.kind, children: children, span: n.span)
+  node_with_occurrence_id(
+    kind: n.kind,
+    children: children,
+    occurrence_id: n.occurrence_id
+  )
 }
 
-fn node_unanchored(kind: NodeKind, children: List<Edge>) -> Node {
-  node_with_span(kind: kind, children: children, span: Unanchored)
+fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
+  node_with_occurrence_id(
+    kind: kind,
+    children: children,
+    occurrence_id: SyntheticOccurrence
+  )
+}
+
+// design-node-identity-channels.md: occurrence_id excluded from structural equality / content hash.
+// Root-only strip — children passed through unchanged. For tree equality use
+// exact_structural_equality_zip_fold (never compose nfse(l) == nfse(r)).
+fn node_for_structural_equality(n: Node) -> Node {
+  node_with_occurrence_id(
+    kind: n.kind,
+    children: n.children,
+    occurrence_id: SyntheticOccurrence
+  )
 }
 
 type Node {
   kind: NodeKind
   children: List<Edge>
-  span: NodeSpan
+  occurrence_id: NodeOccurrenceId
 }
 type NodeFold<R> {
   init: fn(Node) -> R
@@ -467,8 +363,7 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   }
 }
 fn locally_well_formed(n: Node) -> Bool {
-  node_span_well_formed(span: n.span)
-    && match n.kind {
+  match n.kind {
       TypeNode { connective: c } => connective_edges_conform(children: n.children, c: c)
       ComputationNode { behavior: b } => behavior_edges_conform(children: n.children, b: b)
     }
@@ -586,61 +481,38 @@ fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edg
     )
   )
 }
-// T-8 provenance boundary — strip Node.span for semantic/structural equality (source authority
-// AST/IR witnesses). Preserves child order (unlike canonicalize_node_for_content_hash).
-fn strip_provenance_fold_init(n: Node) -> Node {
-  node_unanchored(kind: n.kind, children: [])
-}
-
-fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
-  node_rebuild(
-    n: acc,
-    children: concat(acc.children, [Edge { label: edge.label, target: child }])
-  )
-}
-
-fn strip_provenance_fold_algebra() -> NodeFold<Node> {
-  NodeFold {
-    init: strip_provenance_fold_init,
-    step: strip_provenance_fold_step
-  }
-}
-
-fn canonicalize_node_strip_provenance(n: Node) -> Node {
-  fold_node(n: n, algebra: strip_provenance_fold_algebra())
-}
-
 fn canonicalize_node_for_content_hash(n: Node) -> Node {
+  let base = node_for_structural_equality(n: n)
   match node_edge_discipline(n: n) {
     LabeledEdges =>
       Node {
-        kind: n.kind,
-        children: sort_by(n.children, e => named_edge_sort_key(e: e)),
-        span: Unanchored
+        kind: base.kind,
+        children: sort_by(base.children, e => named_edge_sort_key(e: e)),
+        occurrence_id: SyntheticOccurrence
       }
     NoEdges =>
       Node {
-        kind: n.kind,
-        children: n.children,
-        span: Unanchored
+        kind: base.kind,
+        children: base.children,
+        occurrence_id: SyntheticOccurrence
       }
     PositionalEdges =>
       Node {
-        kind: n.kind,
-        children: n.children,
-        span: Unanchored
+        kind: base.kind,
+        children: base.children,
+        occurrence_id: SyntheticOccurrence
       }
     ArrowBodyEdges =>
       Node {
-        kind: n.kind,
-        children: canonicalize_arrow_children_for_content_hash(children: n.children),
-        span: Unanchored
+        kind: base.kind,
+        children: canonicalize_arrow_children_for_content_hash(children: base.children),
+        occurrence_id: SyntheticOccurrence
       }
     LoopBoundEdges =>
       Node {
-        kind: n.kind,
-        children: canonicalize_loop_children_for_content_hash(children: n.children),
-        span: Unanchored
+        kind: base.kind,
+        children: canonicalize_loop_children_for_content_hash(children: base.children),
+        occurrence_id: SyntheticOccurrence
       }
   }
 }
@@ -1326,11 +1198,10 @@ data byte_offset_proj_pred_edge: Symbol = ^byte_offset_proj_pred_edge
 
 
 fn node_offset_atom(sym: Symbol) -> Node {
-  Node {
+  node_synthetic(
     kind: TypeNode { connective: Atom { identity: sym } },
-    children: [],
-    span: Unanchored
-  }
+    children: []
+  )
 }
 
 
@@ -1340,11 +1211,10 @@ fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
 
 
 fn node_offset_conj(children: List<Edge>) -> Node {
-  Node {
+  node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: children,
-    span: Unanchored
-  }
+    children: children
+  )
 }
 
 

@@ -22,12 +22,12 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v4.std.node { Atom, Conj, Node, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Node, TypeNode, SyntheticOccurrence }
 
 data p9_registry_owner_authority_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^symbol_llvm_instruction_cost } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 fn p9_owned_fn_name_eq(left: LensOwnedFnV0, right: LensOwnedFnV0) -> Bool {
@@ -61,7 +61,7 @@ fn p9_registry_owner_receipt_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

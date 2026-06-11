@@ -48,7 +48,7 @@ import v4.std.target_model {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, content_hash, Unanchored }
+import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, content_hash, SyntheticOccurrence }
 import v4.std.witness { Holds, Violates }
 import v4.std.text { String }
 import v4.std.verification {
@@ -76,7 +76,7 @@ fn sg_rc_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_rc_pass_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -84,7 +84,7 @@ fn sg_rc_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_rc_fail_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -145,7 +145,7 @@ fn sg_rc_outcome_node_source_type() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_outcome } },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       },
       Edge {
@@ -153,11 +153,11 @@ fn sg_rc_outcome_node_source_type() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: target_carrier_node } },
           children: [],
-          span: Unanchored
+          occurrence_id: SyntheticOccurrence
 }
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

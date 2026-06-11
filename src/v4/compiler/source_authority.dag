@@ -30,7 +30,10 @@ import v4.std.diagnostic {
   port_locus
 }
 import v4.std.grammar { ParseTree }
-import v4.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v4.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
+import v4.std.node { Node, Symbol }
 import v4.std.target_model { TargetModel }
 import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate { target_serialize_source_from_model }
@@ -55,7 +58,9 @@ type DagSemanticIr {
 type DagSourceReadWitness {
   source: DagSource
   artifact: Artifact
-  // R3 gate #31: Symbol compilation-unit authority stamped into Node.span via tokenize.
+  // R3 gate #31: compilation-unit authority is the Textual locus in OriginEvent::FromSource
+  // at parse-mint (02_parse.dag parse_mint_from_source). Wave-1: stamping machinery only;
+  // no executing consumer reads SpanIndex end-to-end yet (wave-2 — #4643).
   compilation_unit: Symbol
 }
 
@@ -229,7 +234,7 @@ fn source_ir_node_artifact_provenance(
 
 
 fn source_authority_node_equal(left: Node, right: Node) -> Bool {
-  canonicalize_node_strip_provenance(n: left) == canonicalize_node_strip_provenance(n: right)
+  exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
 fn source_ast_equal_witness(

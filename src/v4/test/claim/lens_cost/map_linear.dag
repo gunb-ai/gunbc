@@ -17,7 +17,7 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.verification {
   EqualsClaim,
@@ -32,7 +32,7 @@ import v4.std.witness { Holds }
 data map_linear_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^map_linear_body_atom } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data map_linear_body: Node = Node {
@@ -40,7 +40,7 @@ data map_linear_body: Node = Node {
   children: [
     Edge { label: Positional, target: map_linear_body_leaf }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data map_linear_input: Node = Node {
@@ -48,7 +48,7 @@ data map_linear_input: Node = Node {
   children: [
     Edge { label: Positional, target: map_linear_body }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 fn map_linear_claim_holds() -> Bool {
@@ -66,7 +66,7 @@ fn map_linear_claim_rhs() -> Node {
     Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }

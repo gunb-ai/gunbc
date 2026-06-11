@@ -26,7 +26,7 @@ import v4.std.dependency {
 }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -56,7 +56,7 @@ data parallelism_root: Node = Node {
   children: [
     Edge { label: Named { name: ^parallelism_edge_symbol }, target: parallelism_child }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data parallelism_dependency: DependencyView = DependencyView {
@@ -116,7 +116,7 @@ fn parallelism_claim_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^parallelism_claim_pass_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -124,7 +124,7 @@ fn parallelism_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^parallelism_claim_fail_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
