@@ -48,6 +48,11 @@ import v4.compiler.parse {
   expr_direct_left_corner_list,
   expr_has_undefined_nonterminal,
   expr_is_nullable_given_set,
+  parse_expr,
+  parse_prov_initial,
+  parse_table_empty,
+  ParseExprAccepted,
+  ParseExprRejected,
   token_position_indices
 }
 
@@ -351,5 +356,108 @@ data unified_claim_parse_table_undefined_nonterminal_morphism: UnifiedTestClaim 
   witness: BoolWitness {
     entry: "src/v4/test/claim/parse/parse_table_claims.dag",
     function: parse_table_undefined_nonterminal_morphism_holds
+  }
+}
+
+
+// Receipt F (parse_expr combinator dissolution behavior witness): EXECUTES the new
+// fold_grammar_expr-based parse_expr — R = fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult —
+// over token fixtures covering all 6 GrammarExpr variants and both accept/reject branches.
+// node://adhoc-b967ce68-4da proof §1.7; still-raven-546 load-bearing contract point 2.
+// Covers: Terminal match, Terminal reject, Sequence A;B, Choice backtrack (A|B on [B]),
+// Optional on reject (accept empty, remaining unchanged), Repeat with progress ([A,A,B] → 2 consumed),
+// Repeat no-progress guard (Optional{A} on [B] → done guard fires → Accepted, 1 remaining),
+// Nonterminal with undefined production → Rejected (grammar_lookup_production Violates path).
+fn parse_table_parse_expr_combinator_holds() -> Bool {
+  let prov = parse_prov_initial()
+  let table = parse_table_empty()
+  let root = GrammarRoot {
+    start: ^pt_parse_expr_start,
+    productions: Empty,
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+  let tok_a = parse_table_token(class: ^pt_parse_expr_tok_a)
+  let tok_b = parse_table_token(class: ^pt_parse_expr_tok_b)
+  let toks_a = Cons { head: tok_a, tail: Empty }
+  let toks_b = Cons { head: tok_b, tail: Empty }
+  let toks_ab = Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } }
+  let toks_aab = Cons { head: tok_a, tail: Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } } }
+  let r1 = match parse_expr(
+    expr: Terminal { token_class: ^pt_parse_expr_tok_a },
+    tokens: toks_a, all_tokens: toks_a, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 0
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r2 = match parse_expr(
+    expr: Terminal { token_class: ^pt_parse_expr_tok_a },
+    tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _ } => false
+    ParseExprRejected { diagnostics: _ } => true
+  }
+  let r3 = match parse_expr(
+    expr: Sequence {
+      left: Terminal { token_class: ^pt_parse_expr_tok_a },
+      right: Terminal { token_class: ^pt_parse_expr_tok_b }
+    },
+    tokens: toks_ab, all_tokens: toks_ab, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 0
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r4 = match parse_expr(
+    expr: Choice {
+      left: Terminal { token_class: ^pt_parse_expr_tok_a },
+      right: Terminal { token_class: ^pt_parse_expr_tok_b }
+    },
+    tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 0
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r5 = match parse_expr(
+    expr: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a } },
+    tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 1
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r6 = match parse_expr(
+    expr: Repeat { element: Terminal { token_class: ^pt_parse_expr_tok_a } },
+    tokens: toks_aab, all_tokens: toks_aab, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 1
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r7 = match parse_expr(
+    expr: Repeat { element: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a } } },
+    tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 1
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r8 = match parse_expr(
+    expr: Nonterminal { production: ^pt_parse_expr_undefined_prod },
+    tokens: toks_a, all_tokens: toks_a, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _ } => false
+    ParseExprRejected { diagnostics: _ } => true
+  }
+  r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8
+}
+
+
+// Co-located BoolWitnessClaim for parse_expr combinator dissolution (node://adhoc-b967ce68-4da).
+data unified_claim_parse_table_parse_expr_combinator: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/parse/parse_table_claims.dag",
+    function: parse_table_parse_expr_combinator_holds
   }
 }
