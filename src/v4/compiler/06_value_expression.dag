@@ -83,12 +83,13 @@ fn value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (INVARIANTS P1 / modeling-discipline Practice 4) —
-// feature:canonical-op-from-surface-atom — consumer:06_value_expression
-// project_transform_primitive_apply — bind: resolve-stage surface-op → CanonicalOperation mapping —
-// owner: T6 value-expression (lively-badger-242) — lane: compiler 06_value_expression —
-// dissolve-on-arrival: resolve maps surface op token → CanonicalOperation at resolve stage;
-// forbidden: literal ^dag_token_plus match in compiler value-expression projection.
+// 🟡 gated — STRUCTURAL dissolve-on (INVARIANTS P1 / modeling-discipline Practice 4) —
+// feature:value_expression-projection-dissolution — consumer:06_value_expression
+// project_transform_primitive_apply — bind: PR-T-FINISH / translate_algebra §1.5 fold —
+// owner: valiant-heron-163 (translate) — lane: compiler 06_value_expression + 06_translate —
+// dissolve-on: translate_algebra §1.5 fold deletes surface_op_atom_to_canonical (last consumer:
+// value_expression projection); authority is canonical_operation_from_wire_node @ std/target_model:439;
+// forbidden: deleting this shell before PR-T-FINISH lands (cross-lane coupling, not follow-up graft).
 fn surface_op_atom_to_canonical(op_atom: Symbol) -> Optional<CanonicalOperation> {
   match dag_surface_operator_canonicalization_member(surface_token: op_atom) {
     Accepted { value: canonical_op, diagnostics: _ } =>
