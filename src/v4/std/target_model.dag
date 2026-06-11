@@ -232,6 +232,8 @@ type SourceAtomValue
   // carrier or adding another string/FreeMonoid raw-node bridge outside this receipt.
   | SourceAtomString { value: Node }
 
+// 🟢 coproduct dissolution — T6 value-expression Behavior arm-shape axis; BindingRef and
+// PrimitiveApply are genuine one-at-a-time alternatives keyed to ComputationNode behavior forms.
 type TargetValueExpressionKind
   = TargetValueExprSymbolIdentity
   | TargetValueExprSymbolToOwnedString
@@ -240,7 +242,6 @@ type TargetValueExpressionKind
   | TargetValueExprStringLiteral
   | TargetValueExprReferenceRcNew
   | TargetValueExprReferenceBoxNew
-  // T6 value-expression tier — COMPREP wave-3 skeleton; one kind per Behavior arm-shape.
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
 
@@ -250,13 +251,14 @@ type TargetValueExpression {
 }
 
 // Bidirectional templates: emission and ingestion share the same row (§10.6).
+// 🟢 coproduct dissolution — T6 value-expression ingestion twin axis; each arm pairs with
+// its TargetValueExpressionKind emission counterpart on the shared template row.
 type TargetValueTemplateKind
   = ValueSymbolIdentityPassthrough
   | ValueSymbolToOwnedString
   | ValueBoolLiteral
   | ValueCharUnicodeScalar
   | ValueStringLiteral
-  // T6 value-expression tier ingestion twins (land with producer-gated kinds).
   | ValueBindingRef
   | ValuePrimitiveApply
 
@@ -1777,80 +1779,22 @@ fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outco
   }
 }
 
-fn target_operator_realization_catalog_match_count(
-  catalog: Node,
+fn target_operator_realization_catalog_lookup_step(
+  acc: PassingCandidateFold,
+  row_node: Node,
   canonical_op: CanonicalOperation
-) -> Int {
-  match catalog.kind {
-    TypeNode { connective: Conj } =>
-      fold(
-        catalog.children,
-        init: 0,
-        f: fn(count, e) {
-          match e.label {
-            Named { name: n } =>
-              if n == target_operator_realization_row_edge {
-                if target_operator_realization_row_matches_canonical_op(
-                  row: e.target,
-                  canonical_op: canonical_op
-                ) {
-                  count + 1
-                } else {
-                  count
-                }
-              } else {
-                count
-              }
-            Positional => count
-          }
-        }
-      )
-    _ => 0
-  }
-}
-
-fn target_operator_realization_catalog_first_matching_row(
-  catalog: Node,
-  canonical_op: CanonicalOperation
-) -> Outcome<Node> {
-  match catalog.kind {
-    TypeNode { connective: Conj } =>
-      match fold(
-        catalog.children,
-        init: optional_absent(),
-        f: fn(acc, e) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match e.label {
-                Named { name: n } =>
-                  if n == target_operator_realization_row_edge {
-                    if target_operator_realization_row_matches_canonical_op(
-                      row: e.target,
-                      canonical_op: canonical_op
-                    ) {
-                      optional_present(value: e.target)
-                    } else {
-                      acc
-                    }
-                  } else {
-                    acc
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        Present { value: row } => outcome_accepted(row)
-        Absent =>
-          outcome_rejected(
-            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
-          )
-      }
-    _ =>
-      outcome_rejected(
-        target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
-      )
+) -> PassingCandidateFold {
+  if target_operator_realization_row_matches_canonical_op(
+    row: row_node,
+    canonical_op: canonical_op
+  ) {
+    match acc {
+      NoPassingCandidate => OnePassingCandidate { candidate: row_node }
+      OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+      ManyPassingCandidates => ManyPassingCandidates
+    }
+  } else {
+    acc
   }
 }
 
@@ -1861,23 +1805,42 @@ fn target_operator_realization_catalog_lookup(
   bind_outcome(
     o: target_operator_realization_catalog_wire_schema_valid(catalog: catalog),
     f: fn(_) {
-      if target_operator_realization_catalog_match_count(
-        catalog: catalog,
-        canonical_op: canonical_op
-      ) > 1 {
-        outcome_rejected(
-          target_operator_realization_catalog_ambiguous_diagnostic(catalog: catalog)
-        )
-      } else {
-        bind_outcome(
-          o: target_operator_realization_catalog_first_matching_row(
-            catalog: catalog,
-            canonical_op: canonical_op
-          ),
-          f: fn(row) {
-            target_operator_realization_from_wire_row(row: row)
+      match catalog.kind {
+        TypeNode { connective: Conj } =>
+          match fold(
+            catalog.children,
+            init: NoPassingCandidate,
+            f: fn(acc, e) {
+              match e.label {
+                Named { name: n } =>
+                  if n == target_operator_realization_row_edge {
+                    target_operator_realization_catalog_lookup_step(
+                      acc: acc,
+                      row_node: e.target,
+                      canonical_op: canonical_op
+                    )
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+            }
+          ) {
+            NoPassingCandidate =>
+              outcome_rejected(
+                target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+              )
+            OnePassingCandidate { candidate: row_node } =>
+              target_operator_realization_from_wire_row(row: row_node)
+            ManyPassingCandidates =>
+              outcome_rejected(
+                target_operator_realization_catalog_ambiguous_diagnostic(catalog: catalog)
+              )
           }
-        )
+        _ =>
+          outcome_rejected(
+            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+          )
       }
     }
   )
