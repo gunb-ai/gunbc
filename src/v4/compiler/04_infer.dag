@@ -525,9 +525,7 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
                 }
               Accepted { value: child_entries, diagnostics: cd } =>
                 Accepted {
-                  value: fold(child_entries, init: acc_entries, f: fn(a, entry) {
-                    list_snoc_item(xs: a, item: entry)
-                  }),
+                  value: concat_inferred_facts_entries(a: acc_entries, b: child_entries),
                   diagnostics: diagnostics_merge(outer: ad, inner: cd)
                 }
             }
