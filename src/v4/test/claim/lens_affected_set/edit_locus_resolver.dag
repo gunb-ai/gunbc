@@ -24,6 +24,7 @@ import v4.std.artifact { Artifact, SourceFile }
 import v4.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty, count_equal, length }
+import v4.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v4.std.node { MintedOccurrence, Node, OccurrenceId, Symbol, SyntheticOccurrence, well_formed }
 import v4.std.provenance { SpanIndex, span_index_resolve_textual_locus }
 import v4.std.text { String }
@@ -183,8 +184,9 @@ fn edit_locus_source_provenance_producer_holds() -> Bool {
   }
 }
 
+// occurrence_id excluded from structural equality (design-node-identity-channels.md).
 fn edit_locus_source_provenance_node_eq(left: Node, right: Node) -> Bool {
-  left == right
+  exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
 fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
