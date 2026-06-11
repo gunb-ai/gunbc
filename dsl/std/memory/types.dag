@@ -31,3 +31,9 @@ type MemoryPopulationRow {
 type HostMemoryPopulation {
   rows: List<MemoryPopulationRow>
 }
+
+// Nominal stick population vs observed usable bytes (srv1 degraded case).
+type HostRamSupplyFacts {
+  nominal_bytes: Int
+  observed_usable_bytes: Int
+}
