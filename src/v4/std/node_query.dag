@@ -69,7 +69,7 @@ fn node_envelope_without_named_coordinate_go(
   coordinate: Symbol,
   acc: FreeMonoid<Edge>,
   saw_coordinate: Bool
-) -> Optional<FreeMonoid<Edge>> {
+) -> FreeMonoid<Edge>? {
   match xs {
     Empty => optional_present(value: acc)
     Cons { head: h, tail: t } =>
@@ -108,7 +108,7 @@ fn node_envelope_without_named_coordinate_go(
 fn node_envelope_without_named_coordinate(
   children: FreeMonoid<Edge>,
   coordinate: Symbol
-) -> Optional<FreeMonoid<Edge>> {
+) -> FreeMonoid<Edge>? {
   node_envelope_without_named_coordinate_go(
     xs: children,
     coordinate: coordinate,
