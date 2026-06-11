@@ -249,6 +249,11 @@ import v4.std.algebra {
 }
 import v4.std.logic { Bool }
 import v4.std.text { String }
+
+fn empty_target_source() -> TargetSource {
+  ""
+}
+
 // 🟢 coproduct dissolution
 type TargetBundleChildLookup
   = BundleChildMissing
@@ -2127,7 +2132,7 @@ fn project_type_expression_children(
     children: children,
     target: target,
     projection: projection,
-    acc: Empty
+    acc: empty_target_source()
   )
 }
 fn project_type_expression_field_slots_go(
@@ -2207,7 +2212,7 @@ fn project_type_expression_field_slots(
     target: target,
     projection: projection,
     edges: node.children,
-    acc: Empty
+    acc: empty_target_source()
   )
 }
 
@@ -2269,7 +2274,7 @@ fn project_type_expression_variant_slots(
     target: target,
     projection: projection,
     edges: node.children,
-    acc: Empty
+    acc: empty_target_source()
   )
 }
 fn project_type_expression_conj_fields(
@@ -2697,7 +2702,7 @@ fn serialize_type_expr_args_bounded(
     form: form,
     args: args,
     anchor: anchor,
-    acc: Empty
+    acc: empty_target_source()
   )
 }
 fn serialize_type_expr_separated_go(
@@ -2777,7 +2782,7 @@ fn serialize_type_expr_separated_bounded(
     separator: separator,
     items: items,
     anchor: anchor,
-    acc: Empty
+    acc: empty_target_source()
   )
 }
 
@@ -2901,7 +2906,7 @@ fn serialize_type_expr_record_fields_bounded(
     field_label_separator: field_label_separator,
     fields: fields,
     anchor: anchor,
-    acc: Empty
+    acc: empty_target_source()
   )
 }
 
@@ -3122,7 +3127,7 @@ fn serialize_type_expr_arrow_named_bounded(
                   form: form,
                   params: params,
                   anchor: node,
-                  acc: Empty
+                  acc: empty_target_source()
                 ),
                 f: fn(params_source) {
                   bind_outcome(
@@ -3283,7 +3288,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
     form: form,
     inputs: inputs,
     anchor: anchor,
-    acc: Empty
+    acc: empty_target_source()
   )
 }
 fn serialize_type_expr_arrow_bounded(
@@ -3660,7 +3665,7 @@ fn translate_project_arrow_split_types(
       original_inputs: original_split.inputs,
       target: target,
       projection: projection,
-      acc: Empty
+      acc: empty_target_source()
     ),
     f: fn(wrapped_inputs) {
       bind_outcome(
@@ -4452,7 +4457,7 @@ fn project_type_expression_children_in_node(
     target: target,
     projection: projection,
     edges: node.children,
-    acc: Empty
+    acc: empty_target_source()
   )
 }
 fn translate_node_computation(
