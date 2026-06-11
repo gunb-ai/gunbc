@@ -9,8 +9,8 @@ use crate::v2_rt;
 use crate::v2_rt::Witness;
 use crate::v2_rt::Witness::{Holds, Violates};
 pub use crate::v2_std_core::{
-    authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
-    source_text_at,
+    authored_name_at, empty_intern_table, error_type, intern, intern_find, intern_str,
+    merge_intern_tables, source_text_at,
 };
 pub use crate::v2_std_core::{BindingId, InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
@@ -177,7 +177,7 @@ pub fn lookup_binding_id_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc
                     if node_has_binding_id(resolved.clone(), binding_id.clone()) {
                         Some(resolved.clone())
                     } else {
-                        lookup_carrier_type_for(env.clone(), node.clone())
+                        Some(error_type())
                     }
                 }
                 None => lookup_carrier_type_for(env.clone(), node.clone()),

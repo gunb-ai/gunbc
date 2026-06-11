@@ -1,7 +1,7 @@
 // v2 type environment -- structural type bindings and lookup.
 module v2.compiler.infer_env
 
-import v2.std.core { BindingId, Node, SourceSpan, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
+import v2.std.core { BindingId, Node, SourceSpan, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, error_type }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
@@ -14,7 +14,8 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 // `carrier_bindings` holds imported/hidden structural carriers keyed by
 // BindingId when no local decl_registry row exists. `lookup_type_for`
 // consults decl_registry first, verifies binding_id on the resolved node,
-// then falls back to carrier_bindings — not independent parallel facts.
+// and treats registry/intern disagreement as a compiler error. It falls back
+// to carrier_bindings only when the registry has no local authority row.
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
   carrier_bindings: Map<BindingId, TypeBinding>
@@ -157,7 +158,7 @@ fn lookup_binding_id_type_for(env: TypeEnv, node: Node) -> Node? {
               if node_has_binding_id(n: resolved, binding_id: binding_id) {
                 Present { value: resolved }
               } else {
-                lookup_carrier_type_for(env: env, node: node)
+                Present { value: error_type }
               }
             Absent => lookup_carrier_type_for(env: env, node: node)
           }
