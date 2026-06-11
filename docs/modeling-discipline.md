@@ -1298,6 +1298,15 @@ For each relevant principle and its implementing practices:
     concept-home, or carry an explicit cross-home justification.
     Practice 11 findings are BLOCKING at the design-PR layer even when
     no implementation hunks exist (Calibration section above).
+12. For any **compiler stage file** (`src/v4/compiler/*`) in the diff
+    (Practice 12): is the stage body one `fold_carrier(x, algebra(...))`,
+    or does it hand-walk its input? Count the residue — `_go`
+    accumulators, `_bounded` fuel, per-connective `match` arms in the
+    stage. Each is a 🟢 named kernel (substantiate call-graph ≠
+    data-graph) or 🔴/🟡 un-migrated modeling. A stage whose arm count or
+    line count grows, or that grafts a fold beside surviving arms, is the
+    cementation anti-pattern — BLOCKING; the deletion ratchet (file
+    shrinks, `_go`/`_bounded` down) is the enforcement.
 
 This document is the distilled version of modeling principles. For the
 full analysis and additional worked examples, see
