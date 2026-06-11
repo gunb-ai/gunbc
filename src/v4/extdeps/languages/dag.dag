@@ -3292,7 +3292,10 @@ fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(flat_index: Int) -> Diagn
 
 data dag_mvp1_captured_flat_atom_binding_port: Symbol = dag_mvp1_captured_flat_atom_binding_port
 
+<<<<<<< HEAD
 // Relocated from body_producer (deleted in #4689); dissolves with COMPREP-WAVE1-BODY-BRIDGE scaffold.
+=======
+>>>>>>> cdbb11b4a1 (fix(PIN1): add extdeps dag_mvp1 fixtures for body_producer repoint)
 fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_ident
@@ -3319,6 +3322,7 @@ fn dag_mvp1_captured_flat_atom_binding_for_ident(
   }
 }
 
+<<<<<<< HEAD
 fn dag_mvp1_resolved_operator_node_for_eval(atom: Node) -> Outcome<Node> {
   match atom.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -3345,6 +3349,8 @@ fn dag_mvp1_resolved_operator_node_for_eval(atom: Node) -> Outcome<Node> {
   }
 }
 
+=======
+>>>>>>> cdbb11b4a1 (fix(PIN1): add extdeps dag_mvp1 fixtures for body_producer repoint)
 fn dag_mvp1_type_atom_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
