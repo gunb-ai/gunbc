@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use crate::common::cached_compile_to_dag;
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortId, TransformTarget};
 use v3_compiler::operators::{ArithmeticOp, OperatorKind};
 
@@ -179,11 +178,10 @@ let d: Int = b + c
 
 #[test]
 fn parallel_map_elements_are_independent() {
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "let ys = map(singleton(1), |x| x + 1)",
         "parallel_map_elements.v3",
-    )
-    .expect("compiles");
+    );
     let lambda = anonymous_lambda_binds(&dag)
         .into_iter()
         .next()
@@ -211,11 +209,10 @@ fn parallel_map_elements_are_independent() {
 
 #[test]
 fn sequential_fold_accumulator_chains_iterations() {
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
         "sequential_fold_accumulator.v3",
-    )
-    .expect("compiles");
+    );
     let lambda = anonymous_lambda_binds(&dag)
         .into_iter()
         .next()
@@ -239,11 +236,10 @@ fn sequential_fold_accumulator_chains_iterations() {
 
 #[test]
 fn fold_body_can_contain_accumulator_independent_subgraphs() {
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "let total: Int = fold(singleton(1), 0, |acc, x| acc + x * x)",
         "fold_acc_independent_subgraph.v3",
-    )
-    .expect("compiles");
+    );
     let lambda = anonymous_lambda_binds(&dag)
         .into_iter()
         .next()
@@ -300,11 +296,10 @@ let b: Int = g(2)
 #[test]
 #[ignore = "blocked on L2 M1 algebra awareness for commutative-monoid reduction"]
 fn parallel_fold_on_commutative_monoid_is_reducible() {
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
         "parallel_fold_commutative_monoid.v3",
-    )
-    .expect("compiles");
+    );
     let _ = dag;
     panic!("blocked on algebra-aware reduction planning");
 }
