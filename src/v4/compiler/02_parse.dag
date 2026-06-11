@@ -892,7 +892,7 @@ fn parse_expr(
                   }
                 false => ParseExprRejected { diagnostics: [] }
               }
-          } }
+          } } }
       },
       nonterminal: fn(prod_name) {
         ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
