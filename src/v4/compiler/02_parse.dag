@@ -1273,6 +1273,25 @@ fn parse_production(
 }
 
 
+// Back-compat projection — tree-only callers keep Outcome<ParseTree>; span_index via parse_production.
+fn parse_production_tree(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  production_name: Symbol
+) -> Outcome<ParseTree> {
+  match parse_production(
+    tokens: tokens,
+    validated: validated,
+    production_name: production_name
+  ) {
+    Accepted { value: artifact, diagnostics: d } =>
+      Accepted { value: artifact.tree, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+
+
 fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
   let at = port_locus(port: parse_stage_locus_port)
   let ntok = length(xs: tokens.tokens)

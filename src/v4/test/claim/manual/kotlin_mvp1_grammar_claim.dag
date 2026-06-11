@@ -7,7 +7,7 @@ module v4.test.claim.manual.kotlin_mvp1_grammar_claim
 
 import v4.compiler.parse {
   grammar_validate_for_parse,
-  parse_production,
+  parse_production_tree,
   parse_stage_locus_port
 }
 import v4.compiler.tokenize { tokenize }
@@ -71,7 +71,7 @@ fn kotlin_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
       match grammar_validate_for_parse(root: kotlin_wave1_grammar_root(), at: at) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
         Accepted { value: validated, diagnostics: _ } =>
-          parse_production(
+          parse_production_tree(
             tokens: stream.tokens,
             validated: validated,
             production_name: ^kotlin_production_mvp1_fn_add
