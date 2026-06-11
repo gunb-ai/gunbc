@@ -8,6 +8,13 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 // Types
 // =========================================================================
 
+// Three binding maps coexist during phase-1 migration: `bindings` is the
+// legacy intern-key index for unresolved/name-only lookup; `decl_registry`
+// is the authority stamp (BindingId → declaration metadata + binding_key);
+// `carrier_bindings` holds imported/hidden structural carriers keyed by
+// BindingId when no local decl_registry row exists. `lookup_type_for`
+// consults decl_registry first, verifies binding_id on the resolved node,
+// then falls back to carrier_bindings — not independent parallel facts.
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
   carrier_bindings: Map<BindingId, TypeBinding>
