@@ -14,7 +14,7 @@ import v4.std.algebra {
   boolean_algebra_node,
   boolean_algebra_type_node
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Bool = True | False
 type BoolWidthFact {}
@@ -64,7 +64,7 @@ fn bool_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: bool_node_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -73,7 +73,7 @@ fn bool_fact_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -109,7 +109,7 @@ fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> Node {
         target: bool_encoding_fact_node(encoding: facts.encoding)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

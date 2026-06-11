@@ -9,7 +9,7 @@ module v4.compiler.source_authority
 
 
 import v4.compiler.normalize { normalize, NormalizedTree }
-import v4.compiler.parse { parse }
+import v4.compiler.parse { parse, parse_module }
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.compiler.tokenize { tokenize }
 import v4.extdeps.languages.dag {
@@ -31,6 +31,7 @@ import v4.std.diagnostic {
 }
 import v4.std.grammar { ParseTree }
 import v4.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v4.std.provenance { SpanIndex }
 import v4.std.target_model { TargetModel }
 import v4.compiler.target_carriers { TargetSource }
 import v4.compiler.translate { target_serialize_source_from_model }
@@ -55,8 +56,16 @@ type DagSemanticIr {
 type DagSourceReadWitness {
   source: String
   artifact: Artifact
-  // R3 gate #31: Symbol compilation-unit authority stamped into Node.span via tokenize.
+  // R3 gate #31: Symbol compilation-unit authority on Textual locus in OriginEvent::FromSource
+  // recorded in SpanIndex at parse-mint (02_parse.dag parse_mint_from_source).
   compilation_unit: Symbol
+}
+
+// PROV wave-2: parse tree + off-tree SpanIndex for executing provenance consumers (edit_locus).
+type SourceIrArtifactProvenance {
+  node: Node
+  artifact: Artifact
+  span_index: SpanIndex
 }
 
 type SourceAstEqual {
@@ -191,29 +200,62 @@ fn semantic_ir_from_source(source: String) -> Outcome<DagSemanticIr> {
 }
 
 
-fn source_ir_node_artifact_provenance_from_model(
+fn source_ir_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
   lm: DagLanguageModel
-) -> Outcome<NodeArtifactProvenance> {
+) -> Outcome<SourceIrArtifactProvenance> {
   match source_read.artifact.kind {
     SourceFile =>
       bind_outcome(
-        o: semantic_ir_from_source_with_model(
-          source: source_read.source,
-          compilation_unit: source_read.compilation_unit,
-          lm: lm
+        o: tokenize(
+          text: source_read.source,
+          file: source_read.compilation_unit,
+          rules: lm.lex
         ),
-        f: fn(ir) {
-          outcome_accepted(
-            value: NodeArtifactProvenance {
-              node: ir.tree,
-              artifact: source_read.artifact
+        f: fn(token_stream) {
+          bind_outcome(
+            o: parse_module(tokens: token_stream, grammar: lm.grammar),
+            f: fn(artifact) {
+              outcome_accepted(
+                value: SourceIrArtifactProvenance {
+                  node: artifact.tree,
+                  artifact: source_read.artifact,
+                  span_index: artifact.span_index
+                }
+              )
             }
           )
         }
       )
     _ =>
       outcome_rejected(d: source_authority_diagnostic(reason: source_authority_read_artifact_not_source_file))
+  }
+}
+
+
+fn source_ir_artifact_provenance(
+  source_read: DagSourceReadWitness
+) -> Outcome<SourceIrArtifactProvenance> {
+  source_ir_artifact_provenance_from_model(
+    source_read: source_read,
+    lm: dag_language_model_wave1_modeled()
+  )
+}
+
+
+fn source_ir_node_artifact_provenance_from_model(
+  source_read: DagSourceReadWitness,
+  lm: DagLanguageModel
+) -> Outcome<NodeArtifactProvenance> {
+  match source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm) {
+    Accepted { value: prov, diagnostics: _ } =>
+      outcome_accepted(
+        value: NodeArtifactProvenance {
+          node: prov.node,
+          artifact: prov.artifact
+        }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 

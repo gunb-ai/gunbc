@@ -54,7 +54,7 @@ import v4.std.integer_value_set {
   integer_value_set_kind_unbounded
 }
 import v4.std.model_core { ModelCoreFactAxisEncoding, ModelCoreFactAxisSurfaceSpelling }
-import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.refinement_widening_predicate {
   refinement_widening_predicate_algebra_for_value_sets,
   refinement_widening_preservation_holds
@@ -153,7 +153,7 @@ fn surface_only_node(surface: Symbol) -> Node {
         target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [] }
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -188,7 +188,7 @@ fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
         }
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -226,7 +226,7 @@ fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> N
         }
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -266,7 +266,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
         target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 },
   candidates: control_candidate_set(
     candidates: [
@@ -278,7 +278,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
             target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
           }
         ],
-        span: Unanchored
+        occurrence_id: SyntheticOccurrence
 }
     ],
     closedness_evidence: Node {
@@ -289,7 +289,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
           target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
         }
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   ),
   derivation_algebra: Node {
@@ -300,7 +300,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
         target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 },
   multiplicity_policy: UniqueOnly
 ) {
@@ -354,7 +354,7 @@ fn malformed_interval_value_set() -> Node {
     interval: Node {
       kind: TypeNode { connective: Atom { identity: ^malformed_interval_payload } },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   )
 }
@@ -378,7 +378,7 @@ fn unbounded_value_set_with_extra_field() -> Node {
         }
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

@@ -23,7 +23,7 @@ import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.normalize { normalize }
 import v4.compiler.parse {
   grammar_validate_for_parse,
-  parse_production,
+  parse_production_tree,
   parse_stage_locus_port
 }
 import v4.compiler.resolve { resolve }
@@ -67,7 +67,7 @@ import v4.std.node {
   Transform,
   TypeNode,
   arrow_body_edge,
-  node_span_unanchored
+  SyntheticOccurrence
 }
 import v4.std.runtime {
   BindInterpreter,
@@ -102,7 +102,7 @@ import v4.std.verification {
 fn comprep_eval_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: []
   }
 }
@@ -350,7 +350,7 @@ fn comprep_eval_parse_mvp1_add_tokens(tokens: List<Token>) -> Outcome<ParseTree>
   let root = comprep_eval_mvp1_add_parse_root()
   match grammar_validate_for_parse(root: root, at: port_locus(port: parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
-      parse_production(
+      parse_production_tree(
         tokens: tokens,
         validated: validated,
         production_name: ^dag_production_mvp1_fn_add
@@ -415,7 +415,7 @@ fn comprep_eval_resolve_holds() -> Bool {
 fn comprep_eval_add_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: callee },
       Edge { label: Positional, target: comprep_eval_literal_two_node() },
@@ -427,7 +427,7 @@ fn comprep_eval_add_call(callee: Node) -> Node {
 fn comprep_eval_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Named { name: ^comprep_eval_actual }, target: call },
       Edge { label: Named { name: ^comprep_eval_expected }, target: expected }
@@ -499,7 +499,7 @@ fn comprep_eval_run(callee: Node, expected: Node) -> Outcome<TestClaimRun<Node, 
 fn comprep_swapped_operand_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
@@ -511,7 +511,7 @@ fn comprep_swapped_operand_body() -> Node {
 fn comprep_swapped_add_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
@@ -527,7 +527,7 @@ fn comprep_swapped_add_arrow() -> Node {
 fn comprep_excess_signature_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
@@ -542,7 +542,7 @@ fn comprep_excess_signature_arrow() -> Node {
 fn comprep_eval_canonical_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
@@ -556,7 +556,7 @@ fn comprep_eval_canonical_body() -> Node {
 fn comprep_excess_body_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
@@ -569,7 +569,7 @@ fn comprep_excess_body_arrow() -> Node {
 fn comprep_excess_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
@@ -585,7 +585,7 @@ fn comprep_excess_body() -> Node {
 fn comprep_excess_actual_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    span: node_span_unanchored(),
+    occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: callee },
       Edge { label: Positional, target: comprep_eval_literal_two_node() },

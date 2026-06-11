@@ -65,7 +65,7 @@ import v4.std.grounding {
   PerLanguageFactBundleKey,
   PerLanguageFactBundleRegistry
 }
-import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, Unanchored }
+import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -440,7 +440,7 @@ fn go_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -536,7 +536,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
     GoUnsignedIntegerPrimitiveFacts {
       surface_spelling,
@@ -573,7 +573,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -599,7 +599,7 @@ fn go_float_facts_node(facts: GoFloatPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -624,7 +624,7 @@ fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -645,7 +645,7 @@ fn go_bool_facts_node(facts: GoBoolPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -666,7 +666,7 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1239,7 +1239,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
     GoUnsignedIntegerPrimitiveFacts {
       surface_spelling: _,
@@ -1276,7 +1276,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -1298,7 +1298,7 @@ fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1315,7 +1315,7 @@ fn go_bool_algebra_witness_node() -> Node {
         target: go_inhabitant_atom(id: go_facts_bool.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1336,7 +1336,7 @@ fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1467,7 +1467,7 @@ fn go_int_inhabitant_node() -> Node {
       go_named_edge(name: ^go_inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(name: ^go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1477,7 +1477,7 @@ fn go_declared_inhabitants_root() -> Node {
     children: [
       go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node())
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1535,7 +1535,7 @@ fn go_mvp1_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: go_mvp1_coercion_candidate_edges(),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1552,7 +1552,7 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1583,7 +1583,7 @@ fn go_mvp1_serialize_source_children() -> List<Edge> {
 
 fn go_mvp1_serialize_source_node() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: go_mvp1_serialize_source_children(),
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1678,7 +1678,7 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1688,7 +1688,7 @@ fn go_mvp1_translation_rules_node() -> Node {
     children: [
       go_named_edge(name: ^go_relation_rule_mvp1_fn_add, target: go_grammar_relation_row_node(row: go_mvp1_grammar_relation_row()))
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1725,7 +1725,7 @@ fn go_mvp1_target_model_bundle_core() -> Node {
       go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
       go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node())
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1801,7 +1801,7 @@ fn go_mvp1_target_model_node() -> Node {
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

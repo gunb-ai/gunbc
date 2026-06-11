@@ -61,7 +61,7 @@ import v4.std.node {
   fold_node,
   node_rebuild,
   well_formed,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.node_query { node_positional_child_targets }
 import v4.std.lexing {
@@ -987,7 +987,7 @@ fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagn
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: token_class } },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -998,7 +998,7 @@ fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnosti
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: binding } },
       children: [],
-      span: Unanchored
+      occurrence_id: SyntheticOccurrence
 }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -3768,7 +3768,7 @@ fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

@@ -21,7 +21,7 @@ import v4.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.runtime { RuntimeValue }
 import v4.std.text { String }
 import v4.std.verdict { Deferred, Fail, Pass }
@@ -66,7 +66,7 @@ data affected_testgen_generated_claim_label: String = "witness-validity: constra
 data affected_testgen_generated_claim_input: Node = Node {
   kind: TypeNode { connective: Atom { identity: affected_testgen_generated_input_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -78,7 +78,7 @@ data affected_testgen_source_dependency: Node = Node {
       target: affected_testgen_generated_claim_input
     }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 
@@ -90,7 +90,7 @@ data affected_testgen_graph_root: Node = Node {
       target: affected_testgen_source_dependency
     }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 

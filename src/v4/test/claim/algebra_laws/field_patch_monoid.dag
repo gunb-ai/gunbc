@@ -7,7 +7,7 @@
 module v4.test.claim.algebra_laws.field_patch_monoid
 
 import v4.std.patch { FieldPatch, Override, Inherit, compose_field_patch, apply_field_patch, field_patch_monoid }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -19,12 +19,12 @@ import v4.std.verification {
 }
 fn fp_pass_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^fp_pass_sym } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
 }
 fn fp_fail_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^fp_fail_sym } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
 }
 fn fp_ok(b: Bool) -> Node {

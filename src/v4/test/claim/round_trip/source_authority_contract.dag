@@ -18,7 +18,7 @@ import v4.std.collection { empty_map }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.lexing { VoidLexRules }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.target_model { TargetModel }
 import v4.std.witness { Holds, Violates }
 import v4.std.verification {
@@ -36,7 +36,7 @@ data source_authority_contract_source: DagSource = ""
 data source_authority_contract_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^source_authority_contract_subject_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data source_authority_contract_target_model: TargetModel = TargetModel {
@@ -50,7 +50,7 @@ fn source_authority_contract_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^source_authority_contract_pass_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -58,7 +58,7 @@ fn source_authority_contract_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^source_authority_contract_fail_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

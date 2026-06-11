@@ -13,7 +13,7 @@ import v4.std.node {
   Symbol,
   TypeNode,
   content_hash,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.verification {
   CompilesClaim,
@@ -28,7 +28,7 @@ fn content_hash_order_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_order_leaf_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -45,7 +45,7 @@ fn content_hash_order_conj_ab() -> Node {
         target: content_hash_order_leaf()
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -62,7 +62,7 @@ fn content_hash_order_conj_ba() -> Node {
         target: content_hash_order_leaf()
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -70,7 +70,7 @@ fn content_hash_order_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_order_pass_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -78,7 +78,7 @@ fn content_hash_order_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_order_fail_sym } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -96,7 +96,7 @@ fn content_hash_nested_conj_ab() -> Node {
         target: content_hash_order_conj_ab()
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -109,7 +109,7 @@ fn content_hash_nested_conj_ba() -> Node {
         target: content_hash_order_conj_ba()
       }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

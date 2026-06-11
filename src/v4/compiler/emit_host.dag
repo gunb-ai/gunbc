@@ -53,7 +53,7 @@ import v4.std.test_claim_falsification {
   Host
 }
 import v4.std.machine { Byte }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.runtime { RuntimeValue, RuntimePrimitive }
 import v4.std.target_model { TargetModelBundle }
 import v4.std.text { String }
@@ -135,7 +135,7 @@ fn emit_host_rust_i64_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: emit_host_rust_i64_symbol } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

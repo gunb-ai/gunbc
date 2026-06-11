@@ -18,7 +18,7 @@ import v4.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.verification {
   EqualsClaim,
@@ -32,7 +32,7 @@ import v4.std.verification {
 data synthesis_no_tech_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_no_tech_atom_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data synthesis_no_tech_body: Node = Node {
@@ -40,7 +40,7 @@ data synthesis_no_tech_body: Node = Node {
   children: [
     Edge { label: Positional, target: synthesis_no_tech_leaf }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data synthesis_no_tech_inner: Node = Node {
@@ -48,7 +48,7 @@ data synthesis_no_tech_inner: Node = Node {
   children: [
     Edge { label: Positional, target: synthesis_no_tech_body }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 // Polynomial node: complexity_lens gives Holds; AlgebraicRank has no worked example.
@@ -57,13 +57,13 @@ data synthesis_no_tech_input: Node = Node {
   children: [
     Edge { label: Positional, target: synthesis_no_tech_inner }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data synthesis_no_tech_sentinel: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_no_tech_sentinel_symbol } },
   children: [],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 fn synthesis_no_tech_diagnostics_non_empty() -> Bool {

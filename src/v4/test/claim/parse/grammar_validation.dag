@@ -26,14 +26,14 @@ import v4.compiler.parse {
   grammar_has_left_recursion,
   grammar_has_undefined_nonterminals,
   grammar_validate_for_parse,
-  parse_production,
+  parse_production_tree,
   parse_skip_to_sync,
   parse_stage_locus_port
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
 import v4.std.algebra { Cons, Empty }
 import v4.std.collection { List }
-import v4.std.node { Atom, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.std.logic { Bool }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -47,10 +47,10 @@ import v4.std.verification {
 fn validation_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_true } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_false } }, children: [],
- span: Unanchored
+ occurrence_id: SyntheticOccurrence
 }
   }
 }
@@ -170,7 +170,7 @@ fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
   match grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: validated, diagnostics: _ } =>
-      parse_production(
+      parse_production_tree(
         tokens: validation_two_token_list,
         validated: validated,
         production_name: ^validation_rec_start

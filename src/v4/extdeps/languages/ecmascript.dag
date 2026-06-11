@@ -86,7 +86,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  Unanchored
+  SyntheticOccurrence
 }
 import v4.std.target_model {
   grammar_relation_field_emitted,
@@ -292,7 +292,7 @@ fn ecmascript_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -317,7 +317,7 @@ fn ecmascript_number_facts_node(facts: EcmascriptNumberPrimitiveFacts) -> Node {
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -338,7 +338,7 @@ fn ecmascript_bigint_facts_node(facts: EcmascriptBigIntPrimitiveFacts) -> Node {
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -359,7 +359,7 @@ fn ecmascript_boolean_facts_node(facts: EcmascriptBooleanPrimitiveFacts) -> Node
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -380,7 +380,7 @@ fn ecmascript_symbol_facts_node(facts: EcmascriptSymbolPrimitiveFacts) -> Node {
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -401,7 +401,7 @@ fn ecmascript_string_facts_node(facts: EcmascriptStringPrimitiveFacts) -> Node {
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -422,7 +422,7 @@ fn ecmascript_singleton_facts_node(facts: EcmascriptSingletonPrimitiveFacts) -> 
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -690,7 +690,7 @@ fn ecmascript_number_algebra_witness_node(facts: EcmascriptNumberPrimitiveFacts)
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -711,7 +711,7 @@ fn ecmascript_bigint_algebra_witness_node(facts: EcmascriptBigIntPrimitiveFacts)
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -732,7 +732,7 @@ fn ecmascript_boolean_algebra_witness_node(facts: EcmascriptBooleanPrimitiveFact
         target: ecmascript_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -820,7 +820,7 @@ fn ecmascript_inhabitant_node(id: Symbol, facts: Node) -> Node {
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_atom, target: ecmascript_inhabitant_atom(id: id)),
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_facts, target: facts)
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -845,7 +845,7 @@ fn ecmascript_declared_inhabitants_root() -> Node {
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_number, target: ecmascript_number_inhabitant_node()),
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_bigint, target: ecmascript_bigint_inhabitant_node())
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -861,7 +861,7 @@ fn ecmascript_mvp1_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
       Edge { label: Positional, target: ecmascript_number_inhabitant_node() }
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -894,7 +894,7 @@ fn ecmascript_mvp1_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: ecmascript_mvp1_serialize_source_children(),
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1081,7 +1081,7 @@ fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> No
         )
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1094,7 +1094,7 @@ fn ecmascript_mvp1_translation_rules_node() -> Node {
         target: ecmascript_grammar_relation_row_node(row: ecmascript_mvp1_grammar_relation_row())
       )
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -1107,7 +1107,7 @@ fn ecmascript_mvp1_target_model_node() -> Node {
       ecmascript_named_edge(name: target_model_edge_translation_rules, target: ecmascript_mvp1_translation_rules_node()),
       ecmascript_named_edge(name: target_model_edge_serialize_source, target: ecmascript_mvp1_serialize_source_node())
     ],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 

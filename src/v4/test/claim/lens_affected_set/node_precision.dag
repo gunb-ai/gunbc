@@ -10,7 +10,7 @@ import v4.lens.affected_set { AffectedSetReading, FrontierDependency, affected_s
 import v4.std.change { DependencyDependent, DependencySource }
 import v4.std.dependency { Contains, DependencyView }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, Unanchored }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
@@ -23,7 +23,7 @@ data affected_set_mid: Node = Node {
   children: [
     Edge { label: Named { name: ^affected_set_mid_edge_symbol }, target: affected_set_leaf }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 data affected_set_root: Node = Node {
@@ -31,7 +31,7 @@ data affected_set_root: Node = Node {
   children: [
     Edge { label: Named { name: ^affected_set_root_edge_symbol }, target: affected_set_mid }
   ],
-  span: Unanchored
+  occurrence_id: SyntheticOccurrence
 }
 
 fn affected_set_claim_facts() -> InferredFacts {

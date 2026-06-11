@@ -36,7 +36,7 @@ import v4.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton
 }
-import v4.std.node { Atom, Diff, Edit, Hash, Node, Path, Symbol, TypeNode, content_hash, Unanchored }
+import v4.std.node { Atom, Diff, Edit, Hash, Node, Path, Symbol, TypeNode, content_hash, SyntheticOccurrence }
 import v4.std.witness { Holds, Witness }
 import v4.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at }
 
@@ -270,7 +270,7 @@ fn affected_set_boundary_pure_receipt_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^affected_set_boundary_pure_receipt_payload } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -280,7 +280,7 @@ fn affected_set_dimension_not_read_receipt_node(dimension: AffectedDimension) ->
   Node {
     kind: TypeNode { connective: Atom { identity: dimension } },
     children: [],
-    span: Unanchored
+    occurrence_id: SyntheticOccurrence
 }
 }
 
