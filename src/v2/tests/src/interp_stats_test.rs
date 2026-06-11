@@ -61,13 +61,14 @@ fn build() -> Int {
     assert_eq!(counters.map_insert_entries_copied, 6);
 }
 
-/// Successive list pushes copy 3+4 items rebuilding the receiver each time.
+/// Successive list concats copy 3 then 4 receiver items rebuilding the list
+/// each time — the same triangular growth on the list side.
 #[test]
-fn list_push_counts_receiver_copies() {
+fn list_concat_counts_receiver_copies() {
     let src = r#"module test.stats_list
 fn build() -> Int {
-  let a = list_push([1, 2, 3], 4)
-  let b = list_push(a, 5)
+  let a = [1, 2, 3].concat([4])
+  let b = a.concat([5])
   b.length()
 }
 "#;
@@ -80,8 +81,8 @@ fn build() -> Int {
         other => panic!("expected Int(5), got {other:?}"),
     }
     let counters = ctx.mutation_counters_snapshot();
-    assert_eq!(counters.list_push_calls, 2);
-    assert_eq!(counters.list_push_items_copied, 7);
+    assert_eq!(counters.list_concat_calls, 2);
+    assert_eq!(counters.list_concat_items_copied, 7);
 }
 
 /// A cached `data` value reached from two roots is one unique allocation plus

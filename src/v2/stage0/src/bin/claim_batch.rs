@@ -59,6 +59,18 @@ fn peak_rss_lines() -> String {
 fn print_interp_stats(ctx: &InterpContext) {
     eprintln!("[interp-stats] mutation-primitive copy work (this context):");
     eprint!("{}", ctx.mutation_counters_snapshot());
+    let (flatten_calls, flatten_items) = v2_compiler::v2_interpreter::flatten_counters_snapshot();
+    eprintln!(
+        "  {:<12} {:>12} calls  {:>16} items materialized  (avg {:.1}/call)",
+        "fm_flatten",
+        flatten_calls,
+        flatten_items,
+        if flatten_calls == 0 {
+            0.0
+        } else {
+            flatten_items as f64 / flatten_calls as f64
+        }
+    );
     eprintln!("[interp-stats] retained value accounting (data cache + pure-call memo):");
     eprint!("{}", ctx.account_retained_memory(&[]));
     eprintln!("[interp-stats] process memory:");

@@ -32,9 +32,9 @@ mod generator_match_arm_test;
 #[cfg(test)]
 mod infer_semantics;
 #[cfg(test)]
-mod interp_stats_test;
-#[cfg(test)]
 mod int_pow_bounded_test;
+#[cfg(test)]
+mod interp_stats_test;
 #[cfg(test)]
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]

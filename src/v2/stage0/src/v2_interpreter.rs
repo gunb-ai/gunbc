@@ -587,11 +587,31 @@ pub struct MutationCounters {
 impl fmt::Display for MutationCounters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rows: [(&str, u64, u64); 5] = [
-            ("map_insert", self.map_insert_calls, self.map_insert_entries_copied),
-            ("map_merge", self.map_merge_calls, self.map_merge_entries_copied),
-            ("list_push", self.list_push_calls, self.list_push_items_copied),
-            ("list_concat", self.list_concat_calls, self.list_concat_items_copied),
-            ("set_insert", self.set_insert_calls, self.set_insert_items_copied),
+            (
+                "map_insert",
+                self.map_insert_calls,
+                self.map_insert_entries_copied,
+            ),
+            (
+                "map_merge",
+                self.map_merge_calls,
+                self.map_merge_entries_copied,
+            ),
+            (
+                "list_push",
+                self.list_push_calls,
+                self.list_push_items_copied,
+            ),
+            (
+                "list_concat",
+                self.list_concat_calls,
+                self.list_concat_items_copied,
+            ),
+            (
+                "set_insert",
+                self.set_insert_calls,
+                self.set_insert_items_copied,
+            ),
         ];
         for (name, calls, copied) in rows {
             writeln!(
@@ -600,7 +620,11 @@ impl fmt::Display for MutationCounters {
                 name,
                 calls,
                 copied,
-                if calls == 0 { 0.0 } else { copied as f64 / calls as f64 }
+                if calls == 0 {
+                    0.0
+                } else {
+                    copied as f64 / calls as f64
+                }
             )?;
         }
         Ok(())
@@ -785,7 +809,11 @@ fn account_value(
         }
         // The AST body is program text (shared, graph-owned), not value heap;
         // only the captured environment chain is retained value memory.
-        Value::Closure { params, env, body: _ } => {
+        Value::Closure {
+            params,
+            env,
+            body: _,
+        } => {
             let mut bytes = (params.len() * std::mem::size_of::<String>()) as u64;
             for p in params {
                 bytes += p.len() as u64;
@@ -3830,6 +3858,28 @@ where
 /// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
 /// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
 /// raises a type error rather than fabricating an empty/partial list.
+thread_local! {
+    /// Flattening counters for `free_monoid_to_vec` (phase-0 measurement,
+    /// ctrl#1533). Thread-local rather than context-scoped because the
+    /// chokepoint also fires inside `Value::eq` (`impl PartialEq`), which has
+    /// no context — and unlike the caches #4644 scoped, these are two
+    /// fixed-size integers: no keys, no keepalive, no growth.
+    static FLATTEN_COUNTERS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
+}
+
+/// Snapshot of (calls, items materialized) by `free_monoid_to_vec` on this
+/// thread since process start. Sample before/after an evaluation for a delta.
+pub fn flatten_counters_snapshot() -> (u64, u64) {
+    FLATTEN_COUNTERS.with(|c| c.get())
+}
+
+fn record_flatten(items: usize) {
+    FLATTEN_COUNTERS.with(|c| {
+        let (calls, total) = c.get();
+        c.set((calls + 1, total + items as u64));
+    });
+}
+
 fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let mut out = Vec::new();
     let mut cur = val.clone();
@@ -3837,6 +3887,7 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
         match &cur {
             Value::List(items) => {
                 out.extend(items.iter().cloned());
+                record_flatten(out.len());
                 return Some(out);
             }
             // `type String = FreeMonoid<Char>` and `type Char = Nat` (std/text.dag): a String IS
@@ -3844,6 +3895,7 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
             // it as a FreeMonoid<Char> (matches the Value::Str Empty/Cons pattern bridge above).
             Value::Str(s) => {
                 out.extend(s.chars().map(char_value));
+                record_flatten(out.len());
                 return Some(out);
             }
             Value::Variant {
@@ -3851,7 +3903,10 @@ fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 fields,
                 ..
             } => match variant_name.as_str() {
-                "Empty" => return Some(out),
+                "Empty" => {
+                    record_flatten(out.len());
+                    return Some(out);
+                }
                 "Cons" => match (fields.get("head"), fields.get("tail")) {
                     (Some(head), Some(tail)) => {
                         out.push(head.clone());
