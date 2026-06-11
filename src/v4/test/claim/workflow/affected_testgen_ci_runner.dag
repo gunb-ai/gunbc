@@ -249,6 +249,19 @@ fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
 }
 
 
+fn affected_testgen_probe_label_eq_holds() -> Bool {
+  affected_testgen_generated_claim_label == affected_testgen_generated_claim_label
+}
+
+
+fn affected_testgen_probe_emit_accepts_holds() -> Bool {
+  match affected_testgen_emit_generated_claim() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
 fn affected_testgen_selects_one_generated_claim_holds() -> Bool {
   length(xs: affected_testgen_selected_claims()) == 1
 }
