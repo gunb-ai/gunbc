@@ -11818,6 +11818,25 @@ pub struct CarrierClosureState {
     pub seen_names: Rc<HashMap<String, bool>>,
 }
 
+pub fn type_binding_decl_binding_id(
+    env: Rc<TypeEnv>,
+    binding: Rc<TypeBinding>,
+) -> Option<BindingId> {
+    env.decl_registry.clone().values().cloned().fold(
+        None,
+        |acc: Option<BindingId>, decl: Rc<TypeDeclBinding>| match acc.clone() {
+            Some(_) => acc.clone(),
+            None => {
+                if decl.name.clone().as_str() == binding.name.clone().as_str() {
+                    Some(decl.binding_id.clone())
+                } else {
+                    None
+                }
+            }
+        },
+    )
+}
+
 pub fn add_type_binding_dependency_closure(
     state: Rc<CarrierClosureState>,
     binding: Rc<TypeBinding>,
@@ -11857,8 +11876,20 @@ pub fn add_type_binding_dependency_closure(
                     }),
                 };
                 let deps = node_type_deps(stamped.resolved.clone(), source_indices.clone());
+                let with_decl_binding =
+                    match type_binding_decl_binding_id(dep_env.clone(), binding.clone()) {
+                        Some(decl_binding_id) => Rc::new(CarrierClosureState {
+                            carrier_bindings: v2_rt::rc_map_insert(
+                                with_binding.carrier_bindings.clone(),
+                                decl_binding_id.clone(),
+                                stamped.clone(),
+                            ),
+                            seen_names: with_binding.seen_names.clone(),
+                        }),
+                        None => with_binding.clone(),
+                    };
                 deps.iter().cloned().fold(
-                    with_binding,
+                    with_decl_binding,
                     |acc: Rc<CarrierClosureState>, dep_name: String| {
                         match lookup_type_binding_by_name_in_env(dep_env.clone(), dep_name.clone())
                         {
