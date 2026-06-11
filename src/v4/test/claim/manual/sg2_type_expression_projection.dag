@@ -2,6 +2,7 @@
 // Scope: SG-2 falsification probe — generic Instantiation projects to Rc<FooBar<X, Y>> without name-keyed branches.
 // Status: structural + serialize receipts; bidirectional delimiter read from same projection row.
 // Phase A (T3): arrow + falsification witnesses rostered (green-on-current). instantiation/conj/sum → Phase B.
+// Serialize follow-on probes: sg2_arrow_projected_serialize_matches_expected / _accepts / _outcome / _reject_head_reason (+ _reject_is_*); measured reject: translate_grammar_relation_row_not_found.
 
 module v4.test.claim.manual.sg2_type_expression_projection
 
@@ -13,6 +14,7 @@ import v4.compiler.translate {
   translate_type_expression_shape_missing,
   translate_type_expr_kind_authority_invalid,
   translate_grammar_inverse_not_realized,
+  translate_grammar_relation_row_not_found,
   ProjectionAbsent
 }
 import v4.extdeps.languages.rust {
@@ -243,6 +245,10 @@ fn sg2_arrow_projected_serialize_reject_is_kind_authority_invalid() -> Bool {
 
 fn sg2_arrow_projected_serialize_reject_is_grammar_inverse_not_realized() -> Bool {
   sg2_arrow_projected_serialize_reject_head_reason() == translate_grammar_inverse_not_realized
+}
+
+fn sg2_arrow_projected_serialize_reject_is_grammar_relation_row_not_found() -> Bool {
+  sg2_arrow_projected_serialize_reject_head_reason() == translate_grammar_relation_row_not_found
 }
 
 fn sg2_conj_serialize_matches_expected() -> Bool {
