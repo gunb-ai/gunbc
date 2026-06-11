@@ -6,6 +6,7 @@
 module v4.compiler.body_producer
 
 import v4.std.algebra { list_snoc_item }
+import v4.std.collection { Absent, Present, list_at_optional }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -36,10 +37,12 @@ import v4.std.node {
   node_unanchored,
   well_formed
 }
-import v4.std.node_query { find_arrow_body_child }
+import v4.std.node_query { find_arrow_body_child, node_positional_child_targets }
 
 data body_producer_reason_malformed_attachment: Symbol = body_producer_reason_malformed_attachment
 data body_producer_reason_post_produce_not_well_formed: Symbol = body_producer_reason_post_produce_not_well_formed
+data body_producer_reason_mvp1_resolved_not_arrow: Symbol = body_producer_reason_mvp1_resolved_not_arrow
+data body_producer_reason_mvp1_resolved_shape: Symbol = body_producer_reason_mvp1_resolved_shape
 
 fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
