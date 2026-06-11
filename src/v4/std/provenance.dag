@@ -85,20 +85,6 @@ fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent>
   span_index_lookup_entries(entries: index.entries, id: id)
 }
 
-fn span_index_entries_has_id(entries: FreeMonoid<SpanIndexEntry>, id: OccurrenceId) -> Bool {
-  fold_list(
-    xs: entries,
-    empty: false,
-    cons: fn(found, entry) {
-      if found {
-        true
-      } else {
-        occurrence_id_eq(left: entry.occurrence, right: id)
-      }
-    }
-  )
-}
-
 fn span_index_merge_entries(
   base: FreeMonoid<SpanIndexEntry>,
   incoming: FreeMonoid<SpanIndexEntry>
@@ -107,10 +93,10 @@ fn span_index_merge_entries(
     xs: incoming,
     empty: base,
     cons: fn(acc, entry) {
-      if span_index_entries_has_id(entries: acc, id: entry.occurrence) {
-        acc
-      } else {
-        list_snoc_item(xs: acc, item: entry)
+      match span_index_lookup_entries(entries: acc, id: entry.occurrence) {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          list_snoc_item(xs: acc, item: entry)
       }
     }
   )
