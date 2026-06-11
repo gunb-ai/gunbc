@@ -67,6 +67,17 @@ fn preserve_nominal_brand_on_resolve(
   } else { structural }
 }
 
+fn lookup_decl_surface_for_arity(n: Node, env: TypeEnv) -> Node? {
+  match n.ident {
+    Present { value: id } =>
+      match lookup_type(env: env, ident: id) {
+        Present { value: resolved } => Present { value: resolved }
+        Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: n))
+      }
+    Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: n))
+  }
+}
+
 type AliasPeelResult {
   node: Node
   diagnostics: List<ErrorNode>
@@ -476,7 +487,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
-    let decl = match lookup_type_for(env: env, node: n) { Present { value: d } => d  Absent => n }
+    let decl = match lookup_decl_surface_for_arity(n: n, env: env) { Present { value: d } => d  Absent => n }
     let expected_arity = decl.params |> count
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
@@ -616,8 +627,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
 fn missing_generic_args_diagnostics(n: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
   if n.children |> count == 0 && n.params |> count == 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
-    let decl = match lookup_type_for(env: env, node: n) { Present { value: d } => d  Absent => n }
-    [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: decl.params |> count, got: 0, span: n.span }, module_name: module_name)]
+    let decl = match lookup_decl_surface_for_arity(n: n, env: env) { Present { value: d } => d  Absent => n }
+    let expected = decl.params |> count
+    if expected > 0 {
+      [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: expected, got: 0, span: n.span }, module_name: module_name)]
+    } else {
+      []
+    }
   } else {
     []
   }

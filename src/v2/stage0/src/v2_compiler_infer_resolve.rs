@@ -81,6 +81,35 @@ pub fn preserve_nominal_brand_on_resolve(
     }
 }
 
+pub fn lookup_decl_surface_for_arity(n: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    let result = match n.ident.clone() {
+        Some(id) => match lookup_type(env.clone(), id.clone()) {
+            Some(resolved) => Some(resolved.clone()),
+            None => lookup_type_by_name(env.clone(), authored_name(env.clone(), n.clone())),
+        },
+        None => lookup_type_by_name(env.clone(), authored_name(env.clone(), n.clone())),
+    };
+    let n_name = authored_name(env.clone(), n.clone());
+    if n_name.as_str() == "Int" || n_name.as_str() == "String" {
+        match result.clone() {
+            Some(r) => eprintln!(
+                "DBG surface name={} ident={:?} result={} params={} inferred={} conn={:?}",
+                n_name,
+                n.ident,
+                authored_name(env.clone(), r.clone()),
+                r.params.len(),
+                r.inferred.is_some(),
+                r.connective
+            ),
+            None => eprintln!(
+                "DBG surface name={} ident={:?} result=none",
+                n_name, n.ident
+            ),
+        }
+    }
+    result
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AliasPeelResult {
     pub node: Rc<Node>,
@@ -1189,7 +1218,7 @@ pub fn resolve_node_bounded(
             {
                 {
                     let type_name = authored_name(env.clone(), n.clone());
-                    let decl = match lookup_type_for(env.clone(), n.clone()) {
+                    let decl = match lookup_decl_surface_for_arity(n.clone(), env.clone()) {
                         Some(d) => d.clone(),
                         None => n.clone(),
                     };
@@ -1761,19 +1790,24 @@ pub fn missing_generic_args_diagnostics(
     {
         {
             let type_name = authored_name(env.clone(), n.clone());
-            let decl = match lookup_type_for(env.clone(), n.clone()) {
+            let decl = match lookup_decl_surface_for_arity(n.clone(), env.clone()) {
                 Some(d) => d.clone(),
                 None => n.clone(),
             };
-            Rc::new(vec![make_error_node(
-                Rc::new(CompilerDiagnostic::ArityMismatch {
-                    name: type_name,
-                    expected: (decl.params.clone().len() as i64),
-                    got: 0,
-                    span: n.span.clone(),
-                }),
-                module_name,
-            )])
+            let expected_arity = (decl.params.clone().len() as i64);
+            if (expected_arity.clone() > 0) {
+                Rc::new(vec![make_error_node(
+                    Rc::new(CompilerDiagnostic::ArityMismatch {
+                        name: type_name,
+                        expected: expected_arity,
+                        got: 0,
+                        span: n.span.clone(),
+                    }),
+                    module_name,
+                )])
+            } else {
+                Rc::new(vec![])
+            }
         }
     } else {
         Rc::new(vec![])
