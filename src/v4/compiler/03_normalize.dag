@@ -179,26 +179,34 @@ fn normalize_algebra() -> NodeFold<Outcome<Node>> {
   }
 }
 
+fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostic?) -> Outcome<Node> {
+  match classify_sugar(n: n) {
+    Present { value: kind } =>
+      match normalize_sugar(kind: kind, n: n, children: folded.children) {
+        Rejected { diagnostics: r } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: cd, rejected: r)
+          }
+        Accepted { value: v, diagnostics: d } =>
+          Accepted {
+            value: v,
+            diagnostics: diagnostics_merge(outer: cd, inner: d)
+          }
+      }
+    Absent =>
+      Accepted { value: folded, diagnostics: cd }
+  }
+}
+
+// fold_node recurses with fold_node on children; sugar finish must run at every depth,
+// so the child slot calls normalize_node (full dissolve) not bare fold_node shells.
 fn normalize_node(n: Node) -> Outcome<Node> {
-  match fold_node(n: n, algebra: normalize_algebra()) {
+  match fold(n.children, init: normalize_fold_init(n: n), f: fn(acc, e) {
+    normalize_fold_step(acc: acc, edge: e, child: normalize_node(n: e.target))
+  }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: folded, diagnostics: cd } =>
-      match classify_sugar(n: n) {
-        Present { value: kind } =>
-          match normalize_sugar(kind: kind, n: n, children: folded.children) {
-            Rejected { diagnostics: r } =>
-              Rejected {
-                diagnostics: rejected_with_pending(pending: cd, rejected: r)
-              }
-            Accepted { value: v, diagnostics: d } =>
-              Accepted {
-                value: v,
-                diagnostics: diagnostics_merge(outer: cd, inner: d)
-              }
-          }
-        Absent =>
-          Accepted { value: folded, diagnostics: cd }
-      }
+      normalize_sugar_finish(n: n, folded: folded, cd: cd)
   }
 }
 
