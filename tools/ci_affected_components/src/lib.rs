@@ -143,9 +143,16 @@ pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
         || path.starts_with("src/v4/test/claim/")
         || path == "scripts/v4-testclaim-corpus-eval.sh"
         || path == "scripts/v4-testclaim-smoke-roster.sh"
-        || path == "scripts/v4-glob-discovery-project.sh"
+        || path == "scripts/v4-discover-owned-data.sh"
         || path == "scripts/v4-substrate-equivalence-gate.sh"
+        || path.starts_with("scripts/fixtures/v4_discovery_completeness_slice/")
+        || path == "src/v2/stage0/Cargo.toml"
+        || path == "src/v2/stage0/src/bin/discover_owned_data.rs"
+        || path == "src/v2/stage0/src/cli_run.rs"
+        || path == "src/v4/test/claim/workflow/discovery_types.dag"
         || path == "src/v4/test/claim/workflow/glob_discovery.dag"
+        || path == "src/v4/test/claim/workflow/glob_discovery_law.dag"
+        || path == "src/v4/test/claim/workflow/host_discovered_owned_data_manifest.dag"
         || path == "src/v4/test/claim/workflow/unified_test_claim_substrate_equivalence.dag"
 }
 
@@ -250,10 +257,19 @@ mod tests {
             "scripts/v4-testclaim-smoke-roster.sh"
         ));
         assert!(ci_changed_path_affects_testclaim_corpus(
-            "scripts/v4-glob-discovery-project.sh"
+            "scripts/v4-discover-owned-data.sh"
         ));
         assert!(ci_changed_path_affects_testclaim_corpus(
             "scripts/v4-substrate-equivalence-gate.sh"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "scripts/fixtures/v4_discovery_completeness_slice/edit_locus_resolver.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v2/stage0/Cargo.toml"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v2/stage0/src/bin/discover_owned_data.rs"
         ));
         assert!(!ci_changed_path_affects_testclaim_corpus(
             "scripts/other.sh"
