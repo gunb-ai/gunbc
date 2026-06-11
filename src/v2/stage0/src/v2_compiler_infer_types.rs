@@ -248,7 +248,11 @@ pub fn is_leaf_type(n: Rc<Node>) -> bool {
 }
 
 pub fn is_unit_like(n: Rc<Node>) -> bool {
-    (n == unit_type())
+    (((n.connective.clone() == Connective::Conj) && (v2_rt::count(n.children.clone()) == 0))
+        || ((((n.connective.clone() == Connective::NoConnective)
+            && (v2_rt::count(n.children.clone()) == 0))
+            && (n.span.clone() == kernel_span("Unit".to_string())))
+            && (n.ident_span.clone() == Some(kernel_span("Unit".to_string())))))
 }
 
 pub fn is_fully_resolved(
