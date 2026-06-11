@@ -50,6 +50,10 @@ import v4.std.diagnostic {
 import v4.std.lexing { LexRules, VoidLexRules }
 import v4.std.find_witness {
   CandidateSet,
+  ManyPassingCandidates,
+  NoPassingCandidate,
+  OnePassingCandidate,
+  PassingCandidateFold,
   PreservationPredicate,
   UniqueOnly,
   find_witness,
@@ -2431,26 +2435,59 @@ fn target_value_template_mismatch_diagnostic(source_carrier: Node) -> Diagnostic
   }
 }
 
-type TargetAtomRealizationLookup
-  = TargetAtomRealizationMissing
-  | TargetAtomRealizationUnique { row: TargetAtomRealization }
-  | TargetAtomRealizationAmbiguous
-
 fn target_atom_realization_lookup_step(
-  acc: TargetAtomRealizationLookup,
+  acc: PassingCandidateFold,
   row: TargetAtomRealization,
   source_carrier: Node
-) -> TargetAtomRealizationLookup {
+) -> PassingCandidateFold {
   if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
     match acc {
-      TargetAtomRealizationMissing =>
-        TargetAtomRealizationUnique { row: row }
-      TargetAtomRealizationUnique { row: _ } => TargetAtomRealizationAmbiguous
-      TargetAtomRealizationAmbiguous => TargetAtomRealizationAmbiguous
+      NoPassingCandidate => OnePassingCandidate { candidate: row.source_carrier }
+      OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+      ManyPassingCandidates => ManyPassingCandidates
     }
   } else {
     acc
   }
+}
+
+// Named step for the second-pass Optional fold: explicit row type pins v2 type inference.
+// The v2 type-inferencer cannot resolve field access on a closure element whose type is
+// constrained only through a polymorphic accumulator (optional_absent()); routing through
+// a named function with an explicit 'row: TargetAtomRealization' annotation fixes it.
+fn target_atom_realization_lookup_extract_row_step(
+  acc: Optional<TargetAtomRealization>,
+  row: TargetAtomRealization,
+  source_carrier: Node
+) -> Optional<TargetAtomRealization> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+        optional_present(value: row)
+      } else {
+        acc
+      }
+  }
+}
+
+// Second-pass extraction for the typed-list path: after PassingCandidateFold confirms exactly
+// one matching row, re-scan to retrieve the typed TargetAtomRealization.
+fn target_atom_realization_lookup_extract_row(
+  catalog: List<TargetAtomRealization>,
+  source_carrier: Node
+) -> Optional<TargetAtomRealization> {
+  fold_list(
+    xs: catalog,
+    empty: optional_absent(),
+    cons: fn(acc, item) {
+      target_atom_realization_lookup_extract_row_step(
+        acc: acc,
+        row: item,
+        source_carrier: source_carrier
+      )
+    }
+  )
 }
 
 // Typed-list lookup for row authoring (e.g. rust_target_atom_realization_catalog before
@@ -2462,7 +2499,7 @@ fn target_atom_realization_lookup_in_catalog(
 ) -> Outcome<TargetAtomRealization> {
   match fold_list(
     xs: catalog,
-    empty: TargetAtomRealizationMissing,
+    empty: NoPassingCandidate,
     cons: fn(acc, row) {
       target_atom_realization_lookup_step(
         acc: acc,
@@ -2471,11 +2508,18 @@ fn target_atom_realization_lookup_in_catalog(
       )
     }
   ) {
-    TargetAtomRealizationMissing =>
+    NoPassingCandidate =>
       outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
-    TargetAtomRealizationUnique { row: row } =>
-      Accepted { value: row, diagnostics: None }
-    TargetAtomRealizationAmbiguous =>
+    OnePassingCandidate { candidate: _ } =>
+      match target_atom_realization_lookup_extract_row(
+        catalog: catalog,
+        source_carrier: source_carrier
+      ) {
+        Present { value: row } => Accepted { value: row, diagnostics: None }
+        Absent =>
+          outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+      }
+    ManyPassingCandidates =>
       outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
   }
 }
@@ -2714,12 +2758,6 @@ fn target_atom_realization_catalog_node(
 }
 }
 
-type TargetAtomRealizationCatalogLookup
-  = TargetAtomRealizationCatalogMissing
-  | TargetAtomRealizationCatalogUnique { row: TargetAtomRealization }
-  | TargetAtomRealizationCatalogAmbiguous
-  | TargetAtomRealizationCatalogInvalid
-
 fn target_atom_realization_target_model_bundle_mismatch_diagnostic(
   source_carrier: Node
 ) -> Diagnostic {
@@ -2741,11 +2779,11 @@ fn target_atom_realization_catalog_row_decode_invalid_diagnostic(
 }
 
 fn target_atom_realization_catalog_lookup_step(
-  acc: TargetAtomRealizationCatalogLookup,
+  acc: PassingCandidateFold,
   row_node: Node,
   source_carrier: Node,
   host_target_model: TargetModel
-) -> TargetAtomRealizationCatalogLookup {
+) -> PassingCandidateFold {
   match target_atom_realization_from_row_node(
     row_node: row_node,
     host_target_model: host_target_model
@@ -2753,17 +2791,14 @@ fn target_atom_realization_catalog_lookup_step(
     Accepted { value: row, diagnostics: _ } =>
       if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
         match acc {
-          TargetAtomRealizationCatalogMissing =>
-            TargetAtomRealizationCatalogUnique { row: row }
-          TargetAtomRealizationCatalogUnique { row: _ } =>
-            TargetAtomRealizationCatalogAmbiguous
-          TargetAtomRealizationCatalogAmbiguous => TargetAtomRealizationCatalogAmbiguous
-          TargetAtomRealizationCatalogInvalid => TargetAtomRealizationCatalogInvalid
+          NoPassingCandidate => OnePassingCandidate { candidate: row_node }
+          OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+          ManyPassingCandidates => ManyPassingCandidates
         }
       } else {
         acc
       }
-    Rejected { diagnostics: _ } => TargetAtomRealizationCatalogInvalid
+    Rejected { diagnostics: _ } => acc
   }
 }
 
@@ -2979,7 +3014,7 @@ fn target_atom_realization_lookup_in_catalog_node(
     TypeNode { connective: Conj } =>
       match fold(
         catalog.children,
-        init: TargetAtomRealizationCatalogMissing,
+        init: NoPassingCandidate,
         f: fn(acc, e) {
           target_atom_realization_catalog_lookup_step(
             acc: acc,
@@ -2989,18 +3024,15 @@ fn target_atom_realization_lookup_in_catalog_node(
           )
         }
       ) {
-        TargetAtomRealizationCatalogMissing =>
+        NoPassingCandidate =>
           outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
-        TargetAtomRealizationCatalogUnique { row: row } =>
-          Accepted { value: row, diagnostics: None }
-        TargetAtomRealizationCatalogAmbiguous =>
-          outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
-        TargetAtomRealizationCatalogInvalid =>
-          outcome_rejected(
-            target_atom_realization_catalog_row_decode_invalid_diagnostic(
-              source_carrier: source_carrier
-            )
+        OnePassingCandidate { candidate: row_node } =>
+          target_atom_realization_from_row_node(
+            row_node: row_node,
+            host_target_model: host_target_model
           )
+        ManyPassingCandidates =>
+          outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
       }
     _ =>
       outcome_rejected(
@@ -3251,7 +3283,7 @@ fn target_function_signature_realization_from_row_node(
 
 // 🟢 coproduct dissolution — internal fold state for the SG-1b signature-realization catalog scan
 // (Result-style: heterogeneous arms — Unique carries a row payload, the other three are nullary
-// outcome tags). Mirrors TargetAtomRealizationCatalogLookup; not an N-arm identical-payload coproduct.
+// outcome tags). Not an N-arm identical-payload coproduct; PassingCandidateFold does not apply here.
 type TargetFunctionSignatureRealizationCatalogLookup
   = TargetFunctionSignatureRealizationCatalogMissing
   | TargetFunctionSignatureRealizationCatalogUnique { row: TargetFunctionSignatureRealization }
