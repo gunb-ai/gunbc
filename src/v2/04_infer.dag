@@ -810,13 +810,19 @@ fn direct_call_node_binding(env: TypeEnv, n: Node) -> TypeBinding? {
 }
 
 fn direct_call_bare_alias_target_name(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> String? {
+  match direct_call_bare_alias_target_node(binding: binding) {
+    Present { value: target } => Present { value: authored_name_at(source_indices: source_indices, node: target) }
+    Absent => none
+  }
+}
+
+fn direct_call_bare_alias_target_node(binding: TypeBinding) -> Node? {
   let resolved = binding.resolved
   if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.params |> count == 0 {
     match resolved.inferred {
       Present { value: Resolved { node: target } } =>
-        let target_name = authored_name_at(source_indices: source_indices, node: target)
         let declared_or_structural_target = target.binding_id != none || target.connective != NoConnective
-        if target_name != "" && declared_or_structural_target { Present { value: target_name } } else { none }
+        if declared_or_structural_target { Present { value: target } } else { none }
       _ => none
     }
   } else { none }
@@ -833,12 +839,25 @@ fn direct_call_target_matches_alias_target(env: TypeEnv, target_node: Node, alia
   }
 }
 
+fn direct_call_target_matches_alias_target_node(env: TypeEnv, target_node: Node, alias_target_node: Node) -> Bool {
+  match alias_target_node.binding_id {
+    Present { value: alias_target_binding_id } =>
+      match target_node.binding_id {
+        Present { value: target_binding_id } => target_binding_id == alias_target_binding_id
+        Absent => false
+      }
+    Absent =>
+      let alias_target = authored_name_at(source_indices: env.source_indices, node: alias_target_node)
+      alias_target != "" && direct_call_target_matches_alias_target(env: env, target_node: target_node, alias_target: alias_target)
+  }
+}
+
 fn direct_call_transparent_alias_to(env: TypeEnv, alias_node: Node, target_node: Node) -> Bool {
   let target_name = authored_name_at(source_indices: env.source_indices, node: target_node)
   match direct_call_node_binding(env: env, n: alias_node) {
     Present { value: binding } =>
-      match direct_call_bare_alias_target_name(binding: binding, source_indices: env.source_indices) {
-        Present { value: alias_target } => direct_call_target_matches_alias_target(env: env, target_node: target_node, alias_target: alias_target)
+      match direct_call_bare_alias_target_node(binding: binding) {
+        Present { value: alias_target_node } => direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: alias_target_node)
         Absent =>
           let resolved_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
           let alias_decl_name = match alias_node.binding_id {
@@ -852,7 +871,7 @@ fn direct_call_transparent_alias_to(env: TypeEnv, alias_node: Node, target_node:
           let declared_or_structural_target = binding.resolved.binding_id != none || binding.resolved.connective != NoConnective
           alias_decl_name != resolved_name
             && declared_or_structural_target
-            && direct_call_target_matches_alias_target(env: env, target_node: target_node, alias_target: resolved_name)
+            && direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: binding.resolved)
       }
     Absent =>
       // Some transparent bare aliases resolve their binding row to the target's
@@ -868,7 +887,7 @@ fn direct_call_transparent_alias_to(env: TypeEnv, alias_node: Node, target_node:
                   let declared_or_structural_target = raw_binding.resolved.binding_id != none || raw_binding.resolved.connective != NoConnective
                   decl.name != raw_resolved_name
                     && declared_or_structural_target
-                    && direct_call_target_matches_alias_target(env: env, target_node: target_node, alias_target: raw_resolved_name)
+                    && direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: raw_binding.resolved)
                 Absent => false
               }
             Absent => false
@@ -886,11 +905,11 @@ fn direct_call_decl_registry_transparent_alias_to(env: TypeEnv, alias_node: Node
         Present { value: decl } =>
           match map_get(env.bindings, decl.binding_key) {
             Present { value: raw_binding } =>
-              match direct_call_bare_alias_target_name(binding: raw_binding, source_indices: env.source_indices) {
-                Present { value: alias_target } =>
+              match direct_call_bare_alias_target_node(binding: raw_binding) {
+                Present { value: alias_target_node } =>
                   decl.name != target_name
                     && raw_binding.name == decl.name
-                    && direct_call_target_matches_alias_target(env: env, target_node: target_node, alias_target: alias_target)
+                    && direct_call_target_matches_alias_target_node(env: env, target_node: target_node, alias_target_node: alias_target_node)
                 Absent => false
               }
             Absent => false
