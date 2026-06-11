@@ -62,7 +62,7 @@
 
 use std::path::PathBuf;
 
-use v3_compiler::compile_to_dag;
+use crate::common::cached_compile_to_dag;
 use v3_compiler::dag::{Behavior, BindNode};
 use v3_compiler::emit::emit_go_text as emit_go;
 use v3_compiler::emit_rust::emit_rust;
@@ -79,8 +79,7 @@ fn load(file: &str) -> (Dag, String) {
     let path = fixtures_dir().join(file);
     let source = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read fixture {}: {e}", path.display()));
-    let dag = compile_to_dag(&source, path.to_string_lossy().as_ref())
-        .unwrap_or_else(|e| panic!("fixture {} must compile cleanly, got: {e:?}", file));
+    let dag = cached_compile_to_dag(&source, path.to_string_lossy().as_ref());
     assert!(
         dag.diagnostics().is_empty(),
         "fixture {file} produced diagnostics: {:?}",
@@ -350,8 +349,7 @@ fn assert_go_param_pass_by_value(fixture: &str, function_name: &str) {
     let path = fixtures_dir().join(fixture);
     let source = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read fixture {}: {e}", path.display()));
-    let dag = compile_to_dag(&source, path.to_string_lossy().as_ref())
-        .unwrap_or_else(|e| panic!("fixture {fixture} must compile cleanly, got: {e:?}"));
+    let dag = cached_compile_to_dag(&source, path.to_string_lossy().as_ref());
     let emitted = emit_go(&dag).expect("emit_go");
     let needle = format!("func {function_name}(");
     let start = emitted

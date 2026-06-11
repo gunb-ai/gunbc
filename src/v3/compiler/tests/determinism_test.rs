@@ -26,16 +26,19 @@
 //! 8. **Filesystem read order** — not exercised by string-in/string-out emit;
 //!    documented as N/A for this test file (emit does not `read_dir`).
 
+#[path = "integration/common/mod.rs"]
+mod common;
+
 #[path = "integration/common/determinism_fixtures.rs"]
 mod determinism_fixtures;
 
 use std::path::PathBuf;
 
+use crate::common::cached_compile_to_dag;
 use determinism_fixtures::{
     ModuleFixture, ProgramFixture, FOUR_FIXTURE_FILES, GO_EMIT_EXCLUDE, MODULE_FIXTURES,
     PROGRAM_FIXTURES, PYTHON_EMIT_EXCLUDE,
 };
-use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit, emit_module, EmitTarget};
 
 const RUNS: usize = 5;
@@ -47,48 +50,42 @@ fn fixtures_dir_four() -> PathBuf {
 }
 
 fn emit_rust_program(fixture: &ProgramFixture) -> String {
-    let dag = compile_to_dag(fixture.source, "determinism_program_matrix.v3")
-        .unwrap_or_else(|e| panic!("fixture {} must compile: {e:?}", fixture.name));
+    let dag = cached_compile_to_dag(fixture.source, "determinism_program_matrix.v3");
     emit(&dag, EmitTarget::Rust)
         .unwrap_or_else(|e| panic!("emit rust {}: {e:?}", fixture.name))
         .text
 }
 
 fn emit_go_program(fixture: &ProgramFixture) -> String {
-    let dag = compile_to_dag(fixture.source, "determinism_program_matrix_go.v3")
-        .unwrap_or_else(|e| panic!("fixture {} must compile: {e:?}", fixture.name));
+    let dag = cached_compile_to_dag(fixture.source, "determinism_program_matrix_go.v3");
     emit(&dag, EmitTarget::Go)
         .unwrap_or_else(|e| panic!("emit go {}: {e:?}", fixture.name))
         .text
 }
 
 fn emit_python_program(fixture: &ProgramFixture) -> String {
-    let dag = compile_to_dag(fixture.source, "determinism_program_matrix_py.v3")
-        .unwrap_or_else(|e| panic!("fixture {} must compile: {e:?}", fixture.name));
+    let dag = cached_compile_to_dag(fixture.source, "determinism_program_matrix_py.v3");
     emit(&dag, EmitTarget::Python)
         .unwrap_or_else(|e| panic!("emit python {}: {e:?}", fixture.name))
         .text
 }
 
 fn emit_rust_module(fixture: &ModuleFixture) -> String {
-    let dag = compile_to_dag(fixture.source, "determinism_module_matrix.v3")
-        .unwrap_or_else(|e| panic!("module fixture {} must compile: {e:?}", fixture.name));
+    let dag = cached_compile_to_dag(fixture.source, "determinism_module_matrix.v3");
     emit_module(&dag, EmitTarget::Rust)
         .unwrap_or_else(|e| panic!("emit rust module {}: {e:?}", fixture.name))
         .text
 }
 
 fn emit_go_module(fixture: &ModuleFixture) -> String {
-    let dag = compile_to_dag(fixture.source, "determinism_module_matrix_go.v3")
-        .unwrap_or_else(|e| panic!("module fixture {} must compile: {e:?}", fixture.name));
+    let dag = cached_compile_to_dag(fixture.source, "determinism_module_matrix_go.v3");
     emit_module(&dag, EmitTarget::Go)
         .unwrap_or_else(|e| panic!("emit go module {}: {e:?}", fixture.name))
         .text
 }
 
 fn emit_python_module(fixture: &ModuleFixture) -> String {
-    let dag = compile_to_dag(fixture.source, "determinism_module_matrix_py.v3")
-        .unwrap_or_else(|e| panic!("module fixture {} must compile: {e:?}", fixture.name));
+    let dag = cached_compile_to_dag(fixture.source, "determinism_module_matrix_py.v3");
     emit_module(&dag, EmitTarget::Python)
         .unwrap_or_else(|e| panic!("emit python module {}: {e:?}", fixture.name))
         .text
@@ -226,8 +223,7 @@ fn four_fixture_disk_sources_emit_deterministically() {
         let base = format!("four_fixture {file}");
         assert_five_identical_runs(
             || {
-                let dag = compile_to_dag(&source, path_for_compile.as_str())
-                    .unwrap_or_else(|e| panic!("{base} compile: {e:?}"));
+                let dag = cached_compile_to_dag(&source, path_for_compile.as_str());
                 emit(&dag, EmitTarget::Rust)
                     .unwrap_or_else(|e| panic!("{base} emit rust: {e:?}"))
                     .text
@@ -235,8 +231,7 @@ fn four_fixture_disk_sources_emit_deterministically() {
             &base,
         );
         let rust_disk = {
-            let dag = compile_to_dag(&source, path_for_compile.as_str())
-                .unwrap_or_else(|e| panic!("{base} compile: {e:?}"));
+            let dag = cached_compile_to_dag(&source, path_for_compile.as_str());
             emit(&dag, EmitTarget::Rust)
                 .unwrap_or_else(|e| panic!("{base} emit rust: {e:?}"))
                 .text
@@ -245,8 +240,7 @@ fn four_fixture_disk_sources_emit_deterministically() {
         let go_label = format!("{base} go");
         assert_five_identical_runs(
             || {
-                let dag = compile_to_dag(&source, path_for_compile.as_str())
-                    .unwrap_or_else(|e| panic!("{go_label} compile: {e:?}"));
+                let dag = cached_compile_to_dag(&source, path_for_compile.as_str());
                 emit(&dag, EmitTarget::Go)
                     .unwrap_or_else(|e| panic!("{go_label} emit go: {e:?}"))
                     .text

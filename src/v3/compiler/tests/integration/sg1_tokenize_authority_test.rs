@@ -2,8 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
 use crate::common::{cached_compile_any, cached_compile_to_dag};
+use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
@@ -196,10 +196,7 @@ fn tokenize_local_punct_rows_are_structural_and_disjoint_from_shared_operator_au
 
 #[test]
 fn shared_syntax_keyword_map_is_structural_while_operator_bridge_remains_bounded() {
-    let lowered = cached_compile_any(
-        SHARED_SYNTAX_DAG,
-        "dsl/extdeps/languages/dag/syntax.dag",
-    );
+    let lowered = cached_compile_any(SHARED_SYNTAX_DAG, "dsl/extdeps/languages/dag/syntax.dag");
 
     let keywords = lowered
         .declaration_by_name("dag_keyword_set")

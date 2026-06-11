@@ -1,8 +1,8 @@
 //! **Layer:** integration
 //! HTTP/SQL/audit extdep authority checks.
 
-use std::collections::HashSet;
 use crate::common::cached_compile_to_dag;
+use std::collections::HashSet;
 use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
 
 const HTTP_SERVER_DAG: &str = include_str!("../../../../../dsl/extdeps/http/server.dag");

@@ -84,7 +84,7 @@ use std::path::{Path, PathBuf};
 /// merge or land with explicit get-off-v3 sign-off (and a paired raise
 /// documented here). The north star is `0` — at which point `v3` has no
 /// direct whole-source compile callers left.
-const COMPILE_TO_DAG_CALLER_CEILING: usize = 476;
+const COMPILE_TO_DAG_CALLER_CEILING: usize = 433;
 
 /// The identifier whose direct call sites this census tracks.
 const TARGET_IDENT: &str = "compile_to_dag";
