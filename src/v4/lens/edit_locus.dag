@@ -16,7 +16,7 @@ import v4.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v4.std.node { Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.node { Conj, Node, Symbol, TypeNode, SyntheticOccurrence, node_for_structural_equality }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -73,8 +73,11 @@ fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
 }
 
 
+// occurrence_id is excluded from structural equality (design-node-identity-channels.md).
+// Normalize both sides through node_for_structural_equality — parity with
+// source_authority.dag source_authority_node_equal — so loci dedup is not split by minted ids.
 fn node_eq(left: Node, right: Node) -> Bool {
-  left == right
+  node_for_structural_equality(n: left) == node_for_structural_equality(n: right)
 }
 
 
