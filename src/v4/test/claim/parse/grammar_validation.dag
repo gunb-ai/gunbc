@@ -26,7 +26,7 @@ import v4.compiler.parse {
   grammar_has_left_recursion,
   grammar_has_undefined_nonterminals,
   grammar_validate_for_parse,
-  parse_production,
+  parse_production_tree,
   parse_skip_to_sync,
   parse_stage_locus_port
 }
@@ -170,7 +170,7 @@ fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
   match grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: validated, diagnostics: _ } =>
-      parse_production(
+      parse_production_tree(
         tokens: validation_two_token_list,
         validated: validated,
         production_name: ^validation_rec_start
