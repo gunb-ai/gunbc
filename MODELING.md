@@ -2,7 +2,7 @@
 
 # DAG Modeling Guidelines
 
-Companion to [INVARIANTS.md](INVARIANTS.md) (compiler invariants). This is the slim rule surface: the active modeling rules and principle names.
+Companion to [INVARIANTS.md](INVARIANTS.md) (compiler invariants). This is the slim rule surface: the active modeling rules and principle names. The review rubric that operationalizes these principles — practices, dissolution findings, calibration — is [docs/modeling-discipline.md](docs/modeling-discipline.md).
 
 ## Core principle: shared facts, not preferences
 
@@ -116,13 +116,17 @@ If the same fact lives in data and code, derive from the data and delete the dup
 
 Dispatch should work over structure, not string extraction.
 
-### M10: Concepts get proper homes, not flat slots
-
-New concepts need real files and models before they get referenced from higher-level variants.
+**Mechanical trigger:** any new `is_*`, `has_*`, `*_is_*`, `*_has_*`, `non_empty`, `is_empty`, or similar `Bool` helper over a coproduct that matches the value and returns true for one variant and false for another is **predicate dissolution until proven otherwise** — the property belongs on the variant (or as a declared fact the consumer matches on), not in a side classifier ([docs/modeling-discipline.md](docs/modeling-discipline.md) Practice 10).
 
 ### M9: DFS the ontology — every construct attaches to first principles
 
 Every new construct should trace to its parent in the ontology before new ad hoc vocabulary is introduced.
+
+This applies to **operations as well as types**: before hand-writing a fold, walker, or accumulator, DFS `std/` for the derived operation that already carries it. A hand-rolled fold whose accumulator shape coincides with an existing carrier *is* that carrier — e.g. a find-unique-row fold with a `Missing | Unique | Ambiguous` accumulator **is** `find_witness`; writing it locally duplicates the authority (Practice 11 parametric-duplication).
+
+### M10: Concepts get proper homes, not flat slots
+
+New concepts need real files and models before they get referenced from higher-level variants.
 
 ### Navigating the concept DAG: where to start
 
