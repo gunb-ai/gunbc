@@ -492,11 +492,23 @@ pub fn resolve_alias_target(
                             Some(InferredNode::Resolved {
                                 node: next_target, ..
                             }) => {
-                                let __tco_0 = next_target.clone();
-                                let __tco_1 = (depth + 1);
-                                target = __tco_0;
-                                depth = __tco_1;
-                                continue;
+                                if (node_is_bare_type_ref(next_target.clone())
+                                    && (authored_name(env.clone(), next_target.clone()).as_str()
+                                        == authored_name(env.clone(), env_target.clone()).as_str()))
+                                {
+                                    break Rc::new(NodeResolveResult {
+                                        resolved: env_target.clone(),
+                                        diagnostics: Rc::new(vec![]),
+                                    });
+                                } else {
+                                    {
+                                        let __tco_0 = next_target.clone();
+                                        let __tco_1 = (depth + 1);
+                                        target = __tco_0;
+                                        depth = __tco_1;
+                                        continue;
+                                    }
+                                }
                             }
                             _ => {
                                 break Rc::new(NodeResolveResult {
@@ -1717,8 +1729,8 @@ pub fn resolve_optional_node(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -3125,8 +3137,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 has_non_tail_self_call: false,
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                                 binding_id: None,
+                                ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),

@@ -78,8 +78,8 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -248,11 +248,10 @@ pub fn is_leaf_type(n: Rc<Node>) -> bool {
 }
 
 pub fn is_unit_like(n: Rc<Node>) -> bool {
-    (((n.connective.clone() == Connective::Conj) && (v2_rt::count(n.children.clone()) == 0))
-        || ((((n.connective.clone() == Connective::NoConnective)
-            && (v2_rt::count(n.children.clone()) == 0))
-            && (n.span.clone() == kernel_span("Unit".to_string())))
-            && (n.ident_span.clone() == Some(kernel_span("Unit".to_string())))))
+    (((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
+        || (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && (n.name.clone().as_str() == "Unit".to_string().as_str())))
 }
 
 pub fn is_fully_resolved(
@@ -325,8 +324,8 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         has_non_tail_self_call: false,
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                         binding_id: None,
+                        ident: None,
                     }),
                     Rc::new(Node {
                         name: val_id.clone(),
@@ -348,8 +347,8 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         has_non_tail_self_call: false,
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                         binding_id: None,
+                        ident: None,
                     }),
                 ]),
                 connective: Connective::NoConnective,
@@ -365,8 +364,8 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             })),
             None => None,
         },
@@ -400,8 +399,8 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             })]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -416,8 +415,8 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         })),
         None => None,
     }
@@ -463,8 +462,8 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
                 kind: ExprErrorKind::InternalExprError,
                 message: msg.clone(),
             }),
-            ident: None,
             binding_id: None,
+            ident: None,
         })
     }
 }
@@ -500,8 +499,8 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 })]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -516,8 +515,8 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             }),
             diagnostics: Rc::new(vec![]),
         }),
@@ -557,8 +556,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         }),
                         Rc::new(Node {
                             name: val_name.clone(),
@@ -578,8 +577,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             has_non_tail_self_call: false,
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                             binding_id: None,
+                            ident: None,
                         }),
                     ]),
                     connective: Connective::NoConnective,
@@ -595,8 +594,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                     binding_id: None,
+                    ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -635,8 +634,8 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -664,8 +663,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             }),
             Rc::new(Node {
                 name: "second".to_string(),
@@ -685,8 +684,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
                 binding_id: None,
+                ident: None,
             }),
         ]),
         connective: Connective::Conj,
@@ -702,8 +701,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -726,8 +725,8 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
         binding_id: None,
+        ident: None,
     })
 }
 
@@ -769,8 +768,8 @@ pub fn algebra_method_field(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
             binding_id: None,
+            ident: None,
         })
     }
 }
@@ -2539,6 +2538,14 @@ pub fn node_type_deps(
         };
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         let n_name = authored_name_at(source_indices.clone(), n.clone());
+        let self_decl_dep = if (((has_structure.clone() && (n.ident_span.clone() != None))
+            && (is_kernel_type(n_name.clone()) == false))
+            && (n_name.clone().as_str() != "None".to_string().as_str()))
+        {
+            Rc::new(vec![n_name.clone()])
+        } else {
+            Rc::new(vec![])
+        };
         if __is_named_ref {
             match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -2547,29 +2554,32 @@ pub fn node_type_deps(
                 _ => Rc::new(vec![]),
             }
         } else {
-            if has_structure {
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for child in n.children.clone().iter().cloned() {
-                        __result.extend(
-                            (*match child.inferred.clone().as_deref().cloned() {
-                                Some(InferredNode::Resolved { node: rt, .. }) => {
-                                    node_type_deps(rt.clone(), source_indices.clone())
-                                }
-                                _ => {
-                                    if (child.inferred.clone() == None) {
-                                        node_type_deps(child.clone(), source_indices.clone())
-                                    } else {
-                                        Rc::new(vec![])
+            if has_structure.clone() {
+                {
+                    let child_deps = Rc::new({
+                        let mut __result = Vec::new();
+                        for child in n.children.clone().iter().cloned() {
+                            __result.extend(
+                                (*match child.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                                        node_type_deps(rt.clone(), source_indices.clone())
                                     }
-                                }
-                            })
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                })
+                                    _ => {
+                                        if (child.inferred.clone() == None) {
+                                            node_type_deps(child.clone(), source_indices.clone())
+                                        } else {
+                                            Rc::new(vec![])
+                                        }
+                                    }
+                                })
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    });
+                    v2_rt::concat(self_decl_dep, child_deps)
+                }
             } else {
                 if (n.inferred.clone() != None) {
                     match n.inferred.clone().as_deref().cloned() {

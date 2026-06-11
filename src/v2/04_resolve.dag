@@ -279,7 +279,12 @@ fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: 
           if env_target.connective == NoConnective && env_target.children |> count == 0 && env_target.inferred != none {
             match env_target.inferred {
               Present { value: Resolved { node: next_target } } =>
-                resolve_alias_target(target: next_target, env: env, module_name: module_name, depth: depth + 1)
+                if node_is_bare_type_ref(n: next_target)
+                  && authored_name(env: env, node: next_target) == authored_name(env: env, node: env_target) {
+                  NodeResolveResult { resolved: env_target, diagnostics: [] }
+                } else {
+                  resolve_alias_target(target: next_target, env: env, module_name: module_name, depth: depth + 1)
+                }
               _ => NodeResolveResult { resolved: env_target, diagnostics: [] }
             }
           } else { NodeResolveResult { resolved: env_target, diagnostics: [] } }
