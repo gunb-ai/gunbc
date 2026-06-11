@@ -131,12 +131,28 @@ fn produce_mvp1_add_binary_body_swapped_operands() -> Node {
   mvp1_add_binary_body_swapped_operands_node
 }
 
+// Positional-0 domain: Conj of Named binding_id edges (authority for node_query
+// arrow_domain_named_param_bindings). Remaining positional slots carry codomain wires.
+data mvp1_add_arrow_domain_conj_node: Node = node_unanchored(
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^dag_binding_param_x },
+      target: type_atom_node(identity: ^dag_binding_type_int)
+    },
+    Edge {
+      label: Named { name: ^dag_binding_param_y },
+      target: type_atom_node(identity: ^dag_binding_type_int)
+    }
+  ]
+)
+
 data mvp1_add_arrow_signature_node: Node = node_unanchored(
   kind: TypeNode { connective: Arrow },
   children: [
     Edge {
       label: Positional,
-      target: type_atom_node(identity: ^dag_binding_type_int)
+      target: mvp1_add_arrow_domain_conj_node
     },
     Edge {
       label: Positional,
@@ -158,7 +174,7 @@ data mvp1_add_arrow_with_body_node: Node = node_unanchored(
   children: [
     Edge {
       label: Positional,
-      target: type_atom_node(identity: ^dag_binding_type_int)
+      target: mvp1_add_arrow_domain_conj_node
     },
     Edge {
       label: Positional,
@@ -201,7 +217,7 @@ data mvp1_add_arrow_with_body_swapped_operands_node: Node = node_unanchored(
   children: [
     Edge {
       label: Positional,
-      target: type_atom_node(identity: ^dag_binding_type_int)
+      target: mvp1_add_arrow_domain_conj_node
     },
     Edge {
       label: Positional,

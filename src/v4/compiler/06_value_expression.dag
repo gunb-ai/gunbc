@@ -45,6 +45,7 @@ import v4.std.node {
   Symbol
 }
 import v4.std.node_query {
+  arrow_domain_named_param_bindings,
   find_arrow_body_child,
   find_named_child,
   node_positional_child_targets
@@ -82,7 +83,12 @@ fn value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
-// 🟡 gated — feature:canonical-op-from-surface-atom — dissolve-on: resolve maps surface op token → CanonicalOperation at resolve stage.
+// 🟡 gated — predicate-dissolution interim (INVARIANTS P1 / modeling-discipline Practice 4) —
+// feature:canonical-op-from-surface-atom — consumer:06_value_expression
+// project_transform_primitive_apply — bind: resolve-stage surface-op → CanonicalOperation mapping —
+// owner: T6 value-expression (lively-badger-242) — lane: compiler 06_value_expression —
+// dissolve-on-arrival: resolve maps surface op token → CanonicalOperation at resolve stage;
+// forbidden: literal ^dag_token_plus match in compiler value-expression projection.
 fn surface_op_atom_to_canonical(op_atom: Symbol) -> Optional<CanonicalOperation> {
   if op_atom == ^dag_token_plus {
     optional_present(canonical_operation_op_add())
@@ -207,12 +213,28 @@ fn value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   }
 }
 
+fn value_expr_binding_in_arrow_domain(arrow: Node, binding: Symbol) -> Bool {
+  match arrow_domain_named_param_bindings(arrow: arrow) {
+    Accepted { value: bindings, diagnostics: _ } =>
+      fold_list(xs: bindings, empty: false, cons: fn(acc, sym) {
+        if acc {
+          true
+        } else if sym == binding {
+          true
+        } else {
+          false
+        }
+      })
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn value_expr_arrow_body_scope_binding_valid(
   arrow: Node,
   binding: Symbol,
   target: TargetModel
 ) -> Bool {
-  (binding == ^dag_binding_param_x || binding == ^dag_binding_param_y)
+  value_expr_binding_in_arrow_domain(arrow: arrow, binding: binding)
     && (
       value_expr_wave1_add_signature_matches_for_target(arrow: arrow, target: target)
       || value_expr_arrow_has_transform_body(arrow: arrow)
