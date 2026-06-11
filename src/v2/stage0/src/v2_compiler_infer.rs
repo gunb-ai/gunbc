@@ -4878,12 +4878,21 @@ match bare_s {
                         if node_is_element_collection(
                             exp.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                        ) {
-                            match exp.children.clone().first().cloned() {
-                                Some(elem) => Some(child_type_node(elem.clone())),
-                                None => None,
-                            }
-                        } else {
+                            ) {
+                                match exp.children.clone().first().cloned() {
+                                    Some(elem) => {
+                                        let child = child_type_node(elem.clone());
+                                        match lookup_type_for(
+                                            scope.type_env.clone(),
+                                            child.clone(),
+                                        ) {
+                                            Some(resolved_child) => Some(resolved_child.clone()),
+                                            None => Some(child.clone()),
+                                        }
+                                    }
+                                    None => None,
+                                }
+                            } else {
                             None
                         }
                     }
@@ -4911,9 +4920,12 @@ match bare_s {
                     __result
                 });
                 let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
-                    match elem_results.clone().first().cloned() {
-                        Some(r) => resolved_type(r.typed.clone()),
-                        None => unit_type(),
+                    match elem_expected.clone() {
+                        Some(expected_elem) => expected_elem.clone(),
+                        None => match elem_results.clone().first().cloned() {
+                            Some(r) => resolved_type(r.typed.clone()),
+                            None => unit_type(),
+                        },
                     }
                 } else {
                     match expected.clone() {

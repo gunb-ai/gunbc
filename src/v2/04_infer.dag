@@ -2512,7 +2512,15 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let elem_expected = match expected {
         Present { value: exp } =>
           if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
-            match exp.children |> first { Present { value: elem } => Present { value: child_type_node(ch: elem) }  Absent => none }
+            match exp.children |> first {
+              Present { value: elem } =>
+                let child = child_type_node(ch: elem)
+                match lookup_type_for(env: scope.type_env, node: child) {
+                  Present { value: resolved_child } => Present { value: resolved_child }
+                  Absent => Present { value: child }
+                }
+              Absent => none
+            }
           } else { none }
         Absent => none
       }
@@ -2520,9 +2528,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let typed_elements = elem_results |> map(r => r.typed)
       let elem_diags = flat_map(elem_results, r => r.diagnostics)
       let elem_type_node = if count(elem_results) > 0 {
-        match first(elem_results) {
-          Present { value: r } => resolved_type(n: r.typed)
-          Absent => unit_type
+        match elem_expected {
+          Present { value: expected_elem } => expected_elem
+          Absent =>
+            match first(elem_results) {
+              Present { value: r } => resolved_type(n: r.typed)
+              Absent => unit_type
+            }
         }
       } else {
         match expected {
