@@ -591,8 +591,8 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     # 20m is the pre-#4633 ceiling, restored after batched discovery
     # (discover_owned_data --max-resolves, see v4-discover-owned-data.sh)
-    # removed the ~15m per-entry resolve fan-out. Do not raise this to absorb
-    # a slow step; root-cause it (enforced by the timeout_budgets gate).
+    # removed the ~15m per-entry resolve fan-out (#4719). Cargo/sccache warmth below keeps
+    # warm reruns inside this budget; do not raise the timeout (timeout_budgets gate).
     timeout-minutes: 20
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
@@ -623,7 +623,12 @@ jobs:
         HOME: ${{ runner.temp }}
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
-    - name: Cache Cargo (v4 lens CI)
+    # Shared cargo-ci- namespace with ci_floor / ci_floor_parity / ci_floor_emit / v4_lens_ci:
+    # one cache per Cargo.lock + toolchain; broad restore-key + save-always persist warmth
+    # across runs (including gate-script failures) so warm paths stay inside the 20m job
+    # budget. sccache warmth is per-host (runner SCCACHE_DIR); the probe above warms it before
+    # the first rustc call. dissolve-on-arrival: modeled cache_interface projection.
+    - name: Cache Cargo (v4 lens gate)
       uses: actions/cache@v5
       with:
         path: |
@@ -634,21 +639,33 @@ jobs:
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+        save-always: true
     - name: Cache gunbc + discover_owned_data binaries (v4 lens gate)
       id: v4-v2-bin
       uses: actions/cache@v5
       with:
-        # Substrate-equivalence (C9) needs discover_owned_data; never restore a
-        # gunbc-only cache and skip the host binary (gunbc-lens-gate-bin- namespace).
+        # Substrate-equivalence (C9) needs discover_owned_data. Distinct save namespace
+        # ('gunbc-lens-gate-bin-') so ci_floor's gunbc-only saves never clobber the paired
+        # cache entry. restore-keys fall back to gunbc-bin- (ci_floor lane) for partial
+        # warmth: gunbc may restore without discover_owned_data; exact cache-hit stays
+        # false, so the build steps below still run — never skip discover_owned_data on a
+        # gunbc-only restore.
         path: |
           target/release/gunbc
           target/release/discover_owned_data
         key: gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
           gunbc-lens-gate-bin-${{ runner.os }}-${{ runner.arch }}-
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
+        save-always: true
     - name: Build v2 compiler (v4 lens gate)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
-      run: bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+      run: |
+        if [[ -x target/release/gunbc ]]; then
+          echo "::notice::gunbc present from partial cache restore; skipping full v2-compiler rebuild (discover_owned_data ensured below)"
+        else
+          bash .github/ci-floor/with-sccache-retry.sh cargo build -p v2-compiler --release
+        fi
     - name: Ensure discover_owned_data binary (v4 lens gate C9)
       run: |
         if [[ ! -x target/release/discover_owned_data ]]; then
