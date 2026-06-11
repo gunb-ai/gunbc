@@ -2393,6 +2393,8 @@ fn project_type_expression_children(
     acc: Empty
   )
 }
+// 🟢 TERMINAL — irreducible NodeFold states for translate_algebra Conj arm (Slots = field
+// accumulation; Done = leaf/subtree already projected); not a public API surface.
 type TypeExprTranslateAcc
   = TypeExprTranslateSlots { slots: List<TargetTypeExprFieldSlot> }
   | TypeExprTranslateDone { node: Node }
