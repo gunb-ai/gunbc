@@ -3852,12 +3852,6 @@ where
     f(&items, closure, env, ctx)
 }
 
-/// Flatten a FreeMonoid value into a Vec, or None if `val` is neither a list nor a
-/// well-formed Empty/Cons chain. Lists build as Value::List; FreeMonoid values constructed
-/// via Cons/Empty (e.g. list_snoc_item chains in Node.children) are Variant chains. The list
-/// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
-/// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
-/// raises a type error rather than fabricating an empty/partial list.
 thread_local! {
     /// Flattening counters for `free_monoid_to_vec` (phase-0 measurement,
     /// ctrl#1533). Thread-local rather than context-scoped because the
@@ -3880,6 +3874,12 @@ fn record_flatten(items: usize) {
     });
 }
 
+/// Flatten a FreeMonoid value into a Vec, or None if `val` is neither a list nor a
+/// well-formed Empty/Cons chain. Lists build as Value::List; FreeMonoid values constructed
+/// via Cons/Empty (e.g. list_snoc_item chains in Node.children) are Variant chains. The list
+/// builtins (fold/map/filter/foreach) accept either. Fails closed (P3): a non-list value —
+/// including Null and a Cons with a missing/non-list `tail` — returns None so the caller
+/// raises a type error rather than fabricating an empty/partial list.
 fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let mut out = Vec::new();
     let mut cur = val.clone();
