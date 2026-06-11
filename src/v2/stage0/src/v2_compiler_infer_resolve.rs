@@ -141,14 +141,16 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                         && (resolved.inferred.clone() != None))
                     {
                         match resolved.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: target, .. }) => resolve_alias_target(
-                                target.clone(),
-                                env.clone(),
-                                module_name.clone(),
-                                0,
-                            )
-                            .resolved
-                            .clone(),
+                            Some(InferredNode::Resolved { node: target, .. }) => {
+                                resolve_alias_target(
+                                    target.clone(),
+                                    env.clone(),
+                                    module_name.clone(),
+                                    0,
+                                )
+                                .resolved
+                                .clone()
+                            }
                             _ => resolved.clone(),
                         }
                     } else {
