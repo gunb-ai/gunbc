@@ -3100,6 +3100,22 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         } else {
             fn_type_param_names(item.clone(), env.source_indices.clone())
         };
+        let __dbg_item_name = authored_name_at(env.source_indices.clone(), item.clone());
+        if ((__dbg_item_name.as_str() == "Outcome")
+            || (__dbg_item_name.as_str() == "Witness")
+            || (__dbg_item_name.as_str() == "Optional"))
+        {
+            eprintln!(
+                "DBG resolve_item_types name={} connective={:?} params={} body={} transport={} inferred={} tp_names={:?}",
+                __dbg_item_name,
+                item.connective.clone(),
+                item.params.clone().len(),
+                item.body.clone().is_some(),
+                item.transport.clone().is_some(),
+                item.inferred.clone().is_some(),
+                tp_names
+            );
+        }
         let collision_diags = if has_duplicate_type_param_name(tp_names.clone()) {
             Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v2_rt::concat(v2_rt::concat("type param name collides with a value param in fn '".to_string(), authored_name_at(env.source_indices.clone(), item.clone())), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition.".to_string()),
