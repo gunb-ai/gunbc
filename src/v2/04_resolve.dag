@@ -34,7 +34,7 @@ import v2.std.core {
   default_ident_span, kernel_span, node_name_span, node_with_preserved_binding_id, intern
 }
 import v2.compiler.infer_types {
-  resolved_type, child_type_node, node_is_keyed_collection, is_declared_container_alias_spelling
+  resolved_type, child_type_node, node_is_keyed_collection, is_declared_container_alias_spelling, node_is_bare_type_ref
 }
 import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {
@@ -67,12 +67,6 @@ fn preserve_nominal_brand_on_resolve(
   } else { structural }
 }
 
-fn is_bare_type_ref(n: Node) -> Bool {
-  n.connective == NoConnective
-    && n.children |> count == 0
-    && n.params |> count == 0
-}
-
 type AliasPeelResult {
   node: Node
   diagnostics: List<ErrorNode>
@@ -99,7 +93,7 @@ fn peel_nominal_alias_identity_result(n: Node, env: TypeEnv, module_name: String
         && !is_declared_container_alias_spelling(name: brand) {
         let branded = match resolved.inferred {
           Present { value: Resolved { node: target } } =>
-            if is_bare_type_ref(n: target) {
+            if node_is_bare_type_ref(n: target) {
               structural
             } else {
               with_preserved_binding_id(identity: resolved, structural: structural)

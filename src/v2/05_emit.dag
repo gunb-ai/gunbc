@@ -304,10 +304,10 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 fn empty_emit_scope() -> InferScope {
   InferScope {
     type_env: TypeEnv { bindings: empty_map(), carrier_bindings: empty_map(), decl_registry: empty_map(), duplicate_decl_ids: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table() },
-	    func_env: ResolvedFuncEnv { signatures: empty_map() },
-	    locals: empty_map(),
-	    variant_collisions: empty_map(),
-	    match_bound_names: empty_map(),
+    func_env: ResolvedFuncEnv { signatures: empty_map() },
+    locals: empty_map(),
+    variant_collisions: empty_map(),
+    match_bound_names: empty_map(),
     module_name: "",
     service_registry: empty_map(),
     item_registry: empty_map(),
@@ -317,11 +317,11 @@ fn empty_emit_scope() -> InferScope {
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
-	    type_env: typed_module.type_env,
-	    func_env: typed_module.func_env,
-	    locals: empty_map(),
-	    variant_collisions: empty_map(),
-	    match_bound_names: empty_map(),
+    type_env: typed_module.type_env,
+    func_env: typed_module.func_env,
+    locals: empty_map(),
+    variant_collisions: empty_map(),
+    match_bound_names: empty_map(),
     module_name: authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module),
     service_registry: empty_map(),
     item_registry: typed_module.item_registry,

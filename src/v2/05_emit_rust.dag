@@ -405,6 +405,16 @@ fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<Str
     && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
 }
 
+// BINDING-ID-OPAQUE-NEWTYPE-BRIDGE:
+// BindingId must lower to a private Rust tuple newtype with pub(crate) mint so
+// declaration identity stays unforgeable until v2 type declarations can carry a
+// first-class OpaqueNewtype/constructor-visibility property. Dissolution trigger:
+// add that declaration property to the model and have the emitter consume it here;
+// do not extend this bridge to another type name.
+fn rust_binding_id_opaque_newtype_bridge(name: String) -> Bool {
+  name == "BindingId"
+}
+
 fn rust_diff_id_ord_carrier_shape_eligible(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if name != "DiffId" || (children |> count) != 1 {
     false
@@ -2779,7 +2789,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
 
 
 fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
-  if name == "BindingId" {
+  if rust_binding_id_opaque_newtype_bridge(name: name) {
     return concat(
       "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]\n",
       rust_visibility_prefix(), rust_items().struct_keyword, " BindingId(i64);\n\n",
@@ -5760,7 +5770,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       }
     Present { value: tn } =>
       let si = scope.type_env.source_indices
-      if tn == "BindingId" {
+      if rust_binding_id_opaque_newtype_bridge(name: tn) {
         match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "value") |> first {
           Present { value: f } =>
             let inner = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
