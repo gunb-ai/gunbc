@@ -354,8 +354,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               let rt_result = resolve_node_bounded(n: authored_type, env: env, module_name: module_name, depth: depth + 1)
               let rt_resolved = rt_result.resolved
               let rt_diags = rt_result.diagnostics
+              let resolved_children = match field_node_default_value(n: child) {
+                Present { value: dv } => [rt_resolved, dv]
+                Absent => [rt_resolved]
+              }
               NodeResolveResult {
-                resolved: Node { name: child.name, ident: child.ident, binding_id: child.binding_id, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, rt_resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+                resolved: Node { name: child.name, ident: child.ident, binding_id: child.binding_id, span: child.span, ident_span: child.ident_span, children: resolved_children, connective: child.connective, params: child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, rt_resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
                 diagnostics: rt_diags
               }
             } else {
@@ -366,8 +370,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
             let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1)
             let rt_resolved = rt_result.resolved
             let rt_diags = rt_result.diagnostics
+            let resolved_children = match field_node_default_value(n: child) {
+              Present { value: dv } => [rt_resolved, dv]
+              Absent => [rt_resolved]
+            }
               NodeResolveResult {
-                resolved: Node { name: child.name, ident: child.ident, binding_id: child.binding_id, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, rt_resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+                resolved: Node { name: child.name, ident: child.ident, binding_id: child.binding_id, span: child.span, ident_span: child.ident_span, children: resolved_children, connective: child.connective, params: child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, rt_resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
               diagnostics: rt_diags
             }
           }
@@ -399,8 +407,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
                 let rt_result = resolve_node_bounded(n: authored_type, env: env, module_name: module_name, depth: depth + 1)
                 let rt_resolved = rt_result.resolved
                 let rt_diags = rt_result.diagnostics
+                let resolved_children = match field_node_default_value(n: field_child) {
+                  Present { value: dv } => [rt_resolved, dv]
+                  Absent => [rt_resolved]
+                }
                 NodeResolveResult {
-                  resolved: Node { name: field_child.name, ident: field_child.ident, binding_id: field_child.binding_id, span: field_child.span, ident_span: field_child.ident_span, children: field_child.children, connective: field_child.connective, params: field_child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: field_child.return_cardinality, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: concat(field_child.properties, rt_resolved.properties), type_annotation: field_child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+                  resolved: Node { name: field_child.name, ident: field_child.ident, binding_id: field_child.binding_id, span: field_child.span, ident_span: field_child.ident_span, children: resolved_children, connective: field_child.connective, params: field_child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: field_child.return_cardinality, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: concat(field_child.properties, rt_resolved.properties), type_annotation: field_child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
                   diagnostics: rt_diags
                 }
               } else {
@@ -416,8 +428,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               }
               let rt_resolved = rt_result.resolved
               let rt_diags = rt_result.diagnostics
+              let resolved_children = match field_node_default_value(n: field_child) {
+                Present { value: dv } => [rt_resolved, dv]
+                Absent => [rt_resolved]
+              }
                 NodeResolveResult {
-                  resolved: Node { name: field_child.name, ident: field_child.ident, binding_id: field_child.binding_id, span: field_child.span, ident_span: field_child.ident_span, children: field_child.children, connective: field_child.connective, params: field_child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: field_child.return_cardinality, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: concat(field_child.properties, rt_resolved.properties), type_annotation: field_child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+                  resolved: Node { name: field_child.name, ident: field_child.ident, binding_id: field_child.binding_id, span: field_child.span, ident_span: field_child.ident_span, children: resolved_children, connective: field_child.connective, params: field_child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: field_child.return_cardinality, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: concat(field_child.properties, rt_resolved.properties), type_annotation: field_child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
                 diagnostics: rt_diags
               }
             }
@@ -1085,8 +1101,12 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       let authored_type = field_node_type_expr(n: child)
       let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
       let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
+      let resolved_children = match field_node_default_value(n: child) {
+        Present { value: dv } => [tr.resolved, dv]
+        Absent => [tr.resolved]
+      }
       ItemResult {
-        item: Node { name: child.name, ident: child.ident, binding_id: child.binding_id, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+        item: Node { name: child.name, ident: child.ident, binding_id: child.binding_id, span: child.span, ident_span: child.ident_span, children: resolved_children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         diagnostics: type_diags
       }
     )
@@ -1096,8 +1116,12 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
         let authored_type = field_node_type_expr(n: field)
         let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
         let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
+        let resolved_children = match field_node_default_value(n: field) {
+          Present { value: dv } => [tr.resolved, dv]
+          Absent => [tr.resolved]
+        }
         ItemResult {
-          item: Node { name: field.name, ident: field.ident, binding_id: field.binding_id, span: field.span, ident_span: field.ident_span, children: field.children, connective: field.connective, params: field.params, inferred: field.inferred, return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+          item: Node { name: field.name, ident: field.ident, binding_id: field.binding_id, span: field.span, ident_span: field.ident_span, children: resolved_children, connective: field.connective, params: field.params, inferred: field.inferred, return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
           diagnostics: type_diags
         }
       )

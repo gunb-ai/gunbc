@@ -34,8 +34,8 @@ pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, intern_find,
-    is_compiler_error, is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
+    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
+    is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
     local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
     make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
     make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
@@ -705,6 +705,14 @@ pub fn resolve_node_bounded(
                                                 );
                                                 let rt_resolved = rt_result.resolved.clone();
                                                 let rt_diags = rt_result.diagnostics.clone();
+                                                let resolved_children =
+                                                    match field_node_default_value(child.clone()) {
+                                                        Some(dv) => Rc::new(vec![
+                                                            rt_resolved.clone(),
+                                                            dv.clone(),
+                                                        ]),
+                                                        None => Rc::new(vec![rt_resolved.clone()]),
+                                                    };
                                                 Rc::new(NodeResolveResult {
                                                     resolved: Rc::new(Node {
                                                         name: child.name.clone(),
@@ -712,7 +720,7 @@ pub fn resolve_node_bounded(
                                                         binding_id: child.binding_id.clone(),
                                                         span: child.span.clone(),
                                                         ident_span: child.ident_span.clone(),
-                                                        children: child.children.clone(),
+                                                        children: resolved_children.clone(),
                                                         connective: child.connective.clone(),
                                                         params: child.params.clone(),
                                                         inferred: Some(Rc::new(
@@ -758,6 +766,14 @@ pub fn resolve_node_bounded(
                                             );
                                             let rt_resolved = rt_result.resolved.clone();
                                             let rt_diags = rt_result.diagnostics.clone();
+                                            let resolved_children =
+                                                match field_node_default_value(child.clone()) {
+                                                    Some(dv) => Rc::new(vec![
+                                                        rt_resolved.clone(),
+                                                        dv.clone(),
+                                                    ]),
+                                                    None => Rc::new(vec![rt_resolved.clone()]),
+                                                };
                                             Rc::new(NodeResolveResult {
                                                 resolved: Rc::new(Node {
                                                     name: child.name.clone(),
@@ -765,7 +781,7 @@ pub fn resolve_node_bounded(
                                                     binding_id: child.binding_id.clone(),
                                                     span: child.span.clone(),
                                                     ident_span: child.ident_span.clone(),
-                                                    children: child.children.clone(),
+                                                    children: resolved_children.clone(),
                                                     connective: child.connective.clone(),
                                                     params: child.params.clone(),
                                                     inferred: Some(Rc::new(
@@ -890,6 +906,18 @@ pub fn resolve_node_bounded(
                                                                     let rt_diags = rt_result
                                                                         .diagnostics
                                                                         .clone();
+                                                                    let resolved_children =
+                                                                        match field_node_default_value(
+                                                                            field_child.clone(),
+                                                                        ) {
+                                                                            Some(dv) => Rc::new(vec![
+                                                                                rt_resolved.clone(),
+                                                                                dv.clone(),
+                                                                            ]),
+                                                                            None => Rc::new(vec![
+                                                                                rt_resolved.clone(),
+                                                                            ]),
+                                                                        };
                                                                     Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
     name: field_child.name.clone(),
@@ -897,7 +925,7 @@ pub fn resolve_node_bounded(
     binding_id: field_child.binding_id.clone(),
     span: field_child.span.clone(),
     ident_span: field_child.ident_span.clone(),
-    children: field_child.children.clone(),
+    children: resolved_children.clone(),
     connective: field_child.connective.clone(),
     params: field_child.params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
@@ -965,6 +993,18 @@ pub fn resolve_node_bounded(
                                                                     rt_result.resolved.clone();
                                                                 let rt_diags =
                                                                     rt_result.diagnostics.clone();
+                                                                let resolved_children =
+                                                                    match field_node_default_value(
+                                                                        field_child.clone(),
+                                                                    ) {
+                                                                        Some(dv) => Rc::new(vec![
+                                                                            rt_resolved.clone(),
+                                                                            dv.clone(),
+                                                                        ]),
+                                                                        None => Rc::new(vec![
+                                                                            rt_resolved.clone(),
+                                                                        ]),
+                                                                    };
                                                                 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
     name: field_child.name.clone(),
@@ -972,7 +1012,7 @@ pub fn resolve_node_bounded(
     binding_id: field_child.binding_id.clone(),
     span: field_child.span.clone(),
     ident_span: field_child.ident_span.clone(),
-    children: field_child.children.clone(),
+    children: resolved_children.clone(),
     connective: field_child.connective.clone(),
     params: field_child.params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
@@ -1615,19 +1655,6 @@ pub fn resolve_node_bounded(
                                                     diagnostics: Rc::new(vec![]),
                                                 })
                                             } else {
-                                                let __dbg_name = authored_name(env.clone(), n.clone());
-                                                if ((__dbg_name.as_str() == "T")
-                                                    || (__dbg_name.as_str() == "C")
-                                                    || (__dbg_name.as_str() == "S")
-                                                    || (__dbg_name.as_str() == "A"))
-                                                {
-                                                    eprintln!(
-                                                        "DBG unresolved lookup name={} intern_find={:?} lookup={}",
-                                                        __dbg_name,
-                                                        intern_find(env.intern_table.clone(), __dbg_name.clone()),
-                                                        lookup_type_by_name(env.clone(), __dbg_name.clone()).is_some()
-                                                    );
-                                                }
                                                 Rc::new(NodeResolveResult {
                                                     resolved: n.clone(),
                                                     diagnostics: Rc::new(vec![make_error_node(
@@ -3336,6 +3363,10 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 module_name.clone(),
                             ),
                         );
+                        let resolved_children = match field_node_default_value(child.clone()) {
+                            Some(dv) => Rc::new(vec![tr.resolved.clone(), dv.clone()]),
+                            None => Rc::new(vec![tr.resolved.clone()]),
+                        };
                         Rc::new(ItemResult {
                             item: Rc::new(Node {
                                 name: child.name.clone(),
@@ -3343,7 +3374,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 binding_id: child.binding_id.clone(),
                                 span: child.span.clone(),
                                 ident_span: child.ident_span.clone(),
-                                children: child.children.clone(),
+                                children: resolved_children.clone(),
                                 connective: child.connective.clone(),
                                 params: child.params.clone(),
                                 inferred: child.inferred.clone(),
@@ -3391,6 +3422,13 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                                 module_name.clone(),
                                             ),
                                         );
+                                        let resolved_children =
+                                            match field_node_default_value(field.clone()) {
+                                                Some(dv) => {
+                                                    Rc::new(vec![tr.resolved.clone(), dv.clone()])
+                                                }
+                                                None => Rc::new(vec![tr.resolved.clone()]),
+                                            };
                                         Rc::new(ItemResult {
                                             item: Rc::new(Node {
                                                 name: field.name.clone(),
@@ -3398,7 +3436,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                                 binding_id: field.binding_id.clone(),
                                                 span: field.span.clone(),
                                                 ident_span: field.ident_span.clone(),
-                                                children: field.children.clone(),
+                                                children: resolved_children.clone(),
                                                 connective: field.connective.clone(),
                                                 params: field.params.clone(),
                                                 inferred: field.inferred.clone(),
