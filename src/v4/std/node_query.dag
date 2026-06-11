@@ -19,7 +19,8 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.algebra { Empty, list_snoc_item }
+import v4.std.algebra { Empty, is_empty, list_snoc_item }
+import v4.std.collection { List, list_at_optional }
 import v4.std.node {
   Ambiguous,
   Arrow,
