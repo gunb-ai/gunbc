@@ -38,7 +38,12 @@ import v4.std.grammar {
   grammar_carries_symbol,
   grammar_empty_sync_tokens
 }
-import v4.compiler.parse { expr_is_nullable_given_set, token_position_indices }
+import v4.compiler.parse {
+  expr_direct_left_corner_list,
+  expr_has_undefined_nonterminal,
+  expr_is_nullable_given_set,
+  token_position_indices
+}
 
 import v4.std.verification {
   BoolWitness,
@@ -181,6 +186,121 @@ fn parse_table_grammar_expr_projection_holds() -> Bool {
 }
 
 
+// GrammarRoot with a single defined production for undefined-nonterminal receipt fixtures.
+data parse_table_defined_root: GrammarRoot = GrammarRoot {
+  start: ^pt_undef_defined,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^pt_undef_defined,
+      expression: Terminal { token_class: ^pt_undef_tok },
+      emitted: grammar_atom(identity: ^pt_undef_defined)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+
+// Receipt D (expr_direct_left_corner_list is a correct GrammarExprFold catamorphism consumer):
+// EXECUTES the fold-based left-corner query over a fixed nullable set across every GrammarExpr
+// variant, discriminating corner-list cardinality:
+//   - Terminal: empty (0)
+//   - Nonterminal: singleton (1)
+//   - Sequence: right corners included iff left is nullable (1 vs 0)
+//   - Choice: append both sides (2)
+//   - Optional / Repeat: element corners (1)
+// Mutating any combine arm of expr_corner_nullable_fold flips at least one conjunct → red.
+fn parse_table_left_corner_morphism_holds() -> Bool {
+  let ns = nullable_set_singleton(name: ^parse_table_nullable_probe_nt)
+  (length(xs: expr_direct_left_corner_list(
+    expr: Terminal { token_class: ^parse_table_nullable_tok },
+    nullable_set: ns
+  )) == 0)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Nonterminal { production: ^parse_table_nullable_probe_nt },
+      nullable_set: ns
+    )) == 1)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Sequence {
+        left: Optional { element: Terminal { token_class: ^parse_table_nullable_tok } },
+        right: Nonterminal { production: ^parse_table_nullable_probe_nt }
+      },
+      nullable_set: ns
+    )) == 1)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Sequence {
+        left: Terminal { token_class: ^parse_table_nullable_tok },
+        right: Nonterminal { production: ^parse_table_nullable_probe_nt }
+      },
+      nullable_set: ns
+    )) == 0)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Choice {
+        left: Nonterminal { production: ^parse_table_nullable_probe_nt },
+        right: Nonterminal { production: ^parse_table_nullable_other_nt }
+      },
+      nullable_set: ns
+    )) == 2)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Optional { element: Nonterminal { production: ^parse_table_nullable_probe_nt } },
+      nullable_set: ns
+    )) == 1)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Repeat { element: Nonterminal { production: ^parse_table_nullable_probe_nt } },
+      nullable_set: ns
+    )) == 1)
+}
+
+
+// Receipt E (expr_has_undefined_nonterminal is a correct GrammarExprFold catamorphism consumer):
+// EXECUTES the fold-based undefined-reference scan over a fixed GrammarRoot across every
+// GrammarExpr variant, discriminating each result:
+//   - Terminal: never undefined (false)
+//   - Nonterminal: undefined iff absent from root (missing → true, defined → false)
+//   - Sequence / Choice / Optional / Repeat: propagate via OR through child scans
+// Mutating any combine arm flips at least one conjunct → red.
+fn parse_table_undefined_nonterminal_morphism_holds() -> Bool {
+  let root = parse_table_defined_root
+  (expr_has_undefined_nonterminal(
+    expr: Terminal { token_class: ^pt_undef_tok },
+    root: root
+  ) == false)
+    && (expr_has_undefined_nonterminal(
+      expr: Nonterminal { production: ^pt_undef_defined },
+      root: root
+    ) == false)
+    && (expr_has_undefined_nonterminal(
+      expr: Nonterminal { production: ^pt_undef_missing },
+      root: root
+    ) == true)
+    && (expr_has_undefined_nonterminal(
+      expr: Sequence {
+        left: Terminal { token_class: ^pt_undef_tok },
+        right: Nonterminal { production: ^pt_undef_missing }
+      },
+      root: root
+    ) == true)
+    && (expr_has_undefined_nonterminal(
+      expr: Sequence {
+        left: Terminal { token_class: ^pt_undef_tok },
+        right: Nonterminal { production: ^pt_undef_defined }
+      },
+      root: root
+    ) == false)
+    && (expr_has_undefined_nonterminal(
+      expr: Choice {
+        left: Terminal { token_class: ^pt_undef_tok },
+        right: Nonterminal { production: ^pt_undef_missing }
+      },
+      root: root
+    ) == true)
+    && (expr_has_undefined_nonterminal(
+      expr: Optional { element: Nonterminal { production: ^pt_undef_missing } },
+      root: root
+    ) == true)
+}
+
+
 // Consolidation #4553 Phase 2 distributed BoolWitnessClaim marker.
 // Co-located with `parse_table_token_position_indices_no_extra_append_holds` so glob discovery finds the witness without the central roster.
 data unified_claim_parse_table_token_position_indices: UnifiedTestClaim = BoolWitnessClaim {
@@ -207,5 +327,23 @@ data unified_claim_parse_table_grammar_expr_projection: UnifiedTestClaim = BoolW
   witness: BoolWitness {
     entry: "src/v4/test/claim/parse/parse_table_claims.dag",
     function: parse_table_grammar_expr_projection_holds
+  }
+}
+
+
+// Co-located BoolWitnessClaim for expr_direct_left_corner_list fold migration (node://adhoc-2145db6b-69a).
+data unified_claim_parse_table_left_corner_morphism: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/parse/parse_table_claims.dag",
+    function: parse_table_left_corner_morphism_holds
+  }
+}
+
+
+// Co-located BoolWitnessClaim for expr_has_undefined_nonterminal fold migration (node://adhoc-2145db6b-69a).
+data unified_claim_parse_table_undefined_nonterminal_morphism: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v4/test/claim/parse/parse_table_claims.dag",
+    function: parse_table_undefined_nonterminal_morphism_holds
   }
 }
