@@ -829,7 +829,15 @@ fn direct_call_transparent_alias_to(env: TypeEnv, alias_node: Node, target_name:
         Present { value: alias_target } => alias_target == target_name
         Absent =>
           let resolved_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
-          binding.name != target_name && resolved_name == target_name
+          let alias_decl_name = match alias_node.binding_id {
+            Present { value: binding_id } =>
+              match map_get(env.decl_registry, binding_id) {
+                Present { value: decl } => decl.name
+                Absent => binding.name
+              }
+            Absent => binding.name
+          }
+          alias_decl_name != target_name && resolved_name == target_name
       }
     Absent => false
   }

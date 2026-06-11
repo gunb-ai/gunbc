@@ -1357,14 +1357,23 @@ pub fn direct_call_transparent_alias_to(
     alias_node: Rc<Node>,
     target_name: String,
 ) -> bool {
-    match direct_call_node_binding(env.clone(), alias_node) {
+    match direct_call_node_binding(env.clone(), alias_node.clone()) {
         Some(binding) => {
             match direct_call_bare_alias_target_name(binding.clone(), env.source_indices.clone()) {
                 Some(alias_target) => (alias_target.clone().as_str() == target_name.as_str()),
                 None => {
                     let resolved_name =
                         authored_name_at(env.source_indices.clone(), binding.resolved.clone());
-                    ((binding.name.clone().as_str() != target_name.as_str())
+                    let alias_decl_name = match alias_node.binding_id.clone() {
+                        Some(binding_id) => {
+                            match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
+                                Some(decl) => decl.name.clone(),
+                                None => binding.name.clone(),
+                            }
+                        }
+                        None => binding.name.clone(),
+                    };
+                    ((alias_decl_name.clone().as_str() != target_name.as_str())
                         && (resolved_name.clone().as_str() == target_name.as_str()))
                 }
             }
@@ -1761,6 +1770,17 @@ pub fn direct_call_arg_mismatch_diags(
                                                 module_name.clone(),
                                                 source_indices.clone(),
                                             )) {
+                                                eprintln!(
+                                                    "DBG mismatch formal_bid={:?} actual_bid={:?} formal_bind={:?} actual_bind={:?} formal_carrier={:?} actual_carrier={:?} formal_decl={:?} actual_decl={:?}",
+                                                    formal.binding_id,
+                                                    actual.binding_id,
+                                                    direct_call_node_binding(type_env.clone(), formal.clone()).as_ref().map(|b| b.name.clone()),
+                                                    direct_call_node_binding(type_env.clone(), actual.clone()).as_ref().map(|b| b.name.clone()),
+                                                    formal.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.carrier_bindings.clone(), id).map(|b| b.name.clone())),
+                                                    actual.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.carrier_bindings.clone(), id).map(|b| b.name.clone())),
+                                                    formal.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).map(|d| d.name.clone())),
+                                                    actual.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).map(|d| d.name.clone())),
+                                                );
                                                 Rc::new(vec![type_mismatch_error(
                                                     node_type_shape(
                                                         formal.clone(),
