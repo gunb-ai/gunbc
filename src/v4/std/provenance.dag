@@ -1,7 +1,8 @@
 // src/v4/std/provenance.dag
 // Scope: source-text provenance substrate (T-8 / PROV A-pivot).
-// Status: transitional — on-tree Node.span (#4604) dissolves Phase 1+2; off-tree SpanIndex
-//   (OccurrenceId → OriginEvent) is the A-pivot target (design-provenance-span.md §4.5).
+// Status: A-pivot landed — on-tree Node.span (#4604) is dissolved by THIS change; off-tree
+//   SpanIndex (OccurrenceId → OriginEvent) is the surviving source-anchor authority
+//   (design-provenance-span.md §4.5). Node carries occurrence_id; parse mints + records FromSource.
 
 module v4.std.provenance
 
