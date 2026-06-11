@@ -245,21 +245,33 @@ fn infer_bounded_lattice_consumer_gate(
   }
 }
 
+fn infer_partial_bounded_lattice_instances_fold_init(n: Node) -> List<Node> {
+  match bounded_lattice_instance_completeness(instance: n) {
+    BoundedLatticePartial { missing: _ } => [n]
+    NotBoundedLatticeInstance => []
+    BoundedLatticeComplete => []
+  }
+}
+
+fn infer_partial_bounded_lattice_instances_fold_step(
+  acc: List<Node>,
+  e: Edge,
+  child: List<Node>,
+) -> List<Node> {
+  fold(child, init: acc, f: fn(a, p) {
+    list_snoc_item(xs: a, item: p)
+  })
+}
+
 fn partial_bounded_lattice_instances_in_tree(tree: ResolvedTree) -> List<Node> {
   fold_node(
     n: tree,
     algebra: NodeFold {
       init: fn(n0) {
-        match bounded_lattice_instance_completeness(instance: n0) {
-          BoundedLatticePartial { missing: _ } => [n0]
-          NotBoundedLatticeInstance => []
-          BoundedLatticeComplete => []
-        }
+        infer_partial_bounded_lattice_instances_fold_init(n: n0)
       },
       step: fn(acc, e, child) {
-        fold(child, init: acc, f: fn(a, p) {
-          list_snoc_item(xs: a, item: p)
-        })
+        infer_partial_bounded_lattice_instances_fold_step(acc: acc, e: e, child: child)
       }
     }
   )
@@ -344,6 +356,14 @@ fn empty_inferred_facts_entry_list() -> List<InferredFactsEntry> {
   []
 }
 
+fn concat_inferred_facts_entries(
+  a: List<InferredFactsEntry>,
+  b: List<InferredFactsEntry>,
+) -> List<InferredFactsEntry> {
+  fold(b, init: a, f: fn(acc, entry) {
+    list_snoc_item(xs: acc, item: entry)
+  })
+}
 
 fn infer_constraint_graph(n: Node) -> ConstraintGraph {
   ConstraintGraph { root: n }
