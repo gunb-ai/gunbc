@@ -86,6 +86,33 @@ establishes structurally — a second path to the same authority (INVARIANTS sec
 ban). The witness obligation lives in the lowering (descent facts), and the cost lens
 inherits it for free through the Loop treatment.
 
+### 3.1 No steady-state unknowns (operator-pinned, 2026-06-11)
+
+The recursion taxonomy is **closed up front**, and the gate's posture toward
+`ClassUnknown` follows from that:
+
+- The `CallPattern` classifier is exhaustive by declaration — "no unknown or rejected
+  category" (`dsl/std/computation.dag:180`). Every recursive shape was enumerated when
+  the model landed: structural descent, collection shrink, arithmetic
+  subtract/divide, parser advance, worklist drain, fold body, and same-argument.
+  Same-argument self-calls ("forever" loops) lower to `repeat(Forever)` where `Forever`
+  is a NAMED FINITE bound — the largest representable, the top of bounds, not an
+  unknown ("the bounded truth principle: the compiler never rejects a call pattern;
+  it always finds a bound"). Mutual recursion lowers through declared cluster + descent
+  facts (DB-9). Nothing recursive sits outside the table.
+- Therefore `ClassUnknown` over lowered substrate code is NEVER an expected
+  steady-state answer. Each appearance is exactly one of: (a) a lowering defect (the
+  cycle backstop above), (b) an unresolvable callee binding (missing summary), or
+  (c) a call shape genuinely outside the closed taxonomy — which is a modeling gap:
+  the fix is to extend the CallPattern model (an L2.5 substrate change, escalated),
+  never to tolerate the unknown. In all three the gate goes red and the red is a
+  work item against the compiler/model, not a verdict the function's author routes
+  around.
+- Declared-side `ClassUnknown` budget rows (the roster's explicit placeholders for
+  not-yet-rated producers) are the one sanctioned appearance: visible, enumerable
+  debt that trends to zero as ratings land — explicit rows, never omission, per the
+  roster's own header rule.
+
 ## 4. What this is NOT
 
 - **Not a second cost semantics.** One fold, one algebra; S3 adds consult, not carriers.
