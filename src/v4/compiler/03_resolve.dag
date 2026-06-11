@@ -13,7 +13,7 @@ import v4.extdeps.languages.dag {
   dag_language_model_canonical_symbols,
   dag_surface_operator_canonicalization_lookup
 }
-import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid, length, list_snoc_item }
 import v4.std.collection {
   Absent,
   Map,
@@ -488,7 +488,8 @@ fn resolve_children_homogeneous_scope(n: Node, scope: Scope, lm: DagLanguageMode
 fn resolve_edges_first_outer_then_inner(
   edges: List<Edge>,
   scope_outer: Scope,
-  scope_inner: Scope
+  scope_inner: Scope,
+  lm: DagLanguageModel
 ) -> Outcome<List<Edge>> {
   match fold(
     edges,
@@ -507,7 +508,7 @@ fn resolve_edges_first_outer_then_inner(
               }
             Accepted { value: done, diagnostics: ad } =>
               if seen {
-                match resolve_node(n: e.target, scope: scope_inner) {
+                match resolve_node(n: e.target, scope: scope_inner, lm: lm) {
                   Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
@@ -528,7 +529,7 @@ fn resolve_edges_first_outer_then_inner(
                     }
                 }
               } else {
-                match resolve_node(n: e.target, scope: scope_outer) {
+                match resolve_node(n: e.target, scope: scope_outer, lm: lm) {
                   Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
@@ -572,7 +573,8 @@ fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
 fn resolve_bind_edges(
   edges: List<Edge>,
   scope_outer: Scope,
-  scope_inner: Scope
+  scope_inner: Scope,
+  lm: DagLanguageModel
 ) -> Outcome<List<Edge>> {
   match fold(
     edges,
@@ -613,7 +615,7 @@ fn resolve_bind_edges(
                 }
               } else {
                 if i == 1 {
-                  match resolve_node(n: e.target, scope: scope_outer) {
+                  match resolve_node(n: e.target, scope: scope_outer, lm: lm) {
                     Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
@@ -634,7 +636,7 @@ fn resolve_bind_edges(
                       }
                   }
                 } else {
-                  match resolve_node(n: e.target, scope: scope_inner) {
+                  match resolve_node(n: e.target, scope: scope_inner, lm: lm) {
                     Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
@@ -665,7 +667,7 @@ fn resolve_bind_edges(
 }
 
 
-fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
+fn resolve_bind_node(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
   if count(n.children) == 3 {
     match resolve_bind_edges(
       edges: n.children,
@@ -673,7 +675,8 @@ fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
       scope_inner: ScopeFrame {
         locals: add_bind_atom_binder(n: n, acc: empty_map()),
         outer: scope
-      }
+      },
+      lm: lm
     ) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: resolved_children, diagnostics: d } =>
@@ -691,14 +694,19 @@ fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
 fn resolve(tree: NormalizedTree, lm: DagLanguageModel) -> Outcome<ResolvedTree> {
   resolve_with_namespace(
     tree: tree,
-    namespace: build_program_namespace(tree: tree, lm: lm)
+    namespace: build_program_namespace(tree: tree, lm: lm),
+    lm: lm
   )
 }
 
 
-fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome<ResolvedTree> {
+fn resolve_with_namespace(
+  tree: NormalizedTree,
+  namespace: Namespace,
+  lm: DagLanguageModel
+) -> Outcome<ResolvedTree> {
   if well_formed(n: tree) {
-    resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace))
+    resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace), lm: lm)
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree)) }
   }

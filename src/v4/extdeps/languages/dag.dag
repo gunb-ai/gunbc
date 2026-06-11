@@ -61,7 +61,21 @@ import v4.std.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v4.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+  arrow_body_edge
+}
 import v4.std.node_query { find_named_child }
 import v4.std.target_model {
   CanonicalOperation,
@@ -70,6 +84,7 @@ import v4.std.target_model {
   BoundToken,
   TargetModel,
   canonical_operation_op_add,
+  target_model_canonical_operation_wire_node,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
   grammar_relation_field_emitted,
@@ -3218,6 +3233,155 @@ fn dag_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m2 = map_insert(m1, ^dag_binding_param_y, "y")
   map_insert(m2, ^dag_binding_type_int, "Int")
 }
+
+fn dag_mvp1_add_param_binding_ids() -> List<Symbol> {
+  [^dag_binding_param_x, ^dag_binding_param_y]
+}
+
+fn dag_mvp1_int_type_binding() -> Symbol {
+  ^dag_binding_type_int
+}
+
+fn dag_mvp1_type_atom_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_operator_node() -> Node {
+  target_model_canonical_operation_wire_node(operation: canonical_operation_op_add())
+}
+
+fn dag_mvp1_arrow_domain_conj_node() -> Node {
+  let bindings = dag_mvp1_add_param_binding_ids()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^dag_binding_param_x },
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: ^dag_binding_param_y },
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Symbol) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: operator },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: left_binding)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: right_binding)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_arrow_signature_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_binary_body_node() -> Node {
+  dag_mvp1_binary_body_node(
+    operator: dag_mvp1_add_operator_node(),
+    left_binding: ^dag_binding_param_x,
+    right_binding: ^dag_binding_param_y
+  )
+}
+
+fn dag_mvp1_add_binary_body_swapped_operands_node() -> Node {
+  dag_mvp1_binary_body_node(
+    operator: dag_mvp1_add_operator_node(),
+    left_binding: ^dag_binding_param_y,
+    right_binding: ^dag_binding_param_x
+  )
+}
+
+fn dag_mvp1_add_arrow_with_body_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_add_binary_body_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_add_arrow_with_body_swapped_operands_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node()
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
+      },
+      Edge {
+        label: Named { name: arrow_body_edge },
+        target: dag_mvp1_add_binary_body_swapped_operands_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data dag_mvp1_add_arrow_signature_fixture: Node = dag_mvp1_add_arrow_signature_node()
+data dag_mvp1_add_binary_body_fixture: Node = dag_mvp1_add_binary_body_node()
+data dag_mvp1_add_binary_body_swapped_operands_fixture: Node = dag_mvp1_add_binary_body_swapped_operands_node()
+data dag_mvp1_add_arrow_with_body_fixture: Node = dag_mvp1_add_arrow_with_body_node()
+data dag_mvp1_add_arrow_with_body_swapped_operands_fixture: Node = dag_mvp1_add_arrow_with_body_swapped_operands_node()
 
 fn dag_mvp1_target_model() -> TargetModel {
   TargetModel {

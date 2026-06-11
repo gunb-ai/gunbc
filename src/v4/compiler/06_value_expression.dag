@@ -6,13 +6,12 @@
 module v4.compiler.value_expression
 
 import v4.std.algebra { fold_list, length }
+import v4.extdeps.languages.dag { dag_surface_operator_canonicalization_member }
 import v4.std.collection {
   Absent,
   List,
   Optional,
   Present,
-  optional_absent,
-  optional_present,
   list_at_optional,
   map_get
 }
