@@ -27,7 +27,7 @@ env:
   # it parses as the string "true" (an unquoted bare `true` is a YAML bool). Drop this once every
   # pinned action ships a Node24 default. Ref: github.blog/changelog/2025-09-19-deprecation-of-node-20.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity, parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate (lens witnesses, parallel) + v4_lens_ci (node-frontier witnesses) + doc_refs (doc-authority reference gate)
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (stage0 freshness) + ci_floor_parity (DAG parity + get-off-v3 census ratchet, parallel) + ci_floor_emit (M1 rust+dag emit) + v4_lens_gate (lens witnesses, parallel) + v4_lens_ci (node-frontier witnesses) + doc_refs (doc-authority reference gate)
 # Required on every non-draft PR: fmt, affected-set component receipt, stage0 freshness (ci_floor), DAG parity (ci_floor_parity), M1 rust+dag emit (ci_floor_emit), v4 lens witnesses (v4_lens_gate + v4_lens_ci). Branch protection names ci_floor + ci_floor_emit; new parallel jobs are enforced via the `ci` aggregator unless the operator adds them as required checks. doc_refs rolls into the `ci` aggregator.
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR -- authority: this workflow (.github/workflows/ci.yml) is the
@@ -465,6 +465,14 @@ jobs:
     # fail-closed (RR-L).
     - name: v2 DAG emit parity receipt (shared closure)
       run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v2-compiler-tests --release pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
+    # get-off-v3 census ratchet: every direct compile_to_dag( call site must stay at or below the
+    # ceiling defined in get_off_v3_compile_to_dag_census_test.rs (PR #4652). Running under
+    # ci_floor_parity for infra reuse (shared Cargo cache, sccache). CI-enforcement authority:
+    # this step (the only CI wire for v3-compiler tests — CLAUDE.md documents all other
+    # v3-compiler tests as dormant in CI). sccache warms the v3-compiler debug compile; the test
+    # itself is fast file I/O (source tree walk + text scan, no runtime compilation).
+    - name: get-off-v3 compile_to_dag caller ceiling (census ratchet, #4652)
+      run: bash .github/ci-floor/with-sccache-retry.sh cargo test -p v3-compiler --test integration get_off_v3_compile_to_dag_census_test::get_off_v3_compile_to_dag_caller_count_is_at_or_below_ceiling -- --exact --quiet
   # §11.7.1 Class A safety floor (parallel lane) -- the v2-emit M1 rust+dag full-tree probe.
   # Split out of `ci_floor` so it runs CONCURRENTLY with stage0 freshness + DAG parity: the probe
   # (~510s, the v2 emitter's own runtime) is independent of the stage0 self-compile, so serializing
