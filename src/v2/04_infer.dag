@@ -5998,7 +5998,10 @@ fn add_node_dependency_closure(state: CarrierClosureState, n: Node, dep_env: Typ
       Absent => state
     }
   } else { state }
-  let deps = concat(node_type_deps(n: n, source_indices: source_indices), node_type_deps(n: stamped, source_indices: source_indices))
+  let deps = concat(
+    carrier_closure_node_type_deps(n: n, dep_env: dep_env, source_indices: source_indices),
+    carrier_closure_node_type_deps(n: stamped, dep_env: dep_env, source_indices: source_indices)
+  )
   fold(deps, init: with_self, f: (acc, dep_name) =>
     match lookup_type_binding_by_name_in_env(env: dep_env, name: dep_name) {
       Present { value: dep_binding } => add_type_binding_dependency_closure(state: acc, binding: dep_binding, dep_env: dep_env, source_indices: source_indices)

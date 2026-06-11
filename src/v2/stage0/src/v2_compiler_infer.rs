@@ -12360,8 +12360,12 @@ pub fn add_node_dependency_closure(
             state
         };
         let deps = v2_rt::concat(
-            node_type_deps(n.clone(), source_indices.clone()),
-            node_type_deps(stamped.clone(), source_indices.clone()),
+            carrier_closure_node_type_deps(n.clone(), dep_env.clone(), source_indices.clone()),
+            carrier_closure_node_type_deps(
+                stamped.clone(),
+                dep_env.clone(),
+                source_indices.clone(),
+            ),
         );
         deps.iter().cloned().fold(
             with_self,
