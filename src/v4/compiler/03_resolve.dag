@@ -21,7 +21,6 @@ import v4.std.collection {
   Present,
   Set,
   empty_map,
-  list_at_optional,
   map_get,
   map_insert,
   optional_absent,
@@ -54,7 +53,6 @@ import v4.std.node {
   Transform,
   TypeNode,
   fold_node,
-  node_positional_child_targets,
   node_with_occurrence_id,
   well_formed
 }
@@ -327,7 +325,7 @@ fn resolve_surface_operator_atom(
   identity: Symbol
 ) -> Outcome<Node> {
   match dag_surface_operator_canonicalization_lookup(lm: lm, surface_token: identity) {
-    Present { value: canonical_op } => {
+    Accepted { value: canonical_op, diagnostics: pending } => {
       let wire = target_model_canonical_operation_wire_node(operation: canonical_op)
       Accepted {
         value: node_with_occurrence_id(
@@ -335,10 +333,11 @@ fn resolve_surface_operator_atom(
           children: wire.children,
           occurrence_id: n.occurrence_id
         ),
-        diagnostics: None
+        diagnostics: pending
       }
     }
-    Absent => resolve_atom(n: n, scope: scope, identity: identity)
+    Rejected { diagnostics: _ } =>
+      resolve_atom(n: n, scope: scope, identity: identity)
   }
 }
 

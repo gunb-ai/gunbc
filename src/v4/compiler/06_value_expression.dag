@@ -13,7 +13,9 @@ import v4.std.collection {
   Optional,
   Present,
   list_at_optional,
-  map_get
+  map_get,
+  optional_absent,
+  optional_present
 }
 import v4.std.diagnostic {
   Accepted,
@@ -52,7 +54,6 @@ import v4.std.node_query {
 import v4.std.target_model {
   CanonicalOperation,
   ConcreteSyntaxToken,
-  canonical_operation_op_add,
   TargetModel,
   TargetValueExpression,
   TargetValueExpressionProjection,
@@ -89,10 +90,10 @@ fn value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 // dissolve-on-arrival: resolve maps surface op token → CanonicalOperation at resolve stage;
 // forbidden: literal ^dag_token_plus match in compiler value-expression projection.
 fn surface_op_atom_to_canonical(op_atom: Symbol) -> Optional<CanonicalOperation> {
-  if op_atom == ^dag_token_plus {
-    optional_present(canonical_operation_op_add())
-  } else {
-    optional_absent()
+  match dag_surface_operator_canonicalization_member(surface_token: op_atom) {
+    Accepted { value: canonical_op, diagnostics: _ } =>
+      optional_present(value: canonical_op)
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
