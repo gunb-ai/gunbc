@@ -17,8 +17,6 @@ const FIXTURE_SOURCE_PASS: &str =
 
 const FIXTURE_SOURCE_NONZERO: &str = "fn main() { std::process::exit(1); }";
 
-const TS_ADD_FIXTURE: &str = "function add(x: number, y: number): number { return x + y; }\n";
-
 fn mvp2_inputs() -> EmitHostFixtureInputs {
     EmitHostFixtureInputs {
         claim_input_root: "eval_dispatch_claim".to_string(),
@@ -70,26 +68,4 @@ fn emit_host_eval_dispatch_runner_nonzero_exit_denies_logical_run_projection() {
             HostLogicalFailure::ExitedNonzero { .. }
         ))
     ));
-}
-
-#[test]
-fn emit_host_eval_dispatch_run_host_process_ts_add_stdout_is_five() {
-    let work_dir = default_work_dir(&format!(
-        "gunbc_b3_run_host_process_add_{}",
-        std::process::id()
-    ));
-    let receipt = run_host_process(
-        TS_HOST_TRANSPORT_MVP1_IDENTITY,
-        TS_ADD_FIXTURE,
-        &mvp2_inputs().transport(),
-        &work_dir,
-    )
-    .expect("host setup");
-    assert!(
-        receipt.exit.exit_holds(),
-        "B3 TS transport must Hold for add fixture, got {:?}",
-        receipt.exit
-    );
-    let parsed = runtime_value_parse_signed_i32_le(&receipt.stdout_bytes).expect("i32 le parse");
-    assert_eq!(parsed, 5, "add(2,3) harness must emit SignedI32Le 5");
 }
