@@ -174,6 +174,41 @@ fn structural_carrier_template_name(n: Node, source_indices: Map<String, Newline
   }
 }
 
+fn free_monoid_coproduct_element(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  if n.connective == Disj && canonical_template_name(n: n, source_indices: source_indices) == "FreeMonoid" {
+    let cons_variant = fold(n.children, init: none, f: (acc, child) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if authored_name_at(source_indices: source_indices, node: child) == "Cons" {
+            Present { value: child }
+          } else { none }
+      }
+    )
+    match cons_variant {
+      Present { value: cons } =>
+        let head_by_name = fold(cons.children, init: none, f: (acc, field) =>
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              if authored_name_at(source_indices: source_indices, node: field) == "head" {
+                Present { value: child_type_node(ch: field) }
+              } else { none }
+          }
+        )
+        match head_by_name {
+          Present { value: _ } => head_by_name
+          Absent =>
+            match cons.children |> first {
+              Present { value: first_field } => Present { value: child_type_node(ch: first_field) }
+              Absent => none
+            }
+        }
+      Absent => none
+    }
+  } else { none }
+}
+
 // =========================================================================
 // Type structure predicates (MM-2)
 // =========================================================================
@@ -786,6 +821,26 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
             }
           Absent => true
         }
+      }
+    }
+    else if left_is_container && free_monoid_coproduct_element(n: right, source_indices: source_indices) != none {
+      match left.children |> first {
+        Present { value: left_ch } =>
+          let left_el = child_type_node(ch: left_ch)
+          let right_el = free_monoid_coproduct_element(n: right, source_indices: source_indices).value
+          if is_unit_like(n: left_el) || is_unit_like(n: right_el) { true }
+          else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices) }
+        Absent => true
+      }
+    }
+    else if right_is_container && free_monoid_coproduct_element(n: left, source_indices: source_indices) != none {
+      match right.children |> first {
+        Present { value: right_ch } =>
+          let left_el = free_monoid_coproduct_element(n: left, source_indices: source_indices).value
+          let right_el = child_type_node(ch: right_ch)
+          if is_unit_like(n: left_el) || is_unit_like(n: right_el) { true }
+          else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices) }
+        Absent => true
       }
     }
     else if node_is_keyed_collection(n: left, source_indices: source_indices)
