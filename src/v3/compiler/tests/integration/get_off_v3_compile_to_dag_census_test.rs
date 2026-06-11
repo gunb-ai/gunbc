@@ -37,11 +37,25 @@
 //! ## The consumer
 //!
 //! [`get_off_v3_compile_to_dag_caller_count_is_at_or_below_ceiling`] is a
-//! real consumer in E-10's sense: it **breaks when a new direct
-//! `compile_to_dag` caller lands**. It also emits the full per-file census
-//! as an artifact (printed, and written to
+//! real consumer in E-10's sense: when a new direct `compile_to_dag`
+//! caller lands, **executing this test breaks**. It also emits the full
+//! per-file census as an artifact (printed, and written to
 //! `target/get-off-v3/compile_to_dag_caller_census.tsv`) so the tracking
 //! surface is visible — run with `--nocapture` to read it.
+//!
+//! ## Where this runs today (honest scope)
+//!
+//! This is a **local/dev + artifact** gate, not yet a CI gate. Per
+//! `CLAUDE.md`, v3-compiler's tests are dormant in CI — the only
+//! `cargo test` CI runs for the v3 lane is the single `--exact` parity
+//! integration test, and nothing invokes `cargo test -p v3-compiler`. So
+//! the ratchet bites on `cargo test -p v3-compiler` (and in review/dev
+//! runs), but a 477th caller would currently land **green in CI**.
+//! Wiring this ratchet into CI means naming it in `ci.yml`, which is
+//! single-authority and out of this PR's task scope (INVARIANTS task-scope
+//! rule; no `ci.yml` edit without escalation, cf. #4556). **CI-enforcement
+//! is a named follow-up owned by the M-CI / CI-via-dag lane**
+//! (Mgr-SELFHOST), tracked separately from this instrument.
 //!
 //! ## What counts as a caller
 //!
