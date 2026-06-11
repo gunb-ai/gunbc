@@ -6,21 +6,23 @@
 module v4.test.claim.provenance.parse_stamp_span_index
 
 import v4.compiler.parse {
-  ParseArtifact,
   grammar_validate_for_parse,
   parse_production,
   parse_stage_locus_port,
   parse_stage_producer
 }
-import v4.std.algebra { Cons, Empty }
-import v4.std.collection { List }
+import v4.std.algebra { Cons, Empty, length }
+import v4.std.collection { List, list_nth }
 import v4.std.diagnostic {
   Accepted,
   ByteRange,
-  Outcome,
+  Diagnostic,
+  ExternalContractUnknown,
   Rejected,
   Textual,
+  Unavailable,
   WholeFile,
+  node_locus,
   port_locus
 }
 import v4.std.grammar {
@@ -34,7 +36,7 @@ import v4.std.grammar {
 import v4.std.lexing { Token }
 import v4.std.logic { Bool }
 import v4.std.node {
-  Atom,
+  Conj,
   MintedOccurrence,
   Node,
   OccurrenceId,
@@ -61,6 +63,19 @@ import v4.std.witness { Holds, Violates }
 data parse_stamp_file: Symbol = ^parse_stamp_file
 data parse_stamp_tok: Symbol = ^parse_stamp_tok
 data parse_stamp_start: Symbol = ^parse_stamp_start
+data parse_stamp_list_absent: Symbol = parse_stamp_list_absent
+
+fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: parse_stamp_list_absent,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
 
 fn parse_stamp_token(start: Int, end: Int) -> Token {
   Token {
@@ -140,25 +155,31 @@ fn parse_stamp_derived_by_pair_holds(
   match span_index_lookup(index: index, id: id) {
     Holds { value: got } =>
       match got {
-        DerivedBy { producer: p, from: from } =>
+        DerivedBy { producer: p, from: child_ids } =>
           (p == parse_stage_producer)
-            && match from {
-              Cons { head: h, tail: Cons { head: t, tail: Empty } } =>
-                occurrence_id_eq(left: h, right: left)
-                  && occurrence_id_eq(left: t, right: right)
-              _ => false
+            && (length(xs: child_ids) == 2)
+            && match list_nth(
+              xs: child_ids,
+              wanted: 0,
+              absent: parse_stamp_list_absent_diagnostic()
+            ) {
+              Holds { value: h } =>
+                match list_nth(
+                  xs: child_ids,
+                  wanted: 1,
+                  absent: parse_stamp_list_absent_diagnostic()
+                ) {
+                  Holds { value: t } =>
+                    occurrence_id_eq(left: h, right: left)
+                      && occurrence_id_eq(left: t, right: right)
+                  Violates { diagnostic: _ } => false
+                }
+              Violates { diagnostic: _ } => false
             }
         FromSource { locus: _ } => false
         GeneratedBy { generator: _, from: _ } => false
       }
     Violates { diagnostic: _ } => false
-  }
-}
-
-fn parse_stamp_minted_id(n: Node) -> OccurrenceId {
-  match n.occurrence_id {
-    MintedOccurrence { id: id } => id
-    SyntheticOccurrence => OccurrenceId { value: -999999 }
   }
 }
 
@@ -181,12 +202,16 @@ fn parse_stamp_terminal_from_source_holds() -> Bool {
             name: ^grammar_production_captured_node_projection
           ) {
             Accepted { value: captured, diagnostics: _ } =>
-              parse_stamp_from_source_extent_holds(
-                index: artifact.span_index,
-                id: parse_stamp_minted_id(n: captured),
-                start: 3,
-                end: 8
-              )
+              match captured.occurrence_id {
+                MintedOccurrence { id: id } =>
+                  parse_stamp_from_source_extent_holds(
+                    index: artifact.span_index,
+                    id: id,
+                    start: 3,
+                    end: 8
+                  )
+                SyntheticOccurrence => false
+              }
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
@@ -223,26 +248,36 @@ fn parse_stamp_sequence_derived_by_holds() -> Bool {
                     name: ^grammar_sequence_right_node_projection
                   ) {
                     Accepted { value: right_term, diagnostics: _ } =>
-                      let left_id = parse_stamp_minted_id(n: left_term)
-                      let right_id = parse_stamp_minted_id(n: right_term)
-                      parse_stamp_from_source_extent_holds(
-                        index: artifact.span_index,
-                        id: left_id,
-                        start: 0,
-                        end: 5
-                      )
-                        && parse_stamp_from_source_extent_holds(
-                          index: artifact.span_index,
-                          id: right_id,
-                          start: 5,
-                          end: 10
-                        )
-                        && parse_stamp_derived_by_pair_holds(
-                          index: artifact.span_index,
-                          id: parse_stamp_minted_id(n: sequence_conj),
-                          left: left_id,
-                          right: right_id
-                        )
+                      match left_term.occurrence_id {
+                        MintedOccurrence { id: left_id } =>
+                          match right_term.occurrence_id {
+                            MintedOccurrence { id: right_id } =>
+                              match sequence_conj.occurrence_id {
+                                MintedOccurrence { id: seq_id } =>
+                                  parse_stamp_from_source_extent_holds(
+                                    index: artifact.span_index,
+                                    id: left_id,
+                                    start: 0,
+                                    end: 5
+                                  )
+                                    && parse_stamp_from_source_extent_holds(
+                                      index: artifact.span_index,
+                                      id: right_id,
+                                      start: 5,
+                                      end: 10
+                                    )
+                                    && parse_stamp_derived_by_pair_holds(
+                                      index: artifact.span_index,
+                                      id: seq_id,
+                                      left: left_id,
+                                      right: right_id
+                                    )
+                                SyntheticOccurrence => false
+                              }
+                            SyntheticOccurrence => false
+                          }
+                        SyntheticOccurrence => false
+                      }
                     Rejected { diagnostics: _ } => false
                   }
                 Rejected { diagnostics: _ } => false
