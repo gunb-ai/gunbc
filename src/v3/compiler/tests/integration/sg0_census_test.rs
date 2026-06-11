@@ -334,12 +334,13 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // § SG-0 hand-authored compiler non-test paths (`T-PB-B` / `pb_rust_tests_outside_residual_zero`).
     // Dissolution: delete when substrate eval owns host dispatch without hand-Rust bridge.
     "src/v3/compiler/src/emit_host_bridge.rs",
-    // T-22: `emit_host_eval.rs` — rust row (#4225/#4254 main) + python transport wire (this PR).
+    // T-22: `emit_host_eval.rs` — rust/go/python rows (#4225/#4254 main) + B3 `run_host_process`
+    // omni-emission transport dispatch + SignedI32Le i32 reification (#4641).
     // **P5 receipt (Mechanism (b)) — disposition (3) explicit deferral:** lane **T-PB-B** /
     // `pb_rust_tests_outside_residual_zero` (gate marker
     // `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag:25`; ROADMAP `ROADMAP.md:31`, `:43`).
-    // Paired tests: `v4_emit_host_eval_dispatch_test.rs` + in-module python eval dispatch tests.
-    // Census **+0 NON_TEST** (row on main since #4225; this PR extends eval hook, no new SG-0 path).
+    // Paired tests: `v4_emit_host_eval_dispatch_test.rs`, `comprep_b3_ts_descriptor_node_run.dag`.
+    // Census **+0 NON_TEST** (row on main since #4225; #4641 extends eval hook, no new SG-0 path).
     // Dissolution: substrate Callable dispatch owns all host rows without this hand-Rust eval hook.
     "src/v3/compiler/src/emit_host_eval.rs",
     "src/v3/compiler/src/emit_rust.rs",
