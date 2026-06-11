@@ -47,8 +47,8 @@ import v4.std.runtime {
 }
 import v4.std.witness { Holds, Violates, Witness }
 
-// Resource transport backends (file → HTTP → storage) share one handler contract; the backend
-// arm is declared per claim and threaded into locator construction at inject-per-run time.
+// 🟢 coproduct dissolution — resource transport backend axis (Practice 4); wave-2 gate exercises
+// FileResourceBackend; Http/Storage arms are declared honest stubs until host_run receipts land.
 type EffectIoResourceBackend
   = FileResourceBackend
   | HttpResourceBackend
@@ -173,6 +173,9 @@ fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<R
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature:effect-io-backend-match — dissolve-on-arrival: backend equality via declared carrier
+// projection instead of nested match; forbidden: permanent untagged Bool backend-alignment predicates.
 fn effect_io_pure_backends_match(
   left: EffectIoResourceBackend,
   right: EffectIoResourceBackend
