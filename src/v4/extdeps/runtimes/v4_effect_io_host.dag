@@ -56,6 +56,8 @@ type EffectIoHostStorageContext {
   bucket: Symbol
 }
 
+// 🟢 coproduct dissolution — inject-per-run host backend context pairs each EffectIoResourceBackend
+// arm with its resource model (file_system, network, storage); fail-closed until host door receipts.
 type EffectIoHostBackendContext
   = HostFileContext { context: EffectIoHostFileContext }
   | HostHttpContext { context: EffectIoHostHttpContext }

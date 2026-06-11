@@ -162,9 +162,11 @@ fn effect_io_pure_locator_from_args(
   }
 }
 
-// Wave-2 interim: single default locator per backend — does not discriminate distinct resources
-// (all locators collapse to ^effect_io_pure_default_locator). Multi-resource gates follow when
-// declare-per-claim locator identity threads from operation arguments.
+// 🟡 gated — feature:effect-io-locator-identity-from-value — wave-2 interim: every locator
+// collapses to a single declare-per-claim pin (^effect_io_pure_default_locator); the RuntimeValue
+// argument is intentionally ignored so distinct locator args silently alias (fail-open for the gate).
+// dissolve-on-arrival: first consumer that derives fixture keys from RuntimeValue→Node reification
+// (or an explicit locator Symbol field on the request args) — identity becomes value-derived.
 fn effect_io_pure_locator_identity(_value: RuntimeValue) -> Symbol {
   ^effect_io_pure_default_locator
 }
