@@ -1373,17 +1373,6 @@ pub fn direct_call_transparent_alias_to(
                         }
                         None => binding.name.clone(),
                     };
-                    if alias_node.binding_id != binding.resolved.binding_id {
-                        eprintln!(
-                            "DBG present_alias target={} binding={} resolved={} alias_decl={} alias_bid={:?} resolved_bid={:?}",
-                            target_name,
-                            binding.name,
-                            resolved_name,
-                            alias_decl_name,
-                            alias_node.binding_id,
-                            binding.resolved.binding_id,
-                        );
-                    }
                     ((alias_decl_name.clone().as_str() != target_name.as_str())
                         && (resolved_name.clone().as_str() == target_name.as_str()))
                 }
@@ -1398,14 +1387,6 @@ pub fn direct_call_transparent_alias_to(
                                 let raw_resolved_name = authored_name_at(
                                     env.source_indices.clone(),
                                     raw_binding.resolved.clone(),
-                                );
-                                eprintln!(
-                                    "DBG absent_alias target={} decl={} raw_binding={} raw_resolved={} alias_authored={}",
-                                    target_name,
-                                    decl.name,
-                                    raw_binding.name,
-                                    raw_resolved_name,
-                                    authored_name_at(env.source_indices.clone(), alias_node.clone()),
                                 );
                                 (((decl.name.clone().as_str() != target_name.as_str())
                                     && (raw_resolved_name.clone().as_str()
@@ -1428,6 +1409,29 @@ pub fn direct_call_transparent_alias_to(
     }
 }
 
+pub fn direct_call_decl_registry_transparent_alias_to(
+    env: Rc<TypeEnv>,
+    alias_node: Rc<Node>,
+    target_name: String,
+) -> bool {
+    match alias_node.binding_id.clone() {
+        Some(binding_id) => match v2_rt::map_get(&env.decl_registry.clone(), binding_id.clone()) {
+            Some(decl) => match v2_rt::map_get(&env.bindings.clone(), decl.binding_key.clone()) {
+                Some(raw_binding) => {
+                    (((decl.name.clone().as_str() != target_name.as_str())
+                        && (raw_binding.name.clone().as_str() == decl.name.clone().as_str()))
+                        && (authored_name_at(env.source_indices.clone(), alias_node.clone())
+                            .as_str()
+                            == target_name.as_str()))
+                }
+                None => false,
+            },
+            None => false,
+        },
+        None => false,
+    }
+}
+
 pub fn direct_call_transparent_alias_pair(
     env: Rc<TypeEnv>,
     left: Rc<Node>,
@@ -1437,17 +1441,14 @@ pub fn direct_call_transparent_alias_pair(
     {
         let left_name = authored_name_at(source_indices.clone(), left.clone());
         let right_name = authored_name_at(source_indices.clone(), right.clone());
-        if left_name.as_str() == "Node"
-            && right_name.as_str() == "Node"
-            && left.binding_id != right.binding_id
-        {
-            eprintln!(
-                "DBG alias_pair left_bid={:?} right_bid={:?}",
-                left.binding_id, right.binding_id,
-            );
-        }
-        (direct_call_transparent_alias_to(env.clone(), left.clone(), right_name)
-            || direct_call_transparent_alias_to(env.clone(), right.clone(), left_name))
+        (((direct_call_transparent_alias_to(env.clone(), left.clone(), right_name.clone())
+            || direct_call_transparent_alias_to(env.clone(), right.clone(), left_name.clone()))
+            || direct_call_decl_registry_transparent_alias_to(
+                env.clone(),
+                left.clone(),
+                right_name,
+            ))
+            || direct_call_decl_registry_transparent_alias_to(env, right.clone(), left_name))
     }
 }
 
@@ -1680,7 +1681,27 @@ pub fn direct_call_arg_type_mismatch(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
+    if authored_name_at(source_indices.clone(), formal.clone()).as_str() == "Node"
+        && authored_name_at(source_indices.clone(), actual.clone()).as_str() == "Node"
+        && formal.binding_id != actual.binding_id
+    {
+        eprintln!(
+            "DBG type_mismatch transparent={} formal_decl={:?} actual_decl={:?} formal_bind={:?} actual_bind={:?}",
+            direct_call_transparent_alias_pair(type_env.clone(), formal.clone(), actual.clone(), source_indices.clone()),
+            formal.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).map(|d| d.name.clone())),
+            actual.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).map(|d| d.name.clone())),
+            formal.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).and_then(|d| v2_rt::map_get(&type_env.bindings.clone(), d.binding_key.clone()).map(|b| b.name.clone()))),
+            actual.binding_id.clone().and_then(|id| v2_rt::map_get(&type_env.decl_registry.clone(), id).and_then(|d| v2_rt::map_get(&type_env.bindings.clone(), d.binding_key.clone()).map(|b| b.name.clone()))),
+        );
+    }
+    if direct_call_transparent_alias_pair(
+        type_env.clone(),
+        formal.clone(),
+        actual.clone(),
+        source_indices.clone(),
+    ) {
+        false
+    } else if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
         false
     } else {
         (((direct_call_structural_pd3_mismatch(
