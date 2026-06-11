@@ -1,0 +1,50 @@
+// src/v4/test/claim/complexity_gate/parse_current_position_budget.dag
+// Scope: complexity-gate S1a exemplar — real parse_current_position body via COMPREP
+//         source bridge, cost_lens → complexity projection, declared-budget dominance.
+// Status: executable --claim-run witness (lens_ci_gate row).
+
+module v4.test.claim.complexity_gate.parse_current_position_budget
+
+import v4.compiler.reflection_bridge { reflection_parse_current_position_lens_subject }
+import v4.lens.complexity {
+  ComplexityBound,
+  complexity_bound_dominates,
+  complexity_lens,
+  linear_complexity
+}
+import v4.lens.cost { SizeVariable, cost_lens }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.std.witness { Holds, Witness }
+
+fn parse_current_position_declared_budget(subject: Node) -> ComplexityBound {
+  linear_complexity(size_var: SizeVariable { source: subject })
+}
+
+fn parse_current_position_budget_dominates_computed(subject: Node) -> Bool {
+  match complexity_lens(n: subject) {
+    Holds { value: computed } =>
+      complexity_bound_dominates(
+        a: parse_current_position_declared_budget(subject: subject),
+        b: computed
+      )
+    _ => false
+  }
+}
+
+fn parse_current_position_cost_lens_holds(subject: Node) -> Bool {
+  match cost_lens(n: subject) {
+    Holds { value: _ } => true
+    _ => false
+  }
+}
+
+fn parse_current_position_budget_claim_holds() -> Bool {
+  match reflection_parse_current_position_lens_subject() {
+    Accepted { value: subject, diagnostics: _ } =>
+      parse_current_position_cost_lens_holds(subject: subject)
+        && parse_current_position_budget_dominates_computed(subject: subject)
+    Rejected { diagnostics: _ } => false
+  }
+}
