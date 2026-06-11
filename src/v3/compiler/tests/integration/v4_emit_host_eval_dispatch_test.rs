@@ -1,16 +1,15 @@
 //! **Layer:** integration
 //!
 //! T-22 eval dispatch behavior receipts for `run_emit_host_rust` substrate intercept
-//! (`emit_host_eval.rs`) and B3 `run_host_process` / SignedI32Le transport. Complements
-//! `v4_emit_host_harness_test.rs` (bridge + surface); this file ratchets runner fail-closed
-//! contracts the eval hook must preserve when mapping into `emit_host_receipt_from_source`.
+//! (`emit_host_eval.rs`). Complements `v4_emit_host_harness_test.rs` (bridge + surface);
+//! this file ratchets runner fail-closed contracts the eval hook must preserve when mapping
+//! into `emit_host_receipt_from_source`.
 //!
 //! **P5 receipt (Mechanism (b)):** `EXPECTED_HAND_AUTHORED_TEST` row in `sg0_census_test.rs`;
 //! lane `T-PB-B` / `pb_rust_tests_outside_residual_zero`. Dissolution: substrate-only authority.
 
 use emit_host_runner::{
-    default_work_dir, run_emit_host_rust, run_host_process, runtime_value_parse_signed_i32_le,
-    EmitHostFixtureInputs, HostLogicalFailure, TS_HOST_TRANSPORT_MVP1_IDENTITY,
+    default_work_dir, run_emit_host_rust, EmitHostFixtureInputs, HostLogicalFailure,
 };
 
 const FIXTURE_SOURCE_PASS: &str =

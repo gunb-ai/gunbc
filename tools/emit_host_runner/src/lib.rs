@@ -713,6 +713,19 @@ mod tests {
     }
 
     #[test]
+    fn runtime_value_parse_signed_i32_le_decodes_fixed_bytes() {
+        assert_eq!(
+            runtime_value_parse_signed_i32_le(&[5, 0, 0, 0]).expect("four-byte LE"),
+            5
+        );
+        assert_eq!(
+            runtime_value_parse_signed_i32_le(&[0xff, 0xff, 0xff, 0xff]).expect("four-byte LE"),
+            -1
+        );
+        assert!(runtime_value_parse_signed_i32_le(&[0, 0, 0]).is_err());
+    }
+
+    #[test]
     fn unique_work_dir_differs_per_call_in_process() {
         let a = unique_work_dir("gunbc_emit_host_unique_test");
         let b = unique_work_dir("gunbc_emit_host_unique_test");
