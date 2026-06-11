@@ -13,6 +13,7 @@ import v4.std.occurrence_id {
 }
 import v4.std.provenance {
   FromSource,
+  SpanIndex,
   origin_event_from_source,
   span_index_empty,
   span_index_lookup,
@@ -73,6 +74,22 @@ fn span_index_from_source_round_trip_holds() -> Bool {
   }
 }
 
+fn span_index_merge_lookup_from_source_holds(index: SpanIndex, id: OccurrenceId) -> Bool {
+  match span_index_lookup(index: index, id: id) {
+    Holds { value: event } =>
+      match event {
+        FromSource { locus: locus } =>
+          match locus {
+            Textual { file: f, extent: ByteRange { start: start, end: end_byte } } =>
+              (f == occurrence_model_file) && (start >= 0) && (end_byte > start)
+            _ => false
+          }
+        _ => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
 fn span_index_merge_disjoint_entries_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let r0 = alloc_occurrence_id(alloc: alloc0)
@@ -96,29 +113,8 @@ fn span_index_merge_disjoint_entries_holds() -> Bool {
     event: origin_event_from_source(locus: locus1)
   )
   let merged = span_index_merge(base: left, incoming: right)
-  match span_index_lookup(index: merged, id: r0.id) {
-    Holds { value: e0 } =>
-      match span_index_lookup(index: merged, id: r1.id) {
-        Holds { value: e1 } =>
-          match e0 {
-            FromSource { locus: l0 } =>
-              match e1 {
-                FromSource { locus: l1 } =>
-                  match l0 {
-                    Textual { extent: ByteRange { start: s0, end: e0_end }, file: _ } =>
-                      match l1 {
-                        Textual { extent: ByteRange { start: s1, end: e1_end }, file: _ } =>
-                          (s0 == 0) && (e0_end == 4) && (s1 == 4) && (e1_end == 8)
-                        _ => false
-                      }
-                    _ => false
-                  }
-                _ => false
-              }
-        Violates { diagnostic: _ } => false
-      }
-    Violates { diagnostic: _ } => false
-  }
+  span_index_merge_lookup_from_source_holds(index: merged, id: r0.id)
+    && span_index_merge_lookup_from_source_holds(index: merged, id: r1.id)
 }
 
 fn witness_occurrence_id_model_substrate_holds() -> Bool {

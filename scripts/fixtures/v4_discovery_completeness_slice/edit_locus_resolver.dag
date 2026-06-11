@@ -17,14 +17,15 @@ import v4.lens.edit_locus {
 import v4.compiler.source_authority {
   DagSource,
   DagSourceReadWitness,
+  source_ir_artifact_provenance,
   source_ir_node_artifact_provenance
 }
 import v4.std.artifact { Artifact, SourceFile }
-import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty, count_equal, length }
-import v4.std.node { Anchored, Node, Symbol, Unanchored, node_span_file_eq }
-import v4.std.provenance { node_has_anchored_span, node_span_byte_extent }
+import v4.std.node { MintedOccurrence, Node, Symbol, SyntheticOccurrence, well_formed }
+import v4.std.provenance { FromSource, SpanIndex, span_index_lookup }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.test.claim.lens_affected_set.node_precision {
@@ -153,12 +154,7 @@ fn edit_locus_source_provenance_producer_holds() -> Bool {
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
       (provenance.artifact.file_path == edit_locus_path_source_producer_fixture)
-        && node_has_anchored_span(node: provenance.node)
-        && node_span_byte_extent(span: provenance.node.span)
-        && node_span_file_eq(
-          span: provenance.node.span,
-          file: edit_locus_source_producer_fixture_compilation_unit
-        )
+        && well_formed(n: provenance.node)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -199,15 +195,41 @@ fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
   }
 }
 
+fn edit_locus_root_from_source_locus_holds(
+  compilation_unit: Symbol,
+  span_index: SpanIndex,
+  root: Node
+) -> Bool {
+  match root.occurrence_id {
+    MintedOccurrence { id: id } =>
+      match span_index_lookup(index: span_index, id: id) {
+        Holds { value: event } =>
+          match event {
+            FromSource { locus } =>
+              match locus {
+                Textual { file: f, extent: ByteRange { start: s, end: e } } =>
+                  (f == compilation_unit) && (s == 0) && (e > s)
+                _ => false
+              }
+            _ => false
+          }
+        Violates { diagnostic: _ } => false
+      }
+    SyntheticOccurrence => false
+  }
+}
+
 fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
-  match source_ir_node_artifact_provenance(
+  match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
-      match provenance.node.span {
-        Anchored { span: s } => (s.start == 0) && (s.end > s.start)
-        Unanchored => false
-      }
+      well_formed(n: provenance.node)
+        && edit_locus_root_from_source_locus_holds(
+          compilation_unit: edit_locus_source_producer_fixture_compilation_unit,
+          span_index: provenance.span_index,
+          root: provenance.node
+        )
     Rejected { diagnostics: _ } => false
   }
 }
