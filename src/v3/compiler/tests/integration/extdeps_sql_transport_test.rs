@@ -2,7 +2,7 @@
 //! HTTP/SQL/audit extdep authority checks.
 
 use std::collections::HashSet;
-use v3_compiler::compile_to_dag;
+use crate::common::cached_compile_to_dag;
 use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
 
 const HTTP_SERVER_DAG: &str = include_str!("../../../../../dsl/extdeps/http/server.dag");
@@ -13,7 +13,7 @@ const AUDIT_CLOUDEVENTS_DAG: &str =
     include_str!("../../../../../dsl/extdeps/audit/cloudevents.dag");
 
 fn compile_extdep(source: &str, path: &str) -> Dag {
-    compile_to_dag(source, path).unwrap_or_else(|e| panic!("{path} should compile: {e:?}"))
+    cached_compile_to_dag(source, path)
 }
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -59,8 +59,7 @@ fn disj_variant_labels(dag: &Dag, name: &str) -> HashSet<String> {
 
 #[test]
 fn http_server_extdep_dag_compiles_cleanly() {
-    compile_to_dag(HTTP_SERVER_DAG, "dsl/extdeps/http/server.dag")
-        .unwrap_or_else(|e| panic!("http server extdep should compile: {e:?}"));
+    cached_compile_to_dag(HTTP_SERVER_DAG, "dsl/extdeps/http/server.dag");
 }
 
 #[test]
@@ -98,14 +97,12 @@ fn http_server_target_fields_are_authoritative_substrate_edges() {
 
 #[test]
 fn rest_transport_dag_compiles_cleanly() {
-    compile_to_dag(REST_TRANSPORT_DAG, "dsl/extdeps/transports/rest.dag")
-        .unwrap_or_else(|e| panic!("rest transport extdep should compile: {e:?}"));
+    cached_compile_to_dag(REST_TRANSPORT_DAG, "dsl/extdeps/transports/rest.dag");
 }
 
 #[test]
 fn sql_migration_extdep_dag_compiles_cleanly() {
-    compile_to_dag(SQL_MIGRATION_DAG, "dsl/extdeps/sql/migration.dag")
-        .unwrap_or_else(|e| panic!("sql migration extdep should compile: {e:?}"));
+    cached_compile_to_dag(SQL_MIGRATION_DAG, "dsl/extdeps/sql/migration.dag");
 }
 
 #[test]
@@ -131,14 +128,12 @@ fn sql_migration_target_fields_bound_raw_sql_scaffold() {
 
 #[test]
 fn sql_transport_dag_compiles_cleanly() {
-    compile_to_dag(SQL_TRANSPORT_DAG, "dsl/extdeps/transports/sql.dag")
-        .unwrap_or_else(|e| panic!("sql transport extdep should compile: {e:?}"));
+    cached_compile_to_dag(SQL_TRANSPORT_DAG, "dsl/extdeps/transports/sql.dag");
 }
 
 #[test]
 fn audit_cloudevents_extdep_dag_compiles_cleanly() {
-    compile_to_dag(AUDIT_CLOUDEVENTS_DAG, "dsl/extdeps/audit/cloudevents.dag")
-        .unwrap_or_else(|e| panic!("audit cloudevents extdep should compile: {e:?}"));
+    cached_compile_to_dag(AUDIT_CLOUDEVENTS_DAG, "dsl/extdeps/audit/cloudevents.dag");
 }
 
 #[test]

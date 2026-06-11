@@ -11,8 +11,7 @@
 //! - compile-boundary fail-closed behavior
 //! - post-sweep port-state invariants
 
-use crate::common::cached_compile_to_dag;
-use v3_compiler::compile_to_dag;
+use crate::common::{cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome};
 use v3_compiler::dag::{
     literal_bits_int, AtomPayload, Behavior, Dag, LoopBound, PortId, PortState, TransformTarget,
     TypeConnective,
@@ -49,11 +48,7 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
 }
 
 fn compile_any(src: &str, file: &str) -> Dag {
-    match compile_to_dag(src, file) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => dag,
-        Err(other) => panic!("unexpected structural error: {other:?}"),
-    }
+    cached_compile_any(src, file)
 }
 
 fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {

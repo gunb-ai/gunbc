@@ -3,16 +3,21 @@
 use std::collections::BTreeSet;
 
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
-use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag};
+use crate::common::{cached_compile_any, cached_compile_to_dag};
+use v3_compiler::generated_full_bootstrap_dag;
 
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
 const SHARED_SYNTAX_DAG: &str = include_str!("../../../../../dsl/extdeps/languages/dag/syntax.dag");
 const CHECKED_IN_GENERATED: &str = include_str!("../../src/tokenize_generated.rs");
+const TOKENIZE_DAG_PATH: &str = "src/v3/compiler/tokenize.dag";
+
+fn compile_tokenize_dag() -> v3_compiler::dag::Dag {
+    cached_compile_to_dag(TOKENIZE_DAG, TOKENIZE_DAG_PATH)
+}
 
 #[test]
 fn tokenize_dag_compiles_cleanly() {
-    compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
-        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    compile_tokenize_dag();
 }
 
 #[test]
@@ -40,8 +45,7 @@ fn std_tokenize_dag_is_present_in_bootstrap_authority() {
 
 #[test]
 fn compiler_tokenize_dag_imports_moved_types_from_std() {
-    let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
-        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    let dag = compile_tokenize_dag();
     let moved = [
         "Token",
         "TokenKind",
@@ -75,8 +79,7 @@ fn tokenize_generated_module_matches_checked_in_snapshot() {
 
 #[test]
 fn tokenize_keyword_subset_derives_from_shared_syntax_authority() {
-    let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
-        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    let dag = compile_tokenize_dag();
     let shared_keywords: BTreeSet<_> = parse_map_string_keys(extract_balanced_section(
         SHARED_SYNTAX_DAG,
         "data dag_keyword_set",
@@ -113,8 +116,7 @@ fn tokenize_keyword_subset_derives_from_shared_syntax_authority() {
 
 #[test]
 fn tokenize_local_punct_rows_are_structural_and_disjoint_from_shared_operator_authority() {
-    let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
-        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    let dag = compile_tokenize_dag();
     let shared_operators: BTreeSet<_> = parse_named_string_fields(
         extract_balanced_section(SHARED_SYNTAX_DAG, "data dag_operators", '[', ']'),
         "symbol",
@@ -194,11 +196,10 @@ fn tokenize_local_punct_rows_are_structural_and_disjoint_from_shared_operator_au
 
 #[test]
 fn shared_syntax_keyword_map_is_structural_while_operator_bridge_remains_bounded() {
-    let lowered = match compile_to_dag(SHARED_SYNTAX_DAG, "dsl/extdeps/languages/dag/syntax.dag") {
-        Ok(dag) => dag,
-        Err(v3_compiler::CompileError::Semantic(dag)) => dag,
-        Err(other) => panic!("shared syntax authority should still lower far enough to inspect scaffold state: {other:?}"),
-    };
+    let lowered = cached_compile_any(
+        SHARED_SYNTAX_DAG,
+        "dsl/extdeps/languages/dag/syntax.dag",
+    );
 
     let keywords = lowered
         .declaration_by_name("dag_keyword_set")
@@ -219,8 +220,7 @@ fn shared_syntax_keyword_map_is_structural_while_operator_bridge_remains_bounded
 
 #[test]
 fn shared_operator_boundary_is_explicit_and_fail_closed() {
-    let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
-        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    let dag = compile_tokenize_dag();
     let shared_operators = parse_named_string_fields(
         extract_balanced_section(SHARED_SYNTAX_DAG, "data dag_operators", '[', ']'),
         "symbol",
