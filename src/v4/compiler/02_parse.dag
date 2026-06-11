@@ -41,8 +41,8 @@ import v4.std.node {
   well_formed
 }
 import v4.std.provenance { fold_node_tree_span, make_node_span_anchored }
-import v4.std.collection { List, Map, Set, empty_map, map_insert }
-import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
+import v4.std.collection { Absent, List, Map, Present, Set, empty_map, list_at_optional, map_insert }
+import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.lexing { Token, TokenStream }
@@ -77,16 +77,6 @@ type ParseSyncState {
   found_sync: Bool
   result: List<Token>
 }
-
-// 🟡 coproduct dissolution — feature: GrammarRoot duplicate-name scan accumulator — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived membership fold over production names eliminates the hand-written accumulator; invalid-state-representable Bool flag dissolved into coproduct branches.
-type GrammarDupCheckResult
-  = GrammarDupCheckUnique { seen: Set<Symbol> }
-  | GrammarDupCheckDuplicate
-
-// 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
-type TokenPeek
-  = TokenPeekAbsent
-  | TokenPeekFirst { value: Token }
 
 // Accumulator for the fold-list based Repeat implementation in parse_expr.
 // fold_list over the token stream bounds iterations to length(tokens);
