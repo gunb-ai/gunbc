@@ -236,6 +236,127 @@ pub fn runtime_value_parse_rust(bytes: &[u8]) -> Result<(), RuntimeValueParseFai
     }
 }
 
+/// B3 TypeScript row — four-byte signed little-endian i32 on stdout (Node `writeInt32LE`).
+pub fn runtime_value_parse_signed_i32_le(bytes: &[u8]) -> Result<i32, RuntimeValueParseFailure> {
+    const EXPECTED: usize = 4;
+    if bytes.len() != EXPECTED {
+        return Err(RuntimeValueParseFailure {
+            expected_len: EXPECTED,
+            actual_len: bytes.len(),
+        });
+    }
+    Ok(i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+/// Modeled identity for `ts_host_transport_mvp1_descriptor` (`typescript.dag`).
+pub const TS_HOST_TRANSPORT_MVP1_IDENTITY: &str = "ts_host_transport_mvp1_identity";
+
+const TS_HOST_TRANSPORT_MVP1_HARNESS_SUFFIX: &str = "\
+const __gunbc_r = add(2, 3);
+const __gunbc_b = Buffer.alloc(4);
+__gunbc_b.writeInt32LE(__gunbc_r, 0);
+process.stdout.write(__gunbc_b);
+";
+
+// 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
+// hand-rolled discriminator-over-Symbol with default-reject arm) — feature: T-22 host-emission
+// TargetModel dissolution — bind: gunbc#4674 — dissolve-on-arrival: promote a typed runtime_row
+// onto TargetModel and replace this per-target match (its mirror run_host_process below + the
+// emit_host.dag if-chains + the python hand-reification at emit_host_eval.rs:1022-1061) with a
+// generic row-lookup; point host-tool/descriptor identities at extdeps/languages/*::*_mvp1_source_text.
+// forbidden: adding a 5th per-target arm without the dissolution.
+fn resolve_host_tool(identity: &str) -> Result<String, HostSetupFailure> {
+    match identity {
+        "host_tool_npx" => Ok("npx".to_string()),
+        "host_tool_node" => Ok("node".to_string()),
+        "host_tool_tsc" => Ok("tsc".to_string()),
+        other => Err(HostSetupFailure::SpawnFailed {
+            phase: HostPhase::Build,
+            source: format!("unknown host tool identity: {other}"),
+        }),
+    }
+}
+
+/// Single generic host-process primitive — dispatches on modeled descriptor identity.
+// 🟡 gated — per-target host-emission discriminator (P2 §314: target knowledge in compiler code;
+// match on descriptor_identity against a single hard-coded TS identity with default-reject arm,
+// cost-of-change=N) — feature: T-22 host-emission TargetModel dissolution — bind: gunbc#4674 —
+// dissolve-on-arrival: promote a typed runtime_row onto TargetModel and replace this per-target
+// match (its mirror resolve_host_tool above + the emit_host.dag if-chains + the python
+// hand-reification at emit_host_eval.rs:1022-1061) with a generic row-lookup.
+// forbidden: adding a 5th per-target arm without the dissolution.
+pub fn run_host_process(
+    descriptor_identity: &str,
+    source: &str,
+    inputs: &EmitHostTransportInputs,
+    work_dir: &Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+    validate_emit_host_transport_inputs(inputs)?;
+    match descriptor_identity {
+        TS_HOST_TRANSPORT_MVP1_IDENTITY => run_host_process_ts_mvp1(source, inputs, work_dir),
+        other => Err(HostSetupFailure::SpawnFailed {
+            phase: HostPhase::Build,
+            source: format!("unsupported host transport descriptor: {other}"),
+        }),
+    }
+}
+
+fn run_host_process_ts_mvp1(
+    source: &str,
+    _inputs: &EmitHostTransportInputs,
+    work_dir: &Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+    fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
+        source: e.to_string(),
+    })?;
+
+    let fixture_ts = work_dir.join("fixture.ts");
+    let fixture_body = format!("{source}{TS_HOST_TRANSPORT_MVP1_HARNESS_SUFFIX}");
+    fs::write(&fixture_ts, fixture_body).map_err(|e| HostSetupFailure::SourceWriteFailed {
+        source: e.to_string(),
+    })?;
+
+    let mut build_cmd = Command::new(resolve_host_tool("host_tool_npx")?);
+    build_cmd.current_dir(work_dir).args([
+        "-y",
+        "typescript@5.9.2",
+        "tsc",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--outDir",
+        ".",
+        "fixture.ts",
+    ]);
+    let build = run_command_bounded(build_cmd, HOST_BUILD_TIMEOUT, HostPhase::Build)?;
+    let mut build_log = bounded_output_to_log(&build, "tsc");
+    if !matches!(build.status, Some(s) if s.success()) {
+        return Ok(EmitHostRunReceipt {
+            source_text: source.to_string(),
+            exit: host_exit_from_bounded(&build, HostPhase::Build),
+            stdout_bytes: build.stdout,
+            stderr_bytes: build.stderr,
+            build_log,
+        });
+    }
+
+    let fixture_js = work_dir.join("fixture.js");
+    let mut run_cmd = Command::new(resolve_host_tool("host_tool_node")?);
+    run_cmd.current_dir(work_dir).arg(&fixture_js);
+    let run = run_command_bounded(run_cmd, HOST_RUN_TIMEOUT, HostPhase::FixtureRun)?;
+    build_log
+        .lines
+        .extend(bounded_output_to_log(&run, "node").lines);
+    Ok(EmitHostRunReceipt {
+        source_text: source.to_string(),
+        exit: host_exit_from_bounded(&run, HostPhase::FixtureRun),
+        stdout_bytes: run.stdout,
+        stderr_bytes: run.stderr,
+        build_log,
+    })
+}
+
 struct BoundedChildOutput {
     stdout: Vec<u8>,
     stderr: Vec<u8>,
@@ -589,6 +710,19 @@ mod tests {
     fn runtime_value_parse_rust_accepts_five_bytes() {
         assert!(runtime_value_parse_rust(&[0, 0, 0, 0, 0]).is_ok());
         assert!(runtime_value_parse_rust(&[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn runtime_value_parse_signed_i32_le_decodes_fixed_bytes() {
+        assert_eq!(
+            runtime_value_parse_signed_i32_le(&[5, 0, 0, 0]).expect("four-byte LE"),
+            5
+        );
+        assert_eq!(
+            runtime_value_parse_signed_i32_le(&[0xff, 0xff, 0xff, 0xff]).expect("four-byte LE"),
+            -1
+        );
+        assert!(runtime_value_parse_signed_i32_le(&[0, 0, 0]).is_err());
     }
 
     #[test]

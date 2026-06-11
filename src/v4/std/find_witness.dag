@@ -30,6 +30,9 @@ import v4.std.project_to_core_predicate {
   project_to_core_preservation_holds
 }
 import v4.std.refinement_widening_predicate { refinement_widening_preservation_holds }
+import v4.std.type_expr_projection_discipline_zip_fold_predicate {
+  type_expr_projection_discipline_zip_fold_preservation_holds
+}
 import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
@@ -40,6 +43,7 @@ data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_const
 data preservation_rule_exact_structural_equality_zip_fold: Symbol = preservation_rule_exact_structural_equality_zip_fold
 data preservation_rule_refinement_widening: Symbol = preservation_rule_refinement_widening
 data preservation_rule_project_to_core: Symbol = preservation_rule_project_to_core
+data preservation_rule_type_expr_projection_discipline_zip_fold: Symbol = preservation_rule_type_expr_projection_discipline_zip_fold
 type CandidateSet {
   candidates: List<Node>
   closedness: StructuralPropertyWitness
@@ -78,7 +82,8 @@ fn realized_preservation_rules() -> List<Symbol> {
     preservation_rule_constraint_satisfaction,
     preservation_rule_exact_structural_equality_zip_fold,
     preservation_rule_refinement_widening,
-    preservation_rule_project_to_core
+    preservation_rule_project_to_core,
+    preservation_rule_type_expr_projection_discipline_zip_fold
   ]
 }
 fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
@@ -143,6 +148,12 @@ fn preservation_predicate_holds(
     )
   } else if predicate.preservation_rule == preservation_rule_project_to_core {
     project_to_core_preservation_holds(
+      source_facts: source_facts,
+      candidate: candidate,
+      algebra: predicate.algebra
+    )
+  } else if predicate.preservation_rule == preservation_rule_type_expr_projection_discipline_zip_fold {
+    type_expr_projection_discipline_zip_fold_preservation_holds(
       source_facts: source_facts,
       candidate: candidate,
       algebra: predicate.algebra

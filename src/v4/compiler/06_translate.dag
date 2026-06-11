@@ -12,9 +12,26 @@
 module v4.compiler.translate
 
 
+import v4.compiler.value_expression {
+  arrow_has_transform_body,
+  project_arrow_body_to_value_expression,
+  value_expression_projection_from_target,
+  value_expression_to_concrete_tokens
+}
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.target_model { TargetModel, TargetModelBundle }
-import v4.compiler.infer { InferredTree, canonical_grounding_for_node }
+import v4.std.target_model {
+  TargetBodiedArrowStatementScaffold,
+  TargetModel,
+  TargetModelBundle,
+  bodied_arrow_scaffold_from_grammar_relation_row,
+  target_bodied_arrow_compose_statement_tokens,
+  target_model_edge_translation_rules
+}
+import v4.compiler.infer {
+  InferredTree,
+  algebra_ref_is_grounded,
+  canonical_grounding_for_node
+}
 import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
@@ -58,12 +75,13 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
+  arrow_body_edge,
   fold_node,
   node_rebuild,
   well_formed,
   SyntheticOccurrence
 }
-import v4.std.node_query { node_positional_child_targets }
+import v4.std.node_query { find_named_child, node_positional_child_targets }
 import v4.std.lexing {
   LexRules,
   LexRule,
@@ -79,6 +97,7 @@ import v4.std.target_model {
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
+  TargetValueExpression,
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -100,6 +119,7 @@ import v4.std.target_model {
   concrete_syntax_token_field_kind,
   concrete_syntax_token_kind_bound,
   concrete_syntax_token_kind_fixed,
+  grammar_relation_field_bodied_scaffold,
   grammar_relation_field_emitted,
   grammar_relation_field_tokens,
   target_model_edge_declared_inhabitants,
@@ -172,7 +192,9 @@ import v4.std.target_model {
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
-  type_expr_projection_row_closedness_from_target
+  type_expr_projection_graft_substrate_in_row_slot,
+  type_expr_projection_row_closedness_from_target,
+  type_expr_projection_graft_witness_gate
 }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -569,6 +591,173 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
   }
 }
+// Bodied-arrow serialize: resolve scaffold from the translation-rules row that carries
+// grammar_relation_field_bodied_scaffold — NOT grammar_inverse exact emitted-node match
+// (producer-coerced signature slots differ from the fixture row's emitted field).
+fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        rules.children,
+        init: Rejected {
+          diagnostics: diagnostics_singleton(
+            d: translate_grammar_relation_row_not_found_diagnostic(
+              emitted: rules
+            )
+          )
+        },
+        f: fn(acc, e) {
+          match acc {
+            Accepted { value: _, diagnostics: _ } =>
+              match e.label {
+                Named { name: _ } =>
+                  match find_named_child(
+                    root: e.target,
+                    name: grammar_relation_field_bodied_scaffold
+                  ) {
+                    Accepted { value: _, diagnostics: _ } =>
+                      outcome_rejected(
+                        translate_grammar_inverse_not_realized_diagnostic(emitted: rules)
+                      )
+                    Rejected { diagnostics: _ } => acc
+                  }
+                Positional => acc
+              }
+            Rejected { diagnostics: _ } =>
+              match e.label {
+                Named { name: _ } =>
+                  match find_named_child(
+                    root: e.target,
+                    name: grammar_relation_field_bodied_scaffold
+                  ) {
+                    Accepted { value: _, diagnostics: d } =>
+                      Accepted { value: e.target, diagnostics: d }
+                    Rejected { diagnostics: _ } => acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Accepted { value: row, diagnostics: d } =>
+          Accepted { value: row, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
+  }
+}
+
+fn grammar_relation_row_for_bodied_arrow_serialize(
+  rules: Node,
+  emitted: Node
+) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  bind_outcome(
+    o: grammar_relation_row_with_bodied_scaffold(rules: rules),
+    f: fn(row) {
+      bodied_arrow_scaffold_from_grammar_relation_row(row: row)
+    }
+  )
+}
+
+fn grammar_inverse_bodied_arrow_validated(
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    f: fn(rules) {
+      bind_outcome(
+        o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
+        f: fn(_) {
+          outcome_accepted(emitted)
+        }
+      )
+    }
+  )
+}
+// E-9 bodied Arrow: signature slots coerce to raw target inhabitant carriers so
+// grammar_inverse exact emitted-node match succeeds; shell wrapping is for binding
+// projection sites, not grammar-row signature equality.
+fn translate_bodied_arrow_coerce_signature_slot_raw(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  match coerce_grounded_node(source: node, tree: tree, target: target) {
+    Accepted { value: coerced, diagnostics: d } =>
+      Accepted { value: coerced.target, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      match canonical_grounding_for_node(tree: tree, node: node) {
+        Accepted { value: grounding } =>
+          if algebra_ref_is_grounded(algebra: grounding.witness.structural.evidence) {
+            outcome_accepted(value: grounding.witness.structural.evidence)
+          } else {
+            Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: _ } => Rejected { diagnostics: r }
+      }
+  }
+}
+
+fn translate_bodied_arrow_coerce_signature_slots(
+  arrow: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      match fold(
+        arrow.children,
+        init: Accepted { value: Empty, diagnostics: None },
+        f: fn(acc, edge) {
+          match acc {
+            Rejected { diagnostics: r } => acc
+            Accepted { value: edges, diagnostics: d } =>
+              match edge.label {
+                Positional =>
+                  bind_outcome(
+                    o: translate_bodied_arrow_coerce_signature_slot_raw(
+                      node: edge.target,
+                      tree: tree,
+                      target: target
+                    ),
+                    f: fn(coerced_slot) {
+                      outcome_accepted(
+                        list_snoc_item(
+                          xs: edges,
+                          item: Edge {
+                            label: Positional,
+                            target: coerced_slot
+                          }
+                        )
+                      )
+                    }
+                  )
+                Named { name: n } =>
+                  if n == arrow_body_edge {
+                    outcome_accepted(
+                      list_snoc_item(xs: edges, item: edge)
+                    )
+                  } else {
+                    outcome_rejected(
+                      translate_grammar_relation_row_not_found_diagnostic(emitted: arrow)
+                    )
+                  }
+              }
+          }
+        }
+      ) {
+        Accepted { value: children, diagnostics: d } =>
+          outcome_accepted(
+            value: node_rebuild(n: arrow, children: children)
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      outcome_rejected(translate_grammar_relation_row_not_found_diagnostic(emitted: arrow))
+  }
+}
 fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
   match parent.kind {
     TypeNode { connective: Conj } =>
@@ -907,6 +1096,100 @@ fn grammar_inverse_source_validated(
     }
   )
 }
+fn serialize_concrete_syntax_tokens_to_source(
+  target: TargetModel,
+  tokens: List<ConcreteSyntaxToken>
+) -> Outcome<TargetSource> {
+  fold_list(
+    xs: tokens,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, token) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          match token {
+            FixedToken { token_class: token_class } =>
+              bind_outcome(
+                o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
+                f: fn(spelling) {
+                  Accepted {
+                    value: list_append(left: partial, right: spelling),
+                    diagnostics: ad
+                  }
+                }
+              )
+            BoundToken { token_class: _, binding: binding } =>
+              match map_get(target.binding_spellings, binding) {
+                Accepted { value: opt, diagnostics: pending } =>
+                  match opt {
+                    Present { value: spelling } =>
+                      Accepted {
+                        value: list_append(left: partial, right: spelling),
+                        diagnostics: diagnostics_merge(outer: ad, inner: pending)
+                      }
+                    Absent =>
+                      Rejected {
+                        diagnostics: rejected_with_pending(
+                          pending: ad,
+                          rejected: diagnostics_singleton(
+                            d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+                          )
+                        )
+                      }
+                  }
+                Rejected { diagnostics: r } =>
+                  Rejected {
+                    diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                  }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn target_serialize_bodied_arrow_from_model(
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    f: fn(rules) {
+      bind_outcome(
+        o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
+        f: fn(scaffold) {
+          bind_outcome(
+            o: value_expression_projection_from_target(target: target),
+            f: fn(projection) {
+              bind_outcome(
+                o: project_arrow_body_to_value_expression(arrow: emitted, target: target),
+                f: fn(expr) {
+                  bind_outcome(
+                    o: value_expression_to_concrete_tokens(
+                      expr: expr,
+                      target: target,
+                      projection: projection
+                    ),
+                    f: fn(body_tokens) {
+                      serialize_concrete_syntax_tokens_to_source(
+                        target: target,
+                        tokens: target_bodied_arrow_compose_statement_tokens(
+                          scaffold: scaffold,
+                          body: body_tokens
+                        )
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn target_serialize_relation_row_from_model_bounded(
   remaining: Int,
   target: TargetModelBundle,
@@ -916,6 +1199,8 @@ fn target_serialize_relation_row_from_model_bounded(
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
+  } else if arrow_has_transform_body(arrow: emitted) {
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     bind_outcome(
       o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
@@ -1178,6 +1463,8 @@ fn target_serialize_source_from_model_bounded(
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
+  } else if arrow_has_transform_body(arrow: emitted) {
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
   } else {
     match target_type_expr_emitted_kind(node: emitted) {
       TypeExprKindAuthority { value: _ } =>
@@ -2454,14 +2741,43 @@ fn project_type_expression_connective_bounded(
             ),
             f: fn(original_split) {
               bind_outcome(
-                o: project_type_expression_arrow_emitted_from_original_split(
+                o: translate_project_arrow_split_types(
                   original_split: original_split,
-                  anchor: node,
                   target: target,
-                  projection: projection
+                  projection: projection,
+                  anchor: node
                 ),
-                f: fn(emitted) {
-                  Accepted { value: emitted, diagnostics: None }
+                f: fn(split) {
+                  bind_outcome(
+                    o: type_expr_projection_graft_substrate_in_row_slot(
+                      projection: projection,
+                      connective: Arrow,
+                      node: node,
+                      projected_positional: list_append(
+                        left: split.inputs,
+                        right: Cons { head: split.output, tail: Empty }
+                      )
+                    ),
+                    f: fn(grafted) {
+                      bind_outcome(
+                        o: type_expr_projection_graft_witness_gate(
+                          source_facts: grafted,
+                          projection: projection,
+                          connective: Arrow
+                        ),
+                        f: fn(_) {
+                          Accepted {
+                            value: target_type_expr_arrow_emitted(
+                              form: projection.arrow_form,
+                              inputs: split.inputs,
+                              output: split.output
+                            ),
+                            diagnostics: None
+                          }
+                        }
+                      )
+                    }
+                  )
                 }
               )
             }
@@ -4255,6 +4571,10 @@ fn translate_type_fold_init(node: Node) -> Outcome<Node> {
     diagnostics: None
   }
 }
+fn translate_computation_fold_init(node: Node) -> Outcome<Node> {
+  // T6 / E-9: Behavior sub-DAG (Arrow.body) is internal — fold structurally, not coerce.
+  translate_type_fold_init(node: node)
+}
 fn translate_fold_init(
   node: Node,
   tree: InferredTree,
@@ -4262,16 +4582,51 @@ fn translate_fold_init(
 ) -> Outcome<Node> {
   match node.kind {
     TypeNode { connective: _ } => translate_type_fold_init(node: node)
-    ComputationNode { behavior: _ } =>
-      match coerce_grounded_node(source: node, tree: tree, target: target) {
-        Accepted { value: coerced, diagnostics: d } =>
-          translate_coerced_with_atom_realization(
-            source: node,
-            coerced: coerced.target,
-            target: target,
-            pending: d
-          )
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
+  }
+}
+fn translate_mvp1_coerce_from_grounding_or_evidence(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  match coerce_grounded_node(source: node, tree: tree, target: target) {
+    Accepted { value: coerced, diagnostics: d } =>
+      translate_coerced_with_atom_realization(
+        source: node,
+        coerced: coerced.target,
+        target: target,
+        pending: d
+      )
+    Rejected { diagnostics: r } =>
+      match canonical_grounding_for_node(tree: tree, node: node) {
+        Accepted { value: grounding } =>
+          if algebra_ref_is_grounded(algebra: grounding.witness.structural.evidence) {
+            translate_coerced_with_atom_realization(
+              source: node,
+              coerced: grounding.witness.structural.evidence,
+              target: target,
+              pending: None
+            )
+          } else {
+            // 🟡 gated — feature:translate-mvp1-e9-structural-carry-no-grounding — consumer:
+            // translate_mvp1_coerce_from_grounding_or_evidence — bind: PR #4627 T6 bodied-arrow
+            // skeleton — owner: T6 value-expression skeleton — lane: compiler 06_translate —
+            // dissolve-on-arrival: body-scope operator/param refs ground via infer witness or
+            // bounded E-9 carrier with explicit dissolution trigger; forbidden: unconditional
+            // translate_type_fold_init when coerce_grounded_node rejects and grounding witness
+            // is present but not algebra-grounded, outside Arrow.body internal fold.
+            translate_type_fold_init(node: node)
+          }
+        Rejected { diagnostics: _ } =>
+          // 🟡 gated — feature:translate-mvp1-e9-structural-carry-no-grounding — consumer:
+          // translate_mvp1_coerce_from_grounding_or_evidence — bind: PR #4627 T6 bodied-arrow
+          // skeleton — owner: T6 value-expression skeleton — lane: compiler 06_translate —
+          // dissolve-on-arrival: body-scope operator/param refs ground via infer witness or
+          // bounded E-9 carrier with explicit dissolution trigger; forbidden: unconditional
+          // translate_type_fold_init when coerce_grounded_node and canonical_grounding_for_node
+          // both reject outside Arrow.body internal fold.
+          translate_type_fold_init(node: node)
       }
   }
 }
@@ -4281,6 +4636,28 @@ fn translate_mvp1_fold_init(
   target: TargetModelBundle
 ) -> Outcome<Node> {
   match node.kind {
+    TypeNode { connective: Arrow } =>
+      // Bodied Arrow: fold signature children through coercion; body folds structurally (E-9).
+      if arrow_has_transform_body(arrow: node) {
+        translate_type_fold_init(node: node)
+      } else {
+        match coerce_grounded_node(source: node, tree: tree, target: target) {
+          Accepted { value: coerced, diagnostics: d } =>
+            translate_coerced_with_atom_realization(
+              source: node,
+              coerced: coerced.target,
+              target: target,
+              pending: d
+            )
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      }
+    TypeNode { connective: Atom { identity: _ } } =>
+      translate_mvp1_coerce_from_grounding_or_evidence(
+        node: node,
+        tree: tree,
+        target: target
+      )
     TypeNode { connective: _ } =>
       match coerce_grounded_node(source: node, tree: tree, target: target) {
         Accepted { value: coerced, diagnostics: d } =>
@@ -4292,17 +4669,7 @@ fn translate_mvp1_fold_init(
           )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
-    ComputationNode { behavior: _ } =>
-      match coerce_grounded_node(source: node, tree: tree, target: target) {
-        Accepted { value: coerced, diagnostics: d } =>
-          translate_coerced_with_atom_realization(
-            source: node,
-            coerced: coerced.target,
-            target: target,
-            pending: d
-          )
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
+    ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
   }
 }
 // Grammar-first match: does the (raw, structure-preserving) emitted node match a row in
@@ -4321,27 +4688,37 @@ fn translate_type_expression_tree(
   target: TargetModelBundle,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  bind_outcome(
-    o: fold_node(
-      n: node,
-      algebra: NodeFold {
-        init: fn(n0) { translate_type_fold_init(node: n0) },
-        step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+  if arrow_has_transform_body(arrow: node) {
+    // E-9 bodied Arrow: skip structure-preserving fold (it rewrites body-scope atoms through
+    // binding projection shells). Coerce signature slots only; preserve producer body IR.
+    translate_bodied_arrow_coerce_signature_slots(
+      arrow: node,
+      tree: tree,
+      target: target
+    )
+  } else {
+    bind_outcome(
+      o: fold_node(
+        n: node,
+        algebra: NodeFold {
+          init: fn(n0) { translate_type_fold_init(node: n0) },
+          step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+        }
+      ),
+      f: fn(n) {
+        // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
+        // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
+        // node grammar match -> pre-baked concrete tokens (the full source, e.g. the mvp1
+        // add fn). Nodes WITHOUT a grammar row fall through to the existing projection /
+        // mode-2 (SG-2) path, UNTOUCHED — they carry the type-expression projection wrapping.
+        match translate_grammar_relation_row_match(target: target, emitted: n) {
+          Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
+          Rejected { diagnostics: _ } =>
+            project_type_expression_node(node: n, target: target, projection: projection)
+        }
       }
-    ),
-    f: fn(n) {
-      // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
-      // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
-      // node grammar match -> pre-baked concrete tokens (the full source, e.g. the mvp1
-      // add fn). Nodes WITHOUT a grammar row fall through to the existing projection /
-      // mode-2 (SG-2) path, UNTOUCHED — they carry the type-expression projection wrapping.
-      match translate_grammar_relation_row_match(target: target, emitted: n) {
-        Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
-        Rejected { diagnostics: _ } =>
-          project_type_expression_node(node: n, target: target, projection: projection)
-      }
-    }
-  )
+    )
+  }
 }
 fn translate_node_with_projection(
   node: Node,
@@ -4560,4 +4937,14 @@ fn translate(
   target: TargetModelBundle
 ) -> Outcome<Node> {
   translate_node(node: tree.root, tree: tree, target: target)
+}
+
+// Cross-module witness helper: translate Outcome carrier as Node (TargetNodeTree = Node in-module).
+fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<Node> {
+  bind_outcome(
+    o: translate(tree: tree, target: target),
+    f: fn(emitted) {
+      outcome_accepted(emitted)
+    }
+  )
 }

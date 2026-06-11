@@ -19,13 +19,12 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.algebra { Empty, is_empty, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid, is_empty, list_snoc_item }
 import v4.std.collection { Absent, List, Present, list_at_optional }
 import v4.std.node {
   Ambiguous,
   Arrow,
   Conj,
-  Absent,
   Edge,
   Found,
   Named,
@@ -55,6 +54,45 @@ fn node_labeled_child_edges(node: Node) -> List<Edge> {
   })
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-envelope-without-named-coordinate — bind node://adhoc-sg2-envelope-peel — dissolve-on-arrival: substrate canonical peel of ≤1 named coordinate from a Conj envelope edge list; forbidden: parallel edge-label Bool filters outside std/node_query.
+fn node_envelope_without_named_coordinate_go(
+  root: Node,
+  xs: FreeMonoid<Edge>,
+  coordinate: Symbol,
+  acc: FreeMonoid<Edge>,
+  saw_coordinate: Bool
+) -> Outcome<FreeMonoid<Edge>> {
+  match xs {
+    Empty => outcome_accepted(value: acc)
+    Cons { head: h, tail: t } =>
+      match h.label {
+        Named { name: n } =>
+          if (n == coordinate) && saw_coordinate {
+            outcome_rejected(d: Diagnostic {
+              reason: ^named_child_ambiguous,
+              at: node_locus(node: root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
+          } else {
+            node_envelope_without_named_coordinate_go(
+              root: root,
+              xs: t,
+              coordinate: coordinate,
+              acc: if n == coordinate { acc } else { list_snoc_item(xs: acc, item: h) },
+              saw_coordinate: saw_coordinate || (n == coordinate)
+            )
+          }
+        Positional =>
+          node_envelope_without_named_coordinate_go(
+            root: root,
+            xs: t,
+            coordinate: coordinate,
+            acc: list_snoc_item(xs: acc, item: h),
+            saw_coordinate: saw_coordinate
+          )
+      }
+  }
+}
 
 // 🟢 grounded — canonical single-named-edge-target lookup via name_occurrences uniqueness gate
 // (Practice 10: no parallel EdgeLabel walker). Misses and ambiguities fail closed via Outcome.
@@ -111,15 +149,15 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: root.children) {
         Found { target: body } => outcome_accepted(value: body)
-        Absent =>
-          outcome_rejected(d: Diagnostic {
-            reason: ^arrow_body_child_missing,
-            at: node_locus(node: root),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          })
         Ambiguous =>
           outcome_rejected(d: Diagnostic {
             reason: ^arrow_body_child_ambiguous,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        _ =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^arrow_body_child_missing,
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
           })

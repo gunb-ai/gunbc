@@ -1277,6 +1277,26 @@ pub mod evaluator {
                 if let Some(value) = try_dispatch_std_list_is_empty(dag, callee_decl, &operands) {
                     return Ok(value);
                 }
+                if let Some(result) = crate::emit_host_eval::try_dispatch_run_host_process(
+                    dag,
+                    callee_decl,
+                    &operands,
+                    state,
+                    strategy,
+                ) {
+                    return result;
+                }
+                if let Some(result) =
+                    crate::emit_host_eval::try_dispatch_runtime_value_signed_i32_le_as_int(
+                        dag,
+                        callee_decl,
+                        &operands,
+                        state,
+                        strategy,
+                    )
+                {
+                    return result;
+                }
                 if let Some(result) = crate::emit_host_eval::try_dispatch_emit_host_rust(
                     dag,
                     callee_decl,
