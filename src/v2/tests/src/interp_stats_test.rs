@@ -66,8 +66,9 @@ fn build() -> Int {
 fn list_push_counts_receiver_copies() {
     let src = r#"module test.stats_list
 fn build() -> Int {
-  let xs = [1, 2, 3] |> list_push(4) |> list_push(5)
-  xs.length()
+  let a = list_push([1, 2, 3], 4)
+  let b = list_push(a, 5)
+  b.length()
 }
 "#;
     let resolved = resolve(src);
