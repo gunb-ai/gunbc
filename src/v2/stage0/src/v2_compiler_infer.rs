@@ -1336,7 +1336,12 @@ pub fn direct_call_bare_alias_target_name(
             match resolved.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
                     let target_name = authored_name_at(source_indices, target.clone());
-                    if target_name.clone().as_str() != "".to_string().as_str() {
+                    let declared_or_structural_target =
+                        (target.binding_id.clone().is_some()
+                            || (target.connective.clone() != Connective::NoConnective));
+                    if ((target_name.clone().as_str() != "".to_string().as_str())
+                        && declared_or_structural_target)
+                    {
                         Some(target_name.clone())
                     } else {
                         None
@@ -11837,6 +11842,7 @@ pub fn type_binding_decl_binding_id(
 
 pub fn carrier_closure_direct_type_deps(
     n: Rc<Node>,
+    dep_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     let n_name = authored_name_at(source_indices.clone(), n.clone());
@@ -11848,17 +11854,34 @@ pub fn carrier_closure_direct_type_deps(
     } else {
         Rc::new(vec![])
     };
+    let decl_ref = match n.binding_id.clone() {
+        Some(binding_id) => match v2_rt::map_get(&dep_env.decl_registry.clone(), binding_id) {
+            Some(decl) => {
+                if ((decl.name.clone().as_str() != "".to_string().as_str())
+                    && (decl.name.clone().as_str() != n_name.clone().as_str()))
+                    && (is_kernel_type(decl.name.clone()) == false)
+                {
+                    Rc::new(vec![decl.name.clone()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            None => Rc::new(vec![]),
+        },
+        None => Rc::new(vec![]),
+    };
     v2_rt::concat(
-        authored_ref,
+        v2_rt::concat(authored_ref, decl_ref),
         node_type_deps(n.clone(), source_indices.clone()),
     )
 }
 
 pub fn carrier_closure_node_type_deps(
     n: Rc<Node>,
+    dep_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    let base = carrier_closure_direct_type_deps(n.clone(), source_indices.clone());
+    let base = carrier_closure_direct_type_deps(n.clone(), dep_env.clone(), source_indices.clone());
     let child_deps = if (n.connective.clone() == Connective::Conj) {
         Rc::new(
             n.children
@@ -11868,6 +11891,7 @@ pub fn carrier_closure_node_type_deps(
                 .flat_map(|child: Rc<Node>| {
                     carrier_closure_node_type_deps(
                         field_node_type_expr(child.clone()),
+                        dep_env.clone(),
                         source_indices.clone(),
                     )
                     .iter()
@@ -11883,10 +11907,14 @@ pub fn carrier_closure_node_type_deps(
                 .iter()
                 .cloned()
                 .flat_map(|child: Rc<Node>| {
-                    carrier_closure_node_type_deps(child.clone(), source_indices.clone())
-                        .iter()
-                        .cloned()
-                        .collect::<Vec<String>>()
+                    carrier_closure_node_type_deps(
+                        child.clone(),
+                        dep_env.clone(),
+                        source_indices.clone(),
+                    )
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<String>>()
                 })
                 .collect::<Vec<String>>(),
         )
@@ -11935,10 +11963,12 @@ pub fn add_type_binding_dependency_closure(
                 let deps = v2_rt::concat(
                     carrier_closure_node_type_deps(
                         binding.resolved.clone(),
+                        dep_env.clone(),
                         source_indices.clone(),
                     ),
                     carrier_closure_node_type_deps(
                         stamped.resolved.clone(),
+                        dep_env.clone(),
                         source_indices.clone(),
                     ),
                 );
@@ -11998,8 +12028,12 @@ pub fn add_node_dependency_closure(
             state
         };
         let deps = v2_rt::concat(
-            carrier_closure_node_type_deps(n.clone(), source_indices.clone()),
-            carrier_closure_node_type_deps(stamped.clone(), source_indices.clone()),
+            carrier_closure_node_type_deps(n.clone(), dep_env.clone(), source_indices.clone()),
+            carrier_closure_node_type_deps(
+                stamped.clone(),
+                dep_env.clone(),
+                source_indices.clone(),
+            ),
         );
         deps.iter().cloned().fold(
             with_self,
@@ -12034,7 +12068,15 @@ pub fn carrier_closure_with_decl_rows(
                         decl.binding_id.clone(),
                     ))
                 {
-                    match v2_rt::map_get(&env.bindings.clone(), decl.binding_key.clone()) {
+                    let binding_by_name = Rc::new(v2_rt::map_values(&env.bindings.clone()))
+                        .iter()
+                        .find(|binding| binding.name == decl.name)
+                        .cloned();
+                    let binding_for_decl = match binding_by_name {
+                        Some(binding) => Some(binding.clone()),
+                        None => v2_rt::map_get(&env.bindings.clone(), decl.binding_key.clone()),
+                    };
+                    match binding_for_decl {
                         Some(binding) => Rc::new(CarrierClosureState {
                             carrier_bindings: v2_rt::rc_map_insert(
                                 acc.carrier_bindings.clone(),
