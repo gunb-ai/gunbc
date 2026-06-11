@@ -8,7 +8,8 @@ module v4.std.lexing
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Symbol }
+import v4.std.node { Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v4.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v4.std.text { Char, String }
 
 type Lexeme = String
@@ -90,4 +91,19 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
       acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
     }
   )
+}
+
+
+fn lex_empty_node() -> Node {
+  stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
+}
+
+
+// 🟡 gated — feature:t6-lex-rules-node-projection — consumer:v4.std.language_model.language_model_to_node —
+// dissolve-on: ModeledLexRules projects LexRuleSet fold to named Conj edges; VoidLexRules maps to void evidence node.
+fn lex_rules_to_node(rules: LexRules) -> Node {
+  match rules {
+    VoidLexRules => lex_empty_node()
+    ModeledLexRules { root: _ } => lex_empty_node()
+  }
 }
