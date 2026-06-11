@@ -14,6 +14,7 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Locus,
+  Textual,
   Unavailable,
   port_locus
 }
