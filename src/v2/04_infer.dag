@@ -5831,6 +5831,12 @@ type CarrierClosureState {
   seen_names: Map<String, Bool>
 }
 
+type CarrierClosureDepsInput {
+  node: Node
+  dep_env: TypeEnv
+  source_indices: Map<String, NewlineIndex>
+}
+
 fn lookup_decl_type_binding_by_name_excluding_binding_id(env: TypeEnv, name: String, excluded_binding_id: BindingId) -> TypeBinding? {
   fold(env.decl_registry |> map_values, init: none, f: (acc, decl) =>
     match acc {
@@ -5900,7 +5906,10 @@ fn type_binding_decl_binding_id(env: TypeEnv, binding: TypeBinding) -> BindingId
   )
 }
 
-fn carrier_closure_direct_type_deps(node: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
+fn carrier_closure_direct_type_deps(input: CarrierClosureDepsInput) -> List<String> {
+  let node = input.node
+  let dep_env = input.dep_env
+  let source_indices = input.source_indices
   let n_name = authored_name_at(source_indices: source_indices, node: node)
   let authored_ref = if node.ident_span != none && n_name != "" && is_kernel_type(name: n_name) == false {
     [n_name]
@@ -5919,15 +5928,22 @@ fn carrier_closure_direct_type_deps(node: Node, dep_env: TypeEnv, source_indices
   concat(concat(authored_ref, decl_ref), node_type_deps(n: node, source_indices: source_indices))
 }
 
-fn carrier_closure_node_type_deps(node: Node, dep_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let base = carrier_closure_direct_type_deps(node, dep_env, source_indices)
+fn carrier_closure_node_type_deps(input: CarrierClosureDepsInput) -> List<String> {
+  let node = input.node
+  let dep_env = input.dep_env
+  let source_indices = input.source_indices
+  let base = carrier_closure_direct_type_deps(CarrierClosureDepsInput { node: node, dep_env: dep_env, source_indices: source_indices })
+  let children = node.children
   let child_deps = if node.connective == Conj {
-    flat_map(node.children, child =>
-      carrier_closure_node_type_deps(field_node_type_expr(n: child), dep_env, source_indices)
+    children |> flat_map(child =>
+      let child_node = field_node_type_expr(n: child)
+      let child_input = CarrierClosureDepsInput { node: child_node, dep_env: dep_env, source_indices: source_indices }
+      carrier_closure_node_type_deps(child_input)
     )
   } else {
-    flat_map(node.children, child =>
-      carrier_closure_node_type_deps(child, dep_env, source_indices)
+    children |> flat_map(child =>
+      let child_input = CarrierClosureDepsInput { node: child, dep_env: dep_env, source_indices: source_indices }
+      carrier_closure_node_type_deps(child_input)
     )
   }
   concat(base, child_deps)
@@ -5958,10 +5974,9 @@ fn add_type_binding_dependency_closure(state: CarrierClosureState, binding: Type
         }
       Absent => with_binding
     }
-  let deps = concat(
-    carrier_closure_node_type_deps(binding.resolved, dep_env, source_indices),
-    carrier_closure_node_type_deps(stamped.resolved, dep_env, source_indices)
-  )
+  let binding_deps_input = CarrierClosureDepsInput { node: binding.resolved, dep_env: dep_env, source_indices: source_indices }
+  let stamped_deps_input = CarrierClosureDepsInput { node: stamped.resolved, dep_env: dep_env, source_indices: source_indices }
+  let deps = concat(carrier_closure_node_type_deps(binding_deps_input), carrier_closure_node_type_deps(stamped_deps_input))
     fold(deps, init: with_decl_binding, f: (acc, dep_name) =>
       match lookup_type_binding_by_name_in_env(env: dep_env, name: dep_name) {
         Present { value: dep_binding } => add_type_binding_dependency_closure(state: acc, binding: dep_binding, dep_env: dep_env, source_indices: source_indices)
@@ -5980,10 +5995,9 @@ fn add_node_dependency_closure(state: CarrierClosureState, n: Node, dep_env: Typ
       Absent => state
     }
   } else { state }
-  let deps = concat(
-    carrier_closure_node_type_deps(n, dep_env, source_indices),
-    carrier_closure_node_type_deps(stamped, dep_env, source_indices)
-  )
+  let node_deps_input = CarrierClosureDepsInput { node: n, dep_env: dep_env, source_indices: source_indices }
+  let stamped_deps_input = CarrierClosureDepsInput { node: stamped, dep_env: dep_env, source_indices: source_indices }
+  let deps = concat(carrier_closure_node_type_deps(node_deps_input), carrier_closure_node_type_deps(stamped_deps_input))
   fold(deps, init: with_self, f: (acc, dep_name) =>
     match lookup_type_binding_by_name_in_env(env: dep_env, name: dep_name) {
       Present { value: dep_binding } => add_type_binding_dependency_closure(state: acc, binding: dep_binding, dep_env: dep_env, source_indices: source_indices)
