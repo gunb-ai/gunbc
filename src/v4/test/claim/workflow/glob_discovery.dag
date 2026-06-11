@@ -14,7 +14,11 @@ import v4.std.text { String }
 
 
 // Cardinality pin only — mechanical diff target for host projection row count.
+<<<<<<< HEAD
 data glob_discovered_smoke_marker_count: String = "88"
+=======
+data glob_discovered_smoke_marker_count: String = "86"
+>>>>>>> origin/main
 
 
 fn glob_discovery_smoke_marker_count_is_positive() -> Bool {
