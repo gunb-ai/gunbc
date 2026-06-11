@@ -146,6 +146,31 @@ fn node_for_structural_equality(n: Node) -> Node {
   )
 }
 
+// PROV A-pivot provenance boundary — strip Node.occurrence_id at every depth for semantic/
+// structural equality (source authority AST/IR witnesses). Preserves child order (unlike
+// canonicalize_node_for_content_hash).
+fn strip_provenance_fold_init(n: Node) -> Node {
+  node_synthetic(kind: n.kind, children: [])
+}
+
+fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
+  node_rebuild(
+    n: acc,
+    children: concat(acc.children, [Edge { label: edge.label, target: child }])
+  )
+}
+
+fn strip_provenance_fold_algebra() -> NodeFold<Node> {
+  NodeFold {
+    init: strip_provenance_fold_init,
+    step: strip_provenance_fold_step
+  }
+}
+
+fn canonicalize_node_strip_provenance(n: Node) -> Node {
+  fold_node(n: n, algebra: strip_provenance_fold_algebra())
+}
+
 type Node {
   kind: NodeKind
   children: List<Edge>
