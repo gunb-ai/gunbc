@@ -181,6 +181,326 @@ pub fn try_dispatch_emit_host_go(
     )
 }
 
+/// B3 omni-emission — generic `run_host_process` substrate row (`emit_host.dag`).
+pub fn try_dispatch_run_host_process(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Option<Result<Value, EvalError>> {
+    if !is_run_host_process_decl(dag, callee_decl) {
+        return None;
+    }
+    if operands.len() != 4 {
+        return Some(Err(EvalError::TransformArityMismatch {
+            expected: 4,
+            got: operands.len(),
+        }));
+    }
+
+    let descriptor_identity = match host_transport_descriptor_identity(&operands[0]) {
+        Some(identity) => identity,
+        None => {
+            return Some(Err(EvalError::BadTransformOperands {
+                reason: "run_host_process descriptor missing identity",
+            }));
+        }
+    };
+    let source = match expect_string_operand(&operands[2]) {
+        Ok(source) => source,
+        Err(err) => return Some(Err(err)),
+    };
+    let inputs = match emit_host_transport_inputs(dag, &operands[3], state, strategy) {
+        Ok(inputs) => inputs,
+        Err(err) => return Some(Err(err)),
+    };
+    let work_dir = emit_host_runner::unique_work_dir("gunbc_eval_run_host_process");
+    let receipt = match emit_host_runner::run_host_process(
+        &descriptor_identity,
+        source,
+        &inputs,
+        &work_dir,
+    ) {
+        Ok(receipt) => receipt,
+        Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
+    };
+    let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
+        Ok(id) => id,
+        Err(err) => return Some(Err(err)),
+    };
+    let exit = match host_exit_value(dag, &receipt.exit) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stdout = match byte_string_value(dag, &receipt.stdout_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stderr = match byte_string_value(dag, &receipt.stderr_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let build_log = match build_log_value(dag, &receipt.build_log.lines) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    Some(
+        crate::evaluator::eval_callable_declaration(
+            dag,
+            callee,
+            vec![
+                operands[1].clone(),
+                Value::LiteralValue(LiteralBits::String(receipt.source_text)),
+                exit,
+                stdout,
+                stderr,
+                build_log,
+            ],
+            state,
+            strategy,
+        )
+        .and_then(|value| accepted_variant(dag, value)),
+    )
+}
+
+/// Decode `SignedI32Le` runtime primitive bytes (codec-driven, not target-specific).
+pub fn try_dispatch_runtime_value_signed_i32_le_as_int(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    _state: &mut EvalStateStack<Value>,
+    _strategy: &EvalStrategy,
+) -> Option<Result<Value, EvalError>> {
+    if !is_runtime_value_signed_i32_le_as_int_decl(dag, callee_decl) {
+        return None;
+    }
+    if operands.len() != 1 {
+        return Some(Err(EvalError::TransformArityMismatch {
+            expected: 1,
+            got: operands.len(),
+        }));
+    }
+    let bytes = match runtime_value_primitive_bytes(dag, &operands[0]) {
+        Ok(bytes) => bytes,
+        Err(err) => return Some(Err(err)),
+    };
+    let parsed = match emit_host_runner::runtime_value_parse_signed_i32_le(&bytes) {
+        Ok(n) => n,
+        Err(_) => {
+            let diagnostic = match emit_host_parse_failure_diagnostic(dag) {
+                Ok(v) => v,
+                Err(err) => return Some(Err(err)),
+            };
+            let diagnostics = match non_empty_diagnostics_singleton(dag, diagnostic) {
+                Ok(v) => v,
+                Err(err) => return Some(Err(err)),
+            };
+            return match rejected_outcome_variant(dag, diagnostics) {
+                Ok(v) => Some(Ok(v)),
+                Err(err) => Some(Err(err)),
+            };
+        }
+    };
+    match accepted_variant(
+        dag,
+        Value::LiteralValue(LiteralBits::Int(parsed.to_string())),
+    ) {
+        Ok(v) => Some(Ok(v)),
+        Err(err) => Some(Err(err)),
+    }
+}
+
+fn is_run_host_process_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_emit_host_fn_decl(dag, callee_decl, "run_host_process", 4)
+}
+
+fn is_runtime_value_signed_i32_le_as_int_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_emit_host_fn_decl(dag, callee_decl, "runtime_value_signed_i32_le_as_int", 1)
+}
+
+fn is_emit_host_fn_decl(dag: &Dag, callee_decl: DeclarationId, name: &str, arity: usize) -> bool {
+    let Some(callee) = dag.declaration_opt(&callee_decl) else {
+        return false;
+    };
+    if callee.name.as_deref() != Some(name) {
+        return false;
+    }
+    if !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_PATH) {
+        return false;
+    }
+    let TypeConnective::Arrow { inputs, body, .. } = &callee.connective else {
+        return false;
+    };
+    inputs.len() == arity && matches!(body, ArrowBody::UserDefined(_))
+}
+
+fn host_transport_descriptor_identity(value: &Value) -> Option<String> {
+    record_fields(value).and_then(|fields| {
+        fields
+            .iter()
+            .find(|f| f.label == "identity")
+            .and_then(|f| atom_identity_literal(&f.value))
+    })
+}
+
+fn runtime_value_primitive_bytes(dag: &Dag, value: &Value) -> Result<Vec<u8>, EvalError> {
+    let payload = match value {
+        Value::VariantValue { payload, .. } => payload.as_ref(),
+        _ => {
+            return Err(EvalError::BadTransformOperands {
+                reason: "runtime value is not a variant",
+            });
+        }
+    };
+    let prim_fields = record_fields(payload).ok_or(EvalError::BadTransformOperands {
+        reason: "RuntimePrimitive payload is not a record",
+    })?;
+    let value_field =
+        prim_fields
+            .iter()
+            .find(|f| f.label == "value")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "RuntimePrimitiveValue missing value field",
+            })?;
+    let inner = record_fields(&value_field.value).ok_or(EvalError::BadTransformOperands {
+        reason: "RuntimePrimitiveValue is not a record",
+    })?;
+    let bytes_field =
+        inner
+            .iter()
+            .find(|f| f.label == "bytes")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "RuntimePrimitiveValue missing bytes field",
+            })?;
+    byte_list_to_vec(dag, &bytes_field.value)
+}
+
+fn byte_list_to_vec(dag: &Dag, list: &Value) -> Result<Vec<u8>, EvalError> {
+    let byte_ty = v4_carrier_decl_id(dag, V4_STD_MACHINE_AUTHORITY, "Byte")?;
+    let list_ty = list_instantiation_for_element(dag, byte_ty)?;
+    let empty_tag = find_list_variant_tag(dag, list_ty, "Empty")?;
+    let cons_tag = find_list_variant_tag(dag, list_ty, "Cons")?;
+    let mut out = Vec::new();
+    let mut current = list;
+    loop {
+        let Value::VariantValue { tag, payload } = current else {
+            return Err(EvalError::BadTransformOperands {
+                reason: "byte list is not a variant",
+            });
+        };
+        if *tag == empty_tag {
+            break;
+        }
+        if *tag != cons_tag {
+            return Err(EvalError::BadTransformOperands {
+                reason: "byte list variant is not Empty or Cons",
+            });
+        }
+        let fields = record_fields(payload).ok_or(EvalError::BadTransformOperands {
+            reason: "byte list Cons is not a record",
+        })?;
+        let head =
+            fields
+                .iter()
+                .find(|f| f.label == "head")
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "byte list Cons missing head",
+                })?;
+        out.push(byte_value_to_u8(dag, &head.value)?);
+        let tail =
+            fields
+                .iter()
+                .find(|f| f.label == "tail")
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "byte list Cons missing tail",
+                })?;
+        current = &tail.value;
+    }
+    Ok(out)
+}
+
+fn byte_value_to_u8(dag: &Dag, value: &Value) -> Result<u8, EvalError> {
+    let fields = record_fields(value).ok_or(EvalError::BadTransformOperands {
+        reason: "byte is not a record",
+    })?;
+    let bits_value =
+        fields
+            .iter()
+            .find(|f| f.label == "bits")
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "byte missing bits field",
+            })?;
+    let bits = bit_list_to_bools(dag, &bits_value.value)?;
+    if bits.len() != 8 {
+        return Err(EvalError::BadTransformOperands {
+            reason: "byte bits length is not 8",
+        });
+    }
+    let mut byte = 0u8;
+    for (shift, bit) in bits.iter().enumerate() {
+        if *bit {
+            byte |= 1 << (7 - shift);
+        }
+    }
+    Ok(byte)
+}
+
+fn bit_list_to_bools(dag: &Dag, list: &Value) -> Result<Vec<bool>, EvalError> {
+    let bit_ty = v4_carrier_decl_id(dag, V4_STD_MACHINE_AUTHORITY, "Bit")?;
+    let list_ty = list_instantiation_for_element(dag, bit_ty)?;
+    let empty_tag = find_list_variant_tag(dag, list_ty, "Empty")?;
+    let cons_tag = find_list_variant_tag(dag, list_ty, "Cons")?;
+    let mut out = Vec::new();
+    let mut current = list;
+    loop {
+        let Value::VariantValue { tag, payload } = current else {
+            return Err(EvalError::BadTransformOperands {
+                reason: "bit list is not a variant",
+            });
+        };
+        if *tag == empty_tag {
+            break;
+        }
+        if *tag != cons_tag {
+            return Err(EvalError::BadTransformOperands {
+                reason: "bit list variant is not Empty or Cons",
+            });
+        }
+        let fields = record_fields(payload).ok_or(EvalError::BadTransformOperands {
+            reason: "bit list Cons is not a record",
+        })?;
+        let head =
+            fields
+                .iter()
+                .find(|f| f.label == "head")
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "bit list Cons missing head",
+                })?;
+        match &head.value {
+            Value::LiteralValue(LiteralBits::Bool(bit)) => out.push(*bit),
+            _ => {
+                return Err(EvalError::BadTransformOperands {
+                    reason: "bit list head is not Bool",
+                });
+            }
+        }
+        let tail =
+            fields
+                .iter()
+                .find(|f| f.label == "tail")
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "bit list Cons missing tail",
+                })?;
+        current = &tail.value;
+    }
+    Ok(out)
+}
+
+fn emit_host_parse_failure_diagnostic(dag: &Dag) -> Result<Value, EvalError> {
+    emit_host_port_diagnostic(dag, "emit_host_parse_failure")
+}
+
 fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
     is_run_emit_host_decl(dag, callee_decl, "run_emit_host_rust")
 }
@@ -1882,5 +2202,182 @@ mod tests {
             try_dispatch_emit_host_go(&dag, rust_decl, &[], &mut state, &strategy).is_none(),
             "run_emit_host_rust must stay on the Rust dispatch hook"
         );
+    }
+
+    fn substrate_arrow_fn_decl(
+        dag: &mut Dag,
+        name: &str,
+        inputs: Vec<DeclarationId>,
+        file: &str,
+    ) -> DeclarationId {
+        let output = atom_decl(dag, "OutcomeStub", file);
+        let body_value = dag.push_value(LiteralBits::Bool(false), span(file));
+        let bind = dag.push_bind(
+            "transport_not_wired_body",
+            body_value,
+            Vec::new(),
+            span(file),
+        );
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective: TypeConnective::Arrow {
+                inputs,
+                output,
+                body: ArrowBody::UserDefined(
+                    BindNodeId::from_bind_node(dag, bind).expect("bind body"),
+                ),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn run_host_process_decl(dag: &mut Dag, file: &str) -> DeclarationId {
+        let descriptor = atom_decl(dag, "HostTransportDescriptor", file);
+        let target = atom_decl(dag, "TargetModel", file);
+        let source = atom_decl(dag, "TargetSource", file);
+        let inputs = atom_decl(dag, "Inputs", file);
+        substrate_arrow_fn_decl(
+            dag,
+            "run_host_process",
+            vec![descriptor, target, source, inputs],
+            file,
+        )
+    }
+
+    fn runtime_value_signed_i32_le_as_int_decl(dag: &mut Dag, file: &str) -> DeclarationId {
+        let runtime_value = atom_decl(dag, "RuntimeValue", file);
+        substrate_arrow_fn_decl(
+            dag,
+            "runtime_value_signed_i32_le_as_int",
+            vec![runtime_value],
+            file,
+        )
+    }
+
+    fn signed_i32_le_runtime_value_operand(dag: &Dag, n: i32) -> Value {
+        let bytes = byte_string_value(dag, &n.to_le_bytes()).expect("byte string");
+        let prim_value = Value::RecordValue(vec![
+            NamedField {
+                label: "primitive_type".to_string(),
+                value: Value::RecordValue(vec![]),
+            },
+            NamedField {
+                label: "bytes".to_string(),
+                value: bytes,
+            },
+        ]);
+        Value::VariantValue {
+            tag: DeclarationId::test_raw(99),
+            payload: Box::new(Value::RecordValue(vec![NamedField {
+                label: "value".to_string(),
+                value: prim_value,
+            }])),
+        }
+    }
+
+    #[test]
+    fn b3_run_host_process_eval_dispatch_claims_only_emit_host_authority() {
+        let mut dag = Dag::new();
+        let proc_decl = run_host_process_decl(&mut dag, "src/v4/compiler/emit_host.dag");
+        let lookalike_decl = run_host_process_decl(&mut dag, "src/v4/compiler/other.dag");
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+
+        let claimed = try_dispatch_run_host_process(&dag, proc_decl, &[], &mut state, &strategy)
+            .expect("run_host_process hook must claim emit_host.dag row");
+        assert_eq!(
+            claimed,
+            Err(EvalError::TransformArityMismatch {
+                expected: 4,
+                got: 0
+            }),
+            "hook must claim before arity validation"
+        );
+        assert!(
+            try_dispatch_run_host_process(&dag, lookalike_decl, &[], &mut state, &strategy)
+                .is_none(),
+            "same-name declarations outside emit_host.dag must not be intercepted"
+        );
+    }
+
+    #[test]
+    fn b3_runtime_value_signed_i32_le_as_int_eval_dispatch_reifies_five() {
+        let mut dag = dag_with_hermetic_v4_emit_host_carriers();
+        let callee_decl =
+            runtime_value_signed_i32_le_as_int_decl(&mut dag, "src/v4/compiler/emit_host.dag");
+        let operand = signed_i32_le_runtime_value_operand(&dag, 5);
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+
+        let result = try_dispatch_runtime_value_signed_i32_le_as_int(
+            &dag,
+            callee_decl,
+            &[operand],
+            &mut state,
+            &strategy,
+        )
+        .expect("SignedI32Le hook must claim emit_host.dag row")
+        .expect("four-byte LE payload must reify");
+
+        let Value::VariantValue { tag, payload } = &result else {
+            panic!("expected Outcome variant, got {result:?}");
+        };
+        assert_eq!(
+            v4_carrier_variant_tag(&dag, V4_STD_DIAGNOSTIC_AUTHORITY, "Outcome", "Accepted")
+                .expect("Accepted tag"),
+            *tag
+        );
+        let Value::RecordValue(outcome_fields) = &**payload else {
+            panic!("expected Accepted payload record");
+        };
+        let value_field = outcome_fields
+            .iter()
+            .find(|field| field.label == "value")
+            .expect("Accepted.value");
+        assert_eq!(
+            value_field.value,
+            Value::LiteralValue(LiteralBits::Int("5".to_string()))
+        );
+    }
+
+    #[test]
+    fn b3_runtime_value_signed_i32_le_as_int_claims_only_emit_host_authority() {
+        let mut dag = Dag::new();
+        let decl =
+            runtime_value_signed_i32_le_as_int_decl(&mut dag, "src/v4/compiler/emit_host.dag");
+        let lookalike =
+            runtime_value_signed_i32_le_as_int_decl(&mut dag, "src/v4/compiler/other.dag");
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+
+        let claimed =
+            try_dispatch_runtime_value_signed_i32_le_as_int(&dag, decl, &[], &mut state, &strategy)
+                .expect("hook must claim emit_host.dag row");
+        assert_eq!(
+            claimed,
+            Err(EvalError::TransformArityMismatch {
+                expected: 1,
+                got: 0
+            })
+        );
+        assert!(try_dispatch_runtime_value_signed_i32_le_as_int(
+            &dag,
+            lookalike,
+            &[],
+            &mut state,
+            &strategy
+        )
+        .is_none());
     }
 }

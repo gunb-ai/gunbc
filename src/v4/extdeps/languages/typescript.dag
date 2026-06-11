@@ -198,6 +198,17 @@ import v4.std.node {
   arrow_body_edge,
   SyntheticOccurrence
 }
+import v4.std.host_transport {
+  EmittedWithSuffix,
+  HostTransportDescriptor,
+  LiteralArg,
+  ProcessInvocation,
+  ProducedArtifact,
+  SignedI32Le,
+  WorkspaceFile,
+  host_tool_node,
+  host_tool_npx
+}
 import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v4.std.algebra {
   algebra_binary_fn_node,
@@ -1454,6 +1465,50 @@ fn ts_mvp1_target_model() -> TargetModel {
     lex: ts_wave1_lex(),
     binding_spellings: ts_mvp1_binding_spellings(),
     authority_source_text: ts_mvp1_source_text_authority()
+  }
+}
+
+// B3 omni-emission — MVP-1 add-fn Node host transport (tsc → node; SignedI32Le stdout).
+data ts_host_transport_mvp1_identity: Symbol = ts_host_transport_mvp1_identity
+
+data ts_host_transport_mvp1_harness_suffix: String = "
+const __gunbc_r = add(2, 3);
+const __gunbc_b = Buffer.alloc(4);
+__gunbc_b.writeInt32LE(__gunbc_r, 0);
+process.stdout.write(__gunbc_b);
+"
+
+fn ts_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ts_host_transport_mvp1_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "fixture.ts",
+        content: EmittedWithSuffix { suffix: ts_host_transport_mvp1_harness_suffix }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        tool: host_tool_npx,
+        args: [
+          LiteralArg { text: "-y" },
+          LiteralArg { text: "typescript@5.9.2" },
+          LiteralArg { text: "tsc" },
+          LiteralArg { text: "--target" },
+          LiteralArg { text: "ES2022" },
+          LiteralArg { text: "--module" },
+          LiteralArg { text: "commonjs" },
+          LiteralArg { text: "--outDir" },
+          LiteralArg { text: "." },
+          LiteralArg { text: "fixture.ts" }
+        ]
+      }
+    ],
+    run: ProcessInvocation {
+      tool: host_tool_node,
+      args: [ProducedArtifact { path: "fixture.js" }]
+    },
+    runtime_value_codec: SignedI32Le
   }
 }
 
