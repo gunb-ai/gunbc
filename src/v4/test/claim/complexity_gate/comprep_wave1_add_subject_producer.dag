@@ -28,6 +28,10 @@ import v4.std.node { Node, Symbol }
 
 data comprep_wave1_add_subject_source_file: Symbol = comprep_wave1_add_subject_source_file
 
+fn comprep_wave1_add_parse_tree_to_node(tree: ParseTree) -> Node {
+  tree
+}
+
 fn comprep_wave1_add_parse_root() -> GrammarRoot {
   GrammarRoot {
     start: ^dag_production_mvp1_fn_add,
@@ -66,7 +70,7 @@ fn comprep_source_resolved_add_arrow() -> Outcome<Node> {
         o: comprep_wave1_add_parse_tokens(tokens: tokens.tokens),
         f: fn(parsed) {
           bind_outcome(
-            o: normalize(parse_tree: parsed),
+            o: normalize(parse_tree: comprep_wave1_add_parse_tree_to_node(tree: parsed)),
             f: fn(normalized) {
               resolve(tree: normalized, lm: lm)
             }
