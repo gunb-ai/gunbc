@@ -10863,7 +10863,8 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
         match sh.clone() {
             Some(TokenShape::ShKeyword) => {
                 let kw_text = tok.clone().unwrap().text.clone();
-                let lit_val = v2_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
+                let lit_val =
+                    v2_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
                 match lit_val {
                     v2_rt::Witness::Holds { value: lv, .. } => Rc::new(ExprResult {
                         expr: make_expr_node(
