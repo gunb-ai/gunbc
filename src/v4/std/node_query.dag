@@ -20,11 +20,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
-import v4.std.collection {
-  List,
-  optional_absent,
-  optional_present
-}
+import v4.std.collection { List }
 import v4.std.type_expr_projection_row_schema {
   target_type_expr_field_child_slots
 }
@@ -32,7 +28,6 @@ import v4.std.node {
   Ambiguous,
   Arrow,
   Conj,
-  Absent,
   Edge,
   Found,
   Named,
@@ -64,37 +59,35 @@ fn node_labeled_child_edges(node: Node) -> List<Edge> {
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-envelope-without-named-coordinate — bind node://adhoc-sg2-envelope-peel — dissolve-on-arrival: substrate canonical peel of ≤1 named coordinate from a Conj envelope edge list; forbidden: parallel edge-label Bool filters outside std/node_query.
 fn node_envelope_without_named_coordinate_go(
+  root: Node,
   xs: FreeMonoid<Edge>,
   coordinate: Symbol,
   acc: FreeMonoid<Edge>,
   saw_coordinate: Bool
-) -> FreeMonoid<Edge>? {
+) -> Outcome<FreeMonoid<Edge>> {
   match xs {
-    Empty => optional_present(value: acc)
+    Empty => outcome_accepted(value: acc)
     Cons { head: h, tail: t } =>
       match h.label {
         Named { name: n } =>
-          if n == coordinate {
-            match saw_coordinate {
-              true => optional_absent()
-              false =>
-                node_envelope_without_named_coordinate_go(
-                  xs: t,
-                  coordinate: coordinate,
-                  acc: acc,
-                  saw_coordinate: true
-                )
-            }
+          if (n == coordinate) && saw_coordinate {
+            outcome_rejected(d: Diagnostic {
+              reason: ^named_child_ambiguous,
+              at: node_locus(node: root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
           } else {
             node_envelope_without_named_coordinate_go(
+              root: root,
               xs: t,
               coordinate: coordinate,
-              acc: list_snoc_item(xs: acc, item: h),
-              saw_coordinate: saw_coordinate
+              acc: if n == coordinate { acc } else { list_snoc_item(xs: acc, item: h) },
+              saw_coordinate: saw_coordinate || (n == coordinate)
             )
           }
         Positional =>
           node_envelope_without_named_coordinate_go(
+            root: root,
             xs: t,
             coordinate: coordinate,
             acc: list_snoc_item(xs: acc, item: h),
@@ -159,15 +152,15 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: root.children) {
         Found { target: body } => outcome_accepted(value: body)
-        Absent =>
-          outcome_rejected(d: Diagnostic {
-            reason: ^arrow_body_child_missing,
-            at: node_locus(node: root),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          })
         Ambiguous =>
           outcome_rejected(d: Diagnostic {
             reason: ^arrow_body_child_ambiguous,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        _ =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^arrow_body_child_missing,
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
           })

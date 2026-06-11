@@ -74,6 +74,7 @@ import v4.std.node {
   connective_edge_discipline,
   content_hash,
   fold_node,
+  node_rebuild,
   Unanchored
 }
 import v4.std.witness { StructuralPropertyWitness }
@@ -3636,8 +3637,8 @@ fn type_expr_projection_row_shape_envelope(
   envelope: Node,
   connective: Connective
 ) -> Node {
-  Node {
-    kind: envelope.kind,
+  node_rebuild(
+    n: envelope,
     children: list_append(
       left: envelope.children,
       right: Cons {
@@ -3647,9 +3648,8 @@ fn type_expr_projection_row_shape_envelope(
         ),
         tail: Empty
       }
-    ),
-    span: envelope.span
-  }
+    )
+  )
 }
 
 // SG-2 fold — substrate child slots as named coordinate (substrate TypeNode authority; not flat Conj mix).
@@ -3657,8 +3657,8 @@ fn type_expr_projection_graft_child_slots_coordinate(
   envelope: Node,
   facts: Node
 ) -> Node {
-  Node {
-    kind: envelope.kind,
+  node_rebuild(
+    n: envelope,
     children: list_append(
       left: envelope.children,
       right: Cons {
@@ -3669,7 +3669,7 @@ fn type_expr_projection_graft_child_slots_coordinate(
         tail: Empty
       }
     )
-  }
+  )
 }
 
 // P2 row-shape authority — consumed by *type_expression_projection_bundle_node in language targets.
@@ -3804,19 +3804,11 @@ fn type_expr_projection_substrate_facts(
   projected_positional: List<Node>
 ) -> Node {
   match node.kind {
-    TypeNode { connective: Conj } =>
-      Node {
-        kind: node.kind,
-        children: node.children
-      }
-    TypeNode { connective: Disj } =>
-      Node {
-        kind: node.kind,
-        children: node.children
-      }
+    TypeNode { connective: Conj } => node
+    TypeNode { connective: Disj } => node
     _ =>
-      Node {
-        kind: node.kind,
+      node_rebuild(
+        n: node,
         children: fold_list(
           xs: projected_positional,
           empty: Empty,
@@ -3827,7 +3819,7 @@ fn type_expr_projection_substrate_facts(
             )
           }
         )
-      }
+      )
   }
 }
 

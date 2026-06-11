@@ -97,17 +97,18 @@ fn type_expr_projection_row_envelope_exact_equal(
   source_facts: Node
 ) -> Bool {
   match node_envelope_without_named_coordinate_go(
+    root: source_facts,
     xs: source_facts.children,
     coordinate: target_type_expr_field_child_slots,
     acc: Empty,
     saw_coordinate: false
   ) {
-    Present { value: envelope } =>
+    Accepted { value: envelope, diagnostics: _ } =>
       type_expr_projection_edges_exact_equal(
         left: candidate.children,
         right: envelope
       )
-    Absent => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
