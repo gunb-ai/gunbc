@@ -4,7 +4,7 @@
 
 module v4.std.language_model
 
-import v4.std.collection { Absent, Optional, Present, Set, list_at_optional }
+import v4.std.collection { Set }
 import v4.std.grammar {
   ParseGrammar,
   VoidGrammar,
@@ -13,7 +13,11 @@ import v4.std.grammar {
   grammar_to_node
 }
 import v4.std.lexing { LexRules, VoidLexRules, lex_rules_to_node }
-import v4.std.model_core { ModelCore, wave1_void }
+import v4.std.model_core {
+  ModelCore,
+  model_core_first_primitive_substrate,
+  wave1_void
+}
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 
@@ -73,14 +77,6 @@ fn language_model_canonical_symbols_to_node(symbols: Set<Symbol>) -> Node {
 }
 
 
-fn language_model_core_primitives_head_substrate(core: ModelCore) -> Node {
-  match list_at_optional(xs: core.primitives, index: 0) {
-    Present { value: bundle } => bundle.substrate_carrier
-    Absent => grammar_empty_node()
-  }
-}
-
-
 fn language_model_to_node(lm: LanguageModel) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -103,7 +99,7 @@ fn language_model_to_node(lm: LanguageModel) -> Node {
       ),
       language_model_named_edge(
         name: language_model_field_core,
-        target: language_model_core_primitives_head_substrate(core: lm.core)
+        target: model_core_first_primitive_substrate(core: lm.core)
       )
     ],
     occurrence_id: SyntheticOccurrence

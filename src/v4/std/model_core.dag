@@ -6,7 +6,7 @@
 module v4.std.model_core
 
 
-import v4.std.collection { List, Map }
+import v4.std.collection { Absent, List, Map, Present, list_at_optional }
 import v4.std.diagnostic {
   Diagnostic,
   Textual,
@@ -274,4 +274,17 @@ fn wave1_model_core() -> ModelCore {
 
 fn wave1_void() -> ModelCore {
   wave1_model_core()
+}
+
+
+fn model_core_first_primitive_substrate(core: ModelCore) -> Node {
+  match list_at_optional(xs: core.primitives, index: 0) {
+    Present { value: bundle } => bundle.substrate_carrier
+    Absent =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
 }
