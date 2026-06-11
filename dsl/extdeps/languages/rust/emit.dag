@@ -102,7 +102,7 @@ data rust_string_types: List<String> = ["String", "Secret"]
 // dependency so derives are free at the margin.
 data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
 // Copy variant: value-semantic types that don't need Rc wrapping.
-data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
+data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]"
 data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
 // Copy variant: simple enums (all-unit variants).
 data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"

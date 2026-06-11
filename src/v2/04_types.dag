@@ -66,6 +66,42 @@ fn child_type_node(ch: Node) -> Node {
   if ch.inferred != none { resolved_type(n: ch) } else { ch }
 }
 
+// 🟡 phase-1 alias-transparency predicate — owner/lane:
+// Mgr-SOUNDNESS bare-alias carrier dissolution. Remove when Node exposes a
+// canonical bare_alias_target accessor, so transparency reads that fact instead
+// of rechecking the NoConnective/empty-children shape.
+fn node_is_bare_type_ref(n: Node) -> Bool {
+  n.connective == NoConnective
+    && n.children |> count == 0
+    && n.params |> count == 0
+}
+
+fn node_bare_alias_target_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  if node_is_bare_type_ref(n: n) {
+    match n.inferred {
+      Present { value: Resolved { node: target } } =>
+        if node_is_bare_type_ref(n: target) {
+          Present { value: authored_name_at(source_indices: source_indices, node: target) }
+        } else { none }
+      _ => none
+    }
+  } else { none }
+}
+
+fn nodes_are_transparent_bare_alias_pair(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let left_name = authored_name_at(source_indices: source_indices, node: left)
+  let right_name = authored_name_at(source_indices: source_indices, node: right)
+  match node_bare_alias_target_name(n: left, source_indices: source_indices) {
+    Present { value: left_target } =>
+      left_target == right_name
+    Absent =>
+      match node_bare_alias_target_name(n: right, source_indices: source_indices) {
+        Present { value: right_target } => right_target == left_name
+        Absent => false
+      }
+  }
+}
+
 fn child_type_at(n: Node, index: Int) -> Node? {
   match n.children |> skip(index) |> first {
     Present { value: ch } => Present { value: child_type_node(ch: ch) }
@@ -126,7 +162,7 @@ fn is_declared_container_alias_spelling(name: String) -> Bool {
 fn structural_carrier_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   if n.name != "" {
     canonical_template_name(n: Node {
-      name: n.name, span: n.span, ident_span: Present { value: kernel_span(name: n.name) },
+      name: n.name, ident: n.ident, binding_id: n.binding_id, span: n.span, ident_span: Present { value: kernel_span(name: n.name) },
       children: n.children, connective: n.connective, params: n.params, inferred: n.inferred,
       return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
       properties: n.properties, type_annotation: n.type_annotation,
@@ -138,6 +174,28 @@ fn structural_carrier_template_name(n: Node, source_indices: Map<String, Newline
   }
 }
 
+fn free_monoid_coproduct_element(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  if n.connective == Disj && canonical_template_name(n: n, source_indices: source_indices) == "FreeMonoid" {
+    let cons_variant = find_child_named(n: n, name: "Cons", source_indices: source_indices)
+    match cons_variant {
+      Present { value: cons } =>
+        let head_by_name = match find_child_named(n: cons, name: "head", source_indices: source_indices) {
+          Present { value: head_field } => Present { value: child_type_node(ch: head_field) }
+          Absent => none
+        }
+        match head_by_name {
+          Present { value: _ } => head_by_name
+          Absent =>
+            match cons.children |> first {
+              Present { value: first_field } => Present { value: child_type_node(ch: first_field) }
+              Absent => none
+            }
+        }
+      Absent => none
+    }
+  } else { none }
+}
+
 // =========================================================================
 // Type structure predicates (MM-2)
 // =========================================================================
@@ -145,7 +203,15 @@ fn structural_carrier_template_name(n: Node, source_indices: Map<String, Newline
 fn is_product_type(n: Node) -> Bool { n.connective == Conj }
 fn is_coproduct_type(n: Node) -> Bool { n.connective == Disj }
 fn is_leaf_type(n: Node) -> Bool { n.connective == NoConnective }
-fn is_unit_like(n: Node) -> Bool { n.connective == Conj && n.children |> count == 0 }
+fn is_unit_like(n: Node) -> Bool {
+  (n.connective == Conj && n.children |> count == 0)
+    || (n.connective == NoConnective
+      && n.children |> count == 0
+      // 🟡 bootstrap-kernel Unit bridge — owner/lane: Mgr-SOUNDNESS
+      // branch-join env lookup completion. Remove this name arm when stage0
+      // branch joins resolve kernel Unit through TypeEnv before comparison.
+      && n.name == "Unit")
+}
 
 fn is_fully_resolved(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let self_is_type_var = match n.inferred { Present { value: inf } => is_type_variable(inferred: inf)  Absent => false }
@@ -321,7 +387,7 @@ fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node
 }
 
 fn enrich_base_with_fields(name: String, base: Node, fields: List<Node>) -> Node {
-  Node { name: name, span: base.span, ident_span: base.ident_span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  Node { name: name, ident: base.ident, binding_id: base.binding_id, span: base.span, ident_span: base.ident_span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
 }
 
 fn placeholder_type_node(name: String) -> Node {
@@ -744,17 +810,75 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
         }
       }
     }
-    else if (((canonical_template_name(n: left, source_indices: source_indices) == canonical_template_name(n: right, source_indices: source_indices))
-      && (authored_name_at(source_indices: source_indices, node: left) != authored_name_at(source_indices: source_indices, node: right)))
+    else if free_monoid_coproduct_element(n: left, source_indices: source_indices) != none
+      && free_monoid_coproduct_element(n: right, source_indices: source_indices) != none {
+      let left_el = free_monoid_coproduct_element(n: left, source_indices: source_indices).value
+      let right_el = free_monoid_coproduct_element(n: right, source_indices: source_indices).value
+      if is_unit_like(n: left_el) || is_unit_like(n: right_el) { true }
+      else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices) }
+    }
+    else if left_is_container && free_monoid_coproduct_element(n: right, source_indices: source_indices) != none {
+      match left.children |> first {
+        Present { value: left_ch } =>
+          let left_el = child_type_node(ch: left_ch)
+          let right_el = free_monoid_coproduct_element(n: right, source_indices: source_indices).value
+          if is_unit_like(n: left_el) || is_unit_like(n: right_el) { true }
+          else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices) }
+        Absent => true
+      }
+    }
+    else if right_is_container && free_monoid_coproduct_element(n: left, source_indices: source_indices) != none {
+      match right.children |> first {
+        Present { value: right_ch } =>
+          let left_el = free_monoid_coproduct_element(n: left, source_indices: source_indices).value
+          let right_el = child_type_node(ch: right_ch)
+          if is_unit_like(n: left_el) || is_unit_like(n: right_el) { true }
+          else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices) }
+        Absent => true
+      }
+    }
+    else if node_is_keyed_collection(n: left, source_indices: source_indices)
+      && node_is_keyed_collection(n: right, source_indices: source_indices) {
+      if authored_name_at(source_indices: source_indices, node: left) != authored_name_at(source_indices: source_indices, node: right) { false }
+      else if (left.children |> count) != 2 || (right.children |> count) != 2 { false }
+      else {
+        match left.children |> first {
+          Present { value: left_key_ch } =>
+            match right.children |> first {
+              Present { value: right_key_ch } =>
+                match left.children |> skip(1) |> first {
+                  Present { value: left_val_ch } =>
+                    match right.children |> skip(1) |> first {
+                      Present { value: right_val_ch } =>
+                        node_type_compatible(
+                          left: child_type_node(ch: left_key_ch),
+                          right: child_type_node(ch: right_key_ch),
+                          source_indices: source_indices
+                        )
+                        && node_type_compatible(
+                          left: child_type_node(ch: left_val_ch),
+                          right: child_type_node(ch: right_val_ch),
+                          source_indices: source_indices
+                        )
+                      Absent => false
+                    }
+                  Absent => false
+                }
+              Absent => false
+            }
+          Absent => false
+        }
+      }
+    }
+    else if ((canonical_template_name(n: left, source_indices: source_indices) == canonical_template_name(n: right, source_indices: source_indices))
       && (left.children |> count == 1)) && (right.children |> count == 1)
       && (is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: left))
         || is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: right))) {
       // Aliased sequence spellings — e.g. List<T> (Container) vs FreeMonoid<T>
       // (Node), which collection.dag declares the SAME type (List = FreeMonoid).
-      // They canonicalize to the same template but carry different surface
-      // names. Compare element types across the two reps. Fires
-      // ONLY when the names DIFFER but canonicalize equal, so same-named and
-      // genuinely-distinct types are untouched (minimal blast radius).
+      // Container shells are structural; compare element types across the two
+      // reps, including duplicate FreeMonoid shells reached through imported
+      // carriers. Element binding_id still enforces brand distinctions.
       match left.children |> first {
         Present { value: left_ch } =>
           match right.children |> first {
@@ -777,7 +901,27 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       else { node_type_compatible(left: left_inner, right: right_inner, source_indices: source_indices) }
     }
     else if left_opt || right_opt { false }
-    else { authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right) }
+    else if nodes_are_transparent_bare_alias_pair(left: left, right: right, source_indices: source_indices) { true }
+    else if left.binding_id != none && right.binding_id != none && left.binding_id == right.binding_id { true }
+    else if authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right)
+      && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: left)) { true }
+    else {
+      match left.binding_id {
+        Present { value: left_binding_id } =>
+          match right.binding_id {
+            Present { value: right_binding_id } => left_binding_id == right_binding_id
+            Absent => false
+          }
+        Absent =>
+          match right.binding_id {
+            Present { value: _ } => false
+            // Phase-1 fallback is only for still-unbranded kernel/synthetic
+            // leaves. register_type_decl_binding stamps all user declarations
+            // at build_type_env authority; stamped nodes fail closed above.
+            Absent => authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right)
+          }
+      }
+    }
   }
 }
 
