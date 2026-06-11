@@ -1814,6 +1814,437 @@ fn target_value_expression_primitive_apply(
   }
 }
 
+data target_value_expression_emit_unsupported_kind: Symbol = target_value_expression_emit_unsupported_kind
+data target_value_expression_emit_operator_shape_unsupported: Symbol = target_value_expression_emit_operator_shape_unsupported
+data target_value_expression_emit_primitive_apply_arity_invalid: Symbol = target_value_expression_emit_primitive_apply_arity_invalid
+
+fn target_value_expression_emit_unsupported_kind_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_expression_emit_unsupported_kind,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_expression_emit_operator_shape_unsupported,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: target_value_expression_emit_primitive_apply_arity_invalid,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_operator_realization_catalog_miss_diagnostic(catalog: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_operator_realization_catalog_miss,
+    at: node_locus(node: catalog),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_operator_realization_catalog_ambiguous_diagnostic(catalog: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_operator_realization_catalog_ambiguous,
+    at: node_locus(node: catalog),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+type TargetOperatorRealizationLookup
+  = TargetOperatorRealizationMissing
+  | TargetOperatorRealizationUnique { realization: TargetOperatorRealization }
+  | TargetOperatorRealizationAmbiguous
+
+fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outcome<Bool> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: true,
+        f: fn(acc, e) {
+          if acc {
+            match e.label {
+              Positional => false
+              Named { name: n } =>
+                if n == target_operator_realization_row_edge {
+                  match target_operator_realization_row_wire_schema_valid(row: e.target) {
+                    Accepted { value: _, diagnostics: _ } => true
+                    Rejected { diagnostics: _ } => false
+                  }
+                } else {
+                  false
+                }
+            }
+          } else {
+            false
+          }
+        }
+      ) {
+        true => outcome_accepted(true)
+        false =>
+          outcome_rejected(
+            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+      )
+  }
+}
+
+fn target_operator_realization_lookup_step(
+  acc: TargetOperatorRealizationLookup,
+  row: Node,
+  operation: CanonicalOperation
+) -> TargetOperatorRealizationLookup {
+  match target_operator_realization_from_wire_row(row: row) {
+    Accepted { value: realization, diagnostics: _ } =>
+      if canonical_operation_equal(left: realization.operation, right: operation) {
+        match acc {
+          TargetOperatorRealizationUnique { realization: _ } =>
+            TargetOperatorRealizationAmbiguous
+          TargetOperatorRealizationAmbiguous => TargetOperatorRealizationAmbiguous
+          TargetOperatorRealizationMissing =>
+            TargetOperatorRealizationUnique { realization: realization }
+        }
+      } else {
+        acc
+      }
+    Rejected { diagnostics: _ } => acc
+  }
+}
+
+fn target_operator_realization_catalog_lookup(
+  catalog: Node,
+  operation: CanonicalOperation
+) -> Outcome<TargetOperatorRealization> {
+  bind_outcome(
+    o: target_operator_realization_catalog_wire_schema_valid(catalog: catalog),
+    f: fn(_) {
+      match catalog.kind {
+        TypeNode { connective: Conj } =>
+          match fold(
+            catalog.children,
+            init: TargetOperatorRealizationMissing,
+            f: fn(acc, e) {
+              match e.label {
+                Named { name: n } =>
+                  if n == target_operator_realization_row_edge {
+                    target_operator_realization_lookup_step(
+                      acc: acc,
+                      row: e.target,
+                      operation: operation
+                    )
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+            }
+          ) {
+            TargetOperatorRealizationMissing =>
+              outcome_rejected(
+                target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+              )
+            TargetOperatorRealizationUnique { realization: row } =>
+              outcome_accepted(row)
+            TargetOperatorRealizationAmbiguous =>
+              outcome_rejected(
+                target_operator_realization_catalog_ambiguous_diagnostic(catalog: catalog)
+              )
+          }
+        _ =>
+          outcome_rejected(
+            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+          )
+      }
+    }
+  )
+}
+
+fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<CanonicalOperation> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match e.label {
+            Named { name: n } =>
+              if n == target_value_expr_field_operation {
+                match canonical_operation_from_wire_node(wire: e.target) {
+                  Accepted { value: operation, diagnostics: _ } =>
+                    optional_present(value: operation)
+                  Rejected { diagnostics: _ } => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: operation } => outcome_accepted(operation)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_primitive_apply_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+
+fn target_value_expression_binding_ref_token(
+  binding: Symbol,
+  projection: TargetValueExpressionProjection
+) -> ConcreteSyntaxToken {
+  BoundToken {
+    token_class: projection.binding_ref_form.ident_token,
+    binding: binding
+  }
+}
+
+fn target_value_expression_binding_refs_to_tokens(
+  bindings: List<Symbol>,
+  projection: TargetValueExpressionProjection
+) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: bindings,
+    init: [],
+    f: fn(binding, acc) {
+      list_snoc_item(
+        xs: acc,
+        x: target_value_expression_binding_ref_token(
+          binding: binding,
+          projection: projection
+        )
+      )
+    }
+  )
+}
+
+fn target_concrete_syntax_tokens_intersperse_fixed(
+  tokens: List<ConcreteSyntaxToken>,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  match tokens {
+    Empty => []
+    Cons { head: first, tail: rest } =>
+      fold_list(
+        xs: rest,
+        init: [first],
+        f: fn(token, acc) {
+          list_append(
+            left: list_append(
+              left: acc,
+              right: [FixedToken { token_class: separator }]
+            ),
+            right: [token]
+          )
+        }
+      )
+  }
+}
+
+fn target_operator_shape_emit_primitive_apply_tokens(
+  shape: TargetOperatorShape,
+  projection: TargetValueExpressionProjection,
+  bindings: List<Symbol>,
+  expr: TargetValueExpression
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match shape {
+    InfixToken { token: op_token } =>
+      if length(xs: bindings) != 2 {
+        outcome_rejected(
+          target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+        )
+      } else {
+        match list_at_optional(xs: bindings, index: 0) {
+          Absent =>
+            outcome_rejected(
+              target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+            )
+          Present { value: left_binding } =>
+            match list_at_optional(xs: bindings, index: 1) {
+              Absent =>
+                outcome_rejected(
+                  target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+                )
+              Present { value: right_binding } =>
+                outcome_accepted(
+                  [
+                    target_value_expression_binding_ref_token(
+                      binding: left_binding,
+                      projection: projection
+                    ),
+                    FixedToken { token_class: op_token },
+                    target_value_expression_binding_ref_token(
+                      binding: right_binding,
+                      projection: projection
+                    )
+                  ]
+                )
+            }
+        }
+      }
+    PrefixToken { token: op_token } =>
+      if length(xs: bindings) != 1 {
+        outcome_rejected(
+          target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+        )
+      } else {
+        match list_at_optional(xs: bindings, index: 0) {
+          Absent =>
+            outcome_rejected(
+              target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+            )
+          Present { value: binding } =>
+            outcome_accepted(
+              [
+                FixedToken { token_class: op_token },
+                target_value_expression_binding_ref_token(
+                  binding: binding,
+                  projection: projection
+                )
+              ]
+            )
+        }
+      }
+    CallIdent { ident: callee } =>
+      outcome_accepted(
+        list_append(
+          left: list_append(
+            left: [
+              FixedToken { token_class: projection.primitive_apply_form.open },
+              FixedToken { token_class: callee }
+            ],
+            right: target_concrete_syntax_tokens_intersperse_fixed(
+              tokens: target_value_expression_binding_refs_to_tokens(
+                bindings: bindings,
+                projection: projection
+              ),
+              separator: projection.primitive_apply_form.separator
+            )
+          ),
+          right: [FixedToken { token_class: projection.primitive_apply_form.close }]
+        )
+      )
+    MethodIdent { ident: _ } =>
+      outcome_rejected(
+        target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: expr)
+      )
+  }
+}
+
+fn target_value_expression_primitive_apply_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_primitive_apply_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_primitive_apply_operation_from_wire(wire: expr.node),
+        f: fn(canonical_op) {
+          bind_outcome(
+            o: target_value_expr_primitive_apply_operand_bindings(wire: expr.node),
+            f: fn(bindings) {
+              bind_outcome(
+                o: target_operator_realization_catalog_lookup(
+                  catalog: catalog,
+                  operation: canonical_op
+                ),
+                f: fn(realization) {
+                  target_operator_shape_emit_primitive_apply_tokens(
+                    shape: realization.shape,
+                    projection: projection,
+                    bindings: bindings,
+                    expr: expr
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expression_binding_ref_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_binding_ref_binding_from_wire(wire: expr.node),
+    f: fn(binding) {
+      outcome_accepted(
+        [
+          target_value_expression_binding_ref_token(
+            binding: binding,
+            projection: projection
+          )
+        ]
+      )
+    }
+  )
+}
+
+// Substrate fold — exhaustive match over TargetValueExpressionKind (design-value-emit-schema.md §4.4).
+fn target_value_expression_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match expr.kind {
+    TargetValueExprBindingRef =>
+      target_value_expression_binding_ref_to_concrete_tokens(
+        expr: expr,
+        projection: projection
+      )
+    TargetValueExprPrimitiveApply =>
+      target_value_expression_primitive_apply_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    _ =>
+      outcome_rejected(
+        target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
+      )
+  }
+}
+
+fn target_value_expression_to_concrete_tokens_from_target(
+  expr: TargetValueExpression,
+  target: TargetModel,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: find_named_child(
+      root: target.bundle,
+      name: target_model_edge_operator_realizations
+    ),
+    f: fn(catalog) {
+      target_value_expression_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
+  )
+}
+
 fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection) -> Node {
   target_model_type_conj_node(
     children: [
