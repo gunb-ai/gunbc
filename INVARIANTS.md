@@ -155,6 +155,19 @@ A function walks a modeled structure, projects a property from a variant shape, 
 
 **Receipt:** Practice 10 in `docs/modeling-discipline.md` names the derived-operations registry and the dissolution findings (`walker`, `traverse`, `predicate`, `carrier`, `emit/template`, `nominalization`, and coproduct dissolution). It is the review rubric for deciding whether a local helper is real logic or a duplicated derivation; PR #4627 (four registry findings landed through an approving review while the rubric was deleted) is the worked example recorded there.
 
+### Problem shape: Stage carries decisions the model should
+
+**A finished compiler stage is one fold over its model — `stage(x) = fold_carrier(x, algebra(model))`.** This is the stage-level reading of *Do not hand-roll a derived operation*: a stage that walks its input with per-case `match` arms, `_go` accumulators, and `_bounded` fuel is hand-rolling the catamorphism the compiler already derives (`fold_node` / `fold_grammar_expr` / the frontend folds), one arm at a time. The decisions those arms make are facts the model should carry as data rows.
+
+The rule is a **litmus, not a ban.** Non-fold code is permitted but is a *signal*, sorting into exactly two categories — there is no third:
+
+- **A named, separated irreducible kernel.** A fixpoint solver (`solve_constraints`), char-class matching, real arithmetic — these are not catamorphisms and are *meant* to stay as one named function. *Fold the traversal, name the kernel.* Terminal, not debt. (This is the same separation P4 makes for unification: the gather folds; the solver stays a named kernel.)
+- **Un-migrated modeling.** Any other non-fold control-flow is the code making a decision the model has not absorbed. It is **measured modeling debt**: the decision belongs as a model row, and its residence in the stage is tracked, not permanent.
+
+The volume of non-fold residue in a stage is therefore a *measure* of how much of its decision-making still lives in code rather than the model. This connects to **Heuristics Indicate Lost Structure** (above): a heuristic is a per-fact symptom; a non-fold stage is the same symptom at stage scale. **Home of record:** MODELING.md M11; review rubric: `docs/modeling-discipline.md` Practice 12; the frontloaded collapse program: `gunbc-planning/stage-fold-collapse-plan-2026-06-11.md`. `05_emit` (`serialize ∘ translate`, 43 lines) is the landed existence proof.
+
+**Solution shape:** Move each per-case arm to one row in `algebra(model)`; delete the `_go` accumulator (the fold owns recursion) and the `_bounded` fuel (a structural fold terminates by construction) in the *same* change that repoints the consumer onto the fold. Add the algebra row and delete the arm in one PR — grafting the fold beside the surviving arms is the cementation anti-pattern (the file must shrink).
+
 ### Problem shape: Nickname (type name mismatches concept)
 
 **A type's name must be what the type is — not a convenient label for something else.** A type named `FooBar` is the composition of `Foo` and `Bar`; a type named `NodePath` is `Node` composed with `Path`. If the name does not reflect the actual structure, the type is a nickname — and nicknames are modeling violations.

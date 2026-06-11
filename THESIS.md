@@ -420,6 +420,7 @@ continues as substrate stages complete.
 - Every service boundary uses typed enums, not String/Bool proxies.
 - No fabrication sentinels (`__BUG_*`, `__EMIT_BUG_*`). Missing facts are compile-time errors, not runtime strings.
 - No duplicate record shapes. One type per concept.
+- A finished compiler stage is one fold over its model: `stage(x) = fold_carrier(x, algebra(model))`. A pure fold expresses only intent — the decisions live as data in the model (`std/`/`extdeps/`), the fold owns traversal. Non-fold residue is a litmus, not a ban: it is either a named irreducible kernel (a solver, char-matching — *fold the traversal, name the kernel*) or un-migrated modeling — code making a decision the model hasn't absorbed yet. The volume of non-fold control-flow in a stage measures how much decision-making still lives in code instead of the model. `05_emit` (`serialize ∘ translate`, 43 lines) is the existence proof; MODELING.md M11 is the rule, docs/modeling-discipline.md Practice 12 the review rubric.
 
 ## The test: when is it real?
 

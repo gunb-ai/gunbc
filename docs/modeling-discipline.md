@@ -1116,6 +1116,57 @@ catching it after dispatch costs N rounds of corrections + N worker
 contexts that need to be re-briefed. **Block Practice 11 findings at the
 design-PR layer, even when no implementation hunks are touched.**
 
+### 12. A finished stage is a fold; non-fold residue measures unmodeled decision
+
+Implements **P1: Modeling Faithfulness** and is the **stage-scale**
+reading of Practice 10 (*don't hand-roll a derived operation*). Practice
+10 is function-scale — it flags one hand-rolled catamorphism in a diff.
+Practice 12 is the same finding lifted to the **whole stage**: a compiler
+stage's finished shape is one fold over its model,
+`stage(x) = fold_carrier(x, algebra(model))`, and the *volume of non-fold
+control-flow in the stage* is a measurable proxy for how much of its
+decision-making still lives in code instead of the model. (See
+[MODELING.md](../MODELING.md) M11 — home of record; THESIS.md "Modeling
+discipline"; the frontloaded collapse program
+`gunbc-planning/stage-fold-collapse-plan-2026-06-11.md`.)
+
+**The litmus, not a ban.** Non-fold code is permitted but sorts into
+**exactly two** categories — there is no third, and "stage logic that's
+fine to keep as control-flow" is not a disposition:
+
+- **🟢 named irreducible kernel** — a fixpoint solver, char-class
+  matching, real arithmetic: not a catamorphism, *meant* to stay one
+  named separated function. *Fold the traversal, name the kernel.*
+  Terminal, not debt. The discriminant is the same one Practice 10 uses
+  for "genuinely irregular recursion": the **call graph is not the data
+  graph**. A solver iterates to a fixpoint; its control flow is not the
+  shape of its input.
+- **🟡 / 🔴 un-migrated modeling** — any other non-fold arm: a `match`
+  that derives a property, an `if` that special-cases, a `_go`
+  accumulator, a `_bounded` fuel parameter. Each is the code making a
+  decision the model has not absorbed; it dissolves to *(an algebra row)
+  + (the fold carrier)*. 🔴 if the carrier exists (`fold_node` /
+  `fold_grammar_expr` / a frontend fold); 🟡 if the carrier is a named
+  missing primitive (gate + owning task + dissolve-on-arrival, per
+  Practice 4).
+
+**What to check.** For a stage file (`src/v4/compiler/*`): is the stage
+body one `fold_carrier(x, algebra(...))` call, or does it hand-walk its
+input? Count the residue signals — `_go` accumulators, `_bounded` fuel
+sites, per-connective `match` arms in the stage (vs rows in the algebra).
+Each non-zero count is either a named kernel (🟢, justified by call-graph
+≠ data-graph) or modeling debt (🔴/🟡). A stage that grows its arm count,
+or grafts a fold *beside* surviving arms without deleting them, is the
+**cementation anti-pattern** — the deletion ratchet (the target file must
+shrink, `_go`/`_bounded` strictly down) is its mechanical enforcement.
+The exit certificate is numeric: stage body is one fold, `_go`=0,
+`_bounded`=0, every former arm is one algebra row. `05_emit`
+(`serialize ∘ translate`, 43 lines) is the landed existence proof.
+
+**Disposition.** Standard 🔴/🟡/🟢 per the shared dispositions
+(Practice 4). A 🟢 stage-kernel claim must substantiate call-graph ≠
+data-graph; absent that, the residue is debt, not a kernel.
+
 ## Calibration: Blocking vs Omit
 
 A finding is **BLOCKING** if fixing it in a later PR would be meaningfully
