@@ -5,7 +5,7 @@
 
 module v4.compiler.value_expression
 
-import v4.std.algebra { Cons, Empty, FreeMonoid, length, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_snoc_item }
 import v4.std.collection {
   Absent,
   List,
