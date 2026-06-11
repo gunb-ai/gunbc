@@ -266,17 +266,25 @@ pub fn resolve_entry_graph(
     Ok((graph, result.source_indices.clone()))
 }
 
+/// Build the evaluation context for a resolved graph. The context owns the
+/// per-graph interpreter state (fn index, service registry, `data` cache), so
+/// its lifetime IS the evaluation scope: callers running many functions over
+/// one graph (see `claim_batch`) build this once and pass it to each
+/// `run_claim`/`run_value` call; dropping it releases everything.
+pub fn make_eval_context(
+    graph: &v2_compiler_compile::ResolvedGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> v2_interpreter::InterpContext {
+    v2_interpreter::InterpContext::new(graph, source_indices, false)
+}
+
 /// Run one Bool witness function against an already-resolved graph, classifying
 /// the result the same way `handle_run_with_options`'s `--claim-run` branch
 /// does (Bool true → Pass, false → Fail, anything else → diagnostic), but
 /// without calling `std::process::exit`. Eager data-env is disabled to match
 /// claim-run behavior (witnesses pull data lazily).
-pub fn run_claim(
-    graph: &v2_compiler_compile::ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    function: &str,
-) -> ClaimOutcome {
-    match v2_interpreter::run_with_options(graph, source_indices, function, false, false) {
+pub fn run_claim(ctx: &v2_interpreter::InterpContext, function: &str) -> ClaimOutcome {
+    match v2_interpreter::run_in_context(ctx, function, false) {
         Ok(v2_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
         Ok(v2_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
         Ok(other) => ClaimOutcome::NotBool {
@@ -295,12 +303,10 @@ pub fn run_claim(
 /// result, rather than collapsing it to a single Bool. Eager data-env is
 /// disabled to match the witness/plan-run convention (values pull lazily).
 pub fn run_value(
-    graph: &v2_compiler_compile::ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ctx: &v2_interpreter::InterpContext,
     function: &str,
 ) -> Result<v2_interpreter::Value, String> {
-    v2_interpreter::run_with_options(graph, source_indices, function, false, false)
-        .map_err(|e| format!("{}", e))
+    v2_interpreter::run_in_context(ctx, function, false).map_err(|e| format!("{}", e))
 }
 
 /// Entry point for `dag run`. Called from the generated main.rs.
