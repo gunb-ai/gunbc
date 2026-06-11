@@ -22,7 +22,7 @@ import v4.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid }
-import v4.std.collection { Absent, Map, Present, empty_map, map_get, map_insert }
+import v4.std.collection { Absent, Map, Present, empty_map, map_get, map_insert, optional_absent, optional_present }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -333,13 +333,13 @@ fn module_root_for_name_fold(
 
 fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
   match try_edge_declared_binding(e: e) {
-    Some { value: b } =>
+    Present { value: b } =>
       if dag_surface_module_header_metadata_edge(name: b.name) {
-        None
+        optional_absent()
       } else {
-        Some { value: b }
+        optional_present(value: b)
       }
-    None => None
+    Absent => optional_absent()
   }
 }
 
@@ -350,9 +350,9 @@ fn admit_named_export_edge(
   state: AdmissionState
 ) -> AdmissionState {
   match try_admitted_export_binding(e: edge) {
-    Some { value: b } =>
+    Present { value: b } =>
       admit_export_symbol(sym: b.name, origin: origin, state: state)
-    None => state
+    Absent => state
   }
 }
 

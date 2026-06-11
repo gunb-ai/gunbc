@@ -10,6 +10,8 @@ use crate::v2_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCase
 pub use crate::v2_compiler_languages::{language_spec_for_target, test_conventions_for_target};
 pub use crate::v2_compiler_languages::{LanguageSpec, TestNameStyle};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Connective::NoConnective;
 pub use crate::v2_std_core::{authored_name_at, field_init_node_name_at};
 pub use crate::v2_std_core::{Connective, ErrorNode, NewlineIndex, Node, TextFile};

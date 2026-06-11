@@ -49,6 +49,7 @@ import v4.std.target_model {
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, content_hash, Unanchored }
+import v4.std.witness { Holds, Violates }
 import v4.std.text { String }
 import v4.std.verification {
   Boundary,
@@ -95,15 +96,11 @@ fn sg_rc_claim_input(ok: Bool) -> Node {
   }
 }
 
-// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — manual TestClaim compile
-// projects Map.lookup → Optional (Some/None), not Witness; dissolve-on: bootstrap Witness<V>
-// generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:53);
-// site: sg_rc_ctor_binding_spelling — receipt class: map_get bridge at 06_translate.dag:917.
 fn sg_rc_ctor_binding_spelling(binding: Symbol, expected: String) -> Bool {
   let spellings = rust_sg2_binding_spellings()
   match spellings.lookup(binding) {
-    Some { value: spelling } => spelling == expected
-    None => false
+    Holds { value: spelling } => spelling == expected
+    Violates { diagnostic: _ } => false
   }
 }
 

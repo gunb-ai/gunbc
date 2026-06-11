@@ -156,8 +156,8 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
     }
   )
   match non_idempotent |> first {
-    Some { value: op } => BrokenBy { first_breaker: op }
-    None => IdempotentComposition
+    Present { value: op } => BrokenBy { first_breaker: op }
+    Absent => IdempotentComposition
   }
 }
 
@@ -253,18 +253,18 @@ fn derive_effect_shape(
     POST    => CreateEffect
     DELETE =>
       match last_path_param(template: path) {
-        Some { value: p } => DeleteEffect { key_source: PathParam { param: p } }
-        None => CreateEffect
+        Present { value: p } => DeleteEffect { key_source: PathParam { param: p } }
+        Absent => CreateEffect
       }
     PUT =>
       match last_path_param(template: path) {
-        Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        None => CreateEffect
+        Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
+        Absent => CreateEffect
       }
     PATCH =>
       match last_path_param(template: path) {
-        Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        None => CreateEffect
+        Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
+        Absent => CreateEffect
       }
   }
 }

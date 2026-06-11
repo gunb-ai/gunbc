@@ -10,6 +10,8 @@ pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v2_compiler_infer_types::child_type_node;
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};

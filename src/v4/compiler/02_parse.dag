@@ -52,6 +52,7 @@ import v4.std.grammar {
   Choice,
   ParseGrammar,
   GrammarExpr,
+  GrammarExprFold,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
@@ -62,6 +63,7 @@ import v4.std.grammar {
   Terminal,
   ValidatedGrammarRoot,
   VoidGrammar,
+  fold_grammar_expr,
   grammar_empty_node,
   grammar_named_edge,
   grammar_to_node
@@ -97,6 +99,27 @@ type ParseRepeatAcc {
   acc_diags: List<Diagnostic>
   done: Bool
 }
+
+// Product accumulator for expr_direct_left_corner_list: corners plus nullable flag
+// threaded through fold_grammar_expr so Sequence can gate right corners on left nullability.
+type GrammarExprCornerFold {
+  corners: List<Symbol>
+  nullable: Bool
+}
+
+// 🟡 coproduct dissolution — feature: GrammarExpr parse interpreter — bind node://adhoc-2145db6b-69a
+// (Level-1b lane) — parallel representation mirroring GrammarExpr variants (1:1 shape); the
+// fold stage is identity-shaped (GrammarExpr → ParseExprWalk rebox). Dissolve-on-arrival: a
+// higher-order GrammarExprFold algebra whose handlers thread tokens and yield ParseExprResult
+// directly, eliminating ParseExprWalk and parse_expr_run_walk's per-variant match. Trigger:
+// Level-2 parse-walk algebra in std/grammar.dag or T-8 parse-result projection unification.
+type ParseExprWalk
+  = ParseExprWalkTerminal { token_class: Symbol }
+  | ParseExprWalkNonterminal { production: Symbol }
+  | ParseExprWalkSequence { left: ParseExprWalk, right: ParseExprWalk }
+  | ParseExprWalkChoice { left: ParseExprWalk, right: ParseExprWalk }
+  | ParseExprWalkOptional { element: ParseExprWalk }
+  | ParseExprWalkRepeat { element: ParseExprWalk }
 
 // Memo key for parse table: token offset × production name.
 type ParsePositionKey {
@@ -356,23 +379,25 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived nullable query morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating nullable logic outside this function.
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr structural morphism substrate —
+// bind node://adhoc-b696538c-710 — first consumer of v4.std.grammar.fold_grammar_expr: the
+// nullable query is now expressed as a GrammarExprFold algebra over Bool rather than a hand-written
+// per-variant recursion. The structural recursion lives once in fold_grammar_expr; this function
+// supplies only the per-variant combine.
 // expr_is_nullable_given_set: true iff expr can match empty input given a pre-computed nullable set.
-// Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
 // Nonterminal arms consult nullable_set rather than following production references.
 fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> Bool {
-  match expr {
-    Terminal { token_class: _ } => false
-    Nonterminal { production: name } => nullable_set.member(name)
-    Sequence { left: left, right: right } =>
-      expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) &&
-      expr_is_nullable_given_set(expr: right, nullable_set: nullable_set)
-    Choice { left: left, right: right } =>
-      expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) ||
-      expr_is_nullable_given_set(expr: right, nullable_set: nullable_set)
-    Optional { element: _ } => true
-    Repeat { element: _ } => true
-  }
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_) { false },
+      nonterminal: fn(name) { nullable_set.member(name) },
+      sequence: fn(left_nullable, right_nullable) { left_nullable && right_nullable },
+      choice: fn(left_nullable, right_nullable) { left_nullable || right_nullable },
+      optional: fn(_) { true },
+      repeat: fn(_) { true }
+    }
+  )
 }
 
 
@@ -411,35 +436,81 @@ fn grammar_empty_corner_list() -> List<Symbol> {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr left-corner query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-corner reachability morphism over GrammarExpr coproduct; forbidden: duplicating left-corner logic or inlining nullable check outside this function.
-// expr_direct_left_corner_list: direct (non-transitive) left-corner nonterminals of expr.
-// Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
-// Sequence: when left is nullable, both left and right contribute left corners.
-// Note: Sequence arm uses list_append with the nullable-conditional inside right: to avoid
-// a top-level if/else type-unification failure in the v2 bootstrap compiler.
-fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
-  match expr {
-    Terminal { token_class: _ } => Empty
-    Nonterminal { production: name } => Cons { head: name, tail: Empty }
-    Sequence { left: left, right: right } =>
-      list_append(
-        left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
-        right: if expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) {
-          expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
-        } else {
-          grammar_empty_corner_list()
-        }
-      )
-    Choice { left: left, right: right } =>
-      list_append(
-        left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
-        right: expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
-      )
-    Optional { element: element } =>
-      expr_direct_left_corner_list(expr: element, nullable_set: nullable_set)
-    Repeat { element: element } =>
-      expr_direct_left_corner_list(expr: element, nullable_set: nullable_set)
+fn expr_corner_fold_terminal(_: Symbol) -> GrammarExprCornerFold {
+  GrammarExprCornerFold { corners: Empty, nullable: false }
+}
+
+
+fn expr_corner_fold_nonterminal(name: Symbol, nullable_set: Set<Symbol>) -> GrammarExprCornerFold {
+  GrammarExprCornerFold {
+    corners: Cons { head: name, tail: Empty },
+    nullable: nullable_set.member(name)
   }
+}
+
+
+fn expr_corner_fold_sequence(
+  left_fold: GrammarExprCornerFold,
+  right_fold: GrammarExprCornerFold
+) -> GrammarExprCornerFold {
+  // left_fold.nullable is fold_grammar_expr applied with the Bool nullable algebra over the
+  // left subtree — equivalent to expr_is_nullable_given_set(expr: left, nullable_set).
+  GrammarExprCornerFold {
+    corners: list_append(
+      left: left_fold.corners,
+      right: if left_fold.nullable {
+        right_fold.corners
+      } else {
+        grammar_empty_corner_list()
+      }
+    ),
+    nullable: left_fold.nullable && right_fold.nullable
+  }
+}
+
+
+fn expr_corner_fold_choice(
+  left_fold: GrammarExprCornerFold,
+  right_fold: GrammarExprCornerFold
+) -> GrammarExprCornerFold {
+  GrammarExprCornerFold {
+    corners: list_append(left: left_fold.corners, right: right_fold.corners),
+    nullable: left_fold.nullable || right_fold.nullable
+  }
+}
+
+
+fn expr_corner_fold_optional(element_fold: GrammarExprCornerFold) -> GrammarExprCornerFold {
+  GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
+}
+
+
+fn expr_corner_fold_repeat(element_fold: GrammarExprCornerFold) -> GrammarExprCornerFold {
+  GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
+}
+
+
+fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: Set<Symbol>) -> GrammarExprCornerFold {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class) { expr_corner_fold_terminal(token_class) },
+      nonterminal: fn(name) { expr_corner_fold_nonterminal(name: name, nullable_set: nullable_set) },
+      sequence: expr_corner_fold_sequence,
+      choice: expr_corner_fold_choice,
+      optional: expr_corner_fold_optional,
+      repeat: expr_corner_fold_repeat
+    }
+  )
+}
+
+
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr left-corner query substrate —
+// bind node://adhoc-2145db6b-69a — fold_grammar_expr consumer with GrammarExprCornerFold product
+// threading nullable alongside corners so Sequence combine matches expr_is_nullable_given_set.
+// expr_direct_left_corner_list: direct (non-transitive) left-corner nonterminals of expr.
+fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
+  expr_corner_nullable_fold(expr: expr, nullable_set: nullable_set).corners
 }
 
 
@@ -506,28 +577,26 @@ fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr production-reference closure query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-nonterminal query morphism over GrammarExpr coproduct; forbidden: duplicating reference-closure logic outside this function.
-// Structural recursion on GrammarExpr (finite tree) — does NOT follow nonterminal
+// 🟢 substrate catamorphism consumer — feature: GrammarExpr production-reference closure query substrate —
+// bind node://adhoc-2145db6b-69a — fold_grammar_expr consumer over Bool; does NOT follow nonterminal
 // references into their productions, so it always terminates without a visited set.
 fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool {
-  match expr {
-    Terminal { token_class: _ } => false
-    Nonterminal { production: p } =>
-      match grammar_lookup_production(root: root, name: p) {
-        Violates { diagnostic: _ } => true
-        Holds { value: _ } => false
-      }
-    Sequence { left: left, right: right } =>
-      expr_has_undefined_nonterminal(expr: left, root: root) ||
-      expr_has_undefined_nonterminal(expr: right, root: root)
-    Choice { left: left, right: right } =>
-      expr_has_undefined_nonterminal(expr: left, root: root) ||
-      expr_has_undefined_nonterminal(expr: right, root: root)
-    Optional { element: element } =>
-      expr_has_undefined_nonterminal(expr: element, root: root)
-    Repeat { element: element } =>
-      expr_has_undefined_nonterminal(expr: element, root: root)
-  }
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_) { false },
+      nonterminal: fn(p) {
+        match grammar_lookup_production(root: root, name: p) {
+          Violates { diagnostic: _ } => true
+          Holds { value: _ } => false
+        }
+      },
+      sequence: fn(left_undef, right_undef) { left_undef || right_undef },
+      choice: fn(left_undef, right_undef) { left_undef || right_undef },
+      optional: fn(element_undef) { element_undef },
+      repeat: fn(element_undef) { element_undef }
+    }
+  )
 }
 
 
@@ -672,19 +741,35 @@ fn parse_token_first(tokens: List<Token>) -> TokenPeek {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived recursive-descent parse morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating parse walk logic or adding new GrammarExpr arms outside this function.
-// parse_expr: recursive-descent parse walk.
-// Nonterminal arm: O(1) ParseTable lookup (built by build_parse_table) — no measure: Nat.
-// Left-recursive grammars are rejected by grammar_has_left_recursion before parse runs.
-fn parse_expr(
-  expr: GrammarExpr,
+fn parse_expr_fold_sequence(left: ParseExprWalk, right: ParseExprWalk) -> ParseExprWalk {
+  ParseExprWalkSequence { left: left, right: right }
+}
+
+
+fn parse_expr_fold_choice(left: ParseExprWalk, right: ParseExprWalk) -> ParseExprWalk {
+  ParseExprWalkChoice { left: left, right: right }
+}
+
+
+fn parse_expr_fold_optional(element: ParseExprWalk) -> ParseExprWalk {
+  ParseExprWalkOptional { element: element }
+}
+
+
+fn parse_expr_fold_repeat(element: ParseExprWalk) -> ParseExprWalk {
+  ParseExprWalkRepeat { element: element }
+}
+
+
+fn parse_expr_run_walk(
+  walk: ParseExprWalk,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
   table: ParseTable
 ) -> ParseExprResult {
-  match expr {
-    Terminal { token_class: class } =>
+  match walk {
+    ParseExprWalkTerminal { token_class: class } =>
       match parse_token_first(tokens: tokens) {
         TokenPeekAbsent => ParseExprRejected { diagnostics: [] }
         TokenPeekFirst { value: tok } =>
@@ -713,7 +798,7 @@ fn parse_expr(
             false => ParseExprRejected { diagnostics: [] }
           }
       }
-    Nonterminal { production: prod_name } =>
+    ParseExprWalkNonterminal { production: prod_name } =>
       parse_nonterminal_from_table(
         table: table,
         all_tokens: all_tokens,
@@ -721,12 +806,24 @@ fn parse_expr(
         root: root,
         prod_name: prod_name
       )
-    Sequence { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
+    ParseExprWalkSequence { left: left, right: right } =>
+      match parse_expr_run_walk(
+        walk: left,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table
+      ) {
         ParseExprRejected { diagnostics: diags } =>
           ParseExprRejected { diagnostics: diags }
         ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1 } =>
-          match parse_expr(expr: right, tokens: rest1, all_tokens: all_tokens, root: root, table: table) {
+          match parse_expr_run_walk(
+            walk: right,
+            tokens: rest1,
+            all_tokens: all_tokens,
+            root: root,
+            table: table
+          ) {
             ParseExprRejected { diagnostics: diags2 } =>
               ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
             ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
@@ -754,15 +851,33 @@ fn parse_expr(
               }
           }
       }
-    Choice { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
+    ParseExprWalkChoice { left: left, right: right } =>
+      match parse_expr_run_walk(
+        walk: left,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table
+      ) {
         ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
           ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
         ParseExprRejected { diagnostics: _ } =>
-          parse_expr(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table)
+          parse_expr_run_walk(
+            walk: right,
+            tokens: tokens,
+            all_tokens: all_tokens,
+            root: root,
+            table: table
+          )
       }
-    Optional { element: element } =>
-      match parse_expr(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
+    ParseExprWalkOptional { element: element } =>
+      match parse_expr_run_walk(
+        walk: element,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table
+      ) {
         ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
           ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
         ParseExprRejected { diagnostics: _ } =>
@@ -772,9 +887,7 @@ fn parse_expr(
             diagnostics: []
           }
       }
-    Repeat { element: element } =>
-      // fold_list bounds iterations to length(tokens); done: true short-circuits remaining steps.
-      // Each consuming iteration reduces acc.remaining; zero-progress or rejection sets done: true.
+    ParseExprWalkRepeat { element: element } =>
       let init = ParseRepeatAcc { remaining: tokens, acc_nodes: [], acc_diags: [], done: false }
       let result = fold_list(
         xs: tokens,
@@ -783,7 +896,13 @@ fn parse_expr(
           match acc.done {
             true => acc
             false =>
-              match parse_expr(expr: element, tokens: acc.remaining, all_tokens: all_tokens, root: root, table: table) {
+              match parse_expr_run_walk(
+                walk: element,
+                tokens: acc.remaining,
+                all_tokens: all_tokens,
+                root: root,
+                table: table
+              ) {
                 ParseExprRejected { diagnostics: _ } =>
                   ParseRepeatAcc {
                     remaining: acc.remaining,
@@ -828,6 +947,39 @@ fn parse_expr(
           }
       }
   }
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature: GrammarExpr parse walk substrate — bind node://adhoc-2145db6b-69a — partial
+// migration: fold_grammar_expr dissolves structural recursion over GrammarExpr; token-threading
+// interpretation remains a per-variant match on interim ParseExprWalk (see 🟡 mark on that type).
+// Forbidden: claiming full walker dissolution for parse_expr until the higher-order algebra lands.
+// Nonterminal arm: O(1) ParseTable lookup. Left-recursive grammars rejected pre-parse.
+fn parse_expr(
+  expr: GrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable
+) -> ParseExprResult {
+  parse_expr_run_walk(
+    walk: fold_grammar_expr(
+      expr: expr,
+      algebra: GrammarExprFold {
+        terminal: fn(token_class) { ParseExprWalkTerminal { token_class: token_class } },
+        nonterminal: fn(prod_name) { ParseExprWalkNonterminal { production: prod_name } },
+        sequence: parse_expr_fold_sequence,
+        choice: parse_expr_fold_choice,
+        optional: parse_expr_fold_optional,
+        repeat: parse_expr_fold_repeat
+      }
+    ),
+    tokens: tokens,
+    all_tokens: all_tokens,
+    root: root,
+    table: table
+  )
 }
 
 

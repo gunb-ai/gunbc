@@ -14,7 +14,8 @@ import std.measure { Measure, Time, DataRate, One, ByteSize }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
-type Witness<C> = Node
+// Kept intentionally distinct from the kernel `Witness<T>` container.
+type ComputeWitness<C> = Node
 type Outcome<T> = Node
 
 // 🟡 forward — v4 ingress / artifact carriers (P-CF-INGRESS).
@@ -254,10 +255,10 @@ type ParallelismShape
     }
 
 type ReducerLaws {
-  associative: Witness<Associativity>
-  commutative: Option<Witness<Commutativity>>
+  associative: ComputeWitness<Associativity>
+  commutative: Option<ComputeWitness<Commutativity>>
   identity: Option<IdentityElement>
-  idempotent: Option<Witness<Idempotency>>
+  idempotent: Option<ComputeWitness<Idempotency>>
 }
 
 type ExecutionBudget {
@@ -304,11 +305,11 @@ type ComputeLease {
   offer: ComputeOffer
   demand: WorkDemand
   allocation: AllocationReceipt
-  eligibility: Witness<ComputeLeaseEligibility>
+  eligibility: ComputeWitness<ComputeLeaseEligibility>
 }
 
 // 🟡 P-CF-WITNESS — `satisfies` signature + body land with supply row proofs (cases 7–8).
-// fn satisfies(supply: ComputeSupplyFacts, demand: WorkDemand) -> Witness<ComputeLeaseEligibility>
+// fn satisfies(supply: ComputeSupplyFacts, demand: WorkDemand) -> ComputeWitness<ComputeLeaseEligibility>
 
 // --- §1.1 executable unit + ingress --------------------------------------------
 

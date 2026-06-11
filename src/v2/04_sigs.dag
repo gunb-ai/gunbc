@@ -152,13 +152,13 @@ fn topo_resolve_loop(
   if ready |> count == 0 {
     let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
       match map_get(declared_sigs, fn_name) {
-        Some { value: dsig } =>
+        Present { value: dsig } =>
           if dsig.inferred != none {
             SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
           } else {
             SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, make_error_node(diagnostic: MissingAnnotation { fn_name: fn_name, what: "return type (recursive)", span: no_span() }, module_name: module_name)) }
           }
-        None => acc
+        Absent => acc
       }
     )
     let all_resolved = fold(map_values(declared_sigs), init: cycle_accum.signatures, f: (acc, dsig) =>
@@ -174,13 +174,13 @@ fn topo_resolve_loop(
 
   let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
     match map_get(declared_sigs, fn_name) {
-      Some { value: dsig } =>
+      Present { value: dsig } =>
         if dsig.inferred != none {
           SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
         } else {
           SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, make_error_node(diagnostic: MissingAnnotation { fn_name: fn_name, what: "return type", span: no_span() }, module_name: module_name)) }
         }
-      None => acc
+      Absent => acc
     }
   )
 

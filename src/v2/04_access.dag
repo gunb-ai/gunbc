@@ -43,16 +43,16 @@ fn access_error(message: String, span: SourceSpan, module_name: String) -> Error
 fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
   if count(diagnostics) == 0 {
     AccessCheckResultNode {
-      inferred: Some { value: Resolved { node: inferred } },
+      inferred: Present { value: Resolved { node: inferred } },
       diagnostics: diagnostics
     }
   } else {
     let message = match diagnostics |> first {
-      Some { value: diag } => diagnostic_to_message(d: diag.diagnostic)
-      None => fallback_message
+      Present { value: diag } => diagnostic_to_message(d: diag.diagnostic)
+      Absent => fallback_message
     }
     AccessCheckResultNode {
-      inferred: Some { value: CompilerError { message: message, span: span } },
+      inferred: Present { value: CompilerError { message: message, span: span } },
       diagnostics: diagnostics
     }
   }
@@ -61,12 +61,12 @@ fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan,
 fn keyed_collection_parts(n: Node, source_indices: Map<String, NewlineIndex>) -> KeyedCollectionParts? {
   if node_is_keyed_collection(n: n, source_indices: source_indices) && n.children |> count >= 2 {
     match n.children |> first {
-      Some { value: key_child } =>
+      Present { value: key_child } =>
         match n.children |> skip(1) |> first {
-          Some { value: value_child } => Some { value: KeyedCollectionParts { key_type: resolved_type(n: key_child), value_type: resolved_type(n: value_child) } }
-          None => none
+          Present { value: value_child } => Present { value: KeyedCollectionParts { key_type: resolved_type(n: key_child), value_type: resolved_type(n: value_child) } }
+          Absent => none
         }
-      None => none
+      Absent => none
     }
   } else {
     none
@@ -84,11 +84,11 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     access_result(inferred: string_type, diagnostics: diags, span: span, fallback_message: "invalid string index access")
   } else {
     match keyed_collection_parts(n: normed, source_indices: source_indices) {
-      Some { value: parts } =>
+      Present { value: parts } =>
         let key_diags = if node_type_equals(left: parts.key_type, right: normed_index, source_indices: source_indices) { [] }
         else { [access_error(message: "keyed collection index key type does not match the collection key type", span: span, module_name: module_name)] }
         access_result(inferred: with_optional_cardinality(n: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid keyed collection index access")
-      None =>
+      Absent =>
         if node_is_keyed_collection(n: normed, source_indices: source_indices) {
           let malformed_diags = [access_error(message: "malformed keyed collection type in index access", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed keyed collection type in index access")

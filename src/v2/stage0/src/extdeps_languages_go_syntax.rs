@@ -10,6 +10,8 @@ use crate::std_syntax::ItemFormKind::{
 };
 pub use crate::std_syntax::{BinOp, BodyKind, ItemForm, ItemFormKind, OperatorSpec};
 use crate::v2_rt;
+use crate::v2_rt::Witness;
+use crate::v2_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
